@@ -7,8 +7,81 @@ body {
   color: var(--text-primary);
 }
 
+/* On mobile (default) the app fills the entire viewport. On wide screens
+   (desktop, landscape tablets) we constrain the app to a phone-sized
+   column and render a soft backdrop around it. */
+:root {
+  --app-max-width: 460px;
+  --app-desktop-height: 860px;
+}
+
 .app-content {
   min-height: 100vh;
   background-color: var(--bg-primary);
   position: relative;
+  width: 100%;
+  margin: 0 auto;
+  max-width: var(--app-max-width);
+}
+
+@media (min-width: 640px) {
+  html, body {
+    background: #050408;
+  }
+
+  /* Soft backdrop behind the phone frame */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(55% 55% at 50% 0%, rgba(70, 45, 110, 0.35) 0%, rgba(5, 4, 8, 0) 70%),
+      radial-gradient(45% 50% at 100% 100%, rgba(80, 40, 110, 0.25) 0%, rgba(5, 4, 8, 0) 70%);
+    z-index: 0;
+  }
+
+  /* The mobile-wide glow lives outside the app on mobile, move it inside
+     the phone frame on desktop. */
+  body::before {
+    display: none;
+  }
+
+  .app-content {
+    min-height: auto;
+    height: min(var(--app-desktop-height), calc(100vh - 40px));
+    margin: max(20px, calc((100vh - var(--app-desktop-height)) / 2)) auto;
+    border-radius: 28px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    box-shadow:
+      0 40px 90px rgba(0, 0, 0, 0.55),
+      0 0 0 1px rgba(255, 255, 255, 0.04);
+    /* Creates a new containing block so `position: fixed` children
+       (bottom nav) are positioned relative to this phone frame, not the
+       browser viewport. */
+    transform: translateZ(0);
+    isolation: isolate;
+    /* Hide scrollbar on desktop while keeping scroll functional */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .app-content::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
+  }
+
+  .app-content::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 400px;
+    pointer-events: none;
+    background: linear-gradient(180deg, #4a215d 0%, rgba(18, 15, 22, 0) 100%);
+    z-index: 0;
+  }
 }

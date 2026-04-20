@@ -1,27 +1,32 @@
 :root {
   /* Backgrounds */
-  --bg-primary: #0B0B0F;
-  --bg-secondary: #14141A;
-  --bg-card: #1A1A22;
-  --bg-card-light: #232330;
-  --bg-input: #1F1F29;
+  --bg-primary: #120f16;
+  --bg-secondary: #1a1721;
+  --bg-card: #16141d;
+  --bg-card-light: #201c29;
+  --bg-input: #1a1822;
+  --bg-pill: rgba(255, 255, 255, 0.08);
 
   /* Text */
-  --text-primary: #FFFFFF;
-  --text-secondary: #9A9AA8;
-  --text-tertiary: #6A6A78;
+  --text-primary: #ffffff;
+  --text-secondary: #9490a0;
+  --text-tertiary: #6a6478;
 
   /* Accents */
-  --accent-primary: #6C5CE7;      /* brand purple */
-  --accent-primary-strong: #8B7CF0;
-  --accent-blue: #0A84FF;
-  --accent-red: #FF453A;
-  --accent-green: #32D74B;
-  --accent-yellow: #FFD60A;
-  --accent-orange: #FF9F0A;
+  --accent-primary: #7c5cff;
+  --accent-primary-strong: #9b7cff;
+  --accent-fab: #f7e34d;           /* big yellow action button */
+  --accent-fab-strong: #fce844;
+  --accent-blue: #4ca8ff;
+  --accent-red: #ff5a63;
+  --accent-green: #4cd97b;
+  --accent-green-soft: rgba(76, 217, 123, 0.15);
+  --accent-red-soft: rgba(255, 90, 99, 0.15);
+  --accent-yellow: #f7e34d;
+  --accent-orange: #ff9f0a;
 
-  --border-light: rgba(255, 255, 255, 0.06);
-  --border-strong: rgba(255, 255, 255, 0.12);
+  --border-light: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.15);
 
   /* Radius */
   --radius-sm: 10px;
@@ -31,10 +36,9 @@
   --radius-full: 9999px;
 
   /* Layout */
-  --bottom-nav-height: 74px;
+  --bottom-nav-height: 84px;
 
-  /* Defaults. Overridden at runtime from Telegram WebApp safeAreaInset /
-     contentSafeAreaInset when available; otherwise CSS env() is used. */
+  /* Safe-area: filled at runtime from Telegram or env() fallback */
   --tg-safe-area-top: env(safe-area-inset-top, 0px);
   --tg-safe-area-right: env(safe-area-inset-right, 0px);
   --tg-safe-area-bottom: env(safe-area-inset-bottom, 0px);
@@ -52,10 +56,10 @@
 }
 
 body.tg-fullscreen {
-  /* In fullscreen, Telegram hides its header; we must respect the device
-     notch / status bar ourselves. Use the outer safeAreaInset (includes
-     OS-level insets) for the very top, since contentSafeAreaInset may be 0. */
-  --safe-area-inset-top: max(var(--tg-content-safe-area-top), var(--tg-safe-area-top));
+  /* In fullscreen mode Telegram overlays a floating "Закрити / ⋯" pill on
+     top of the app, so we reserve enough room for it even if Telegram
+     reports a smaller contentSafeAreaInset.top. */
+  --safe-area-inset-top: max(var(--tg-content-safe-area-top), var(--tg-safe-area-top), 72px);
 }
 
 html, body, #root {
@@ -71,6 +75,21 @@ body {
   -moz-osx-font-smoothing: grayscale;
   user-select: none;
   overflow-x: hidden;
+}
+
+/* Ambient purple radial glow sitting behind the page */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, #4a215d 0%, #120f16 40%, #120f16 100%);
+  z-index: 0;
+}
+
+#root {
+  position: relative;
+  z-index: 1;
 }
 
 * {

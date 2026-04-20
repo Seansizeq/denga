@@ -31,32 +31,35 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onDelete
   };
 
   const categoryName = t('categories', category.id as CategoryKey);
+  const subtitle = transaction.note?.trim() || formatDate(transaction.date, locale);
+  const isIncome = transaction.type === 'income';
 
   return (
     <div
-      className={styles.item}
+      className={styles.row}
       onContextMenu={handleContextMenu}
       onDoubleClick={handleDelete}
     >
-      <div className={styles.iconWrapper} style={{ backgroundColor: category.color }}>
-        <IconComponent size={20} color="white" />
+      <div className={styles.iconCircle}>
+        <IconComponent size={22} color={category.color} strokeWidth={2} />
       </div>
+
       <div className={styles.info}>
         <span className={styles.name}>{categoryName}</span>
-        {transaction.note ? (
-          <span className={styles.note}>{transaction.note}</span>
-        ) : (
-          <span className={styles.date}>{formatDate(transaction.date, locale)}</span>
-        )}
+        <span className={styles.subtitle}>{subtitle}</span>
       </div>
-      <span
-        className={`${styles.amount} ${
-          transaction.type === 'income' ? styles.income : styles.expense
-        }`}
-      >
-        {transaction.type === 'income' ? '+' : '−'}
-        {formatCurrency(transaction.amount, locale)}
-      </span>
+
+      <div className={styles.right}>
+        <span className={styles.amount}>
+          {formatCurrency(transaction.amount, locale)}
+        </span>
+        <span
+          className={`${styles.delta} ${isIncome ? styles.income : styles.expense}`}
+        >
+          {isIncome ? '+' : '−'}
+          {formatCurrency(transaction.amount, locale)}
+        </span>
+      </div>
     </div>
   );
 };

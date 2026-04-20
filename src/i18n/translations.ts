@@ -21,7 +21,11 @@ type Dict = {
     seeAll: string;
     empty: string;
     addTransaction: string;
+    searchPlaceholder: string;
+    noResults: string;
   };
+  quickActions: { add: string; income: string; expense: string; history: string };
+  range: { today: string; week: string; month: string; all: string };
   balance: { label: string; income: string; expense: string };
   addTx: {
     title: string;
@@ -76,11 +80,15 @@ const uk: Dict = {
   nav: { home: 'Головна', history: 'Історія', stats: 'Статистика', settings: 'Налаштування' },
   dashboard: {
     greeting: 'Привіт',
-    recentTitle: 'Останні операції',
+    recentTitle: 'Операції',
     seeAll: 'Усі',
     empty: 'Ще немає операцій. Додайте першу ↓',
     addTransaction: 'Додати операцію',
+    searchPlaceholder: 'Шукати за категорією чи приміткою',
+    noResults: 'Нічого не знайдено',
   },
+  quickActions: { add: 'Додати', income: 'Дохід', expense: 'Витрата', history: 'Історія' },
+  range: { today: 'Сьогодні', week: 'Тиждень', month: 'Місяць', all: 'Усі' },
   balance: { label: 'Баланс цього місяця', income: 'Доходи', expense: 'Витрати' },
   addTx: {
     title: 'Нова операція',
@@ -144,11 +152,15 @@ const ru: Dict = {
   nav: { home: 'Главная', history: 'История', stats: 'Статистика', settings: 'Настройки' },
   dashboard: {
     greeting: 'Привет',
-    recentTitle: 'Последние операции',
+    recentTitle: 'Операции',
     seeAll: 'Все',
     empty: 'Пока нет операций. Добавьте первую ↓',
     addTransaction: 'Добавить операцию',
+    searchPlaceholder: 'Искать по категории или заметке',
+    noResults: 'Ничего не найдено',
   },
+  quickActions: { add: 'Добавить', income: 'Доход', expense: 'Расход', history: 'История' },
+  range: { today: 'Сегодня', week: 'Неделя', month: 'Месяц', all: 'Все' },
   balance: { label: 'Баланс за этот месяц', income: 'Доходы', expense: 'Расходы' },
   addTx: {
     title: 'Новая операция',
@@ -212,11 +224,15 @@ const en: Dict = {
   nav: { home: 'Home', history: 'History', stats: 'Stats', settings: 'Settings' },
   dashboard: {
     greeting: 'Hello',
-    recentTitle: 'Recent transactions',
+    recentTitle: 'Transactions',
     seeAll: 'See all',
     empty: 'No transactions yet. Add your first one ↓',
     addTransaction: 'Add transaction',
+    searchPlaceholder: 'Search by category or note',
+    noResults: 'Nothing found',
   },
+  quickActions: { add: 'Add', income: 'Income', expense: 'Expense', history: 'History' },
+  range: { today: 'Today', week: 'Week', month: 'Month', all: 'All' },
   balance: { label: 'This month', income: 'Income', expense: 'Expenses' },
   addTx: {
     title: 'New transaction',

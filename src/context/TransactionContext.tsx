@@ -10,7 +10,8 @@ interface TransactionContextType {
 
 const TransactionContext = createContext<TransactionContextType | undefined>(undefined);
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+/** Пустая строка = тот же origin (Vite proxy в dev, Express в prod). Иначе полный URL бэкенда. */
+const API_URL = import.meta.env.VITE_API_URL ?? '';
 
 export const TransactionProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);

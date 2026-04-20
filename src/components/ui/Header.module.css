@@ -1,71 +1,68 @@
 .header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 20px 4px 12px;
+  padding: 24px 20px 14px;
   margin-top: var(--safe-area-inset-top);
-  gap: 16px;
 }
 
-.brand {
-  display: flex;
+.profileLink {
+  display: inline-flex;
   align-items: center;
   gap: 12px;
-  min-width: 0;
+  text-decoration: none;
+  color: inherit;
 }
 
-.logo {
-  width: 42px;
-  height: 42px;
-  border-radius: 14px;
+.avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  overflow: hidden;
   background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-primary-strong) 100%);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
-  font-weight: 700;
-  font-size: 22px;
-  box-shadow: 0 8px 20px rgba(108, 92, 231, 0.35);
   flex-shrink: 0;
 }
 
-.titleBlock {
+.avatarImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatarFallback {
+  color: #fff;
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.nameBlock {
   display: flex;
   flex-direction: column;
+  line-height: 1.2;
   min-width: 0;
 }
 
-.greeting {
-  font-size: 12px;
-  color: var(--text-tertiary);
-  letter-spacing: 0.3px;
+.handle {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
 }
 
 .name {
   font-size: 16px;
   font-weight: 600;
   color: var(--text-primary);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.iconButton {
-  background: var(--bg-card);
-  border: 1px solid var(--border-light);
-  border-radius: 50%;
-  width: 42px;
-  height: 42px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.chevron {
   color: var(--text-primary);
-  text-decoration: none;
-  flex-shrink: 0;
-  transition: background-color 0.15s ease;
-}
-
-.iconButton:hover,
-.iconButton:active {
-  background: var(--bg-card-light);
+  stroke-width: 2;
 }

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTransactions } from '../context/TransactionContext';
 import CategoryGrid from '../components/ui/CategoryGrid';
 import { useTranslation } from '../i18n/LanguageContext';
@@ -10,10 +10,14 @@ const AddTransaction: React.FC = () => {
   const navigate = useNavigate();
   const { addTransaction } = useTransactions();
   const { t } = useTranslation();
+  const [searchParams] = useSearchParams();
+
+  const initialType: TransactionType =
+    searchParams.get('type') === 'income' ? 'income' : 'expense';
 
   const [amount, setAmount] = useState('');
-  const [type, setType] = useState<TransactionType>('expense');
-  const [categoryId, setCategoryId] = useState('food');
+  const [type, setType] = useState<TransactionType>(initialType);
+  const [categoryId, setCategoryId] = useState(initialType === 'income' ? 'salary' : 'food');
   const [note, setNote] = useState('');
 
   const handleSave = () => {

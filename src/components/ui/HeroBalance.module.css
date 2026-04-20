@@ -1,0 +1,66 @@
+.hero {
+  text-align: center;
+  padding: 32px 0 32px;
+}
+
+.amount {
+  margin: 0;
+  font-size: 56px;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: -1px;
+  color: var(--text-primary);
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 2px;
+}
+
+.currency {
+  font-size: 56px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-right: 0px;
+}
+
+.deltaRow {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.delta {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--accent-green);
+}
+
+.income {
+  color: var(--accent-green);
+}
+
+.deltaPill {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 999px;
+  line-height: 1;
+}
+
+.positivePill {
+  background: var(--accent-green-soft);
+  color: var(--accent-green);
+}
+
+.negativePill {
+  background: var(--accent-red-soft);
+  color: var(--accent-red);
+}
+
+.expensePill {
+  background: var(--accent-red-soft);
+  color: var(--accent-red);
+}

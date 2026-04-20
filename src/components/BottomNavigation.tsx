@@ -1,32 +1,56 @@
 import React from 'react';
-import { NavLink } from 'react-router-dom';
-import { Home, List, PieChart, Settings as SettingsIcon } from 'lucide-react';
-import { useTranslation } from '../i18n/LanguageContext';
+import { NavLink, useNavigate } from 'react-router-dom';
+import { Home, Wallet, BarChart2, Settings as SettingsIcon, ArrowLeftRight } from 'lucide-react';
 import styles from './BottomNavigation.module.css';
 
 const BottomNavigation: React.FC = () => {
-  const { t } = useTranslation();
-
-  const items = [
-    { to: '/', icon: Home, label: t('nav', 'home'), end: true },
-    { to: '/history', icon: List, label: t('nav', 'history') },
-    { to: '/stats', icon: PieChart, label: t('nav', 'stats') },
-    { to: '/settings', icon: SettingsIcon, label: t('nav', 'settings') },
-  ];
+  const navigate = useNavigate();
 
   return (
     <nav className={styles.nav}>
-      {items.map(({ to, icon: Icon, label, end }) => (
+      <div className={styles.bar}>
         <NavLink
-          key={to}
-          to={to}
-          end={end}
+          to="/"
+          end
           className={({ isActive }) => (isActive ? styles.active : styles.link)}
+          aria-label="Home"
         >
-          <Icon size={22} className={styles.icon} />
-          <span>{label}</span>
+          <Home size={24} strokeWidth={2} />
         </NavLink>
-      ))}
+
+        <NavLink
+          to="/history"
+          className={({ isActive }) => (isActive ? styles.active : styles.link)}
+          aria-label="History"
+        >
+          <Wallet size={24} strokeWidth={2} />
+        </NavLink>
+
+        <button
+          type="button"
+          className={styles.fab}
+          onClick={() => navigate('/add')}
+          aria-label="Add transaction"
+        >
+          <ArrowLeftRight size={24} strokeWidth={2} />
+        </button>
+
+        <NavLink
+          to="/stats"
+          className={({ isActive }) => (isActive ? styles.active : styles.link)}
+          aria-label="Stats"
+        >
+          <BarChart2 size={24} strokeWidth={2} />
+        </NavLink>
+
+        <NavLink
+          to="/settings"
+          className={({ isActive }) => (isActive ? styles.active : styles.link)}
+          aria-label="Settings"
+        >
+          <SettingsIcon size={24} strokeWidth={2} />
+        </NavLink>
+      </div>
     </nav>
   );
 };

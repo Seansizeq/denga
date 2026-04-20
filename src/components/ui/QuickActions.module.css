@@ -1,0 +1,55 @@
+.row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  padding: 4px 0 24px;
+}
+
+.item {
+  background: none;
+  border: none;
+  color: inherit;
+  padding: 4px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.circle {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-primary);
+  transition: background-color 0.15s ease, transform 0.15s ease;
+}
+
+.item:active .circle {
+  transform: scale(0.94);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.label {
+  font-size: 12px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+/* Tone variants keep the same neutral circle; icon colors only */
+.income .circle {
+  color: var(--text-primary);
+}
+
+.expense .circle {
+  color: var(--text-primary);
+}
+
+.history .circle {
+  color: var(--text-primary);
+}

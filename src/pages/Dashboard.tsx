@@ -1,41 +1,75 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
+import { Search } from 'lucide-react';
 import { useTransactions } from '../context/TransactionContext';
-import { isSameMonth } from '../utils/formatters';
 import Header from '../components/ui/Header';
-import BalanceCard from '../components/ui/BalanceCard';
+import HeroBalance from '../components/ui/HeroBalance';
+import QuickActions from '../components/ui/QuickActions';
 import RecentTransactions from '../components/ui/RecentTransactions';
-import AddFab from '../components/ui/AddFab';
+import type { RangeFilter } from '../components/ui/RecentTransactions';
 import styles from './Dashboard.module.css';
 
 const Dashboard: React.FC = () => {
   const { transactions, deleteTransaction } = useTransactions();
+  const [range, setRange] = useState<RangeFilter>('today');
 
-  const monthly = transactions.filter((t) => isSameMonth(t.date));
-  const monthIncome = monthly
-    .filter((t) => t.type === 'income')
-    .reduce((sum, t) => sum + t.amount, 0);
-  const monthExpense = monthly
-    .filter((t) => t.type === 'expense')
-    .reduce((sum, t) => sum + t.amount, 0);
+  const inRange = useMemo(() => {
+    const now = new Date();
+    return (iso: string) => {
+      const d = new Date(iso);
+      if (range === 'all') return true;
+      if (range === 'today') return d.toDateString() === now.toDateString();
+      if (range === 'week') {
+        const diff = (now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24);
+        return diff <= 7;
+      }
+      if (range === 'month') {
+        return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+      }
+      return true;
+    };
+  }, [range]);
+
+  const filtered = useMemo(
+    () => transactions.filter((tx) => inRange(tx.date)),
+    [transactions, inRange],
+  );
+
+  const income = filtered
+    .filter((tx) => tx.type === 'income')
+    .reduce((sum, tx) => sum + tx.amount, 0);
+  const expense = filtered
+    .filter((tx) => tx.type === 'expense')
+    .reduce((sum, tx) => sum + tx.amount, 0);
+  const net = income - expense;
 
   return (
     <div className={styles.container}>
       <div className={styles.content}>
         <Header />
-        <BalanceCard
-          balance={{
-            total: monthIncome - monthExpense,
-            income: monthIncome,
-            expense: monthExpense,
-          }}
-        />
+
+        <HeroBalance net={net} income={income} expense={expense} />
+
+        <QuickActions />
+
+        <div className={styles.searchBar}>
+          <Search size={20} className={styles.searchIcon} strokeWidth={2} />
+          <input 
+            type="text" 
+            placeholder="Шукати за категорією чи приміткою" 
+            className={styles.searchInput}
+          />
+        </div>
+
         <RecentTransactions
-          transactions={transactions}
+          transactions={filtered}
           onDelete={deleteTransaction}
+          filter={range}
+          onFilterChange={setRange}
+          showSeeAll
         />
+
         <div className={styles.spacer} />
       </div>
-      <AddFab />
     </div>
   );
 };
