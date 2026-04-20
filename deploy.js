@@ -35,7 +35,8 @@ if (!DEPLOY_PASSWORD && !DEPLOY_PRIVATE_KEY_PATH) {
 
 const sh = (cmd, opts = {}) => {
   try {
-    return execSync(cmd, { encoding: 'utf8', stdio: 'pipe', ...opts }).toString().trim();
+    const out = execSync(cmd, { encoding: 'utf8', stdio: 'pipe', ...opts });
+    return out ? out.toString().trim() : '';
   } catch (e) {
     if (opts.ignoreError) return '';
     throw e;
