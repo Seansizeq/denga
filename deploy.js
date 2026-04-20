@@ -64,12 +64,18 @@ const pushToGithub = () => {
   return sha;
 };
 
+/** HTTPS URL with embedded PAT — единственный надёжный способ для приватного репо без ручного deploy key. */
 const authedRemoteUrl = () => {
-  if (GITHUB_USER && GITHUB_TOKEN && GIT_REMOTE_URL.startsWith('https://github.com/')) {
-    return GIT_REMOTE_URL.replace(
-      'https://github.com/',
-      `https://${encodeURIComponent(GITHUB_USER)}:${encodeURIComponent(GITHUB_TOKEN)}@github.com/`
-    );
+  if (GITHUB_USER && GITHUB_TOKEN) {
+    let path = '';
+    if (GIT_REMOTE_URL.startsWith('https://github.com/')) {
+      path = GIT_REMOTE_URL.replace(/^https:\/\/github\.com\//i, '');
+    } else if (GIT_REMOTE_URL.startsWith('git@github.com:')) {
+      path = GIT_REMOTE_URL.replace(/^git@github\.com:/i, '');
+    } else {
+      return GIT_REMOTE_URL;
+    }
+    return `https://${encodeURIComponent(GITHUB_USER)}:${encodeURIComponent(GITHUB_TOKEN)}@github.com/${path}`;
   }
   return GIT_REMOTE_URL;
 };

@@ -30,7 +30,18 @@ local  ── git push ──▶  GitHub (origin/main)  ── git pull ──�
 
    И заполните реальные значения: SSH-доступ к продакшн-серверу, URL git-репо, ветка, имя pm2-процесса. Файл `.deploy.env` в `.gitignore` — не коммитится.
 
-2. (Если репо приватный.) Укажите в `.deploy.env` `GITHUB_USER` и `GITHUB_TOKEN` (Personal Access Token с `repo:read`). Скрипт автоматически впишет токен в `origin` URL на сервере, чтобы `git pull` работал без интерактивного логина.
+2. **Приватный репозиторий** — выберите один способ:
+
+   - **HTTPS + токен (проще всего):** создайте [fine-grained token](https://github.com/settings/personal-access-tokens/new) с доступом **Contents: Read** только к репозиторию `Seansizeq/denga`. В `.deploy.env` укажите:
+
+     ```
+     GITHUB_USER=Seansizeq
+     GITHUB_TOKEN=ghp_...
+     ```
+
+     Скрипт подставит токен в URL только на этапе `git clone` / `git fetch` на сервере (локальный `git push` у вас по-прежнему через ваш обычный Git credential).
+
+   - **SSH deploy key:** выполните `npm run show-deploy-key` — вставьте выведенную строку в [Deploy keys](https://github.com/Seansizeq/denga/settings/keys) репозитория (read-only). Тогда в `.deploy.env` можно оставить `GIT_REMOTE_URL=git@github.com:Seansizeq/denga.git` и **не** задавать `GITHUB_TOKEN`.
 
 3. Запустите первый деплой:
 

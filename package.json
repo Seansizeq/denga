@@ -10,7 +10,8 @@
     "start": "node server/index.js",
     "lint": "eslint .",
     "preview": "vite preview",
-    "deploy": "node deploy.js"
+    "deploy": "node deploy.js",
+    "show-deploy-key": "node scripts/show-deploy-key.js"
   },
   "dependencies": {
     "@tma.js/sdk": "^3.2.0",
