@@ -49,6 +49,10 @@ type Dict = {
     title: string;
     language: string;
     languageDescription: string;
+    display: string;
+    fullscreen: string;
+    fullscreenDescription: string;
+    fullscreenUnsupported: string;
     about: string;
     version: string;
     openedFrom: string;
@@ -108,6 +112,10 @@ const uk: Dict = {
     title: 'Налаштування',
     language: 'Мова інтерфейсу',
     languageDescription: 'Оберіть мову, якою відображатиметься застосунок',
+    display: 'Відображення',
+    fullscreen: 'Повноекранний режим',
+    fullscreenDescription: 'Розгортає застосунок на весь екран і приховує шапку Telegram',
+    fullscreenUnsupported: 'Недоступно у вашій версії Telegram',
     about: 'Про застосунок',
     version: 'Версія',
     openedFrom: 'Відкрито з',
@@ -172,6 +180,10 @@ const ru: Dict = {
     title: 'Настройки',
     language: 'Язык интерфейса',
     languageDescription: 'Выберите язык, на котором будет отображаться приложение',
+    display: 'Отображение',
+    fullscreen: 'Полноэкранный режим',
+    fullscreenDescription: 'Разворачивает приложение на весь экран и скрывает шапку Telegram',
+    fullscreenUnsupported: 'Недоступно в вашей версии Telegram',
     about: 'О приложении',
     version: 'Версия',
     openedFrom: 'Открыто из',
@@ -236,6 +248,10 @@ const en: Dict = {
     title: 'Settings',
     language: 'Interface language',
     languageDescription: 'Choose the language the app is displayed in',
+    display: 'Display',
+    fullscreen: 'Fullscreen mode',
+    fullscreenDescription: 'Expands the app to the whole screen and hides the Telegram header',
+    fullscreenUnsupported: 'Not available in your version of Telegram',
     about: 'About',
     version: 'Version',
     openedFrom: 'Opened from',

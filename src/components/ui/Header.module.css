@@ -3,7 +3,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 20px 4px 12px;
-  margin-top: env(safe-area-inset-top);
+  margin-top: var(--safe-area-inset-top);
   gap: 16px;
 }
 

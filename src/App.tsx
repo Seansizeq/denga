@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { TransactionProvider } from './context/TransactionContext';
 import BottomNavigation from './components/BottomNavigation';
@@ -8,6 +8,7 @@ import History from './pages/History';
 import Settings from './pages/Settings';
 import Stats from './pages/Stats';
 import { useTranslation } from './i18n/LanguageContext';
+import { useTelegramFullscreen } from './hooks/useTelegramFullscreen';
 import './styles/variables.css';
 
 const BOT_URL = 'https://t.me/denga_bot';
@@ -78,35 +79,8 @@ const isInsideTelegram = (): boolean => {
   return false;
 };
 
-function App() {
-  const [isTelegram, setIsTelegram] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const devBypass = params.get('dev') === '1' || localStorage.getItem('denga_dev') === '1';
-    if (devBypass) {
-      localStorage.setItem('denga_dev', '1');
-      setIsTelegram(true);
-      return;
-    }
-
-    const tg = (window as any).Telegram?.WebApp;
-    if (isInsideTelegram()) {
-      tg.expand();
-      tg.ready();
-      setIsTelegram(true);
-    } else {
-      setIsTelegram(false);
-    }
-  }, []);
-
-  if (isTelegram === null) {
-    return null;
-  }
-
-  if (!isTelegram) {
-    return <BrowserStub />;
-  }
+const TelegramApp: React.FC = () => {
+  useTelegramFullscreen();
 
   return (
     <TransactionProvider>
@@ -124,6 +98,40 @@ function App() {
       </Router>
     </TransactionProvider>
   );
+};
+
+function App() {
+  const [isTelegram, setIsTelegram] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const devBypass = params.get('dev') === '1' || localStorage.getItem('denga_dev') === '1';
+    if (devBypass) {
+      localStorage.setItem('denga_dev', '1');
+      setIsTelegram(true);
+      return;
+    }
+
+    const tg = (window as any).Telegram?.WebApp;
+    if (isInsideTelegram()) {
+      tg.expand();
+      tg.ready();
+      tg.disableVerticalSwipes?.();
+      setIsTelegram(true);
+    } else {
+      setIsTelegram(false);
+    }
+  }, []);
+
+  if (isTelegram === null) {
+    return null;
+  }
+
+  if (!isTelegram) {
+    return <BrowserStub />;
+  }
+
+  return <TelegramApp />;
 }
 
 export default App;

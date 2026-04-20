@@ -2,12 +2,15 @@ import React from 'react';
 import { useTranslation } from '../i18n/LanguageContext';
 import { LANGUAGES, LANGUAGE_LABELS, LANGUAGE_FLAGS } from '../i18n/translations';
 import type { Language } from '../i18n/translations';
+import { useTelegramFullscreen } from '../hooks/useTelegramFullscreen';
 import styles from './Settings.module.css';
 
 const APP_VERSION = '1.0.0';
 
 const Settings: React.FC = () => {
   const { t, language, setLanguage } = useTranslation();
+  const { isSupported: fsSupported, isFullscreen, toggle: toggleFullscreen } =
+    useTelegramFullscreen();
 
   const tg = (window as any).Telegram?.WebApp;
   const openedFromTelegram = !!(tg?.initData || tg?.initDataUnsafe?.user?.id);
@@ -15,6 +18,38 @@ const Settings: React.FC = () => {
   return (
     <div className={styles.container}>
       <h1 className={styles.title}>{t('settings', 'title')}</h1>
+
+      <section className={styles.section}>
+        <div className={styles.sectionLabel}>{t('settings', 'display')}</div>
+        <div className={styles.card}>
+          <button
+            type="button"
+            className={styles.row}
+            onClick={toggleFullscreen}
+            disabled={!fsSupported}
+            aria-pressed={isFullscreen}
+          >
+            <div className={styles.rowLeft}>
+              <span className={styles.rowLabel}>
+                {t('settings', 'fullscreen')}
+              </span>
+            </div>
+            <span
+              className={`${styles.switch} ${isFullscreen ? styles.switchOn : ''} ${
+                !fsSupported ? styles.switchDisabled : ''
+              }`}
+              aria-hidden
+            >
+              <span className={styles.switchThumb} />
+            </span>
+          </button>
+        </div>
+        <p className={styles.sectionDescription}>
+          {fsSupported
+            ? t('settings', 'fullscreenDescription')
+            : t('settings', 'fullscreenUnsupported')}
+        </p>
+      </section>
 
       <section className={styles.section}>
         <div className={styles.sectionLabel}>{t('settings', 'language')}</div>
