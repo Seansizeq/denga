@@ -1,73 +1,82 @@
-# React + TypeScript + Vite
+# Denga — фінансовий трекер
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Telegram Mini App + Express API + SQLite + React (Vite).
 
-Currently, two official plugins are available:
+## Dev
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run dev       # Vite на :5173
+npm run server    # API + Telegram bot на :3001
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Чтобы открыть веб-версию в браузере минуя Telegram-заглушку — перейдите на `http://localhost:5173/?dev=1`.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## Deploy через GitHub
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+Новый деплой-флоу устроен так:
+
 ```
+local  ── git push ──▶  GitHub (origin/main)  ── git pull ──▶  production server  ── pm2 restart
+```
+
+### Первичная настройка
+
+1. Скопируйте шаблон окружения:
+
+   ```bash
+   cp .deploy.env.example .deploy.env
+   ```
+
+   И заполните реальные значения: SSH-доступ к продакшн-серверу, URL git-репо, ветка, имя pm2-процесса. Файл `.deploy.env` в `.gitignore` — не коммитится.
+
+2. (Если репо приватный.) Укажите в `.deploy.env` `GITHUB_USER` и `GITHUB_TOKEN` (Personal Access Token с `repo:read`). Скрипт автоматически впишет токен в `origin` URL на сервере, чтобы `git pull` работал без интерактивного логина.
+
+3. Запустите первый деплой:
+
+   ```bash
+   npm run deploy
+   ```
+
+   При первом запуске на сервере `DEPLOY_APP_DIR` ещё не является git-репозиторием — скрипт:
+   - делает резервную копию `.env` и `database.sqlite`;
+   - клонирует репозиторий;
+   - возвращает `.env` и БД на место;
+   - ставит зависимости, билдит, перезапускает pm2.
+
+   На всех последующих запусках он просто делает `git fetch && git reset --hard origin/<branch>`.
+
+### Обычный деплой
+
+```bash
+npm run deploy
+```
+
+Скрипт:
+1. `git add -A && git commit -m "deploy: <timestamp>"` (если есть изменения).
+2. `git push origin <branch>`.
+3. SSH-ится на сервер и выполняет `git pull`, `npm install`, `npm run build`, `pm2 restart`.
+
+Если нужно просто пересобрать сервер без локальных изменений — коммит не создаётся, `git push` просто подтверждает актуальность, сервер подтянет свою `origin/<branch>`.
+
+### Сброс сервера на чистый клон
+
+Если на сервере нужно выкинуть всё локальное и заново синхронизироваться с GitHub:
+
+```bash
+ssh root@<HOST>
+cd /root/denga && git fetch origin && git reset --hard origin/main && git clean -fdx -e .env -e database.sqlite
+```
+
+## Переменные окружения сервера
+
+`/root/denga/.env` на продакшн-сервере (не коммитится, создаётся вручную):
+
+```
+TELEGRAM_BOT_TOKEN=...
+PORT=3001
+```
+
+## Домен и SSL
+
+Разовый скрипт `node setup_domain.js` настраивает Nginx на `DEPLOY_DOMAIN` (по умолчанию `denga.vibelearn.site`) и выписывает SSL через certbot. Требует корректный `.deploy.env`.

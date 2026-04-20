@@ -2,49 +2,70 @@
   display: flex;
   align-items: center;
   padding: 12px 16px;
-  border-bottom: 0.5px solid var(--ios-border);
-  background-color: var(--ios-card-bg);
+  gap: 12px;
+  background-color: transparent;
+  cursor: default;
+  transition: background-color 0.15s ease;
 }
 
-.item:last-child {
-  border-bottom: none;
+.item + .item {
+  border-top: 1px solid var(--border-light);
+}
+
+.item:active {
+  background-color: var(--bg-card-light);
 }
 
 .iconWrapper {
   width: 40px;
   height: 40px;
-  border-radius: 8px;
+  border-radius: 12px;
   display: flex;
   justify-content: center;
   align-items: center;
-  margin-right: 12px;
+  flex-shrink: 0;
 }
 
 .info {
   flex: 1;
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  gap: 2px;
 }
 
 .name {
-  font-size: 17px;
-  font-weight: 400;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.note {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .date {
-  font-size: 13px;
-  color: var(--ios-text-secondary);
+  font-size: 12px;
+  color: var(--text-tertiary);
 }
 
 .amount {
-  font-size: 17px;
+  font-size: 15px;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .income {
-  color: var(--ios-green);
+  color: var(--accent-green);
 }
 
 .expense {
-  color: var(--ios-red);
+  color: var(--text-primary);
 }

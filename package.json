@@ -9,7 +9,8 @@
     "build": "tsc -b && vite build",
     "start": "node server/index.js",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "deploy": "node deploy.js"
   },
   "dependencies": {
     "@tma.js/sdk": "^3.2.0",
@@ -18,6 +19,7 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "lucide-react": "^1.8.0",
+    "node-ssh": "^13.2.1",
     "node-telegram-bot-api": "^0.67.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",

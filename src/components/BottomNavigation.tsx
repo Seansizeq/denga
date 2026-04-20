@@ -1,32 +1,32 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Home, List, Plus, PieChart, Settings } from 'lucide-react';
+import { Home, List, PieChart, Settings as SettingsIcon } from 'lucide-react';
+import { useTranslation } from '../i18n/LanguageContext';
 import styles from './BottomNavigation.module.css';
 
 const BottomNavigation: React.FC = () => {
+  const { t } = useTranslation();
+
+  const items = [
+    { to: '/', icon: Home, label: t('nav', 'home'), end: true },
+    { to: '/history', icon: List, label: t('nav', 'history') },
+    { to: '/stats', icon: PieChart, label: t('nav', 'stats') },
+    { to: '/settings', icon: SettingsIcon, label: t('nav', 'settings') },
+  ];
+
   return (
     <nav className={styles.nav}>
-      <NavLink to="/" className={({ isActive }) => isActive ? styles.active : styles.link}>
-        <Home size={24} />
-        <span>Головна</span>
-      </NavLink>
-      <NavLink to="/history" className={({ isActive }) => isActive ? styles.active : styles.link}>
-        <List size={24} />
-        <span>Історія</span>
-      </NavLink>
-      <NavLink to="/add" className={styles.plusLink}>
-        <div className={styles.plusIcon}>
-          <Plus size={32} color="white" />
-        </div>
-      </NavLink>
-      <NavLink to="/stats" className={({ isActive }) => isActive ? styles.active : styles.link}>
-        <PieChart size={24} />
-        <span>Статистика</span>
-      </NavLink>
-      <NavLink to="/settings" className={({ isActive }) => isActive ? styles.active : styles.link}>
-        <Settings size={24} />
-        <span>Налаштування</span>
-      </NavLink>
+      {items.map(({ to, icon: Icon, label, end }) => (
+        <NavLink
+          key={to}
+          to={to}
+          end={end}
+          className={({ isActive }) => (isActive ? styles.active : styles.link)}
+        >
+          <Icon size={22} className={styles.icon} />
+          <span>{label}</span>
+        </NavLink>
+      ))}
     </nav>
   );
 };

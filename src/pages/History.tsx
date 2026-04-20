@@ -1,29 +1,58 @@
+import { useMemo } from 'react';
 import { useTransactions } from '../context/TransactionContext';
 import TransactionItem from '../components/ui/TransactionItem';
-import styles from './Dashboard.module.css';
+import { useTranslation } from '../i18n/LanguageContext';
+import styles from './History.module.css';
 
 const History: React.FC = () => {
   const { transactions, deleteTransaction } = useTransactions();
+  const { t, locale } = useTranslation();
+
+  const grouped = useMemo(() => {
+    const map = new Map<string, { label: string; items: typeof transactions }>();
+    for (const tx of transactions) {
+      const d = new Date(tx.date);
+      const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+      const label = d.toLocaleDateString(locale, {
+        day: 'numeric',
+        month: 'long',
+        year: d.getFullYear() === new Date().getFullYear() ? undefined : 'numeric',
+      });
+      if (!map.has(key)) map.set(key, { label, items: [] });
+      map.get(key)!.items.push(tx);
+    }
+    return Array.from(map.values());
+  }, [transactions, locale]);
 
   return (
     <div className={styles.container}>
       <header className={styles.header}>
-        <h1 className={styles.title}>Історія</h1>
+        <h1 className={styles.title}>{t('history', 'title')}</h1>
       </header>
-      
-      <div className={styles.list}>
-        {transactions.length === 0 ? (
-          <p className={styles.emptyText}>Операцій поки немає</p>
-        ) : (
-          transactions.map(t => (
-            <TransactionItem 
-              key={t.id} 
-              transaction={t} 
-              onDelete={deleteTransaction} 
-            />
-          ))
-        )}
-      </div>
+
+      {transactions.length === 0 ? (
+        <div className={styles.emptyState}>
+          <span className={styles.emptyIcon}>📭</span>
+          <p className={styles.emptyText}>{t('history', 'empty')}</p>
+        </div>
+      ) : (
+        <div className={styles.groups}>
+          {grouped.map((group) => (
+            <section key={group.label} className={styles.group}>
+              <h3 className={styles.groupLabel}>{group.label}</h3>
+              <div className={styles.list}>
+                {group.items.map((tx) => (
+                  <TransactionItem
+                    key={tx.id}
+                    transaction={tx}
+                    onDelete={deleteTransaction}
+                  />
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      )}
     </div>
   );
 };

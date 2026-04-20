@@ -25,4 +25,13 @@ dist-ssr
 
 # Security and Database
 .env
+.deploy.env
 database.sqlite
+pass.txt
+
+# Deployment artifacts
+denga.zip
+
+# Ad-hoc helper scripts
+_*.js
+_*.ps1

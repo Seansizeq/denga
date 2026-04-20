@@ -1,12 +1,24 @@
-import type { Category } from '../types';
+import type { CategoryKey } from '../i18n/translations';
 
-export const CATEGORIES: Category[] = [
-  { id: 'food', name: 'Продукти', icon: 'ShoppingBag', color: '#FF9500' }, // Orange
-  { id: 'transport', name: 'Транспорт', icon: 'Car', color: '#007AFF' },   // Blue
-  { id: 'home', name: 'Житло', icon: 'Home', color: '#5856D6' },           // Indigo
-  { id: 'entertainment', name: 'Розваги', icon: 'Coffee', color: '#AF52DE' }, // Purple
-  { id: 'health', name: 'Здоров\'я', icon: 'Heart', color: '#FF2D55' },    // Pink
-  { id: 'salary', name: 'Зарплата', icon: 'TrendingUp', color: '#34C759' }, // Green
-  { id: 'other_income', name: 'Дохід (інше)', icon: 'TrendingUp', color: '#34C759' }, // Green
-  { id: 'other_expense', name: 'Інше', icon: 'ShoppingBag', color: '#8E8E93' }, // Grey
+export interface CategoryDef {
+  id: CategoryKey;
+  icon: string;
+  color: string;
+  type: 'income' | 'expense';
+}
+
+export const CATEGORIES: CategoryDef[] = [
+  { id: 'food', icon: 'ShoppingBag', color: '#FF9F0A', type: 'expense' },
+  { id: 'transport', icon: 'Car', color: '#0A84FF', type: 'expense' },
+  { id: 'home', icon: 'Home', color: '#5E5CE6', type: 'expense' },
+  { id: 'entertainment', icon: 'Coffee', color: '#AF52DE', type: 'expense' },
+  { id: 'health', icon: 'Heart', color: '#FF2D55', type: 'expense' },
+  { id: 'other_expense', icon: 'MoreHorizontal', color: '#8E8E93', type: 'expense' },
+
+  { id: 'salary', icon: 'TrendingUp', color: '#32D74B', type: 'income' },
+  { id: 'other_income', icon: 'Plus', color: '#30B0C7', type: 'income' },
 ];
+
+export const findCategory = (id: string): CategoryDef => {
+  return CATEGORIES.find((c) => c.id === id) ?? CATEGORIES[CATEGORIES.length - 1];
+};

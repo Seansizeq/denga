@@ -1,0 +1,26 @@
+.fab {
+  position: fixed;
+  right: 22px;
+  bottom: calc(var(--bottom-nav-height) + 20px + var(--safe-area-inset-bottom));
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-primary-strong) 100%);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  box-shadow: 0 14px 28px rgba(108, 92, 231, 0.5);
+  z-index: 900;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.fab:hover {
+  transform: translateY(-2px);
+}
+
+.fab:active {
+  transform: scale(0.95);
+  box-shadow: 0 8px 18px rgba(108, 92, 231, 0.4);
+}

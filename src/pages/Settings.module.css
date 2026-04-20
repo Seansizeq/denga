@@ -1,0 +1,93 @@
+.container {
+  min-height: 100vh;
+  padding: 24px 20px calc(var(--bottom-nav-height) + 40px);
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.title {
+  font-size: 28px;
+  font-weight: 700;
+  margin: 8px 0 24px;
+  letter-spacing: -0.5px;
+}
+
+.section {
+  margin-bottom: 28px;
+}
+
+.sectionLabel {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-secondary);
+  margin: 0 4px 10px;
+}
+
+.sectionDescription {
+  font-size: 13px;
+  color: var(--text-tertiary);
+  margin: 10px 4px 0;
+  line-height: 1.45;
+}
+
+.card {
+  background-color: var(--bg-card);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--border-light);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.row:not(:last-child) {
+  border-bottom: 1px solid var(--border-light);
+}
+
+.row:hover {
+  background-color: var(--bg-card-light);
+}
+
+.rowLeft {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.flag {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.rowLabel {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.rowValue {
+  font-size: 15px;
+  color: var(--text-secondary);
+}
+
+.check {
+  color: var(--accent-blue);
+  font-size: 18px;
+  font-weight: 700;
+}

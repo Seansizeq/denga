@@ -1,62 +1,119 @@
 .card {
-  background-color: var(--ios-card-bg);
-  padding: 24px;
-  border-radius: var(--ios-radius-large);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-  margin-bottom: 32px;
-  text-align: center;
+  background: linear-gradient(135deg, #6C5CE7 0%, #8B7CF0 55%, #0A84FF 120%);
+  border-radius: var(--radius-xl);
+  padding: 22px 22px 18px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 18px 38px rgba(108, 92, 231, 0.35);
+  position: relative;
+  overflow: hidden;
+  color: #fff;
+}
+
+.card::before {
+  content: '';
+  position: absolute;
+  top: -40px;
+  right: -40px;
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  pointer-events: none;
+}
+
+.card::after {
+  content: '';
+  position: absolute;
+  bottom: -60px;
+  left: -20px;
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.05);
+  pointer-events: none;
 }
 
 .label {
   font-size: 13px;
-  text-transform: uppercase;
-  color: var(--ios-text-secondary);
-  letter-spacing: 0.5px;
-  font-weight: 600;
-  display: block;
-  margin-bottom: 8px;
+  color: rgba(255, 255, 255, 0.7);
+  font-weight: 500;
+  letter-spacing: 0.2px;
+  position: relative;
+  z-index: 1;
 }
 
 .amount {
-  font-size: 40px;
+  font-size: 36px;
   font-weight: 700;
-  margin: 0 0 24px 0;
-  letter-spacing: -0.5px;
+  margin: 6px 0 20px;
+  letter-spacing: -0.8px;
+  position: relative;
+  z-index: 1;
+}
+
+.amount.negative {
+  color: #FFD7D5;
 }
 
 .summaryRow {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  align-items: stretch;
+  gap: 12px;
+  background: rgba(0, 0, 0, 0.18);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  position: relative;
+  z-index: 1;
+  backdrop-filter: blur(8px);
 }
 
 .summaryItem {
   flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.iconBadge {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #fff;
+}
+
+.incomeBadge { background: rgba(50, 215, 75, 0.85); }
+.expenseBadge { background: rgba(255, 69, 58, 0.85); }
+
+.summaryText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 
 .summaryLabel {
   font-size: 11px;
-  color: var(--ios-text-secondary);
-  display: block;
-  margin-bottom: 4px;
+  color: rgba(255, 255, 255, 0.75);
+  font-weight: 500;
 }
 
 .summaryValue {
-  font-size: 17px;
+  font-size: 14px;
   font-weight: 600;
-}
-
-.income {
-  color: var(--ios-green);
-}
-
-.expense {
-  color: var(--ios-red);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #fff;
 }
 
 .divider {
   width: 1px;
-  height: 24px;
-  background-color: var(--ios-border);
-  margin: 0 16px;
+  background: rgba(255, 255, 255, 0.15);
+  align-self: stretch;
+  margin: 2px 0;
 }
