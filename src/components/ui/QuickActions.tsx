@@ -2,7 +2,6 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, ArrowUpRight, ArrowDown, Receipt } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { useTranslation } from '../../i18n/LanguageContext';
 import styles from './QuickActions.module.css';
 
 type Tone = 'income' | 'expense' | 'history' | 'transfer';
@@ -17,7 +16,6 @@ interface ActionItem {
 
 const QuickActions: React.FC = () => {
   const navigate = useNavigate();
-  const { t } = useTranslation();
 
   const items: ActionItem[] = [
     {
