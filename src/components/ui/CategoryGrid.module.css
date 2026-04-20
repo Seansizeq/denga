@@ -1,0 +1,37 @@
+.grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
+.categoryBtn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: none;
+  border: none;
+  gap: 8px;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.name {
+  font-size: 11px;
+  color: var(--ios-text);
+  white-space: nowrap;
+}
+
+.iconBox {
+  width: 50px;
+  height: 50px;
+  border-radius: 12px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  transition: transform 0.1s ease;
+}
+
+.selected .iconBox {
+  transform: scale(1.1);
+  box-shadow: 0 0 0 3px var(--ios-blue);
+}

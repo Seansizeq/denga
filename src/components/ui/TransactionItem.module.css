@@ -1,0 +1,50 @@
+.item {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 0.5px solid var(--ios-border);
+  background-color: var(--ios-card-bg);
+}
+
+.item:last-child {
+  border-bottom: none;
+}
+
+.iconWrapper {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-right: 12px;
+}
+
+.info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.name {
+  font-size: 17px;
+  font-weight: 400;
+}
+
+.date {
+  font-size: 13px;
+  color: var(--ios-text-secondary);
+}
+
+.amount {
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.income {
+  color: var(--ios-green);
+}
+
+.expense {
+  color: var(--ios-red);
+}
