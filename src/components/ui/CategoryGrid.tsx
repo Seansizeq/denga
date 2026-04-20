@@ -27,11 +27,8 @@ const CategoryGrid: React.FC<CategoryGridProps> = ({ selectedId, type, onSelect 
             className={`${styles.categoryBtn} ${selected ? styles.selected : ''}`}
             onClick={() => onSelect(category.id)}
           >
-            <div
-              className={styles.iconBox}
-              style={{ backgroundColor: category.color }}
-            >
-              <IconComponent size={22} color="white" />
+            <div className={styles.iconBox}>
+              <IconComponent size={24} color={category.color} strokeWidth={1.5} />
             </div>
             <span className={styles.name}>
               {t('categories', category.id as CategoryKey)}

@@ -91,11 +91,8 @@ const Stats: React.FC = () => {
                 : 0;
               return (
                 <li key={row.id} className={styles.catRow}>
-                  <div
-                    className={styles.catIcon}
-                    style={{ backgroundColor: category.color }}
-                  >
-                    <IconComponent size={18} color="white" />
+                  <div className={styles.catIcon}>
+                    <IconComponent size={22} color={category.color} strokeWidth={2} />
                   </div>
                   <div className={styles.catBody}>
                     <div className={styles.catTopLine}>
