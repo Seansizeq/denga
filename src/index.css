@@ -3,7 +3,8 @@ body {
   padding: 0;
   overflow-x: hidden;
   -webkit-tap-highlight-color: transparent;
-  background-color: var(--bg-primary);
+  background: linear-gradient(180deg, #4a215d 0%, #120f16 40%, #120f16 100%);
+  background-attachment: fixed;
   color: var(--text-primary);
 }
 
@@ -17,7 +18,7 @@ body {
 
 .app-content {
   min-height: 100vh;
-  background-color: var(--bg-primary);
+  background-color: transparent;
   position: relative;
   width: 100%;
   margin: 0 auto;

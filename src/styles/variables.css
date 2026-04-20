@@ -75,16 +75,13 @@ body {
   -moz-osx-font-smoothing: grayscale;
   user-select: none;
   overflow-x: hidden;
+  background: linear-gradient(180deg, #4a215d 0%, #120f16 40%, #120f16 100%);
+  background-attachment: fixed;
 }
 
 /* Ambient purple radial glow sitting behind the page */
 body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  background: linear-gradient(180deg, #4a215d 0%, #120f16 40%, #120f16 100%);
-  z-index: 0;
+  display: none;
 }
 
 #root {
