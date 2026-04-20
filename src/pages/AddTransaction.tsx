@@ -92,7 +92,6 @@ const AddTransaction: React.FC = () => {
             setAmount(v);
           }}
           className={styles.amountInput}
-          style={{ width: amount ? `${Math.max(1, amount.length)}ch` : '1ch' }}
           autoFocus
         />
         <span className={styles.currency}>₴</span>
