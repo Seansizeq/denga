@@ -81,7 +81,8 @@
   font-size: 56px;
   font-weight: 700;
   text-align: right;
-  width: 60%;
+  width: auto;
+  min-width: 60px;
   max-width: 240px;
   outline: none;
   color: var(--text-primary);
