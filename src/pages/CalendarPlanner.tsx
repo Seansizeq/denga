@@ -222,12 +222,6 @@ const CalendarPlanner: React.FC = () => {
           })}
         </div>
 
-        <div className={styles.emptyState}>
-          <button type="button" className={styles.addShiftBtn} onClick={() => setChooserOpen(true)}>
-            {t('planner', 'addShift')}
-          </button>
-        </div>
-
         {editorOpened ? (
           <>
             <div className={styles.formRow}>
