@@ -46,6 +46,29 @@ const CATEGORIES = [
 ];
 
 const pendingTransactions = new Map();
+const CUSTOM_CATEGORY_PREFIX = 'custom:';
+const CUSTOM_CATEGORY_SEPARATOR = '|';
+
+const normalizeCategoryName = (name) => name.trim().replace(/\s+/g, ' ').toLowerCase();
+
+const createCustomCategoryId = (name, icon = 'Tag', color = '#8E8E93') =>
+  `${CUSTOM_CATEGORY_PREFIX}${encodeURIComponent(name.trim())}${CUSTOM_CATEGORY_SEPARATOR}${icon}${CUSTOM_CATEGORY_SEPARATOR}${encodeURIComponent(color)}`;
+
+const parseCustomCategoryId = (id) => {
+  if (typeof id !== 'string' || !id.startsWith(CUSTOM_CATEGORY_PREFIX)) return null;
+  const raw = id.slice(CUSTOM_CATEGORY_PREFIX.length);
+  const [encodedName, iconRaw, colorRaw] = raw.split(CUSTOM_CATEGORY_SEPARATOR);
+  if (!encodedName) return null;
+  try {
+    const name = decodeURIComponent(encodedName).trim();
+    if (!name) return null;
+    const icon = iconRaw || 'Tag';
+    const color = colorRaw ? decodeURIComponent(colorRaw) : '#8E8E93';
+    return { name, icon, color };
+  } catch {
+    return null;
+  }
+};
 
 bot.onText(/\/start/, async (msg) => {
   await db.run(
@@ -142,6 +165,84 @@ app.delete('/api/transactions/:id', async (req, res) => {
   const { id } = req.params;
   await db.run('DELETE FROM transactions WHERE id = ?', [id]);
   res.status(204).send();
+});
+
+app.get('/api/custom-categories', async (req, res) => {
+  const type = String(req.query.type ?? '');
+  if (type !== 'income' && type !== 'expense') {
+    res.status(400).json({ error: 'type query must be income or expense' });
+    return;
+  }
+
+  const stored = await db.all(
+    'SELECT id, type, name, icon, color, updatedAt FROM custom_categories WHERE type = ? ORDER BY updatedAt DESC',
+    [type]
+  );
+
+  const legacyRows = await db.all(
+    'SELECT categoryId, MAX(date) AS lastUsedAt FROM transactions WHERE type = ? AND categoryId LIKE ? GROUP BY categoryId',
+    [type, 'custom:%']
+  );
+
+  const byId = new Map(stored.map((row) => [row.id, row]));
+  for (const row of legacyRows) {
+    if (byId.has(row.categoryId)) continue;
+    const parsed = parseCustomCategoryId(row.categoryId);
+    if (!parsed) continue;
+    byId.set(row.categoryId, {
+      id: row.categoryId,
+      type,
+      name: parsed.name,
+      icon: parsed.icon,
+      color: parsed.color,
+      updatedAt: row.lastUsedAt,
+    });
+  }
+
+  res.json(
+    Array.from(byId.values()).sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))
+  );
+});
+
+app.post('/api/custom-categories', async (req, res) => {
+  const type = req.body?.type;
+  if (type !== 'income' && type !== 'expense') {
+    res.status(400).json({ error: 'type must be income or expense' });
+    return;
+  }
+
+  const rawName = typeof req.body?.name === 'string' ? req.body.name : '';
+  const name = rawName.trim().replace(/\s+/g, ' ');
+  if (!name) {
+    res.status(400).json({ error: 'name is required' });
+    return;
+  }
+
+  const normalizedName = normalizeCategoryName(name);
+  const icon = typeof req.body?.icon === 'string' && req.body.icon ? req.body.icon : 'Tag';
+  const color = typeof req.body?.color === 'string' && /^#([0-9A-Fa-f]{6})$/.test(req.body.color)
+    ? req.body.color
+    : '#8E8E93';
+
+  const existing = await db.get(
+    'SELECT id, type, name, icon, color, updatedAt FROM custom_categories WHERE type = ? AND normalized_name = ? LIMIT 1',
+    [type, normalizedName]
+  );
+  if (existing) {
+    res.status(200).json(existing);
+    return;
+  }
+
+  const id = createCustomCategoryId(name, icon, color);
+  const now = new Date().toISOString();
+
+  await db.run(
+    `INSERT INTO custom_categories (id, type, name, normalized_name, icon, color, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, type, name, normalizedName, icon, color, now, now]
+  );
+
+  res.status(201).json({ id, type, name, icon, color, updatedAt: now });
 });
 
 app.get('/api/planner', async (req, res) => {

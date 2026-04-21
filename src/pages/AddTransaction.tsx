@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import * as LucideIcons from 'lucide-react';
 import { X } from 'lucide-react';
@@ -8,7 +8,6 @@ import {
   createCustomCategoryId,
   CUSTOM_CATEGORY_COLORS,
   CUSTOM_CATEGORY_ICONS,
-  getCustomCategoryData,
   type CustomCategoryIcon,
 } from '../constants/categories';
 import { useTranslation } from '../i18n/LanguageContext';
@@ -17,7 +16,7 @@ import styles from './AddTransaction.module.css';
 
 const AddTransaction: React.FC = () => {
   const navigate = useNavigate();
-  const { addTransaction, transactions } = useTransactions();
+  const { addTransaction } = useTransactions();
   const { t } = useTranslation();
   const [searchParams] = useSearchParams();
 
@@ -32,34 +31,32 @@ const AddTransaction: React.FC = () => {
   const [newCategoryIcon, setNewCategoryIcon] = useState<CustomCategoryIcon>('Tag');
   const [newCategoryColor, setNewCategoryColor] = useState('#8E8E93');
   const [note, setNote] = useState('');
+  const [customCategories, setCustomCategories] = useState<
+    Array<{ id: string; name: string; icon: string; color: string }>
+  >([]);
+  const [creatingCategory, setCreatingCategory] = useState(false);
 
-  const customCategories = useMemo(() => {
-    const byId = new Map<
-      string,
-      { id: string; name: string; icon: string; color: string; lastUsedAt: string }
-    >();
-    for (const tx of transactions) {
-      if (tx.type !== type) continue;
-      const customData = getCustomCategoryData(tx.categoryId);
-      if (!customData) continue;
+  const API_URL = import.meta.env.VITE_API_URL ?? '';
 
-      const existing = byId.get(tx.categoryId);
-      if (!existing || tx.date > existing.lastUsedAt) {
-        byId.set(tx.categoryId, {
-          id: tx.categoryId,
-          name: customData.name,
-          icon: customData.icon,
-          color: customData.color,
-          lastUsedAt: tx.date,
-        });
+  useEffect(() => {
+    let cancelled = false;
+    const loadCustomCategories = async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/custom-categories?type=${type}`);
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!cancelled && Array.isArray(data)) {
+          setCustomCategories(data);
+        }
+      } catch (error) {
+        console.error('Error fetching custom categories:', error);
       }
-    }
-
-    return Array.from(byId.values())
-      .sort((a, b) => (a.lastUsedAt < b.lastUsedAt ? 1 : -1))
-      .slice(0, 8)
-      .map(({ id, name, icon, color }) => ({ id, name, icon, color }));
-  }, [transactions, type]);
+    };
+    loadCustomCategories();
+    return () => {
+      cancelled = true;
+    };
+  }, [API_URL, type]);
 
   const canCreateCustomCategory = newCategoryName.trim().length > 0;
 
@@ -200,18 +197,52 @@ const AddTransaction: React.FC = () => {
               <button
                 type="button"
                 className={styles.customCategoryCreateBtn}
-                disabled={!canCreateCustomCategory}
-                onClick={() => {
-                  const id = createCustomCategoryId(
-                    newCategoryName.trim(),
+                disabled={!canCreateCustomCategory || creatingCategory}
+                onClick={async () => {
+                  if (!canCreateCustomCategory || creatingCategory) return;
+                  setCreatingCategory(true);
+                  const cleanName = newCategoryName.trim().replace(/\s+/g, ' ');
+                  const fallbackId = createCustomCategoryId(
+                    cleanName,
                     newCategoryIcon,
                     newCategoryColor
                   );
-                  setCategoryId(id);
+                  try {
+                    const response = await fetch(`${API_URL}/api/custom-categories`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        name: cleanName,
+                        icon: newCategoryIcon,
+                        color: newCategoryColor,
+                        type,
+                      }),
+                    });
+                    const saved = response.ok ? await response.json() : null;
+                    const nextId = saved?.id ?? fallbackId;
+                    setCategoryId(nextId);
+                    setCustomCategories((prev) => {
+                      const exists = prev.some((c) => c.id === nextId);
+                      if (exists) return prev;
+                      return [
+                        {
+                          id: nextId,
+                          name: saved?.name ?? cleanName,
+                          icon: saved?.icon ?? newCategoryIcon,
+                          color: saved?.color ?? newCategoryColor,
+                        },
+                        ...prev,
+                      ];
+                    });
+                  } catch (error) {
+                    console.error('Error creating custom category:', error);
+                    setCategoryId(fallbackId);
+                  }
                   setNewCategoryName('');
                   setNewCategoryIcon('Tag');
                   setNewCategoryColor('#8E8E93');
                   setIsCreatingCustom(false);
+                  setCreatingCategory(false);
                 }}
               >
                 {t('addTx', 'create')}

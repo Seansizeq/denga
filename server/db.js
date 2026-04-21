@@ -44,5 +44,23 @@ export async function initDb() {
     )
   `);
 
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS custom_categories (
+      id TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
+      name TEXT NOT NULL,
+      normalized_name TEXT NOT NULL,
+      icon TEXT NOT NULL,
+      color TEXT NOT NULL,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL
+    )
+  `);
+
+  await db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_custom_categories_type_name
+    ON custom_categories(type, normalized_name)
+  `);
+
   return db;
 }
