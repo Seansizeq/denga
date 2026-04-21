@@ -24,7 +24,7 @@ type Dict = {
     searchPlaceholder: string;
     noResults: string;
   };
-  quickActions: { add: string; income: string; expense: string; history: string };
+  quickActions: { add: string; income: string; expense: string; history: string; subscriptions: string };
   range: { today: string; week: string; month: string; all: string };
   balance: { label: string; income: string; expense: string };
   addTx: {
@@ -128,7 +128,7 @@ const uk: Dict = {
     searchPlaceholder: 'Шукати за категорією чи приміткою',
     noResults: 'Нічого не знайдено',
   },
-  quickActions: { add: 'Додати', income: 'Дохід', expense: 'Витрата', history: 'Історія' },
+  quickActions: { add: 'Додати', income: 'Дохід', expense: 'Витрата', history: 'Історія', subscriptions: 'Підписки' },
   range: { today: 'Сьогодні', week: 'Тиждень', month: 'Місяць', all: 'Усі' },
   balance: { label: 'Баланс цього місяця', income: 'Доходи', expense: 'Витрати' },
   addTx: {
@@ -241,7 +241,7 @@ const ru: Dict = {
     searchPlaceholder: 'Искать по категории или заметке',
     noResults: 'Ничего не найдено',
   },
-  quickActions: { add: 'Добавить', income: 'Доход', expense: 'Расход', history: 'История' },
+  quickActions: { add: 'Добавить', income: 'Доход', expense: 'Расход', history: 'История', subscriptions: 'Подписки' },
   range: { today: 'Сегодня', week: 'Неделя', month: 'Месяц', all: 'Все' },
   balance: { label: 'Баланс за этот месяц', income: 'Доходы', expense: 'Расходы' },
   addTx: {
@@ -354,7 +354,7 @@ const en: Dict = {
     searchPlaceholder: 'Search by category or note',
     noResults: 'Nothing found',
   },
-  quickActions: { add: 'Add', income: 'Income', expense: 'Expense', history: 'History' },
+  quickActions: { add: 'Add', income: 'Income', expense: 'Expense', history: 'History', subscriptions: 'Subscriptions' },
   range: { today: 'Today', week: 'Week', month: 'Month', all: 'All' },
   balance: { label: 'This month', income: 'Income', expense: 'Expenses' },
   addTx: {
