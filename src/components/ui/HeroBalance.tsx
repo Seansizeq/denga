@@ -17,7 +17,7 @@ const formatAmount = (amount: number, locale: string) => {
 };
 
 const HeroBalance: React.FC<HeroBalanceProps> = ({ net, income, expense, locale: localeProp }) => {
-  const { locale, t } = useTranslation();
+  const { locale } = useTranslation();
   const lc = localeProp || locale;
 
   const sign = net < 0 ? '−' : '';
