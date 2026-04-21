@@ -387,20 +387,6 @@ const CalendarPlanner: React.FC = () => {
           </div>
         </div>
 
-        <div className={styles.reportCard}>
-          <h3 className={styles.reportCardTitle}>{t('planner', 'monthReportTitle')}</h3>
-          <div className={styles.reportRow}>
-            <span className={styles.reportLabel}>{t('planner', 'reportHoursTotal')}</span>
-            <strong className={styles.reportValue}>
-              {monthReport.totalHours.toLocaleString(locale, { maximumFractionDigits: 1, minimumFractionDigits: 0 })}
-            </strong>
-          </div>
-          <div className={styles.reportRow}>
-            <span className={styles.reportLabel}>{t('planner', 'expectedSalary')}</span>
-            <strong className={styles.reportValue}>{formatCurrency(monthReport.totalSalary, locale)}</strong>
-          </div>
-        </div>
-
         <div className={styles.weekdays}>
           {weekdays.map((dayName) => <span key={dayName} className={styles.weekday}>{dayName}</span>)}
         </div>
@@ -428,6 +414,20 @@ const CalendarPlanner: React.FC = () => {
               </button>
             );
           })}
+        </div>
+
+        <div className={styles.reportCard}>
+          <h3 className={styles.reportCardTitle}>{t('planner', 'monthReportTitle')}</h3>
+          <div className={styles.reportRow}>
+            <span className={styles.reportLabel}>{t('planner', 'reportHoursTotal')}</span>
+            <strong className={styles.reportValue}>
+              {monthReport.totalHours.toLocaleString(locale, { maximumFractionDigits: 1, minimumFractionDigits: 0 })}
+            </strong>
+          </div>
+          <div className={styles.reportRow}>
+            <span className={styles.reportLabel}>{t('planner', 'expectedSalary')}</span>
+            <strong className={styles.reportValue}>{formatCurrency(monthReport.totalSalary, locale)}</strong>
+          </div>
         </div>
 
         {loading && <p className={styles.loading}>{t('planner', 'loading')}</p>}
