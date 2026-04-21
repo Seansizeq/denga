@@ -19,6 +19,23 @@ export const CATEGORIES: CategoryDef[] = [
   { id: 'other_income', icon: 'Plus', color: '#30B0C7', type: 'income' },
 ];
 
+const CUSTOM_CATEGORY_PREFIX = 'custom:';
+
+export const createCustomCategoryId = (name: string): string => {
+  return `${CUSTOM_CATEGORY_PREFIX}${encodeURIComponent(name.trim())}`;
+};
+
+export const getCustomCategoryName = (id: string): string | null => {
+  if (!id.startsWith(CUSTOM_CATEGORY_PREFIX)) return null;
+  const encoded = id.slice(CUSTOM_CATEGORY_PREFIX.length);
+  if (!encoded) return null;
+  try {
+    return decodeURIComponent(encoded);
+  } catch {
+    return encoded;
+  }
+};
+
 export const findCategory = (id: string): CategoryDef => {
   return CATEGORIES.find((c) => c.id === id) ?? CATEGORIES[CATEGORIES.length - 1];
 };

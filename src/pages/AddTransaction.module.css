@@ -1,8 +1,9 @@
 .container {
-  padding: 16px 20px calc(var(--bottom-nav-height) + 40px);
+  padding: 16px 20px 0;
   min-height: 100vh;
   background-color: var(--bg-primary);
   color: var(--text-primary);
+  position: relative;
 }
 
 .header {
@@ -18,26 +19,34 @@
   font-weight: 600;
   margin: 0;
   color: var(--text-primary);
+  flex: 1;
+  text-align: center;
 }
 
-.cancelBtn,
-.saveBtn {
-  background: none;
-  border: none;
-  font-size: 15px;
-  color: var(--accent-primary-strong);
+.closeBtn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
-  padding: 6px 2px;
-  font-weight: 500;
+  padding: 0;
+  transition: background-color 0.15s ease, transform 0.15s ease;
 }
 
-.saveBtn:disabled {
-  color: var(--text-tertiary);
-  cursor: not-allowed;
+.closeBtn:active {
+  transform: scale(0.94);
+  background: rgba(255, 255, 255, 0.12);
 }
 
-.saveBtn {
-  font-weight: 600;
+.headerSpacer {
+  width: 36px;
+  height: 36px;
+  display: inline-block;
 }
 
 .typeSelector {
@@ -114,6 +123,27 @@
   letter-spacing: 0.4px;
 }
 
+.customCategoryInput {
+  width: 100%;
+  margin-top: 12px;
+  padding: 12px 16px;
+  background-color: var(--bg-card);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 14px;
+  color: var(--text-primary);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.customCategoryInput:focus {
+  border-color: var(--accent-primary-strong);
+}
+
+.customCategoryInput::placeholder {
+  color: var(--text-tertiary);
+}
+
 .noteInput {
   width: 100%;
   padding: 14px 20px;
@@ -132,4 +162,49 @@
 
 .noteInput::placeholder {
   color: var(--text-tertiary);
+}
+
+/* Space inside the scroll area so the sticky save bar never covers the
+   last form field. */
+.saveBarSpacer {
+  height: calc(var(--bottom-nav-height) + 40px);
+}
+
+/* Fixed full-width Save button pinned just above the bottom navigation */
+.saveBar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--bottom-nav-height) + 8px + var(--safe-area-inset-bottom));
+  padding: 0 20px;
+  z-index: 20;
+  pointer-events: none;
+}
+
+.saveBtn {
+  pointer-events: auto;
+  width: 100%;
+  height: 54px;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--accent-fab) 0%, var(--accent-fab-strong) 100%);
+  color: #1B1708;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow:
+    0 10px 26px rgba(255, 213, 59, 0.35),
+    0 2px 4px rgba(0, 0, 0, 0.2);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+}
+
+.saveBtn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.saveBtn:disabled {
+  background: var(--bg-card-light);
+  color: var(--text-tertiary);
+  box-shadow: none;
+  cursor: not-allowed;
 }

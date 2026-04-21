@@ -37,6 +37,7 @@ type Dict = {
     amountPlaceholder: string;
     note: string;
     notePlaceholder: string;
+    customCategoryPlaceholder: string;
   };
   history: { title: string; empty: string; deleteConfirm: string };
   stats: {
@@ -100,6 +101,7 @@ const uk: Dict = {
     amountPlaceholder: '0',
     note: 'Примітка',
     notePlaceholder: 'Необов’язково',
+    customCategoryPlaceholder: 'Або введіть свою категорію',
   },
   history: {
     title: 'Історія',
@@ -172,6 +174,7 @@ const ru: Dict = {
     amountPlaceholder: '0',
     note: 'Заметка',
     notePlaceholder: 'Необязательно',
+    customCategoryPlaceholder: 'Или введите свою категорию',
   },
   history: {
     title: 'История',
@@ -244,6 +247,7 @@ const en: Dict = {
     amountPlaceholder: '0',
     note: 'Note',
     notePlaceholder: 'Optional',
+    customCategoryPlaceholder: 'Or enter your own category',
   },
   history: {
     title: 'History',

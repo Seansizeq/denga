@@ -1,7 +1,7 @@
 import React from 'react';
 import * as LucideIcons from 'lucide-react';
 import type { Transaction } from '../../types';
-import { findCategory } from '../../constants/categories';
+import { findCategory, getCustomCategoryName } from '../../constants/categories';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { useTranslation } from '../../i18n/LanguageContext';
 import type { CategoryKey } from '../../i18n/translations';
@@ -14,7 +14,10 @@ interface TransactionItemProps {
 
 const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onDelete }) => {
   const { t, locale } = useTranslation();
-  const category = findCategory(transaction.categoryId);
+  const customCategoryName = getCustomCategoryName(transaction.categoryId);
+  const category = customCategoryName
+    ? findCategory(transaction.type === 'income' ? 'other_income' : 'other_expense')
+    : findCategory(transaction.categoryId);
   const IconComponent = (LucideIcons as any)[category.icon] ?? LucideIcons.Circle;
 
   const handleDelete = () => {
@@ -30,7 +33,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onDelete
     handleDelete();
   };
 
-  const categoryName = t('categories', category.id as CategoryKey);
+  const categoryName = customCategoryName ?? t('categories', category.id as CategoryKey);
   const subtitle = transaction.note?.trim() || formatDate(transaction.date, locale);
   const isIncome = transaction.type === 'income';
 
@@ -50,11 +53,8 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onDelete
       </div>
 
       <div className={styles.right}>
-        <span className={styles.amount}>
-          {formatCurrency(transaction.amount, locale)}
-        </span>
         <span
-          className={`${styles.delta} ${isIncome ? styles.income : styles.expense}`}
+          className={`${styles.amount} ${isIncome ? styles.income : styles.expense}`}
         >
           {isIncome ? '+' : '−'}
           {formatCurrency(transaction.amount, locale)}

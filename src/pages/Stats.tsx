@@ -3,7 +3,7 @@ import * as LucideIcons from 'lucide-react';
 import { useTransactions } from '../context/TransactionContext';
 import { useTranslation } from '../i18n/LanguageContext';
 import { formatCurrency, isSameMonth } from '../utils/formatters';
-import { findCategory } from '../constants/categories';
+import { findCategory, getCustomCategoryName } from '../constants/categories';
 import type { CategoryKey } from '../i18n/translations';
 import styles from './Stats.module.css';
 
@@ -83,7 +83,10 @@ const Stats: React.FC = () => {
         ) : (
           <ul className={styles.catList}>
             {byCategory.map((row) => {
-              const category = findCategory(row.id);
+              const customCategoryName = getCustomCategoryName(row.id);
+              const category = customCategoryName
+                ? findCategory('other_expense')
+                : findCategory(row.id);
               const IconComponent =
                 (LucideIcons as any)[category.icon] ?? LucideIcons.Circle;
               const percentage = maxExpense
@@ -97,7 +100,7 @@ const Stats: React.FC = () => {
                   <div className={styles.catBody}>
                     <div className={styles.catTopLine}>
                       <span className={styles.catName}>
-                        {t('categories', category.id as CategoryKey)}
+                        {customCategoryName ?? t('categories', category.id as CategoryKey)}
                       </span>
                       <span className={styles.catTotal}>
                         {formatCurrency(row.total, locale)}

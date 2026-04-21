@@ -9,9 +9,15 @@ interface CategoryGridProps {
   selectedId: string;
   type: 'income' | 'expense';
   onSelect: (id: string) => void;
+  customCategories?: Array<{ id: string; name: string }>;
 }
 
-const CategoryGrid: React.FC<CategoryGridProps> = ({ selectedId, type, onSelect }) => {
+const CategoryGrid: React.FC<CategoryGridProps> = ({
+  selectedId,
+  type,
+  onSelect,
+  customCategories = [],
+}) => {
   const { t } = useTranslation();
   const filtered = CATEGORIES.filter((c) => c.type === type);
 
@@ -33,6 +39,22 @@ const CategoryGrid: React.FC<CategoryGridProps> = ({ selectedId, type, onSelect 
             <span className={styles.name}>
               {t('categories', category.id as CategoryKey)}
             </span>
+          </button>
+        );
+      })}
+      {customCategories.map((category) => {
+        const selected = selectedId === category.id;
+        return (
+          <button
+            key={category.id}
+            type="button"
+            className={`${styles.categoryBtn} ${selected ? styles.selected : ''}`}
+            onClick={() => onSelect(category.id)}
+          >
+            <div className={styles.iconBox}>
+              <LucideIcons.Tag size={24} color="#8E8E93" strokeWidth={1.5} />
+            </div>
+            <span className={styles.name}>{category.name}</span>
           </button>
         );
       })}

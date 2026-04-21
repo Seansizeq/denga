@@ -1,14 +1,16 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { X } from 'lucide-react';
 import { useTransactions } from '../context/TransactionContext';
 import CategoryGrid from '../components/ui/CategoryGrid';
+import { createCustomCategoryId, getCustomCategoryName } from '../constants/categories';
 import { useTranslation } from '../i18n/LanguageContext';
 import type { TransactionType } from '../types';
 import styles from './AddTransaction.module.css';
 
 const AddTransaction: React.FC = () => {
   const navigate = useNavigate();
-  const { addTransaction } = useTransactions();
+  const { addTransaction, transactions } = useTransactions();
   const { t } = useTranslation();
   const [searchParams] = useSearchParams();
 
@@ -18,16 +20,39 @@ const AddTransaction: React.FC = () => {
   const [amount, setAmount] = useState('');
   const [type, setType] = useState<TransactionType>(initialType);
   const [categoryId, setCategoryId] = useState(initialType === 'income' ? 'salary' : 'food');
+  const [customCategory, setCustomCategory] = useState('');
   const [note, setNote] = useState('');
+
+  const customCategories = useMemo(() => {
+    const byId = new Map<string, { id: string; name: string; lastUsedAt: string }>();
+    for (const tx of transactions) {
+      if (tx.type !== type) continue;
+      const name = getCustomCategoryName(tx.categoryId);
+      if (!name) continue;
+
+      const existing = byId.get(tx.categoryId);
+      if (!existing || tx.date > existing.lastUsedAt) {
+        byId.set(tx.categoryId, { id: tx.categoryId, name, lastUsedAt: tx.date });
+      }
+    }
+
+    return Array.from(byId.values())
+      .sort((a, b) => (a.lastUsedAt < b.lastUsedAt ? 1 : -1))
+      .slice(0, 8)
+      .map(({ id, name }) => ({ id, name }));
+  }, [transactions, type]);
 
   const handleSave = () => {
     const numAmount = parseFloat(amount.replace(',', '.'));
     if (!numAmount || numAmount <= 0) return;
+    const trimmedCustomCategory = customCategory.trim();
 
     addTransaction({
       amount: numAmount,
       type,
-      categoryId,
+      categoryId: trimmedCustomCategory
+        ? createCustomCategoryId(trimmedCustomCategory)
+        : categoryId,
       note: note.trim() || undefined,
     });
 
@@ -42,19 +67,13 @@ const AddTransaction: React.FC = () => {
         <button
           type="button"
           onClick={() => navigate(-1)}
-          className={styles.cancelBtn}
+          className={styles.closeBtn}
+          aria-label={t('addTx', 'cancel')}
         >
-          {t('addTx', 'cancel')}
+          <X size={20} strokeWidth={2.5} />
         </button>
         <h2 className={styles.title}>{t('addTx', 'title')}</h2>
-        <button
-          type="button"
-          onClick={handleSave}
-          className={styles.saveBtn}
-          disabled={!isValid}
-        >
-          {t('addTx', 'save')}
-        </button>
+        <span className={styles.headerSpacer} aria-hidden="true" />
       </header>
 
       <div className={styles.typeSelector}>
@@ -64,6 +83,7 @@ const AddTransaction: React.FC = () => {
           onClick={() => {
             setType('expense');
             setCategoryId('food');
+            setCustomCategory('');
           }}
         >
           {t('addTx', 'expense')}
@@ -74,6 +94,7 @@ const AddTransaction: React.FC = () => {
           onClick={() => {
             setType('income');
             setCategoryId('salary');
+            setCustomCategory('');
           }}
         >
           {t('addTx', 'income')}
@@ -102,7 +123,27 @@ const AddTransaction: React.FC = () => {
         <CategoryGrid
           type={type}
           selectedId={categoryId}
-          onSelect={setCategoryId}
+          customCategories={customCategories}
+          onSelect={(id) => {
+            setCategoryId(id);
+            setCustomCategory(getCustomCategoryName(id) ?? '');
+          }}
+        />
+        <input
+          type="text"
+          value={customCategory}
+          onChange={(e) => {
+            const value = e.target.value;
+            setCustomCategory(value);
+            if (value.trim()) {
+              setCategoryId(createCustomCategoryId(value.trim()));
+            } else if (getCustomCategoryName(categoryId)) {
+              setCategoryId(type === 'income' ? 'salary' : 'food');
+            }
+          }}
+          placeholder={t('addTx', 'customCategoryPlaceholder')}
+          className={styles.customCategoryInput}
+          maxLength={40}
         />
       </section>
 
@@ -117,6 +158,19 @@ const AddTransaction: React.FC = () => {
           maxLength={80}
         />
       </section>
+
+      <div className={styles.saveBarSpacer} aria-hidden="true" />
+
+      <div className={styles.saveBar}>
+        <button
+          type="button"
+          onClick={handleSave}
+          className={styles.saveBtn}
+          disabled={!isValid}
+        >
+          {t('addTx', 'save')}
+        </button>
+      </div>
     </div>
   );
 };

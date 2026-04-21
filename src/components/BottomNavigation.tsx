@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Home, Wallet, BarChart2, Settings as SettingsIcon, ArrowLeftRight } from 'lucide-react';
+import { Home, Wallet, BarChart2, Settings as SettingsIcon, Plus } from 'lucide-react';
 import styles from './BottomNavigation.module.css';
 
 const BottomNavigation: React.FC = () => {
@@ -32,7 +32,7 @@ const BottomNavigation: React.FC = () => {
           onClick={() => navigate('/add')}
           aria-label="Add transaction"
         >
-          <ArrowLeftRight size={24} strokeWidth={2} />
+          <Plus size={28} strokeWidth={2.4} />
         </button>
 
         <NavLink
