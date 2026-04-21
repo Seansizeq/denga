@@ -1,6 +1,6 @@
 .container {
   min-height: 100%;
-  padding: 24px 20px calc(var(--bottom-nav-height) + var(--safe-area-inset-bottom) + 28px);
+  padding: calc(var(--safe-area-inset-top, 0px) + 44px) 20px calc(var(--bottom-nav-height) + var(--safe-area-inset-bottom) + 28px);
 }
 
 .header {

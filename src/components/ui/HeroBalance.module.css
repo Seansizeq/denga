@@ -64,15 +64,3 @@
   background: var(--accent-red-soft);
   color: var(--accent-red);
 }
-
-.historyButton {
-  font-size: 13px;
-  font-weight: 600;
-  padding: 6px 12px;
-  border-radius: 999px;
-  line-height: 1;
-  text-decoration: none;
-  background: #22202d;
-  color: var(--text-primary);
-  border: 1px solid #343142;
-}

@@ -1,5 +1,4 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
 import { useTranslation } from '../../i18n/LanguageContext';
 import styles from './HeroBalance.module.css';
 
@@ -44,9 +43,6 @@ const HeroBalance: React.FC<HeroBalanceProps> = ({ net, income, expense, locale:
             −₴{formatAmount(expense, lc)}
           </span>
         )}
-        <Link to="/history" className={styles.historyButton}>
-          {t('history', 'title')}
-        </Link>
         {income > 0 && (
           <span
             className={`${styles.deltaPill} ${ratio >= 0 ? styles.positivePill : styles.negativePill}`}

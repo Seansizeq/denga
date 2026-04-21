@@ -1,10 +1,11 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, ArrowUpRight, ArrowDown } from 'lucide-react';
+import { Plus, ArrowDown, History } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { useTranslation } from '../../i18n/LanguageContext';
 import styles from './QuickActions.module.css';
 
-type Tone = 'income' | 'expense' | 'transfer';
+type Tone = 'income' | 'expense' | 'history';
 
 interface ActionItem {
   id: string;
@@ -16,26 +17,27 @@ interface ActionItem {
 
 const QuickActions: React.FC = () => {
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   const items: ActionItem[] = [
     {
       id: 'income',
       icon: Plus,
-      labelKey: 'Дохід',
+      labelKey: t('quickActions', 'income'),
       tone: 'income',
       onPress: () => navigate('/add?type=income'),
     },
     {
-      id: 'transfer',
-      icon: ArrowUpRight,
-      labelKey: 'Переказ',
-      tone: 'transfer',
-      onPress: () => navigate('/add'),
+      id: 'history',
+      icon: History,
+      labelKey: t('quickActions', 'history'),
+      tone: 'history',
+      onPress: () => navigate('/history'),
     },
     {
       id: 'expense',
       icon: ArrowDown,
-      labelKey: 'Витрата',
+      labelKey: t('quickActions', 'expense'),
       tone: 'expense',
       onPress: () => navigate('/add?type=expense'),
     },
