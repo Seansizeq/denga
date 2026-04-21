@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Plus } from 'lucide-react';
 import { formatCurrency } from '../utils/formatters';
 import { useTranslation } from '../i18n/LanguageContext';
 import styles from './Subscriptions.module.css';
@@ -27,6 +28,7 @@ const Subscriptions: React.FC = () => {
   const [nextChargeDate, setNextChargeDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isFormOpen, setIsFormOpen] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -65,6 +67,7 @@ const Subscriptions: React.FC = () => {
     setNextChargeDate(new Date().toISOString().slice(0, 10));
     setNote('');
     setEditingId(null);
+    setIsFormOpen(false);
   };
 
   const onSave = async () => {
@@ -114,6 +117,7 @@ const Subscriptions: React.FC = () => {
 
   const onEdit = (sub: Subscription) => {
     setEditingId(sub.id);
+    setIsFormOpen(true);
     setName(sub.name);
     setAmount(String(sub.amount));
     setCycle(sub.cycle);
@@ -124,7 +128,27 @@ const Subscriptions: React.FC = () => {
   return (
     <div className={styles.container}>
       <header className={styles.header}>
-        <h1 className={styles.title}>{t('subscriptions', 'title')}</h1>
+        <div className={styles.headerRow}>
+          <h1 className={styles.title}>{t('subscriptions', 'title')}</h1>
+          <button
+            type="button"
+            className={styles.addIconBtn}
+            aria-label={t('subscriptions', 'add')}
+            onClick={() => {
+              if (!isFormOpen) {
+                setName('');
+                setAmount('');
+                setCycle('monthly');
+                setNextChargeDate(new Date().toISOString().slice(0, 10));
+                setNote('');
+                setEditingId(null);
+              }
+              setIsFormOpen((prev) => !prev);
+            }}
+          >
+            <Plus size={20} strokeWidth={2.4} />
+          </button>
+        </div>
         <span className={styles.subtitle}>{t('subscriptions', 'subtitle')}</span>
       </header>
 
@@ -182,50 +206,50 @@ const Subscriptions: React.FC = () => {
         )}
       </section>
 
-      <section className={styles.formSection}>
-        <h2 className={styles.formTitle}>{t('subscriptions', 'addTitle')}</h2>
-        <div className={styles.formGrid}>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder={t('subscriptions', 'name')}
-          />
-          <input
-            type="text"
-            inputMode="decimal"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value.replace(/[^0-9.,]/g, ''))}
-            placeholder={t('subscriptions', 'amount')}
-          />
-          <select value={cycle} onChange={(e) => setCycle(e.target.value as BillingCycle)}>
-            <option value="monthly">{t('subscriptions', 'monthly')}</option>
-            <option value="yearly">{t('subscriptions', 'yearly')}</option>
-          </select>
-          <input
-            type="date"
-            value={nextChargeDate}
-            onChange={(e) => setNextChargeDate(e.target.value)}
-            aria-label={t('subscriptions', 'nextChargeDate')}
-          />
-          <input
-            type="text"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder={t('subscriptions', 'note')}
-          />
-        </div>
-        <div className={styles.formActions}>
-          {editingId ? (
+      {isFormOpen ? (
+        <section className={styles.formSection}>
+          <h2 className={styles.formTitle}>{t('subscriptions', 'addTitle')}</h2>
+          <div className={styles.formGrid}>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={t('subscriptions', 'name')}
+            />
+            <input
+              type="text"
+              inputMode="decimal"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value.replace(/[^0-9.,]/g, ''))}
+              placeholder={t('subscriptions', 'amount')}
+            />
+            <select value={cycle} onChange={(e) => setCycle(e.target.value as BillingCycle)}>
+              <option value="monthly">{t('subscriptions', 'monthly')}</option>
+              <option value="yearly">{t('subscriptions', 'yearly')}</option>
+            </select>
+            <input
+              type="date"
+              value={nextChargeDate}
+              onChange={(e) => setNextChargeDate(e.target.value)}
+              aria-label={t('subscriptions', 'nextChargeDate')}
+            />
+            <input
+              type="text"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder={t('subscriptions', 'note')}
+            />
+          </div>
+          <div className={styles.formActions}>
             <button type="button" className={styles.cancelBtn} onClick={resetForm}>
-              {t('subscriptions', 'cancelEdit')}
+              {editingId ? t('subscriptions', 'cancelEdit') : t('addTx', 'cancel')}
             </button>
-          ) : null}
-          <button type="button" className={styles.addBtn} onClick={onSave}>
-            {editingId ? t('subscriptions', 'saveChanges') : t('subscriptions', 'add')}
-          </button>
-        </div>
-      </section>
+            <button type="button" className={styles.addBtn} onClick={onSave}>
+              {editingId ? t('subscriptions', 'saveChanges') : t('subscriptions', 'add')}
+            </button>
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 };
