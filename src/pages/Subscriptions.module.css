@@ -95,6 +95,20 @@
   font-size: 12px;
 }
 
+.itemYearlyRow {
+  margin-top: 6px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.itemYearlyRow strong {
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
 .itemNote {
   margin: 6px 0 0;
   font-size: 12px;

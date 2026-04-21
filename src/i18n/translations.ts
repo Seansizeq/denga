@@ -75,6 +75,7 @@ type Dict = {
     cycle: string;
     monthly: string;
     yearly: string;
+    yearlyForItem: string;
     nextChargeDate: string;
     note: string;
     add: string;
@@ -186,6 +187,7 @@ const uk: Dict = {
     cycle: 'Цикл',
     monthly: 'Щомісяця',
     yearly: 'Щороку',
+    yearlyForItem: 'За рік',
     nextChargeDate: 'Наступне списання',
     note: 'Нотатка',
     add: 'Додати підписку',
@@ -302,6 +304,7 @@ const ru: Dict = {
     cycle: 'Цикл',
     monthly: 'Ежемесячно',
     yearly: 'Ежегодно',
+    yearlyForItem: 'За год',
     nextChargeDate: 'Следующее списание',
     note: 'Заметка',
     add: 'Добавить подписку',
@@ -418,6 +421,7 @@ const en: Dict = {
     cycle: 'Cycle',
     monthly: 'Monthly',
     yearly: 'Yearly',
+    yearlyForItem: 'Per year',
     nextChargeDate: 'Next charge date',
     note: 'Note',
     add: 'Add subscription',

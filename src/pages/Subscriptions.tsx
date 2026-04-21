@@ -150,8 +150,10 @@ const Subscriptions: React.FC = () => {
           <p className={styles.emptyText}>{t('subscriptions', 'empty')}</p>
         ) : (
           <div className={styles.list}>
-            {activeItems.map((sub) => (
-              <article key={sub.id} className={styles.item}>
+            {activeItems.map((sub) => {
+              const yearlyForItem = sub.cycle === 'yearly' ? sub.amount : sub.amount * 12;
+              return (
+                <article key={sub.id} className={styles.item}>
                 <div className={styles.itemTop}>
                   <span className={styles.itemName}>{sub.name}</span>
                   <span className={styles.itemAmount}>{formatCurrency(sub.amount, locale)}</span>
@@ -159,6 +161,10 @@ const Subscriptions: React.FC = () => {
                 <div className={styles.itemMeta}>
                   <span>{sub.cycle === 'monthly' ? t('subscriptions', 'monthly') : t('subscriptions', 'yearly')}</span>
                   <span>{new Date(sub.nextChargeDate).toLocaleDateString(locale)}</span>
+                </div>
+                <div className={styles.itemYearlyRow}>
+                  <span>{t('subscriptions', 'yearlyForItem')}</span>
+                  <strong>{formatCurrency(yearlyForItem, locale)}</strong>
                 </div>
                 {sub.note ? <p className={styles.itemNote}>{sub.note}</p> : null}
                 <div className={styles.itemActions}>
@@ -169,8 +175,9 @@ const Subscriptions: React.FC = () => {
                     {t('subscriptions', 'disable')}
                   </button>
                 </div>
-              </article>
-            ))}
+                </article>
+              );
+            })}
           </div>
         )}
       </section>
