@@ -187,48 +187,50 @@ const Subscriptions: React.FC = () => {
       </section>
 
       {isFormOpen ? (
-        <section className={styles.formSection}>
-          <h2 className={styles.formTitle}>{t('subscriptions', 'addTitle')}</h2>
-          <div className={styles.formGrid}>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={t('subscriptions', 'name')}
-            />
-            <input
-              type="text"
-              inputMode="decimal"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value.replace(/[^0-9.,]/g, ''))}
-              placeholder={t('subscriptions', 'amount')}
-            />
-            <select value={cycle} onChange={(e) => setCycle(e.target.value as BillingCycle)}>
-              <option value="monthly">{t('subscriptions', 'monthly')}</option>
-              <option value="yearly">{t('subscriptions', 'yearly')}</option>
-            </select>
-            <input
-              type="date"
-              value={nextChargeDate}
-              onChange={(e) => setNextChargeDate(e.target.value)}
-              aria-label={t('subscriptions', 'nextChargeDate')}
-            />
-            <input
-              type="text"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder={t('subscriptions', 'note')}
-            />
-          </div>
-          <div className={styles.formActions}>
-            <button type="button" className={styles.cancelBtn} onClick={resetForm}>
-              {editingId ? t('subscriptions', 'cancelEdit') : t('addTx', 'cancel')}
-            </button>
-            <button type="button" className={styles.addBtn} onClick={onSave}>
-              {editingId ? t('subscriptions', 'saveChanges') : t('subscriptions', 'add')}
-            </button>
-          </div>
-        </section>
+        <div className={styles.modalOverlay} onClick={resetForm}>
+          <section className={styles.modalCard} onClick={(e) => e.stopPropagation()}>
+            <h2 className={styles.formTitle}>{t('subscriptions', 'addTitle')}</h2>
+            <div className={styles.formGrid}>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={t('subscriptions', 'name')}
+              />
+              <input
+                type="text"
+                inputMode="decimal"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value.replace(/[^0-9.,]/g, ''))}
+                placeholder={t('subscriptions', 'amount')}
+              />
+              <select value={cycle} onChange={(e) => setCycle(e.target.value as BillingCycle)}>
+                <option value="monthly">{t('subscriptions', 'monthly')}</option>
+                <option value="yearly">{t('subscriptions', 'yearly')}</option>
+              </select>
+              <input
+                type="date"
+                value={nextChargeDate}
+                onChange={(e) => setNextChargeDate(e.target.value)}
+                aria-label={t('subscriptions', 'nextChargeDate')}
+              />
+              <input
+                type="text"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder={t('subscriptions', 'note')}
+              />
+            </div>
+            <div className={styles.formActions}>
+              <button type="button" className={styles.cancelBtn} onClick={resetForm}>
+                {editingId ? t('subscriptions', 'cancelEdit') : t('addTx', 'cancel')}
+              </button>
+              <button type="button" className={styles.addBtn} onClick={onSave}>
+                {editingId ? t('subscriptions', 'saveChanges') : t('subscriptions', 'add')}
+              </button>
+            </div>
+          </section>
+        </div>
       ) : null}
 
       <button
