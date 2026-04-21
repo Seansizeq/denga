@@ -29,8 +29,16 @@
   transition: color 0.15s ease;
 }
 
+.roundBtn {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  margin: 0 auto;
+}
+
 .active {
   color: #ffffff;
+  background: #312f3b;
 }
 
 .fab {

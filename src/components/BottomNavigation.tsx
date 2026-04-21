@@ -22,7 +22,9 @@ const BottomNavigation: React.FC = () => {
 
         <NavLink
           to="/calendar"
-          className={({ isActive }) => (isActive ? styles.active : styles.link)}
+          className={({ isActive }) =>
+            `${isActive ? styles.active : styles.link} ${styles.roundBtn}`
+          }
           aria-label={t('nav', 'calendar')}
         >
           <CalendarDays size={24} strokeWidth={2} />

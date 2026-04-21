@@ -1,6 +1,6 @@
 .container {
   min-height: 100%;
-  padding: 24px 16px calc(var(--bottom-nav-height) + var(--safe-area-inset-bottom) + 24px);
+  padding: 24px 20px calc(var(--bottom-nav-height) + var(--safe-area-inset-bottom) + 28px);
 }
 
 .header {
@@ -24,7 +24,7 @@
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 16px;
   padding: 14px;
-  margin-top: 12px;
+  margin-top: 16px;
 }
 
 .monthRow {
