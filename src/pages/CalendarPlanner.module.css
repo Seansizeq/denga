@@ -35,11 +35,27 @@
   margin-bottom: 12px;
 }
 
+.monthControls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .monthLabel {
   font-size: 16px;
   color: var(--text-primary);
   font-weight: 600;
   text-transform: capitalize;
+}
+
+.reportBtn {
+  background: #171521;
+  color: var(--text-primary);
+  border: 1px solid #2f2c3f;
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 .monthInput {
@@ -48,6 +64,28 @@
   border: 1px solid #2f2c3f;
   border-radius: 10px;
   padding: 8px 10px;
+}
+
+.reportCard {
+  margin-top: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #171521;
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.reportRow {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.reportRow strong {
+  color: var(--text-primary);
 }
 
 .grid {

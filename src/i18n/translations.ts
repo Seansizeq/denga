@@ -54,6 +54,9 @@ type Dict = {
     salaryAmount: string;
     note: string;
     notePlaceholder: string;
+    report: string;
+    workedHours: string;
+    expectedSalary: string;
     save: string;
     saved: string;
   };
@@ -139,6 +142,9 @@ const uk: Dict = {
     salaryAmount: 'Зарплата за день',
     note: 'Нотатка',
     notePlaceholder: 'Наприклад: нічна зміна',
+    report: 'Звіт',
+    workedHours: 'Відпрацьовано годин',
+    expectedSalary: 'Очікувана зарплата',
     save: 'Зберегти',
     saved: 'Збережено',
   },
@@ -229,6 +235,9 @@ const ru: Dict = {
     salaryAmount: 'Зарплата за день',
     note: 'Заметка',
     notePlaceholder: 'Например: ночная смена',
+    report: 'Отчёт',
+    workedHours: 'Отработано часов',
+    expectedSalary: 'Ожидаемая зарплата',
     save: 'Сохранить',
     saved: 'Сохранено',
   },
@@ -319,6 +328,9 @@ const en: Dict = {
     salaryAmount: 'Daily salary',
     note: 'Note',
     notePlaceholder: 'Example: night shift',
+    report: 'Report',
+    workedHours: 'Worked hours',
+    expectedSalary: 'Expected salary',
     save: 'Save',
     saved: 'Saved',
   },

@@ -38,8 +38,27 @@ const CalendarPlanner: React.FC = () => {
   const [justSaved, setJustSaved] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [showReport, setShowReport] = useState(false);
 
   const days = useMemo(() => buildDaysForMonth(month), [month]);
+  const report = useMemo(() => {
+    return days.reduce(
+      (acc, dayIso) => {
+        const day = store[dayIso];
+        if (!day?.hasShift) return acc;
+
+        const salaryAmount = Number(day.salaryAmount) || 0;
+        const salaryRate = Number(day.salaryRate) || 0;
+        const hours = salaryRate > 0 && salaryAmount > 0 ? salaryAmount / salaryRate : 0;
+
+        return {
+          hours: acc.hours + hours,
+          salary: acc.salary + salaryAmount,
+        };
+      },
+      { hours: 0, salary: 0 }
+    );
+  }, [days, store]);
 
   const current = store[selectedDay] ?? {
     hasShift: false,
@@ -136,17 +155,26 @@ const CalendarPlanner: React.FC = () => {
       <section className={styles.panel}>
         <div className={styles.monthRow}>
           <span className={styles.monthLabel}>{monthLabel(month, locale)}</span>
-          <input
-            type="month"
-            className={styles.monthInput}
-            value={month}
-            onChange={(e) => {
-              const nextMonth = e.target.value;
-              setMonth(nextMonth);
-              const [year, m] = nextMonth.split('-');
-              setSelectedDay(`${year}-${m}-01`);
-            }}
-          />
+          <div className={styles.monthControls}>
+            <button
+              type="button"
+              className={styles.reportBtn}
+              onClick={() => setShowReport((prev) => !prev)}
+            >
+              {t('planner', 'report')}
+            </button>
+            <input
+              type="month"
+              className={styles.monthInput}
+              value={month}
+              onChange={(e) => {
+                const nextMonth = e.target.value;
+                setMonth(nextMonth);
+                const [year, m] = nextMonth.split('-');
+                setSelectedDay(`${year}-${m}-01`);
+              }}
+            />
+          </div>
         </div>
 
         <div className={styles.grid}>
@@ -168,6 +196,18 @@ const CalendarPlanner: React.FC = () => {
           })}
         </div>
         {loading && <p className={styles.loading}>Loading...</p>}
+        {showReport && (
+          <div className={styles.reportCard}>
+            <div className={styles.reportRow}>
+              <span>{t('planner', 'workedHours')}</span>
+              <strong>{report.hours.toFixed(1)}</strong>
+            </div>
+            <div className={styles.reportRow}>
+              <span>{t('planner', 'expectedSalary')}</span>
+              <strong>₴{report.salary.toFixed(2)}</strong>
+            </div>
+          </div>
+        )}
       </section>
 
       <section className={styles.panel}>
