@@ -209,7 +209,7 @@ const CalendarPlanner: React.FC = () => {
 
       {chooserOpen ? (
         <div className={styles.modalOverlay} onClick={() => setChooserOpen(false)}>
-          <div className={styles.modalCard} onClick={(e) => e.stopPropagation()}>
+          <div className={styles.modalSheet} onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
               className={styles.addShiftBtn}
@@ -231,49 +231,65 @@ const CalendarPlanner: React.FC = () => {
 
       {editorOpened ? (
         <div className={styles.modalOverlay} onClick={() => setEditorOpened(false)}>
-          <section className={styles.editorCard} onClick={(e) => e.stopPropagation()}>
+          <section className={styles.modalSheet} onClick={(e) => e.stopPropagation()}>
             <div className={styles.editorTop}>
-              <h2 className={styles.editorTitle}>Смена</h2>
-              <button type="button" className={styles.closeBtn} onClick={() => setEditorOpened(false)}>✕</button>
+              <h2 className={styles.modalTitle}>{t('planner', 'shiftTitle')}</h2>
+              <button type="button" className={styles.closeBtn} onClick={() => setEditorOpened(false)} aria-label={t('planner', 'dismiss')}>
+                ✕
+              </button>
             </div>
 
-            <div className={styles.blockCard}>
+            <div className={styles.formBlock}>
               <div className={styles.formRow}>
-                <label>Название</label>
+                <label htmlFor="shift-name">{t('subscriptions', 'name')}</label>
                 <input
+                  id="shift-name"
                   type="text"
                   value={shiftName}
                   onChange={(e) => setShiftName(e.target.value)}
-                  className={styles.lineInput}
+                  className={styles.fieldInput}
                 />
               </div>
               <div className={styles.formRow}>
-                <label>Символ</label>
+                <label htmlFor="shift-symbol">{t('planner', 'shiftSymbolLabel')}</label>
                 <input
+                  id="shift-symbol"
                   type="text"
                   value={shiftSymbol}
                   onChange={(e) => setShiftSymbol(e.target.value)}
-                  className={styles.lineInput}
+                  className={styles.fieldInput}
                 />
               </div>
             </div>
 
-            <h3 className={styles.groupTitle}>Значения по умолчанию</h3>
-            <div className={styles.blockCard}>
+            <h3 className={styles.groupTitle}>{t('planner', 'defaultValues')}</h3>
+            <div className={styles.formBlock}>
               <div className={styles.rowBetween}>
-                <span>Весь день</span>
+                <span className={styles.rowLabel}>{t('planner', 'fullDay')}</span>
                 <label className={styles.switch}>
                   <input type="checkbox" checked={isFullDay} onChange={(e) => setIsFullDay(e.target.checked)} />
                   <span className={styles.slider} />
                 </label>
               </div>
               <div className={styles.rowBetween}>
-                <span>Начало</span>
-                <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className={styles.timeInput} />
+                <span className={styles.rowLabel}>{t('planner', 'timeStart')}</span>
+                <input
+                  type="time"
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                  className={styles.timeInput}
+                  disabled={isFullDay}
+                />
               </div>
               <div className={styles.rowBetween}>
-                <span>Конец</span>
-                <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className={styles.timeInput} />
+                <span className={styles.rowLabel}>{t('planner', 'timeEnd')}</span>
+                <input
+                  type="time"
+                  value={endTime}
+                  onChange={(e) => setEndTime(e.target.value)}
+                  className={styles.timeInput}
+                  disabled={isFullDay}
+                />
               </div>
             </div>
 

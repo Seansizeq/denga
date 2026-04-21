@@ -94,6 +94,12 @@ type Dict = {
     unsavedConfirm: string;
     save: string;
     saved: string;
+    shiftTitle: string;
+    shiftSymbolLabel: string;
+    fullDay: string;
+    timeStart: string;
+    timeEnd: string;
+    dismiss: string;
   };
   subscriptions: {
     title: string;
@@ -239,6 +245,12 @@ const uk: Dict = {
     unsavedConfirm: 'Є незбережені зміни. Продовжити без збереження?',
     save: 'Зберегти',
     saved: 'Збережено',
+    shiftTitle: 'Зміна',
+    shiftSymbolLabel: 'Символ',
+    fullDay: 'Увесь день',
+    timeStart: 'Початок',
+    timeEnd: 'Кінець',
+    dismiss: 'Закрити',
   },
   subscriptions: {
     title: 'Підписки',
@@ -389,6 +401,12 @@ const ru: Dict = {
     unsavedConfirm: 'Есть несохранённые изменения. Продолжить без сохранения?',
     save: 'Сохранить',
     saved: 'Сохранено',
+    shiftTitle: 'Смена',
+    shiftSymbolLabel: 'Символ',
+    fullDay: 'Весь день',
+    timeStart: 'Начало',
+    timeEnd: 'Конец',
+    dismiss: 'Закрыть',
   },
   subscriptions: {
     title: 'Подписки',
@@ -539,6 +557,12 @@ const en: Dict = {
     unsavedConfirm: 'You have unsaved changes. Continue without saving?',
     save: 'Save',
     saved: 'Saved',
+    shiftTitle: 'Shift',
+    shiftSymbolLabel: 'Symbol',
+    fullDay: 'All day',
+    timeStart: 'Start',
+    timeEnd: 'End',
+    dismiss: 'Close',
   },
   subscriptions: {
     title: 'Subscriptions',
