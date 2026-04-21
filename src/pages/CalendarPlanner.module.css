@@ -400,6 +400,16 @@
   gap: 10px;
 }
 
+.editorCard {
+  width: 100%;
+  max-width: 420px;
+  background: #15131f;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  padding: 14px;
+  box-shadow: 0 20px 36px rgba(0, 0, 0, 0.45);
+}
+
 .templateChooser {
   border-top: 1px solid rgba(255, 255, 255, 0.1);
   padding-top: 8px;

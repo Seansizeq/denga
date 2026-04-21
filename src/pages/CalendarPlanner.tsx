@@ -230,30 +230,6 @@ const CalendarPlanner: React.FC = () => {
           })}
         </div>
 
-        {editorOpened ? (
-          <>
-            <div className={styles.formRow}>
-              <label>{t('planner', 'workedHours')}</label>
-              <input type="number" min={0} step="0.5" value={current.workedHours || ''} onChange={(e) => updateCurrent({ workedHours: Number(e.target.value || 0) })} />
-            </div>
-            <div className={styles.formRow}>
-              <label>{t('planner', 'salaryRate')}</label>
-              <input type="number" min={0} value={current.salaryRate || ''} onChange={(e) => updateCurrent({ salaryRate: Number(e.target.value || 0) })} />
-            </div>
-            <div className={styles.formRow}>
-              <label>{t('planner', 'salaryAmount')}</label>
-              <input type="number" min={0} value={current.salaryAmount || ''} onChange={(e) => updateCurrent({ salaryAmount: Number(e.target.value || 0) })} />
-            </div>
-            <div className={styles.formRow}>
-              <label>{t('planner', 'note')}</label>
-              <textarea rows={3} value={current.note} placeholder={t('planner', 'notePlaceholder')} onChange={(e) => updateCurrent({ note: e.target.value })} />
-            </div>
-            <button type="button" className={styles.saveBtn} disabled={saving} onClick={() => saveDay(selectedDay, current)}>
-              {justSaved ? t('planner', 'saved') : saving ? '...' : t('planner', 'save')}
-            </button>
-          </>
-        ) : null}
-
         {loading && <p className={styles.loading}>{t('planner', 'loading')}</p>}
       </section>
 
@@ -301,6 +277,40 @@ const CalendarPlanner: React.FC = () => {
               </div>
             ) : null}
           </div>
+        </div>
+      ) : null}
+
+      {editorOpened ? (
+        <div className={styles.modalOverlay} onClick={() => setEditorOpened(false)}>
+          <section className={styles.editorCard} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.formRow}>
+              <label>{t('planner', 'workedHours')}</label>
+              <input type="number" min={0} step="0.5" value={current.workedHours || ''} onChange={(e) => updateCurrent({ workedHours: Number(e.target.value || 0) })} />
+            </div>
+            <div className={styles.formRow}>
+              <label>{t('planner', 'salaryRate')}</label>
+              <input type="number" min={0} value={current.salaryRate || ''} onChange={(e) => updateCurrent({ salaryRate: Number(e.target.value || 0) })} />
+            </div>
+            <div className={styles.formRow}>
+              <label>{t('planner', 'salaryAmount')}</label>
+              <input type="number" min={0} value={current.salaryAmount || ''} onChange={(e) => updateCurrent({ salaryAmount: Number(e.target.value || 0) })} />
+            </div>
+            <div className={styles.formRow}>
+              <label>{t('planner', 'note')}</label>
+              <textarea rows={3} value={current.note} placeholder={t('planner', 'notePlaceholder')} onChange={(e) => updateCurrent({ note: e.target.value })} />
+            </div>
+            <button
+              type="button"
+              className={styles.saveBtn}
+              disabled={saving}
+              onClick={async () => {
+                await saveDay(selectedDay, current);
+                setEditorOpened(false);
+              }}
+            >
+              {justSaved ? t('planner', 'saved') : saving ? '...' : t('planner', 'save')}
+            </button>
+          </section>
         </div>
       ) : null}
 
