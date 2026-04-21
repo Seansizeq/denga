@@ -50,6 +50,8 @@ type Dict = {
   planner: {
     title: string;
     subtitle: string;
+    tabCalendar: string;
+    tabSettings: string;
     monthHint: string;
     prevMonth: string;
     nextMonth: string;
@@ -179,6 +181,8 @@ const uk: Dict = {
   planner: {
     title: 'Календар',
     subtitle: 'Відмічайте зміни, ставку та зарплату по днях',
+    tabCalendar: 'Календар',
+    tabSettings: 'Налаштування',
     monthHint: 'Оберіть місяць або гортайте стрілками',
     prevMonth: 'Попередній місяць',
     nextMonth: 'Наступний місяць',
@@ -313,6 +317,8 @@ const ru: Dict = {
   planner: {
     title: 'Календарь',
     subtitle: 'Отмечайте смены, ставку и зарплату по дням',
+    tabCalendar: 'Календарь',
+    tabSettings: 'Настройки',
     monthHint: 'Выберите месяц или листайте стрелками',
     prevMonth: 'Предыдущий месяц',
     nextMonth: 'Следующий месяц',
@@ -447,6 +453,8 @@ const en: Dict = {
   planner: {
     title: 'Calendar',
     subtitle: 'Track shifts, salary rate and pay by date',
+    tabCalendar: 'Calendar',
+    tabSettings: 'Settings',
     monthHint: 'Pick month or use arrows to navigate',
     prevMonth: 'Previous month',
     nextMonth: 'Next month',
