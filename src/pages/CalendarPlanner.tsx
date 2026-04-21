@@ -34,6 +34,12 @@ const monthLabel = (value: string, locale: string): string => {
   return d.toLocaleDateString(locale, { month: 'long', year: 'numeric' });
 };
 
+const shiftMonth = (monthValue: string, delta: number): string => {
+  const [year, month] = monthValue.split('-').map(Number);
+  const shifted = new Date(year, (month - 1) + delta, 1);
+  return `${shifted.getFullYear()}-${String(shifted.getMonth() + 1).padStart(2, '0')}`;
+};
+
 const buildDaysForMonth = (monthValue: string): string[] => {
   const [year, month] = monthValue.split('-').map(Number);
   const daysInMonth = new Date(year, month, 0).getDate();
@@ -92,6 +98,10 @@ const CalendarPlanner: React.FC = () => {
       { hours: 0, salary: 0 }
     );
   }, [days, store]);
+  const filledDays = useMemo(
+    () => days.reduce((acc, dayIso) => (store[dayIso]?.hasShift ? acc + 1 : acc), 0),
+    [days, store]
+  );
 
   const current = store[selectedDay] ?? {
     hasShift: false,
@@ -189,7 +199,14 @@ const CalendarPlanner: React.FC = () => {
 
   const canLeaveDraft = () => {
     if (!isDirty) return true;
-    return window.confirm('Є незбережені зміни. Продовжити без збереження?');
+    return window.confirm(t('planner', 'unsavedConfirm'));
+  };
+
+  const onMonthChange = (nextMonth: string) => {
+    if (!canLeaveDraft()) return;
+    setMonth(nextMonth);
+    const [year, m] = nextMonth.split('-');
+    setSelectedDay(`${year}-${m}-01`);
   };
 
   return (
@@ -201,8 +218,19 @@ const CalendarPlanner: React.FC = () => {
 
       <section className={styles.panel}>
         <div className={styles.monthRow}>
-          <span className={styles.monthLabel}>{monthLabel(month, locale)}</span>
+          <div className={styles.monthBlock}>
+            <span className={styles.monthLabel}>{monthLabel(month, locale)}</span>
+            <span className={styles.monthHint}>{t('planner', 'monthHint')}</span>
+          </div>
           <div className={styles.monthControls}>
+            <button
+              type="button"
+              className={styles.arrowBtn}
+              onClick={() => onMonthChange(shiftMonth(month, -1))}
+              aria-label={t('planner', 'prevMonth')}
+            >
+              ←
+            </button>
             <button
               type="button"
               className={styles.reportBtn}
@@ -210,18 +238,34 @@ const CalendarPlanner: React.FC = () => {
             >
               {t('planner', 'report')}
             </button>
+            <button
+              type="button"
+              className={styles.arrowBtn}
+              onClick={() => onMonthChange(shiftMonth(month, 1))}
+              aria-label={t('planner', 'nextMonth')}
+            >
+              →
+            </button>
             <input
               type="month"
               className={styles.monthInput}
               value={month}
-              onChange={(e) => {
-                if (!canLeaveDraft()) return;
-                const nextMonth = e.target.value;
-                setMonth(nextMonth);
-                const [year, m] = nextMonth.split('-');
-                setSelectedDay(`${year}-${m}-01`);
-              }}
+              onChange={(e) => onMonthChange(e.target.value)}
             />
+          </div>
+        </div>
+        <div className={styles.quickStats}>
+          <div className={styles.quickStatItem}>
+            <span>{t('planner', 'filledDays')}</span>
+            <strong>{filledDays}</strong>
+          </div>
+          <div className={styles.quickStatItem}>
+            <span>{t('planner', 'workedHours')}</span>
+            <strong>{report.hours.toFixed(1)}</strong>
+          </div>
+          <div className={styles.quickStatItem}>
+            <span>{t('planner', 'expectedSalary')}</span>
+            <strong>₴{report.salary.toFixed(2)}</strong>
           </div>
         </div>
 
@@ -257,17 +301,17 @@ const CalendarPlanner: React.FC = () => {
             );
           })}
         </div>
-        {loading && <p className={styles.loading}>Loading...</p>}
+        {loading && <p className={styles.loading}>{t('planner', 'loading')}</p>}
         {showReport && (
           <div className={styles.reportCard}>
             <div className={styles.legend}>
               <span className={styles.legendItem}>
                 <span className={`${styles.legendDot} ${styles.todayDot}`} />
-                Today
+                {t('planner', 'today')}
               </span>
               <span className={styles.legendItem}>
                 <span className={`${styles.legendDot} ${styles.filledDot}`} />
-                Filled day
+                {t('planner', 'filledDay')}
               </span>
             </div>
             <div className={styles.reportRow}>

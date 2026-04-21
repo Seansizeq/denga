@@ -50,6 +50,9 @@ type Dict = {
   planner: {
     title: string;
     subtitle: string;
+    monthHint: string;
+    prevMonth: string;
+    nextMonth: string;
     selectedDate: string;
     hasShift: string;
     salaryRate: string;
@@ -57,8 +60,13 @@ type Dict = {
     note: string;
     notePlaceholder: string;
     report: string;
+    today: string;
+    filledDay: string;
+    filledDays: string;
     workedHours: string;
     expectedSalary: string;
+    loading: string;
+    unsavedConfirm: string;
     save: string;
     saved: string;
   };
@@ -162,6 +170,9 @@ const uk: Dict = {
   planner: {
     title: 'Календар',
     subtitle: 'Відмічайте зміни, ставку та зарплату по днях',
+    monthHint: 'Оберіть місяць або гортайте стрілками',
+    prevMonth: 'Попередній місяць',
+    nextMonth: 'Наступний місяць',
     selectedDate: 'Обрана дата',
     hasShift: 'Є зміна',
     salaryRate: 'Ставка за зміну',
@@ -169,8 +180,13 @@ const uk: Dict = {
     note: 'Нотатка',
     notePlaceholder: 'Наприклад: нічна зміна',
     report: 'Звіт',
+    today: 'Сьогодні',
+    filledDay: 'Заповнений день',
+    filledDays: 'Заповнено днів',
     workedHours: 'Відпрацьовано годин',
     expectedSalary: 'Очікувана зарплата',
+    loading: 'Завантаження...',
+    unsavedConfirm: 'Є незбережені зміни. Продовжити без збереження?',
     save: 'Зберегти',
     saved: 'Збережено',
   },
@@ -279,6 +295,9 @@ const ru: Dict = {
   planner: {
     title: 'Календарь',
     subtitle: 'Отмечайте смены, ставку и зарплату по дням',
+    monthHint: 'Выберите месяц или листайте стрелками',
+    prevMonth: 'Предыдущий месяц',
+    nextMonth: 'Следующий месяц',
     selectedDate: 'Выбранная дата',
     hasShift: 'Есть смена',
     salaryRate: 'Ставка за смену',
@@ -286,8 +305,13 @@ const ru: Dict = {
     note: 'Заметка',
     notePlaceholder: 'Например: ночная смена',
     report: 'Отчёт',
+    today: 'Сегодня',
+    filledDay: 'Заполненный день',
+    filledDays: 'Заполнено дней',
     workedHours: 'Отработано часов',
     expectedSalary: 'Ожидаемая зарплата',
+    loading: 'Загрузка...',
+    unsavedConfirm: 'Есть несохранённые изменения. Продолжить без сохранения?',
     save: 'Сохранить',
     saved: 'Сохранено',
   },
@@ -396,6 +420,9 @@ const en: Dict = {
   planner: {
     title: 'Calendar',
     subtitle: 'Track shifts, salary rate and pay by date',
+    monthHint: 'Pick month or use arrows to navigate',
+    prevMonth: 'Previous month',
+    nextMonth: 'Next month',
     selectedDate: 'Selected date',
     hasShift: 'Has shift',
     salaryRate: 'Shift rate',
@@ -403,8 +430,13 @@ const en: Dict = {
     note: 'Note',
     notePlaceholder: 'Example: night shift',
     report: 'Report',
+    today: 'Today',
+    filledDay: 'Filled day',
+    filledDays: 'Filled days',
     workedHours: 'Worked hours',
     expectedSalary: 'Expected salary',
+    loading: 'Loading...',
+    unsavedConfirm: 'You have unsaved changes. Continue without saving?',
     save: 'Save',
     saved: 'Saved',
   },
