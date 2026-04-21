@@ -62,6 +62,11 @@ const CalendarPlanner: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [chooserOpen, setChooserOpen] = useState(false);
   const [editorOpened, setEditorOpened] = useState(false);
+  const [shiftName, setShiftName] = useState('');
+  const [shiftSymbol, setShiftSymbol] = useState('');
+  const [isFullDay, setIsFullDay] = useState(true);
+  const [startTime, setStartTime] = useState('09:00');
+  const [endTime, setEndTime] = useState('17:00');
 
   const calendarCells = useMemo(() => buildCalendarCells(month), [month]);
   const weekdays = useMemo(() => {
@@ -114,20 +119,6 @@ const CalendarPlanner: React.FC = () => {
     };
   }, [month]);
 
-  const updateCurrent = (patch: Partial<DayPlan>) => {
-    const merged = { ...current, ...patch };
-    setStore((prev) => ({
-      ...prev,
-      [selectedDay]: {
-        hasShift: Boolean(merged.hasShift),
-        workedHours: toNumber(merged.workedHours),
-        salaryRate: toNumber(merged.salaryRate),
-        salaryAmount: toNumber(merged.salaryAmount),
-        note: String(merged.note ?? ''),
-      },
-    }));
-  };
-
   const saveDay = async (dayIso: string, payload: DayPlan) => {
     setSaving(true);
     try {
@@ -150,6 +141,21 @@ const CalendarPlanner: React.FC = () => {
     setStore((prev) => ({ ...prev, [selectedDay]: payload }));
     setEditorOpened(true);
     setChooserOpen(false);
+    setShiftName('');
+    setShiftSymbol('');
+    setIsFullDay(true);
+    setStartTime('09:00');
+    setEndTime('17:00');
+  };
+
+  const hoursFromTimeRange = (start: string, end: string): number => {
+    const [sh, sm] = start.split(':').map(Number);
+    const [eh, em] = end.split(':').map(Number);
+    if (!Number.isFinite(sh) || !Number.isFinite(sm) || !Number.isFinite(eh) || !Number.isFinite(em)) return 0;
+    const startMin = sh * 60 + sm;
+    let endMin = eh * 60 + em;
+    if (endMin <= startMin) endMin += 24 * 60;
+    return Math.max(0, Number(((endMin - startMin) / 60).toFixed(2)));
   };
 
   return (
@@ -226,28 +232,65 @@ const CalendarPlanner: React.FC = () => {
       {editorOpened ? (
         <div className={styles.modalOverlay} onClick={() => setEditorOpened(false)}>
           <section className={styles.editorCard} onClick={(e) => e.stopPropagation()}>
-            <div className={styles.formRow}>
-              <label>{t('planner', 'workedHours')}</label>
-              <input type="number" min={0} step="0.5" value={current.workedHours || ''} onChange={(e) => updateCurrent({ workedHours: Number(e.target.value || 0) })} />
+            <div className={styles.editorTop}>
+              <h2 className={styles.editorTitle}>Смена</h2>
+              <button type="button" className={styles.closeBtn} onClick={() => setEditorOpened(false)}>✕</button>
             </div>
-            <div className={styles.formRow}>
-              <label>{t('planner', 'salaryRate')}</label>
-              <input type="number" min={0} value={current.salaryRate || ''} onChange={(e) => updateCurrent({ salaryRate: Number(e.target.value || 0) })} />
+
+            <div className={styles.blockCard}>
+              <div className={styles.formRow}>
+                <label>Название</label>
+                <input
+                  type="text"
+                  value={shiftName}
+                  onChange={(e) => setShiftName(e.target.value)}
+                  className={styles.lineInput}
+                />
+              </div>
+              <div className={styles.formRow}>
+                <label>Символ</label>
+                <input
+                  type="text"
+                  value={shiftSymbol}
+                  onChange={(e) => setShiftSymbol(e.target.value)}
+                  className={styles.lineInput}
+                />
+              </div>
             </div>
-            <div className={styles.formRow}>
-              <label>{t('planner', 'salaryAmount')}</label>
-              <input type="number" min={0} value={current.salaryAmount || ''} onChange={(e) => updateCurrent({ salaryAmount: Number(e.target.value || 0) })} />
+
+            <h3 className={styles.groupTitle}>Значения по умолчанию</h3>
+            <div className={styles.blockCard}>
+              <div className={styles.rowBetween}>
+                <span>Весь день</span>
+                <label className={styles.switch}>
+                  <input type="checkbox" checked={isFullDay} onChange={(e) => setIsFullDay(e.target.checked)} />
+                  <span className={styles.slider} />
+                </label>
+              </div>
+              <div className={styles.rowBetween}>
+                <span>Начало</span>
+                <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className={styles.timeInput} />
+              </div>
+              <div className={styles.rowBetween}>
+                <span>Конец</span>
+                <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className={styles.timeInput} />
+              </div>
             </div>
-            <div className={styles.formRow}>
-              <label>{t('planner', 'note')}</label>
-              <textarea rows={3} value={current.note} placeholder={t('planner', 'notePlaceholder')} onChange={(e) => updateCurrent({ note: e.target.value })} />
-            </div>
+
             <button
               type="button"
               className={styles.saveBtn}
               disabled={saving}
               onClick={async () => {
-                await saveDay(selectedDay, current);
+                const workedHours = isFullDay ? 8 : hoursFromTimeRange(startTime, endTime);
+                const payload: DayPlan = {
+                  ...current,
+                  hasShift: true,
+                  workedHours,
+                  note: [shiftName.trim(), shiftSymbol.trim()].filter(Boolean).join(' • '),
+                };
+                setStore((prev) => ({ ...prev, [selectedDay]: payload }));
+                await saveDay(selectedDay, payload);
                 setEditorOpened(false);
               }}
             >
