@@ -67,6 +67,7 @@ const CalendarPlanner: React.FC = () => {
   const [isFullDay, setIsFullDay] = useState(true);
   const [startTime, setStartTime] = useState('09:00');
   const [endTime, setEndTime] = useState('17:00');
+  const [keyboardInset, setKeyboardInset] = useState(0);
 
   const calendarCells = useMemo(() => buildCalendarCells(month), [month]);
   const weekdays = useMemo(() => {
@@ -118,6 +119,32 @@ const CalendarPlanner: React.FC = () => {
       cancelled = true;
     };
   }, [month]);
+
+  useEffect(() => {
+    if (!editorOpened && !chooserOpen) {
+      setKeyboardInset(0);
+      return;
+    }
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const updateInset = () => {
+      const hidden = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      setKeyboardInset(hidden);
+    };
+    updateInset();
+    vv.addEventListener('resize', updateInset);
+    vv.addEventListener('scroll', updateInset);
+    return () => {
+      vv.removeEventListener('resize', updateInset);
+      vv.removeEventListener('scroll', updateInset);
+    };
+  }, [editorOpened, chooserOpen]);
+
+  const scrollFieldIntoView = (el: HTMLElement | null) => {
+    window.requestAnimationFrame(() => {
+      el?.scrollIntoView({ block: 'nearest', behavior: 'smooth', inline: 'nearest' });
+    });
+  };
 
   const saveDay = async (dayIso: string, payload: DayPlan) => {
     setSaving(true);
@@ -208,7 +235,15 @@ const CalendarPlanner: React.FC = () => {
       </section>
 
       {chooserOpen ? (
-        <div className={styles.modalOverlay} onClick={() => setChooserOpen(false)}>
+        <div
+          className={styles.modalOverlay}
+          onClick={() => setChooserOpen(false)}
+          style={
+            keyboardInset > 8
+              ? { paddingBottom: `${12 + keyboardInset}px` }
+              : undefined
+          }
+        >
           <div className={styles.modalSheet} onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
@@ -230,66 +265,91 @@ const CalendarPlanner: React.FC = () => {
       ) : null}
 
       {editorOpened ? (
-        <div className={styles.modalOverlay} onClick={() => setEditorOpened(false)}>
-          <section className={styles.modalSheet} onClick={(e) => e.stopPropagation()}>
+        <div
+          className={styles.modalOverlay}
+          onClick={() => setEditorOpened(false)}
+          style={
+            keyboardInset > 8
+              ? { paddingBottom: `${12 + keyboardInset}px` }
+              : undefined
+          }
+        >
+          <section className={styles.modalSheetEditor} onClick={(e) => e.stopPropagation()}>
             <div className={styles.editorTop}>
-              <h2 className={styles.modalTitle}>{t('planner', 'shiftTitle')}</h2>
-              <button type="button" className={styles.closeBtn} onClick={() => setEditorOpened(false)} aria-label={t('planner', 'dismiss')}>
-                ✕
+              <button
+                type="button"
+                className={styles.closeTextBtn}
+                onClick={() => setEditorOpened(false)}
+              >
+                <span className={styles.closeGlyph} aria-hidden>
+                  ✕
+                </span>
+                <span>{t('planner', 'dismiss')}</span>
               </button>
+              <h2 className={styles.modalTitle}>{t('planner', 'shiftTitle')}</h2>
             </div>
 
-            <div className={styles.formBlock}>
-              <div className={styles.formRow}>
-                <label htmlFor="shift-name">{t('subscriptions', 'name')}</label>
-                <input
-                  id="shift-name"
-                  type="text"
-                  value={shiftName}
-                  onChange={(e) => setShiftName(e.target.value)}
-                  className={styles.fieldInput}
-                />
+            <div className={styles.modalScrollBody}>
+              <div className={styles.formBlock}>
+                <div className={styles.formRow}>
+                  <label htmlFor="shift-name">{t('subscriptions', 'name')}</label>
+                  <input
+                    id="shift-name"
+                    type="text"
+                    enterKeyHint="next"
+                    autoComplete="off"
+                    value={shiftName}
+                    onChange={(e) => setShiftName(e.target.value)}
+                    onFocus={(e) => scrollFieldIntoView(e.currentTarget)}
+                    className={styles.fieldInput}
+                  />
+                </div>
+                <div className={styles.formRow}>
+                  <label htmlFor="shift-symbol">{t('planner', 'shiftSymbolLabel')}</label>
+                  <input
+                    id="shift-symbol"
+                    type="text"
+                    enterKeyHint="done"
+                    autoComplete="off"
+                    value={shiftSymbol}
+                    onChange={(e) => setShiftSymbol(e.target.value)}
+                    onFocus={(e) => scrollFieldIntoView(e.currentTarget)}
+                    className={styles.fieldInput}
+                  />
+                </div>
               </div>
-              <div className={styles.formRow}>
-                <label htmlFor="shift-symbol">{t('planner', 'shiftSymbolLabel')}</label>
-                <input
-                  id="shift-symbol"
-                  type="text"
-                  value={shiftSymbol}
-                  onChange={(e) => setShiftSymbol(e.target.value)}
-                  className={styles.fieldInput}
-                />
-              </div>
-            </div>
 
-            <h3 className={styles.groupTitle}>{t('planner', 'defaultValues')}</h3>
-            <div className={styles.formBlock}>
-              <div className={styles.rowBetween}>
-                <span className={styles.rowLabel}>{t('planner', 'fullDay')}</span>
-                <label className={styles.switch}>
-                  <input type="checkbox" checked={isFullDay} onChange={(e) => setIsFullDay(e.target.checked)} />
-                  <span className={styles.slider} />
-                </label>
-              </div>
-              <div className={styles.rowBetween}>
-                <span className={styles.rowLabel}>{t('planner', 'timeStart')}</span>
-                <input
-                  type="time"
-                  value={startTime}
-                  onChange={(e) => setStartTime(e.target.value)}
-                  className={styles.timeInput}
-                  disabled={isFullDay}
-                />
-              </div>
-              <div className={styles.rowBetween}>
-                <span className={styles.rowLabel}>{t('planner', 'timeEnd')}</span>
-                <input
-                  type="time"
-                  value={endTime}
-                  onChange={(e) => setEndTime(e.target.value)}
-                  className={styles.timeInput}
-                  disabled={isFullDay}
-                />
+              <h3 className={styles.groupTitle}>{t('planner', 'defaultValues')}</h3>
+              <div className={styles.formBlock}>
+                <div className={styles.rowBetween}>
+                  <span className={styles.rowLabel}>{t('planner', 'fullDay')}</span>
+                  <label className={styles.switch}>
+                    <input type="checkbox" checked={isFullDay} onChange={(e) => setIsFullDay(e.target.checked)} />
+                    <span className={styles.slider} />
+                  </label>
+                </div>
+                <div className={styles.rowBetween}>
+                  <span className={styles.rowLabel}>{t('planner', 'timeStart')}</span>
+                  <input
+                    type="time"
+                    value={startTime}
+                    onChange={(e) => setStartTime(e.target.value)}
+                    className={styles.timeInput}
+                    disabled={isFullDay}
+                    onFocus={(e) => scrollFieldIntoView(e.currentTarget)}
+                  />
+                </div>
+                <div className={styles.rowBetween}>
+                  <span className={styles.rowLabel}>{t('planner', 'timeEnd')}</span>
+                  <input
+                    type="time"
+                    value={endTime}
+                    onChange={(e) => setEndTime(e.target.value)}
+                    className={styles.timeInput}
+                    disabled={isFullDay}
+                    onFocus={(e) => scrollFieldIntoView(e.currentTarget)}
+                  />
+                </div>
               </div>
             </div>
 

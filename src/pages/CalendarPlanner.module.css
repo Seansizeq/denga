@@ -140,7 +140,7 @@
 .monthInput:focus-visible,
 .addShiftBtn:focus-visible,
 .saveBtn:focus-visible,
-.closeBtn:focus-visible,
+.closeTextBtn:focus-visible,
 .fieldInput:focus-visible,
 .timeInput:focus-visible {
   outline: 2px solid rgba(255, 213, 59, 0.9);
@@ -173,7 +173,11 @@
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  padding: 20px 14px calc(var(--bottom-nav-height) + var(--safe-area-inset-bottom) + 18px);
+  padding-top: max(12px, env(safe-area-inset-top, 0px));
+  padding-left: 14px;
+  padding-right: 14px;
+  padding-bottom: calc(var(--bottom-nav-height) + var(--safe-area-inset-bottom) + 18px);
+  box-sizing: border-box;
 }
 
 .modalSheet {
@@ -186,12 +190,67 @@
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
 }
 
+.modalSheetEditor {
+  width: 100%;
+  max-width: 520px;
+  background: #15131f;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  padding: 12px 14px 14px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+  max-height: min(88dvh, calc(100svh - max(20px, env(safe-area-inset-top, 0px)) - 16px));
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.modalScrollBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+}
+
 .editorTop {
+  position: relative;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 14px;
+  justify-content: center;
+  min-height: 40px;
+  margin-bottom: 12px;
+  flex-shrink: 0;
+}
+
+.closeTextBtn {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 4px 6px 0;
+  margin: 0;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 15px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  max-width: 46%;
+}
+
+.closeTextBtn:active {
+  color: var(--text-primary);
+}
+
+.closeGlyph {
+  font-size: 16px;
+  opacity: 0.85;
 }
 
 .modalTitle {
@@ -199,33 +258,15 @@
   font-size: 17px;
   font-weight: 600;
   color: var(--text-primary);
-}
-
-.closeBtn {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.07);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: var(--text-primary);
-  font-size: 18px;
-  line-height: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  padding: 0;
-  flex-shrink: 0;
-  transition: background-color 0.15s ease, transform 0.15s ease;
-}
-
-.closeBtn:active {
-  transform: scale(0.94);
-  background: rgba(255, 255, 255, 0.12);
+  text-align: center;
+  max-width: 52%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .groupTitle {
-  margin: 16px 0 10px;
+  margin: 18px 0 10px;
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.06em;
@@ -369,8 +410,9 @@
 }
 
 .saveBtn {
-  margin-top: 14px;
+  margin-top: 12px;
   width: 100%;
+  flex-shrink: 0;
   border: none;
   border-radius: 12px;
   background: var(--accent-yellow);
