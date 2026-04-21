@@ -14,29 +14,6 @@
   gap: 12px;
 }
 
-.tabsRow {
-  margin-top: 12px;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.tabBtn {
-  border: 1px solid #2f2c3f;
-  background: #171521;
-  color: var(--text-secondary);
-  border-radius: 12px;
-  padding: 10px 12px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.tabBtnActive {
-  color: var(--text-primary);
-  border-color: var(--accent-yellow);
-  box-shadow: inset 0 0 0 1px var(--accent-yellow);
-}
-
 .title {
   margin: 0;
   font-size: 28px;
@@ -116,7 +93,9 @@
 }
 
 .topSettingsBtn {
-  display: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .monthInput {
@@ -219,7 +198,7 @@
 .day:focus-visible,
 .arrowBtn:focus-visible,
 .reportBtn:focus-visible,
-.tabBtn:focus-visible,
+.topSettingsBtn:focus-visible,
 .monthInput:focus-visible,
 .addShiftBtn:focus-visible,
 .selectInput:focus-visible,

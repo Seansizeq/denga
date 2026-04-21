@@ -85,7 +85,7 @@ const CalendarPlanner: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [showReport, setShowReport] = useState(false);
   const [editorOpened, setEditorOpened] = useState(false);
-  const [activeTab, setActiveTab] = useState<'calendar' | 'settings'>('calendar');
+  const [showPlannerSettings, setShowPlannerSettings] = useState(false);
   const [prefs, setPrefs] = useState<PlannerPreferences>(DEFAULT_PREFS);
   const today = todayIso();
 
@@ -262,26 +262,71 @@ const CalendarPlanner: React.FC = () => {
       <header className={styles.header}>
         <div className={styles.headerRow}>
           <h1 className={styles.title}>{t('planner', 'title')}</h1>
+          <button
+            type="button"
+            className={styles.topSettingsBtn}
+            onClick={() => setShowPlannerSettings((prev) => !prev)}
+            aria-label={t('planner', 'plannerSettings')}
+          >
+            ⚙
+          </button>
         </div>
         <p className={styles.subtitle}>{t('planner', 'subtitle')}</p>
-        <div className={styles.tabsRow}>
-          <button
-            type="button"
-            className={`${styles.tabBtn} ${activeTab === 'calendar' ? styles.tabBtnActive : ''}`}
-            onClick={() => setActiveTab('calendar')}
-          >
-            {t('planner', 'tabCalendar')}
-          </button>
-          <button
-            type="button"
-            className={`${styles.tabBtn} ${activeTab === 'settings' ? styles.tabBtnActive : ''}`}
-            onClick={() => setActiveTab('settings')}
-          >
-            {t('planner', 'tabSettings')}
-          </button>
-        </div>
       </header>
-      {activeTab === 'calendar' && <section className={styles.panel}>
+      {showPlannerSettings && (
+        <section className={styles.panel}>
+          <h2 className={styles.sectionTitle}>{t('planner', 'plannerSettings')}</h2>
+          <div className={styles.formRow}>
+            <label>{t('planner', 'currency')}</label>
+            <select
+              className={styles.selectInput}
+              value={prefs.currency}
+              onChange={(e) =>
+                setPrefs((prev) => ({ ...prev, currency: e.target.value === 'PLN' ? 'PLN' : 'UAH' }))
+              }
+            >
+              <option value="UAH">{t('planner', 'currencyUah')}</option>
+              <option value="PLN">{t('planner', 'currencyPln')}</option>
+            </select>
+          </div>
+          <div className={styles.formRow}>
+            <label>{t('planner', 'defaultWorkedHours')}</label>
+            <input
+              type="number"
+              min={0}
+              step="0.5"
+              value={prefs.defaultWorkedHours || ''}
+              onChange={(e) =>
+                setPrefs((prev) => ({ ...prev, defaultWorkedHours: Number(e.target.value || 0) }))
+              }
+            />
+          </div>
+          <div className={styles.formRow}>
+            <label>{t('planner', 'defaultSalaryRate')}</label>
+            <input
+              type="number"
+              min={0}
+              value={prefs.defaultSalaryRate || ''}
+              onChange={(e) =>
+                setPrefs((prev) => ({ ...prev, defaultSalaryRate: Number(e.target.value || 0) }))
+              }
+            />
+          </div>
+          <div className={styles.formRow}>
+            <label>{t('planner', 'defaultSalaryAmount')}</label>
+            <input
+              type="number"
+              min={0}
+              value={prefs.defaultSalaryAmount || ''}
+              onChange={(e) =>
+                setPrefs((prev) => ({ ...prev, defaultSalaryAmount: Number(e.target.value || 0) }))
+              }
+            />
+          </div>
+        </section>
+      )}
+
+      <section className={styles.panel}>
         <div className={styles.monthRow}>
           <div className={styles.monthBlock}>
             <span className={styles.monthLabel}>{monthLabel(month, locale)}</span>
@@ -389,58 +434,9 @@ const CalendarPlanner: React.FC = () => {
             </div>
           </div>
         )}
-      </section>}
+      </section>
 
-      {activeTab === 'settings' && <section className={styles.panel}>
-        <h2 className={styles.sectionTitle}>{t('planner', 'plannerSettings')}</h2>
-        <div className={styles.formRow}>
-          <label>{t('planner', 'currency')}</label>
-          <select
-            className={styles.selectInput}
-            value={prefs.currency}
-            onChange={(e) =>
-              setPrefs((prev) => ({ ...prev, currency: e.target.value === 'PLN' ? 'PLN' : 'UAH' }))
-            }
-          >
-            <option value="UAH">{t('planner', 'currencyUah')}</option>
-            <option value="PLN">{t('planner', 'currencyPln')}</option>
-          </select>
-        </div>
-        <div className={styles.formRow}>
-          <label>{t('planner', 'defaultWorkedHours')}</label>
-          <input
-            type="number"
-            min={0}
-            step="0.5"
-            value={prefs.defaultWorkedHours || ''}
-            onChange={(e) =>
-              setPrefs((prev) => ({ ...prev, defaultWorkedHours: Number(e.target.value || 0) }))
-            }
-          />
-        </div>
-        <div className={styles.formRow}>
-          <label>{t('planner', 'defaultSalaryRate')}</label>
-          <input
-            type="number"
-            min={0}
-            value={prefs.defaultSalaryRate || ''}
-            onChange={(e) =>
-              setPrefs((prev) => ({ ...prev, defaultSalaryRate: Number(e.target.value || 0) }))
-            }
-          />
-        </div>
-        <div className={styles.formRow}>
-          <label>{t('planner', 'defaultSalaryAmount')}</label>
-          <input
-            type="number"
-            min={0}
-            value={prefs.defaultSalaryAmount || ''}
-            onChange={(e) =>
-              setPrefs((prev) => ({ ...prev, defaultSalaryAmount: Number(e.target.value || 0) }))
-            }
-          />
-        </div>
-
+      <section className={styles.panel}>
         <h2 className={styles.sectionTitle}>
           {t('planner', 'selectedDate')}: {parseIsoLocal(selectedDay).toLocaleDateString(locale)}
         </h2>
@@ -520,7 +516,7 @@ const CalendarPlanner: React.FC = () => {
             </button>
           </>
         )}
-      </section>}
+      </section>
       <div className={styles.spacer} />
     </div>
   );
