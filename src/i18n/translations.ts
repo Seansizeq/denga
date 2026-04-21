@@ -55,6 +55,8 @@ type Dict = {
     nextMonth: string;
     selectedDate: string;
     hasShift: string;
+    tapAddShift: string;
+    addShift: string;
     salaryRate: string;
     salaryAmount: string;
     note: string;
@@ -175,6 +177,8 @@ const uk: Dict = {
     nextMonth: 'Наступний місяць',
     selectedDate: 'Обрана дата',
     hasShift: 'Є зміна',
+    tapAddShift: 'Натисніть кнопку, щоб додати зміну на обраний день',
+    addShift: 'Додати зміну',
     salaryRate: 'Ставка за зміну',
     salaryAmount: 'Зарплата за день',
     note: 'Нотатка',
@@ -300,6 +304,8 @@ const ru: Dict = {
     nextMonth: 'Следующий месяц',
     selectedDate: 'Выбранная дата',
     hasShift: 'Есть смена',
+    tapAddShift: 'Нажмите кнопку, чтобы добавить смену на выбранный день',
+    addShift: 'Добавить смену',
     salaryRate: 'Ставка за смену',
     salaryAmount: 'Зарплата за день',
     note: 'Заметка',
@@ -425,6 +431,8 @@ const en: Dict = {
     nextMonth: 'Next month',
     selectedDate: 'Selected date',
     hasShift: 'Has shift',
+    tapAddShift: 'Tap the button to add a shift for selected day',
+    addShift: 'Add shift',
     salaryRate: 'Shift rate',
     salaryAmount: 'Daily salary',
     note: 'Note',

@@ -180,6 +180,7 @@
 .arrowBtn:focus-visible,
 .reportBtn:focus-visible,
 .monthInput:focus-visible,
+.addShiftBtn:focus-visible,
 .saveBtn:focus-visible,
 .formRow input:focus-visible,
 .formRow textarea:focus-visible {
@@ -242,6 +243,30 @@
   margin: 0 0 14px;
   color: var(--text-primary);
   font-size: 16px;
+}
+
+.emptyState {
+  border: 1px dashed rgba(255, 255, 255, 0.16);
+  border-radius: 14px;
+  background: rgba(23, 21, 33, 0.55);
+  padding: 16px;
+}
+
+.emptyStateText {
+  margin: 0 0 12px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.addShiftBtn {
+  width: 100%;
+  border: none;
+  border-radius: 12px;
+  background: var(--accent-green);
+  color: #06240e;
+  font-weight: 700;
+  padding: 11px 12px;
+  cursor: pointer;
 }
 
 .switchRow {

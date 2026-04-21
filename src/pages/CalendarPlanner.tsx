@@ -67,6 +67,7 @@ const CalendarPlanner: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showReport, setShowReport] = useState(false);
+  const [editorOpened, setEditorOpened] = useState(false);
   const today = todayIso();
 
   const days = useMemo(() => buildDaysForMonth(month), [month]);
@@ -110,6 +111,9 @@ const CalendarPlanner: React.FC = () => {
     salaryAmount: 0,
     note: '',
   };
+  const hasShiftData = Boolean(
+    current.hasShift || current.workedHours || current.salaryRate || current.salaryAmount || current.note
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -207,7 +211,12 @@ const CalendarPlanner: React.FC = () => {
     setMonth(nextMonth);
     const [year, m] = nextMonth.split('-');
     setSelectedDay(`${year}-${m}-01`);
+    setEditorOpened(false);
   };
+
+  useEffect(() => {
+    setEditorOpened(hasShiftData);
+  }, [selectedDay, hasShiftData]);
 
   return (
     <div className={styles.container}>
@@ -254,21 +263,6 @@ const CalendarPlanner: React.FC = () => {
             />
           </div>
         </div>
-        <div className={styles.quickStats}>
-          <div className={styles.quickStatItem}>
-            <span>{t('planner', 'filledDays')}</span>
-            <strong>{filledDays}</strong>
-          </div>
-          <div className={styles.quickStatItem}>
-            <span>{t('planner', 'workedHours')}</span>
-            <strong>{report.hours.toFixed(1)}</strong>
-          </div>
-          <div className={styles.quickStatItem}>
-            <span>{t('planner', 'expectedSalary')}</span>
-            <strong>₴{report.salary.toFixed(2)}</strong>
-          </div>
-        </div>
-
         <div className={styles.weekdays}>
           {weekdays.map((dayName) => (
             <span key={dayName} className={styles.weekday}>
@@ -293,6 +287,7 @@ const CalendarPlanner: React.FC = () => {
                 onClick={() => {
                   if (!canLeaveDraft()) return;
                   setSelectedDay(dayIso);
+                  setEditorOpened(Boolean(store[dayIso]));
                 }}
               >
                 {dayNum}
@@ -300,6 +295,20 @@ const CalendarPlanner: React.FC = () => {
               </button>
             );
           })}
+        </div>
+        <div className={styles.quickStats}>
+          <div className={styles.quickStatItem}>
+            <span>{t('planner', 'filledDays')}</span>
+            <strong>{filledDays}</strong>
+          </div>
+          <div className={styles.quickStatItem}>
+            <span>{t('planner', 'workedHours')}</span>
+            <strong>{report.hours.toFixed(1)}</strong>
+          </div>
+          <div className={styles.quickStatItem}>
+            <span>{t('planner', 'expectedSalary')}</span>
+            <strong>₴{report.salary.toFixed(2)}</strong>
+          </div>
         </div>
         {loading && <p className={styles.loading}>{t('planner', 'loading')}</p>}
         {showReport && (
@@ -330,60 +339,77 @@ const CalendarPlanner: React.FC = () => {
         <h2 className={styles.sectionTitle}>
           {t('planner', 'selectedDate')}: {parseIsoLocal(selectedDay).toLocaleDateString(locale)}
         </h2>
+        {!editorOpened ? (
+          <div className={styles.emptyState}>
+            <p className={styles.emptyStateText}>{t('planner', 'tapAddShift')}</p>
+            <button
+              type="button"
+              className={styles.addShiftBtn}
+              onClick={() => {
+                setEditorOpened(true);
+                updateCurrent({ hasShift: true });
+              }}
+            >
+              {t('planner', 'addShift')}
+            </button>
+          </div>
+        ) : (
+          <>
+            <label className={styles.switchRow}>
+              <input
+                type="checkbox"
+                checked={current.hasShift}
+                onChange={(e) => updateCurrent({ hasShift: e.target.checked })}
+              />
+              <span>{t('planner', 'hasShift')}</span>
+            </label>
 
-        <label className={styles.switchRow}>
-          <input
-            type="checkbox"
-            checked={current.hasShift}
-            onChange={(e) => updateCurrent({ hasShift: e.target.checked })}
-          />
-          <span>{t('planner', 'hasShift')}</span>
-        </label>
+            <div className={styles.formRow}>
+              <label>{t('planner', 'workedHours')}</label>
+              <input
+                type="number"
+                min={0}
+                step="0.5"
+                value={current.workedHours || ''}
+                onChange={(e) => updateCurrent({ workedHours: Number(e.target.value || 0) })}
+              />
+            </div>
 
-        <div className={styles.formRow}>
-          <label>{t('planner', 'workedHours')}</label>
-          <input
-            type="number"
-            min={0}
-            step="0.5"
-            value={current.workedHours || ''}
-            onChange={(e) => updateCurrent({ workedHours: Number(e.target.value || 0) })}
-          />
-        </div>
+            <div className={styles.formRow}>
+              <label>{t('planner', 'salaryRate')}</label>
+              <input
+                type="number"
+                min={0}
+                value={current.salaryRate || ''}
+                onChange={(e) => updateCurrent({ salaryRate: Number(e.target.value || 0) })}
+              />
+            </div>
 
-        <div className={styles.formRow}>
-          <label>{t('planner', 'salaryRate')}</label>
-          <input
-            type="number"
-            min={0}
-            value={current.salaryRate || ''}
-            onChange={(e) => updateCurrent({ salaryRate: Number(e.target.value || 0) })}
-          />
-        </div>
+            <div className={styles.formRow}>
+              <label>{t('planner', 'salaryAmount')}</label>
+              <input
+                type="number"
+                min={0}
+                value={current.salaryAmount || ''}
+                onChange={(e) => updateCurrent({ salaryAmount: Number(e.target.value || 0) })}
+              />
+            </div>
 
-        <div className={styles.formRow}>
-          <label>{t('planner', 'salaryAmount')}</label>
-          <input
-            type="number"
-            min={0}
-            value={current.salaryAmount || ''}
-            onChange={(e) => updateCurrent({ salaryAmount: Number(e.target.value || 0) })}
-          />
-        </div>
+            <div className={styles.formRow}>
+              <label>{t('planner', 'note')}</label>
+              <textarea
+                rows={3}
+                value={current.note}
+                placeholder={t('planner', 'notePlaceholder')}
+                onChange={(e) => updateCurrent({ note: e.target.value })}
+              />
+            </div>
 
-        <div className={styles.formRow}>
-          <label>{t('planner', 'note')}</label>
-          <textarea
-            rows={3}
-            value={current.note}
-            placeholder={t('planner', 'notePlaceholder')}
-            onChange={(e) => updateCurrent({ note: e.target.value })}
-          />
-        </div>
-
-        <button type="button" className={styles.saveBtn} onClick={onSave} disabled={saving}>
-          {justSaved ? t('planner', 'saved') : saving ? '...' : t('planner', 'save')}
-        </button>
+            <button type="button" className={styles.saveBtn} onClick={onSave} disabled={saving}>
+              {justSaved ? t('planner', 'saved') : saving ? '...' : t('planner', 'save')}
+            </button>
+          </>
+        )}
       </section>
       <div className={styles.spacer} />
     </div>
