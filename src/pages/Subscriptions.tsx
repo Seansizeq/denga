@@ -26,6 +26,7 @@ const Subscriptions: React.FC = () => {
   const [cycle, setCycle] = useState<BillingCycle>('monthly');
   const [nextChargeDate, setNextChargeDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -57,30 +58,43 @@ const Subscriptions: React.FC = () => {
     [activeItems]
   );
 
-  const onAdd = async () => {
+  const resetForm = () => {
+    setName('');
+    setAmount('');
+    setCycle('monthly');
+    setNextChargeDate(new Date().toISOString().slice(0, 10));
+    setNote('');
+    setEditingId(null);
+  };
+
+  const onSave = async () => {
     const numericAmount = Number(amount.replace(',', '.'));
     if (!name.trim() || !numericAmount || numericAmount <= 0 || !nextChargeDate) return;
     try {
-      const response = await fetch(`${API_URL}/api/subscriptions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: name.trim(),
-          amount: numericAmount,
-          cycle,
-          nextChargeDate,
-          note: note.trim(),
-        }),
-      });
+      const response = await fetch(
+        editingId ? `${API_URL}/api/subscriptions/${editingId}` : `${API_URL}/api/subscriptions`,
+        {
+          method: editingId ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: name.trim(),
+            amount: numericAmount,
+            cycle,
+            nextChargeDate,
+            note: note.trim(),
+          }),
+        }
+      );
       if (!response.ok) return;
-      const created = await response.json();
-      setItems((prev) => [created, ...prev]);
-      setName('');
-      setAmount('');
-      setCycle('monthly');
-      setNote('');
+      const saved = await response.json();
+      if (editingId) {
+        setItems((prev) => prev.map((s) => (s.id === editingId ? { ...s, ...saved } : s)));
+      } else {
+        setItems((prev) => [saved, ...prev]);
+      }
+      resetForm();
     } catch (error) {
-      console.error('Error creating subscription:', error);
+      console.error('Error saving subscription:', error);
     }
   };
 
@@ -96,6 +110,15 @@ const Subscriptions: React.FC = () => {
     } catch (error) {
       console.error('Error disabling subscription:', error);
     }
+  };
+
+  const onEdit = (sub: Subscription) => {
+    setEditingId(sub.id);
+    setName(sub.name);
+    setAmount(String(sub.amount));
+    setCycle(sub.cycle);
+    setNextChargeDate(sub.nextChargeDate);
+    setNote(sub.note ?? '');
   };
 
   return (
@@ -138,9 +161,14 @@ const Subscriptions: React.FC = () => {
                   <span>{new Date(sub.nextChargeDate).toLocaleDateString(locale)}</span>
                 </div>
                 {sub.note ? <p className={styles.itemNote}>{sub.note}</p> : null}
-                <button type="button" className={styles.disableBtn} onClick={() => onDisable(sub.id)}>
-                  {t('subscriptions', 'disable')}
-                </button>
+                <div className={styles.itemActions}>
+                  <button type="button" className={styles.editBtn} onClick={() => onEdit(sub)}>
+                    {t('subscriptions', 'edit')}
+                  </button>
+                  <button type="button" className={styles.disableBtn} onClick={() => onDisable(sub.id)}>
+                    {t('subscriptions', 'disable')}
+                  </button>
+                </div>
               </article>
             ))}
           </div>
@@ -180,9 +208,16 @@ const Subscriptions: React.FC = () => {
             placeholder={t('subscriptions', 'note')}
           />
         </div>
-        <button type="button" className={styles.addBtn} onClick={onAdd}>
-          {t('subscriptions', 'add')}
-        </button>
+        <div className={styles.formActions}>
+          {editingId ? (
+            <button type="button" className={styles.cancelBtn} onClick={resetForm}>
+              {t('subscriptions', 'cancelEdit')}
+            </button>
+          ) : null}
+          <button type="button" className={styles.addBtn} onClick={onSave}>
+            {editingId ? t('subscriptions', 'saveChanges') : t('subscriptions', 'add')}
+          </button>
+        </div>
       </section>
     </div>
   );

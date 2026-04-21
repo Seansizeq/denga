@@ -78,6 +78,9 @@ type Dict = {
     nextChargeDate: string;
     note: string;
     add: string;
+    edit: string;
+    saveChanges: string;
+    cancelEdit: string;
     disable: string;
   };
   stats: {
@@ -186,6 +189,9 @@ const uk: Dict = {
     nextChargeDate: 'Наступне списання',
     note: 'Нотатка',
     add: 'Додати підписку',
+    edit: 'Редагувати',
+    saveChanges: 'Зберегти зміни',
+    cancelEdit: 'Скасувати редагування',
     disable: 'Вимкнути',
   },
   stats: {
@@ -299,6 +305,9 @@ const ru: Dict = {
     nextChargeDate: 'Следующее списание',
     note: 'Заметка',
     add: 'Добавить подписку',
+    edit: 'Редактировать',
+    saveChanges: 'Сохранить изменения',
+    cancelEdit: 'Отменить редактирование',
     disable: 'Отключить',
   },
   stats: {
@@ -412,6 +421,9 @@ const en: Dict = {
     nextChargeDate: 'Next charge date',
     note: 'Note',
     add: 'Add subscription',
+    edit: 'Edit',
+    saveChanges: 'Save changes',
+    cancelEdit: 'Cancel editing',
     disable: 'Disable',
   },
   stats: {

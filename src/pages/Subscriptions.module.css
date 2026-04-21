@@ -101,14 +101,29 @@
   color: var(--text-secondary);
 }
 
-.disableBtn {
+.itemActions {
   margin-top: 10px;
+  display: flex;
+  gap: 8px;
+}
+
+.editBtn,
+.disableBtn {
   border: none;
   border-radius: 10px;
-  background: rgba(255, 69, 58, 0.15);
-  color: #ff6b63;
   padding: 8px 10px;
   font-weight: 600;
+  cursor: pointer;
+}
+
+.editBtn {
+  background: rgba(10, 132, 255, 0.16);
+  color: #59a7ff;
+}
+
+.disableBtn {
+  background: rgba(255, 69, 58, 0.15);
+  color: #ff6b63;
 }
 
 .emptyText {
@@ -144,12 +159,28 @@
 }
 
 .addBtn {
-  margin-top: 12px;
-  width: 100%;
+  flex: 1;
   border: none;
   border-radius: 12px;
   background: var(--accent-yellow);
   color: #1a1200;
   padding: 12px;
   font-weight: 700;
+  cursor: pointer;
+}
+
+.formActions {
+  margin-top: 12px;
+  display: flex;
+  gap: 8px;
+}
+
+.cancelBtn {
+  border: none;
+  border-radius: 12px;
+  padding: 12px;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+  cursor: pointer;
 }

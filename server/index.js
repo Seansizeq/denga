@@ -309,10 +309,49 @@ app.patch('/api/subscriptions/:id', async (req, res) => {
     return;
   }
 
+  const name = typeof req.body?.name === 'string'
+    ? req.body.name.trim().replace(/\s+/g, ' ')
+    : current.name;
+  const amount = req.body?.amount === undefined ? Number(current.amount) : Number(req.body.amount);
+  const cycle = req.body?.cycle === undefined
+    ? current.cycle
+    : (req.body.cycle === 'yearly' ? 'yearly' : 'monthly');
+  const nextChargeDate = req.body?.nextChargeDate === undefined
+    ? current.nextChargeDate
+    : String(req.body.nextChargeDate);
+  const note = typeof req.body?.note === 'string' ? req.body.note.trim() : (current.note ?? '');
   const active = req.body?.active === undefined ? Boolean(current.active) : Boolean(req.body.active);
+
+  if (!name) {
+    res.status(400).json({ error: 'name is required' });
+    return;
+  }
+  if (!amount || amount <= 0) {
+    res.status(400).json({ error: 'amount must be > 0' });
+    return;
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(nextChargeDate)) {
+    res.status(400).json({ error: 'nextChargeDate must be in YYYY-MM-DD format' });
+    return;
+  }
+
   const now = new Date().toISOString();
-  await db.run('UPDATE subscriptions SET active = ?, updatedAt = ? WHERE id = ?', [active ? 1 : 0, now, id]);
-  res.json({ ...current, active, updatedAt: now });
+  await db.run(
+    `UPDATE subscriptions
+     SET name = ?, amount = ?, cycle = ?, nextChargeDate = ?, note = ?, active = ?, updatedAt = ?
+     WHERE id = ?`,
+    [name, amount, cycle, nextChargeDate, note, active ? 1 : 0, now, id]
+  );
+  res.json({
+    ...current,
+    name,
+    amount,
+    cycle,
+    nextChargeDate,
+    note,
+    active,
+    updatedAt: now,
+  });
 });
 
 app.get('/api/planner', async (req, res) => {
