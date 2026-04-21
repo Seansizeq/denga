@@ -66,6 +66,20 @@ type Dict = {
     defaultWorkedHours: string;
     defaultSalaryRate: string;
     defaultSalaryAmount: string;
+    generalSettings: string;
+    autoCalcSalary: string;
+    defaultValues: string;
+    templates: string;
+    applyTemplate: string;
+    applyDefaults: string;
+    workingDays: string;
+    backupActions: string;
+    exportSettings: string;
+    importSettings: string;
+    resetSettings: string;
+    importSuccess: string;
+    importError: string;
+    datePreview: string;
     salaryRate: string;
     salaryAmount: string;
     note: string;
@@ -197,6 +211,20 @@ const uk: Dict = {
     defaultWorkedHours: 'Години за замовчуванням',
     defaultSalaryRate: 'Ставка за замовчуванням',
     defaultSalaryAmount: 'Зарплата за замовчуванням',
+    generalSettings: 'Загальні налаштування',
+    autoCalcSalary: 'Автообчислення зарплати (години x ставка)',
+    defaultValues: 'Значення за замовчуванням',
+    templates: 'Шаблони зміни',
+    applyTemplate: 'Застосувати шаблон',
+    applyDefaults: 'Застосувати дефолт',
+    workingDays: 'Робочі дні',
+    backupActions: 'Резерв і скидання',
+    exportSettings: 'Експорт налаштувань',
+    importSettings: 'Імпорт налаштувань',
+    resetSettings: 'Скинути налаштування',
+    importSuccess: 'Налаштування імпортовано',
+    importError: 'Помилка імпорту файлу',
+    datePreview: 'Превʼю обраної дати',
     salaryRate: 'Ставка за зміну',
     salaryAmount: 'Зарплата за день',
     note: 'Нотатка',
@@ -333,6 +361,20 @@ const ru: Dict = {
     defaultWorkedHours: 'Часы по умолчанию',
     defaultSalaryRate: 'Ставка по умолчанию',
     defaultSalaryAmount: 'Зарплата по умолчанию',
+    generalSettings: 'Общие настройки',
+    autoCalcSalary: 'Авторасчёт зарплаты (часы x ставка)',
+    defaultValues: 'Значения по умолчанию',
+    templates: 'Шаблоны смены',
+    applyTemplate: 'Применить шаблон',
+    applyDefaults: 'Применить значения по умолчанию',
+    workingDays: 'Рабочие дни',
+    backupActions: 'Резерв и сброс',
+    exportSettings: 'Экспорт настроек',
+    importSettings: 'Импорт настроек',
+    resetSettings: 'Сбросить настройки',
+    importSuccess: 'Настройки импортированы',
+    importError: 'Ошибка импорта файла',
+    datePreview: 'Превью выбранной даты',
     salaryRate: 'Ставка за смену',
     salaryAmount: 'Зарплата за день',
     note: 'Заметка',
@@ -469,6 +511,20 @@ const en: Dict = {
     defaultWorkedHours: 'Default worked hours',
     defaultSalaryRate: 'Default shift rate',
     defaultSalaryAmount: 'Default daily salary',
+    generalSettings: 'General settings',
+    autoCalcSalary: 'Auto-calculate salary (hours x rate)',
+    defaultValues: 'Default values',
+    templates: 'Shift templates',
+    applyTemplate: 'Apply template',
+    applyDefaults: 'Apply defaults',
+    workingDays: 'Working days',
+    backupActions: 'Backup and reset',
+    exportSettings: 'Export settings',
+    importSettings: 'Import settings',
+    resetSettings: 'Reset settings',
+    importSuccess: 'Settings imported',
+    importError: 'Failed to import file',
+    datePreview: 'Selected date preview',
     salaryRate: 'Shift rate',
     salaryAmount: 'Daily salary',
     note: 'Note',

@@ -18,6 +18,19 @@ interface PlannerPreferences {
   defaultWorkedHours: number;
   defaultSalaryRate: number;
   defaultSalaryAmount: number;
+  autoCalcSalary: boolean;
+  workingWeekdays: number[];
+  templates: ShiftTemplate[];
+  selectedTemplateId: string;
+}
+
+interface ShiftTemplate {
+  id: string;
+  name: string;
+  hasShift: boolean;
+  workedHours: number;
+  salaryRate: number;
+  salaryAmount: number;
 }
 
 const API_URL = import.meta.env.VITE_API_URL ?? '';
@@ -27,6 +40,14 @@ const DEFAULT_PREFS: PlannerPreferences = {
   defaultWorkedHours: 8,
   defaultSalaryRate: 0,
   defaultSalaryAmount: 0,
+  autoCalcSalary: true,
+  workingWeekdays: [1, 2, 3, 4, 5],
+  templates: [
+    { id: 'day', name: 'Денна', hasShift: true, workedHours: 8, salaryRate: 0, salaryAmount: 0 },
+    { id: 'night', name: 'Нічна', hasShift: true, workedHours: 10, salaryRate: 0, salaryAmount: 0 },
+    { id: 'off', name: 'Вихідний', hasShift: false, workedHours: 0, salaryRate: 0, salaryAmount: 0 },
+  ],
+  selectedTemplateId: 'day',
 };
 
 const toIsoLocal = (date: Date): string => {
@@ -73,6 +94,16 @@ const buildCalendarCells = (monthValue: string): Array<string | null> => {
 };
 
 const currencySymbol = (currency: PlannerCurrency): string => (currency === 'PLN' ? 'zł' : '₴');
+const toNumber = (value: unknown): number => {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, n);
+};
+
+const withAutoSalary = (
+  data: Pick<DayPlan, 'workedHours' | 'salaryRate' | 'salaryAmount'>,
+  autoCalc: boolean
+): number => (autoCalc ? Number((toNumber(data.workedHours) * toNumber(data.salaryRate)).toFixed(2)) : toNumber(data.salaryAmount));
 
 const CalendarPlanner: React.FC = () => {
   const { t, locale } = useTranslation();
@@ -87,6 +118,7 @@ const CalendarPlanner: React.FC = () => {
   const [editorOpened, setEditorOpened] = useState(false);
   const [activeTab, setActiveTab] = useState<'calendar' | 'settings'>('calendar');
   const [prefs, setPrefs] = useState<PlannerPreferences>(DEFAULT_PREFS);
+  const [importStatus, setImportStatus] = useState('');
   const today = todayIso();
 
   const days = useMemo(() => buildDaysForMonth(month), [month]);
@@ -139,11 +171,38 @@ const CalendarPlanner: React.FC = () => {
       const raw = localStorage.getItem(PLANNER_PREFS_KEY);
       if (!raw) return;
       const parsed = JSON.parse(raw) as Partial<PlannerPreferences>;
+      const templates = (Array.isArray(parsed.templates) ? parsed.templates : DEFAULT_PREFS.templates)
+        .map((tpl) => ({
+          id: typeof tpl?.id === 'string' ? tpl.id : crypto.randomUUID(),
+          name: typeof tpl?.name === 'string' && tpl.name.trim() ? tpl.name : 'Template',
+          hasShift: Boolean(tpl?.hasShift),
+          workedHours: toNumber(tpl?.workedHours),
+          salaryRate: toNumber(tpl?.salaryRate),
+          salaryAmount: toNumber(tpl?.salaryAmount),
+        }))
+        .slice(0, 8);
+      const safeTemplates = templates.length ? templates : DEFAULT_PREFS.templates;
+      const autoCalcSalary = parsed.autoCalcSalary !== undefined ? Boolean(parsed.autoCalcSalary) : DEFAULT_PREFS.autoCalcSalary;
+      const defaultWorkedHours = toNumber(parsed.defaultWorkedHours);
+      const defaultSalaryRate = toNumber(parsed.defaultSalaryRate);
+      const defaultSalaryAmount = withAutoSalary(
+        { workedHours: defaultWorkedHours, salaryRate: defaultSalaryRate, salaryAmount: toNumber(parsed.defaultSalaryAmount) },
+        autoCalcSalary
+      );
       setPrefs({
         currency: parsed.currency === 'PLN' ? 'PLN' : 'UAH',
-        defaultWorkedHours: Number(parsed.defaultWorkedHours) || 0,
-        defaultSalaryRate: Number(parsed.defaultSalaryRate) || 0,
-        defaultSalaryAmount: Number(parsed.defaultSalaryAmount) || 0,
+        defaultWorkedHours,
+        defaultSalaryRate,
+        defaultSalaryAmount,
+        autoCalcSalary,
+        workingWeekdays: Array.isArray(parsed.workingWeekdays)
+          ? parsed.workingWeekdays.filter((d): d is number => Number.isInteger(d) && d >= 0 && d <= 6)
+          : DEFAULT_PREFS.workingWeekdays,
+        templates: safeTemplates,
+        selectedTemplateId:
+          typeof parsed.selectedTemplateId === 'string' && safeTemplates.some((tpl) => tpl.id === parsed.selectedTemplateId)
+            ? parsed.selectedTemplateId
+            : safeTemplates[0].id,
       });
     } catch (error) {
       console.error('Failed to parse planner prefs:', error);
@@ -202,19 +261,49 @@ const CalendarPlanner: React.FC = () => {
   }, [month]);
 
   const updateCurrent = (patch: Partial<DayPlan>) => {
+    const merged = {
+      ...(store[selectedDay] ?? {
+        hasShift: false,
+        workedHours: 0,
+        salaryRate: 0,
+        salaryAmount: 0,
+        note: '',
+      }),
+      ...patch,
+    };
+    const next: DayPlan = {
+      hasShift: Boolean(merged.hasShift),
+      workedHours: toNumber(merged.workedHours),
+      salaryRate: toNumber(merged.salaryRate),
+      salaryAmount: withAutoSalary(merged, prefs.autoCalcSalary),
+      note: String(merged.note ?? ''),
+    };
     setStore((prev) => ({
       ...prev,
-      [selectedDay]: {
-        ...(prev[selectedDay] ?? {
-          hasShift: false,
-          workedHours: 0,
-          salaryRate: 0,
-          salaryAmount: 0,
-          note: '',
-        }),
-        ...patch,
-      },
+      [selectedDay]: next,
     }));
+  };
+
+  const selectedTemplate = prefs.templates.find((tpl) => tpl.id === prefs.selectedTemplateId) ?? prefs.templates[0];
+  const applyTemplateToSelectedDay = () => {
+    if (!selectedTemplate) return;
+    updateCurrent({
+      hasShift: selectedTemplate.hasShift,
+      workedHours: selectedTemplate.workedHours,
+      salaryRate: selectedTemplate.salaryRate,
+      salaryAmount: selectedTemplate.salaryAmount,
+    });
+    setEditorOpened(true);
+  };
+
+  const applyDefaultsToSelectedDay = () => {
+    updateCurrent({
+      hasShift: true,
+      workedHours: prefs.defaultWorkedHours,
+      salaryRate: prefs.defaultSalaryRate,
+      salaryAmount: prefs.defaultSalaryAmount,
+    });
+    setEditorOpened(true);
   };
 
   const onSave = async () => {
@@ -256,6 +345,72 @@ const CalendarPlanner: React.FC = () => {
   useEffect(() => {
     setEditorOpened(hasShiftData);
   }, [selectedDay, hasShiftData]);
+
+  const toggleWeekday = (day: number) => {
+    setPrefs((prev) => {
+      const has = prev.workingWeekdays.includes(day);
+      return {
+        ...prev,
+        workingWeekdays: has ? prev.workingWeekdays.filter((d) => d !== day) : [...prev.workingWeekdays, day].sort(),
+      };
+    });
+  };
+
+  const exportSettings = () => {
+    const blob = new Blob([JSON.stringify(prefs, null, 2)], { type: 'application/json' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.href = url;
+    link.download = `calendar-settings-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const importSettings = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text) as Partial<PlannerPreferences>;
+      const templates = (Array.isArray(parsed.templates) ? parsed.templates : DEFAULT_PREFS.templates).map((tpl) => ({
+        id: typeof tpl?.id === 'string' ? tpl.id : crypto.randomUUID(),
+        name: typeof tpl?.name === 'string' ? tpl.name : 'Template',
+        hasShift: Boolean(tpl?.hasShift),
+        workedHours: toNumber(tpl?.workedHours),
+        salaryRate: toNumber(tpl?.salaryRate),
+        salaryAmount: toNumber(tpl?.salaryAmount),
+      }));
+      setPrefs({
+        currency: parsed.currency === 'PLN' ? 'PLN' : 'UAH',
+        defaultWorkedHours: toNumber(parsed.defaultWorkedHours),
+        defaultSalaryRate: toNumber(parsed.defaultSalaryRate),
+        defaultSalaryAmount: withAutoSalary(
+          {
+            workedHours: toNumber(parsed.defaultWorkedHours),
+            salaryRate: toNumber(parsed.defaultSalaryRate),
+            salaryAmount: toNumber(parsed.defaultSalaryAmount),
+          },
+          parsed.autoCalcSalary !== undefined ? Boolean(parsed.autoCalcSalary) : DEFAULT_PREFS.autoCalcSalary
+        ),
+        autoCalcSalary: parsed.autoCalcSalary !== undefined ? Boolean(parsed.autoCalcSalary) : DEFAULT_PREFS.autoCalcSalary,
+        workingWeekdays: Array.isArray(parsed.workingWeekdays)
+          ? parsed.workingWeekdays.filter((d): d is number => Number.isInteger(d) && d >= 0 && d <= 6)
+          : DEFAULT_PREFS.workingWeekdays,
+        templates: templates.length ? templates : DEFAULT_PREFS.templates,
+        selectedTemplateId:
+          typeof parsed.selectedTemplateId === 'string' ? parsed.selectedTemplateId : (templates[0]?.id ?? DEFAULT_PREFS.selectedTemplateId),
+      });
+      setImportStatus(t('planner', 'importSuccess'));
+    } catch {
+      setImportStatus(t('planner', 'importError'));
+    }
+    e.target.value = '';
+  };
+
+  const resetSettings = () => {
+    setPrefs(DEFAULT_PREFS);
+    setImportStatus('');
+  };
 
   return (
     <div className={styles.container}>
@@ -327,11 +482,13 @@ const CalendarPlanner: React.FC = () => {
             const active = dayIso === selectedDay;
             const isToday = dayIso === today;
             const hasData = Boolean(store[dayIso]?.hasShift || store[dayIso]?.salaryAmount || store[dayIso]?.note);
+            const weekday = parseIsoLocal(dayIso).getDay();
+            const isWorkingDay = prefs.workingWeekdays.includes(weekday);
             return (
               <button
                 key={dayIso}
                 type="button"
-                className={`${styles.day} ${active ? styles.dayActive : ''} ${isToday ? styles.dayToday : ''}`}
+                className={`${styles.day} ${active ? styles.dayActive : ''} ${isToday ? styles.dayToday : ''} ${isWorkingDay ? styles.dayWork : styles.dayOff}`}
                 onClick={() => {
                   if (!canLeaveDraft()) return;
                   setSelectedDay(dayIso);
@@ -385,52 +542,169 @@ const CalendarPlanner: React.FC = () => {
 
       {activeTab === 'settings' && <section className={styles.panel}>
         <h2 className={styles.sectionTitle}>{t('planner', 'plannerSettings')}</h2>
-        <div className={styles.formRow}>
-          <label>{t('planner', 'currency')}</label>
-          <select
-            className={styles.selectInput}
-            value={prefs.currency}
-            onChange={(e) =>
-              setPrefs((prev) => ({ ...prev, currency: e.target.value === 'PLN' ? 'PLN' : 'UAH' }))
-            }
-          >
-            <option value="UAH">{t('planner', 'currencyUah')}</option>
-            <option value="PLN">{t('planner', 'currencyPln')}</option>
-          </select>
+        <div className={styles.reportCard}>
+          <h3 className={styles.sectionTitle}>{t('planner', 'generalSettings')}</h3>
+          <div className={styles.formRow}>
+            <label>{t('planner', 'currency')}</label>
+            <select
+              className={styles.selectInput}
+              value={prefs.currency}
+              onChange={(e) =>
+                setPrefs((prev) => ({ ...prev, currency: e.target.value === 'PLN' ? 'PLN' : 'UAH' }))
+              }
+            >
+              <option value="UAH">{t('planner', 'currencyUah')}</option>
+              <option value="PLN">{t('planner', 'currencyPln')}</option>
+            </select>
+          </div>
+          <label className={styles.switchRow}>
+            <input
+              type="checkbox"
+              checked={prefs.autoCalcSalary}
+              onChange={(e) =>
+                setPrefs((prev) => ({
+                  ...prev,
+                  autoCalcSalary: e.target.checked,
+                  defaultSalaryAmount: withAutoSalary(
+                    {
+                      workedHours: prev.defaultWorkedHours,
+                      salaryRate: prev.defaultSalaryRate,
+                      salaryAmount: prev.defaultSalaryAmount,
+                    },
+                    e.target.checked
+                  ),
+                }))
+              }
+            />
+            <span>{t('planner', 'autoCalcSalary')}</span>
+          </label>
         </div>
-        <div className={styles.formRow}>
-          <label>{t('planner', 'defaultWorkedHours')}</label>
-          <input
-            type="number"
-            min={0}
-            step="0.5"
-            value={prefs.defaultWorkedHours || ''}
-            onChange={(e) =>
-              setPrefs((prev) => ({ ...prev, defaultWorkedHours: Number(e.target.value || 0) }))
-            }
-          />
+        <div className={styles.reportCard}>
+          <h3 className={styles.sectionTitle}>{t('planner', 'defaultValues')}</h3>
+          <div className={styles.formRow}>
+            <label>{t('planner', 'defaultWorkedHours')}</label>
+            <input
+              type="number"
+              min={0}
+              step="0.5"
+              value={prefs.defaultWorkedHours || ''}
+              onChange={(e) =>
+                setPrefs((prev) => {
+                  const worked = toNumber(e.target.value);
+                  return {
+                    ...prev,
+                    defaultWorkedHours: worked,
+                    defaultSalaryAmount: withAutoSalary(
+                      { workedHours: worked, salaryRate: prev.defaultSalaryRate, salaryAmount: prev.defaultSalaryAmount },
+                      prev.autoCalcSalary
+                    ),
+                  };
+                })
+              }
+            />
+          </div>
+          <div className={styles.formRow}>
+            <label>{t('planner', 'defaultSalaryRate')}</label>
+            <input
+              type="number"
+              min={0}
+              value={prefs.defaultSalaryRate || ''}
+              onChange={(e) =>
+                setPrefs((prev) => {
+                  const rate = toNumber(e.target.value);
+                  return {
+                    ...prev,
+                    defaultSalaryRate: rate,
+                    defaultSalaryAmount: withAutoSalary(
+                      { workedHours: prev.defaultWorkedHours, salaryRate: rate, salaryAmount: prev.defaultSalaryAmount },
+                      prev.autoCalcSalary
+                    ),
+                  };
+                })
+              }
+            />
+          </div>
+          <div className={styles.formRow}>
+            <label>{t('planner', 'defaultSalaryAmount')}</label>
+            <input
+              type="number"
+              min={0}
+              disabled={prefs.autoCalcSalary}
+              value={prefs.defaultSalaryAmount || ''}
+              onChange={(e) =>
+                setPrefs((prev) => ({ ...prev, defaultSalaryAmount: toNumber(e.target.value) }))
+              }
+            />
+          </div>
         </div>
-        <div className={styles.formRow}>
-          <label>{t('planner', 'defaultSalaryRate')}</label>
-          <input
-            type="number"
-            min={0}
-            value={prefs.defaultSalaryRate || ''}
-            onChange={(e) =>
-              setPrefs((prev) => ({ ...prev, defaultSalaryRate: Number(e.target.value || 0) }))
-            }
-          />
+        <div className={styles.reportCard}>
+          <h3 className={styles.sectionTitle}>{t('planner', 'templates')}</h3>
+          <div className={styles.templateList}>
+            {prefs.templates.map((tpl) => (
+              <button
+                key={tpl.id}
+                type="button"
+                className={`${styles.templateBtn} ${prefs.selectedTemplateId === tpl.id ? styles.templateBtnActive : ''}`}
+                onClick={() => setPrefs((prev) => ({ ...prev, selectedTemplateId: tpl.id }))}
+              >
+                {tpl.name}
+              </button>
+            ))}
+          </div>
+          <div className={styles.templateList}>
+            <button type="button" className={styles.reportBtn} onClick={applyTemplateToSelectedDay}>
+              {t('planner', 'applyTemplate')}
+            </button>
+            <button type="button" className={styles.reportBtn} onClick={applyDefaultsToSelectedDay}>
+              {t('planner', 'applyDefaults')}
+            </button>
+          </div>
         </div>
-        <div className={styles.formRow}>
-          <label>{t('planner', 'defaultSalaryAmount')}</label>
-          <input
-            type="number"
-            min={0}
-            value={prefs.defaultSalaryAmount || ''}
-            onChange={(e) =>
-              setPrefs((prev) => ({ ...prev, defaultSalaryAmount: Number(e.target.value || 0) }))
-            }
-          />
+        <div className={styles.reportCard}>
+          <h3 className={styles.sectionTitle}>{t('planner', 'workingDays')}</h3>
+          <div className={styles.templateList}>
+            {[1, 2, 3, 4, 5, 6, 0].map((d) => (
+              <button
+                key={d}
+                type="button"
+                className={`${styles.templateBtn} ${prefs.workingWeekdays.includes(d) ? styles.templateBtnActive : ''}`}
+                onClick={() => toggleWeekday(d)}
+              >
+                {weekdays[d === 0 ? 6 : d - 1]}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className={styles.reportCard}>
+          <h3 className={styles.sectionTitle}>{t('planner', 'backupActions')}</h3>
+          <div className={styles.templateList}>
+            <button type="button" className={styles.reportBtn} onClick={exportSettings}>
+              {t('planner', 'exportSettings')}
+            </button>
+            <label className={styles.reportBtn}>
+              {t('planner', 'importSettings')}
+              <input type="file" accept="application/json" className={styles.hiddenInput} onChange={importSettings} />
+            </label>
+            <button type="button" className={styles.reportBtn} onClick={resetSettings}>
+              {t('planner', 'resetSettings')}
+            </button>
+          </div>
+          {importStatus ? <p className={styles.loading}>{importStatus}</p> : null}
+        </div>
+        <div className={styles.reportCard}>
+          <h3 className={styles.sectionTitle}>{t('planner', 'datePreview')}</h3>
+          <div className={styles.reportRow}>
+            <span>{t('planner', 'workedHours')}</span>
+            <strong>{current.workedHours}</strong>
+          </div>
+          <div className={styles.reportRow}>
+            <span>{t('planner', 'salaryRate')}</span>
+            <strong>{currencySymbol(prefs.currency)}{current.salaryRate}</strong>
+          </div>
+          <div className={styles.reportRow}>
+            <span>{t('planner', 'salaryAmount')}</span>
+            <strong>{currencySymbol(prefs.currency)}{current.salaryAmount}</strong>
+          </div>
         </div>
 
         <h2 className={styles.sectionTitle}>
@@ -443,13 +717,11 @@ const CalendarPlanner: React.FC = () => {
               type="button"
               className={styles.addShiftBtn}
               onClick={() => {
-                setEditorOpened(true);
-                updateCurrent({
-                  hasShift: true,
-                  workedHours: current.workedHours || prefs.defaultWorkedHours,
-                  salaryRate: current.salaryRate || prefs.defaultSalaryRate,
-                  salaryAmount: current.salaryAmount || prefs.defaultSalaryAmount,
-                });
+                if (selectedTemplate) {
+                  applyTemplateToSelectedDay();
+                } else {
+                  applyDefaultsToSelectedDay();
+                }
               }}
             >
               {t('planner', 'addShift')}
