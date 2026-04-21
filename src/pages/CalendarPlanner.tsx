@@ -52,6 +52,19 @@ const toNumber = (value: unknown): number => {
   return Number.isFinite(n) ? Math.max(0, n) : 0;
 };
 
+const readVisualOverlayBox = (): { top: number; height: number; keyboardOpen: boolean } => {
+  const vv = window.visualViewport;
+  if (!vv) {
+    return { top: 0, height: window.innerHeight, keyboardOpen: false };
+  }
+  const obscured = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+  return {
+    top: vv.offsetTop,
+    height: vv.height,
+    keyboardOpen: obscured > 72,
+  };
+};
+
 const CalendarPlanner: React.FC = () => {
   const { t, locale } = useTranslation();
   const [month, setMonth] = useState(todayIso().slice(0, 7));
@@ -67,6 +80,28 @@ const CalendarPlanner: React.FC = () => {
   const [isFullDay, setIsFullDay] = useState(true);
   const [startTime, setStartTime] = useState('09:00');
   const [endTime, setEndTime] = useState('17:00');
+  const [vvRev, setVvRev] = useState(0);
+
+  const modalAnyOpen = chooserOpen || editorOpened;
+
+  const overlayBox = useMemo(() => {
+    if (!modalAnyOpen) return null;
+    return readVisualOverlayBox();
+  }, [modalAnyOpen, vvRev]);
+
+  useEffect(() => {
+    if (!modalAnyOpen) return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const bump = () => setVvRev((n) => n + 1);
+    bump();
+    vv.addEventListener('resize', bump);
+    vv.addEventListener('scroll', bump);
+    return () => {
+      vv.removeEventListener('resize', bump);
+      vv.removeEventListener('scroll', bump);
+    };
+  }, [modalAnyOpen]);
 
   const calendarCells = useMemo(() => buildCalendarCells(month), [month]);
   const weekdays = useMemo(() => {
@@ -118,15 +153,6 @@ const CalendarPlanner: React.FC = () => {
       cancelled = true;
     };
   }, [month]);
-
-  useEffect(() => {
-    if (!editorOpened && !chooserOpen) return;
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = prevOverflow;
-    };
-  }, [editorOpened, chooserOpen]);
 
   const saveDay = async (dayIso: string, payload: DayPlan) => {
     setSaving(true);
@@ -216,8 +242,12 @@ const CalendarPlanner: React.FC = () => {
         {loading && <p className={styles.loading}>{t('planner', 'loading')}</p>}
       </section>
 
-      {chooserOpen ? (
-        <div className={styles.modalOverlay} onClick={() => setChooserOpen(false)}>
+      {chooserOpen && overlayBox ? (
+        <div
+          className={`${styles.modalOverlay} ${overlayBox.keyboardOpen ? styles.modalOverlayKeyboard : ''}`}
+          style={{ top: overlayBox.top, height: overlayBox.height }}
+          onClick={() => setChooserOpen(false)}
+        >
           <div className={styles.modalSheet} onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
@@ -238,8 +268,12 @@ const CalendarPlanner: React.FC = () => {
         </div>
       ) : null}
 
-      {editorOpened ? (
-        <div className={styles.modalOverlay} onClick={() => setEditorOpened(false)}>
+      {editorOpened && overlayBox ? (
+        <div
+          className={`${styles.modalOverlay} ${overlayBox.keyboardOpen ? styles.modalOverlayKeyboard : ''}`}
+          style={{ top: overlayBox.top, height: overlayBox.height }}
+          onClick={() => setEditorOpened(false)}
+        >
           <section className={styles.modalSheetEditor} onClick={(e) => e.stopPropagation()}>
             <div className={styles.editorTop}>
               <button

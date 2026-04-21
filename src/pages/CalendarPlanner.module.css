@@ -164,21 +164,29 @@
   top: 6px;
 }
 
+/* Розмір і top задаються inline з visualViewport — не наїжджає на статус-бар і клавіатуру (iOS / WebView) */
 .modalOverlay {
   position: fixed;
-  inset: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  box-sizing: border-box;
   background: rgba(7, 7, 12, 0.62);
   backdrop-filter: blur(2px);
   z-index: 1300;
   display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  padding-top: max(12px, env(safe-area-inset-top, 0px));
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  padding-top: max(10px, env(safe-area-inset-top, 0px));
   padding-left: 14px;
   padding-right: 14px;
-  padding-bottom: calc(var(--bottom-nav-height) + var(--safe-area-inset-bottom) + 18px);
-  box-sizing: border-box;
+  padding-bottom: calc(var(--bottom-nav-height) + var(--safe-area-inset-bottom) + 14px);
   overflow: hidden;
+}
+
+.modalOverlayKeyboard {
+  padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
 }
 
 .modalSheet {
@@ -199,7 +207,8 @@
   border-radius: 18px;
   padding: 12px 14px 14px;
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
-  max-height: min(88dvh, calc(100svh - max(20px, env(safe-area-inset-top, 0px)) - 16px));
+  /* Відсоток від висоти оверлею (задається visualViewport), щоб форма не вилазила вгору */
+  max-height: min(92%, calc(100% - 8px));
   display: flex;
   flex-direction: column;
   min-height: 0;
