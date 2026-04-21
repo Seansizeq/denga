@@ -67,7 +67,6 @@ const CalendarPlanner: React.FC = () => {
   const [isFullDay, setIsFullDay] = useState(true);
   const [startTime, setStartTime] = useState('09:00');
   const [endTime, setEndTime] = useState('17:00');
-  const [keyboardInset, setKeyboardInset] = useState(0);
 
   const calendarCells = useMemo(() => buildCalendarCells(month), [month]);
   const weekdays = useMemo(() => {
@@ -121,30 +120,13 @@ const CalendarPlanner: React.FC = () => {
   }, [month]);
 
   useEffect(() => {
-    if (!editorOpened && !chooserOpen) {
-      setKeyboardInset(0);
-      return;
-    }
-    const vv = window.visualViewport;
-    if (!vv) return;
-    const updateInset = () => {
-      const hidden = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
-      setKeyboardInset(hidden);
-    };
-    updateInset();
-    vv.addEventListener('resize', updateInset);
-    vv.addEventListener('scroll', updateInset);
+    if (!editorOpened && !chooserOpen) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
     return () => {
-      vv.removeEventListener('resize', updateInset);
-      vv.removeEventListener('scroll', updateInset);
+      document.body.style.overflow = prevOverflow;
     };
   }, [editorOpened, chooserOpen]);
-
-  const scrollFieldIntoView = (el: HTMLElement | null) => {
-    window.requestAnimationFrame(() => {
-      el?.scrollIntoView({ block: 'nearest', behavior: 'smooth', inline: 'nearest' });
-    });
-  };
 
   const saveDay = async (dayIso: string, payload: DayPlan) => {
     setSaving(true);
@@ -235,15 +217,7 @@ const CalendarPlanner: React.FC = () => {
       </section>
 
       {chooserOpen ? (
-        <div
-          className={styles.modalOverlay}
-          onClick={() => setChooserOpen(false)}
-          style={
-            keyboardInset > 8
-              ? { paddingBottom: `${12 + keyboardInset}px` }
-              : undefined
-          }
-        >
+        <div className={styles.modalOverlay} onClick={() => setChooserOpen(false)}>
           <div className={styles.modalSheet} onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
@@ -265,15 +239,7 @@ const CalendarPlanner: React.FC = () => {
       ) : null}
 
       {editorOpened ? (
-        <div
-          className={styles.modalOverlay}
-          onClick={() => setEditorOpened(false)}
-          style={
-            keyboardInset > 8
-              ? { paddingBottom: `${12 + keyboardInset}px` }
-              : undefined
-          }
-        >
+        <div className={styles.modalOverlay} onClick={() => setEditorOpened(false)}>
           <section className={styles.modalSheetEditor} onClick={(e) => e.stopPropagation()}>
             <div className={styles.editorTop}>
               <button
@@ -300,7 +266,6 @@ const CalendarPlanner: React.FC = () => {
                     autoComplete="off"
                     value={shiftName}
                     onChange={(e) => setShiftName(e.target.value)}
-                    onFocus={(e) => scrollFieldIntoView(e.currentTarget)}
                     className={styles.fieldInput}
                   />
                 </div>
@@ -313,7 +278,6 @@ const CalendarPlanner: React.FC = () => {
                     autoComplete="off"
                     value={shiftSymbol}
                     onChange={(e) => setShiftSymbol(e.target.value)}
-                    onFocus={(e) => scrollFieldIntoView(e.currentTarget)}
                     className={styles.fieldInput}
                   />
                 </div>
@@ -336,7 +300,6 @@ const CalendarPlanner: React.FC = () => {
                     onChange={(e) => setStartTime(e.target.value)}
                     className={styles.timeInput}
                     disabled={isFullDay}
-                    onFocus={(e) => scrollFieldIntoView(e.currentTarget)}
                   />
                 </div>
                 <div className={styles.rowBetween}>
@@ -347,7 +310,6 @@ const CalendarPlanner: React.FC = () => {
                     onChange={(e) => setEndTime(e.target.value)}
                     className={styles.timeInput}
                     disabled={isFullDay}
-                    onFocus={(e) => scrollFieldIntoView(e.currentTarget)}
                   />
                 </div>
               </div>
