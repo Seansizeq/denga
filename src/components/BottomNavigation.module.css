@@ -5,8 +5,8 @@
   right: 0;
   height: calc(var(--bottom-nav-height) + var(--safe-area-inset-bottom));
   z-index: 1000;
-  background: #1c1a24;
-  border-top: 1px solid #2a2833;
+  background: linear-gradient(180deg, #211f2a 0%, #1c1a24 100%);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
   padding-bottom: var(--safe-area-inset-bottom);
 }
 
@@ -16,6 +16,20 @@
   grid-template-columns: repeat(5, 1fr);
   align-items: center;
   padding: 0 8px;
+  position: relative;
+}
+
+.activeIndicator {
+  --indicator-size: 44px;
+  position: absolute;
+  width: var(--indicator-size);
+  height: var(--indicator-size);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.1);
+  left: calc((100% / 5) * (var(--indicator-col) - 1) + ((100% / 5) - var(--indicator-size)) / 2);
+  top: calc((var(--bottom-nav-height) - var(--indicator-size)) / 2);
+  transition: left 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+  z-index: 0;
 }
 
 .link,
@@ -25,8 +39,15 @@
   justify-content: center;
   text-decoration: none;
   color: #6a6478;
-  height: 100%;
-  transition: color 0.15s ease;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  margin: 0 auto;
+  position: relative;
+  z-index: 1;
+  transition:
+    color 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.22s ease;
 }
 
 .roundBtn {
@@ -38,7 +59,12 @@
 
 .active {
   color: #ffffff;
-  background: #312f3b;
+  transform: translateY(-1px);
+}
+
+.link:active,
+.active:active {
+  transform: scale(0.96);
 }
 
 .fab {
@@ -53,9 +79,15 @@
   justify-content: center;
   margin: 0 auto;
   cursor: pointer;
-  transition: transform 0.15s ease;
+  box-shadow: 0 8px 20px rgba(255, 213, 59, 0.28);
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.28s ease,
+    filter 0.28s ease;
 }
 
 .fab:active {
   transform: scale(0.95);
+  box-shadow: 0 4px 10px rgba(255, 213, 59, 0.2);
+  filter: brightness(0.98);
 }

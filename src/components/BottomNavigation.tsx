@@ -1,16 +1,36 @@
 import React from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Home, CalendarDays, BarChart2, Settings as SettingsIcon, Plus } from 'lucide-react';
 import { useTranslation } from '../i18n/LanguageContext';
 import styles from './BottomNavigation.module.css';
 
 const BottomNavigation: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { t } = useTranslation();
+  const pathname = location.pathname;
+
+  const indicatorColumn =
+    pathname === '/'
+      ? 1
+      : pathname.startsWith('/calendar')
+        ? 2
+        : pathname.startsWith('/stats')
+          ? 4
+          : pathname.startsWith('/settings')
+            ? 5
+            : null;
 
   return (
     <nav className={styles.nav}>
       <div className={styles.bar}>
+        {indicatorColumn ? (
+          <span
+            className={styles.activeIndicator}
+            style={{ ['--indicator-col' as string]: indicatorColumn }}
+            aria-hidden="true"
+          />
+        ) : null}
         <NavLink
           to="/"
           end
