@@ -37,24 +37,27 @@
 
 .monthRow {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
   margin-bottom: 12px;
 }
 
 .monthBlock {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
 }
 
 .monthControls {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: flex-end;
+  flex-shrink: 0;
 }
 
 .monthLabel {
@@ -62,6 +65,10 @@
   color: var(--text-primary);
   font-weight: 700;
   text-transform: capitalize;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .monthHint {
@@ -104,6 +111,7 @@
   border: 1px solid #2f2c3f;
   border-radius: 10px;
   padding: 8px 10px;
+  width: 132px;
 }
 
 .quickStats {
@@ -403,7 +411,18 @@
 }
 
 @media (max-width: 460px) {
-  .quickStats {
-    grid-template-columns: 1fr;
+  .monthRow {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .monthControls {
+    justify-content: space-between;
+  }
+
+  .monthInput {
+    width: 100%;
+    min-width: 0;
   }
 }
