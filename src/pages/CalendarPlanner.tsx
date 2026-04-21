@@ -10,20 +10,9 @@ interface DayPlan {
   note: string;
 }
 
-interface ShiftTemplate {
-  id: string;
-  name: string;
-  symbol?: string;
-  hasShift: boolean;
-  workedHours: number;
-  salaryRate: number;
-  salaryAmount: number;
-}
-
 type PlannerStore = Record<string, DayPlan>;
 
 const API_URL = import.meta.env.VITE_API_URL ?? '';
-const PLANNER_PREFS_KEY = 'planner_preferences_v1';
 
 const toIsoLocal = (date: Date): string => {
   const y = date.getFullYear();
@@ -73,34 +62,6 @@ const CalendarPlanner: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [chooserOpen, setChooserOpen] = useState(false);
   const [editorOpened, setEditorOpened] = useState(false);
-  const [templateModalOpen, setTemplateModalOpen] = useState(false);
-  const [templateName, setTemplateName] = useState('');
-  const [templateSymbol, setTemplateSymbol] = useState('');
-  const [templateHours, setTemplateHours] = useState('8');
-  const [templateRate, setTemplateRate] = useState('0');
-  const [templateAmount, setTemplateAmount] = useState('0');
-
-  const templates = useMemo<ShiftTemplate[]>(() => {
-    try {
-      const raw = localStorage.getItem(PLANNER_PREFS_KEY);
-      if (!raw) return [];
-      const parsed = JSON.parse(raw) as any;
-      if (!Array.isArray(parsed?.templates)) return [];
-      return parsed.templates
-        .filter((tpl: any) => tpl && typeof tpl.name === 'string')
-        .map((tpl: any) => ({
-          id: typeof tpl.id === 'string' ? tpl.id : crypto.randomUUID(),
-          name: String(tpl.name),
-          symbol: typeof tpl.symbol === 'string' ? tpl.symbol : '',
-          hasShift: Boolean(tpl.hasShift),
-          workedHours: toNumber(tpl.workedHours),
-          salaryRate: toNumber(tpl.salaryRate),
-          salaryAmount: toNumber(tpl.salaryAmount),
-        }));
-    } catch {
-      return [];
-    }
-  }, [chooserOpen]);
 
   const calendarCells = useMemo(() => buildCalendarCells(month), [month]);
   const weekdays = useMemo(() => {
@@ -192,39 +153,6 @@ const CalendarPlanner: React.FC = () => {
     await saveDay(selectedDay, payload);
   };
 
-  const saveTemplate = () => {
-    const name = templateName.trim();
-    if (!name) return;
-    try {
-      const raw = localStorage.getItem(PLANNER_PREFS_KEY);
-      const parsed = raw ? JSON.parse(raw) : {};
-      const existing = Array.isArray(parsed.templates) ? parsed.templates : [];
-      const nextTemplate: ShiftTemplate = {
-        id: crypto.randomUUID(),
-        name,
-        symbol: templateSymbol.trim(),
-        hasShift: true,
-        workedHours: toNumber(templateHours),
-        salaryRate: toNumber(templateRate),
-        salaryAmount: toNumber(templateAmount),
-      };
-      const next = {
-        ...parsed,
-        templates: [nextTemplate, ...existing].slice(0, 12),
-        selectedTemplateId: nextTemplate.id,
-      };
-      localStorage.setItem(PLANNER_PREFS_KEY, JSON.stringify(next));
-      setTemplateModalOpen(false);
-      setTemplateName('');
-      setTemplateSymbol('');
-      setTemplateHours('8');
-      setTemplateRate('0');
-      setTemplateAmount('0');
-    } catch (error) {
-      console.error('Failed to save template', error);
-    }
-  };
-
   return (
     <div className={styles.container}>
       <header className={styles.header}>
@@ -292,92 +220,7 @@ const CalendarPlanner: React.FC = () => {
             >
               {t('planner', 'addShift')}
             </button>
-            {templates.length > 0 ? (
-              <div className={styles.templateChooser}>
-                <p className={styles.templateChooserTitle}>{t('planner', 'templates')}</p>
-                <div className={styles.templateList}>
-                  {templates.map((tpl) => (
-                    <button
-                      key={tpl.id}
-                      type="button"
-                      className={styles.reportBtn}
-                      onClick={() =>
-                        applyShift({
-                          hasShift: tpl.hasShift,
-                          workedHours: tpl.workedHours,
-                          salaryRate: tpl.salaryRate,
-                          salaryAmount: tpl.salaryAmount,
-                          note: '',
-                        })
-                      }
-                    >
-                      {tpl.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-            <button
-              type="button"
-              className={styles.reportBtn}
-              onClick={() => {
-                setChooserOpen(false);
-                setTemplateModalOpen(true);
-              }}
-            >
-              Створити шаблон
-            </button>
           </div>
-        </div>
-      ) : null}
-
-      {templateModalOpen ? (
-        <div className={styles.modalOverlay} onClick={() => setTemplateModalOpen(false)}>
-          <section className={styles.templateCard} onClick={(e) => e.stopPropagation()}>
-            <h2 className={styles.templateTitle}>Шаблон зміни</h2>
-            <div className={styles.templateGroup}>
-              <input
-                className={styles.templateInput}
-                value={templateName}
-                onChange={(e) => setTemplateName(e.target.value)}
-                placeholder="Назва"
-              />
-              <input
-                className={styles.templateInput}
-                value={templateSymbol}
-                onChange={(e) => setTemplateSymbol(e.target.value)}
-                placeholder="Символ"
-              />
-            </div>
-            <div className={styles.templateGroup}>
-              <input
-                className={styles.templateInput}
-                value={templateHours}
-                onChange={(e) => setTemplateHours(e.target.value.replace(/[^0-9.]/g, ''))}
-                placeholder="Годин"
-              />
-              <input
-                className={styles.templateInput}
-                value={templateRate}
-                onChange={(e) => setTemplateRate(e.target.value.replace(/[^0-9.]/g, ''))}
-                placeholder="Ставка"
-              />
-              <input
-                className={styles.templateInput}
-                value={templateAmount}
-                onChange={(e) => setTemplateAmount(e.target.value.replace(/[^0-9.]/g, ''))}
-                placeholder="Сума"
-              />
-            </div>
-            <div className={styles.formActions}>
-              <button type="button" className={styles.cancelBtn} onClick={() => setTemplateModalOpen(false)}>
-                Скасувати
-              </button>
-              <button type="button" className={styles.addBtn} onClick={saveTemplate}>
-                Зберегти шаблон
-              </button>
-            </div>
-          </section>
         </div>
       ) : null}
 
