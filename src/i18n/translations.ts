@@ -57,6 +57,13 @@ type Dict = {
     hasShift: string;
     tapAddShift: string;
     addShift: string;
+    plannerSettings: string;
+    currency: string;
+    currencyUah: string;
+    currencyPln: string;
+    defaultWorkedHours: string;
+    defaultSalaryRate: string;
+    defaultSalaryAmount: string;
     salaryRate: string;
     salaryAmount: string;
     note: string;
@@ -179,6 +186,13 @@ const uk: Dict = {
     hasShift: 'Є зміна',
     tapAddShift: 'Натисніть кнопку, щоб додати зміну на обраний день',
     addShift: 'Додати зміну',
+    plannerSettings: 'Налаштування зміни',
+    currency: 'Валюта',
+    currencyUah: 'Гривня (₴)',
+    currencyPln: 'Злотий (zł)',
+    defaultWorkedHours: 'Години за замовчуванням',
+    defaultSalaryRate: 'Ставка за замовчуванням',
+    defaultSalaryAmount: 'Зарплата за замовчуванням',
     salaryRate: 'Ставка за зміну',
     salaryAmount: 'Зарплата за день',
     note: 'Нотатка',
@@ -306,6 +320,13 @@ const ru: Dict = {
     hasShift: 'Есть смена',
     tapAddShift: 'Нажмите кнопку, чтобы добавить смену на выбранный день',
     addShift: 'Добавить смену',
+    plannerSettings: 'Настройки смены',
+    currency: 'Валюта',
+    currencyUah: 'Гривна (₴)',
+    currencyPln: 'Злотый (zł)',
+    defaultWorkedHours: 'Часы по умолчанию',
+    defaultSalaryRate: 'Ставка по умолчанию',
+    defaultSalaryAmount: 'Зарплата по умолчанию',
     salaryRate: 'Ставка за смену',
     salaryAmount: 'Зарплата за день',
     note: 'Заметка',
@@ -433,6 +454,13 @@ const en: Dict = {
     hasShift: 'Has shift',
     tapAddShift: 'Tap the button to add a shift for selected day',
     addShift: 'Add shift',
+    plannerSettings: 'Shift settings',
+    currency: 'Currency',
+    currencyUah: 'Hryvnia (₴)',
+    currencyPln: 'Zloty (zł)',
+    defaultWorkedHours: 'Default worked hours',
+    defaultSalaryRate: 'Default shift rate',
+    defaultSalaryAmount: 'Default daily salary',
     salaryRate: 'Shift rate',
     salaryAmount: 'Daily salary',
     note: 'Note',

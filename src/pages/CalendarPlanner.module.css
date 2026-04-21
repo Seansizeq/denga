@@ -181,6 +181,7 @@
 .reportBtn:focus-visible,
 .monthInput:focus-visible,
 .addShiftBtn:focus-visible,
+.selectInput:focus-visible,
 .saveBtn:focus-visible,
 .formRow input:focus-visible,
 .formRow textarea:focus-visible {
@@ -290,7 +291,8 @@
 }
 
 .formRow input,
-.formRow textarea {
+.formRow textarea,
+.selectInput {
   background: #171521;
   color: var(--text-primary);
   border: 1px solid #2f2c3f;

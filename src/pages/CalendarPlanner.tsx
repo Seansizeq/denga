@@ -11,8 +11,23 @@ interface DayPlan {
 }
 
 type PlannerStore = Record<string, DayPlan>;
+type PlannerCurrency = 'UAH' | 'PLN';
+
+interface PlannerPreferences {
+  currency: PlannerCurrency;
+  defaultWorkedHours: number;
+  defaultSalaryRate: number;
+  defaultSalaryAmount: number;
+}
 
 const API_URL = import.meta.env.VITE_API_URL ?? '';
+const PLANNER_PREFS_KEY = 'planner_preferences_v1';
+const DEFAULT_PREFS: PlannerPreferences = {
+  currency: 'UAH',
+  defaultWorkedHours: 8,
+  defaultSalaryRate: 0,
+  defaultSalaryAmount: 0,
+};
 
 const toIsoLocal = (date: Date): string => {
   const y = date.getFullYear();
@@ -57,6 +72,8 @@ const buildCalendarCells = (monthValue: string): Array<string | null> => {
   return [...Array.from({ length: mondayStartOffset }, () => null), ...days];
 };
 
+const currencySymbol = (currency: PlannerCurrency): string => (currency === 'PLN' ? 'zł' : '₴');
+
 const CalendarPlanner: React.FC = () => {
   const { t, locale } = useTranslation();
   const [month, setMonth] = useState(todayIso().slice(0, 7));
@@ -68,6 +85,8 @@ const CalendarPlanner: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [showReport, setShowReport] = useState(false);
   const [editorOpened, setEditorOpened] = useState(false);
+  const [showPlannerSettings, setShowPlannerSettings] = useState(false);
+  const [prefs, setPrefs] = useState<PlannerPreferences>(DEFAULT_PREFS);
   const today = todayIso();
 
   const days = useMemo(() => buildDaysForMonth(month), [month]);
@@ -114,6 +133,26 @@ const CalendarPlanner: React.FC = () => {
   const hasShiftData = Boolean(
     current.hasShift || current.workedHours || current.salaryRate || current.salaryAmount || current.note
   );
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(PLANNER_PREFS_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as Partial<PlannerPreferences>;
+      setPrefs({
+        currency: parsed.currency === 'PLN' ? 'PLN' : 'UAH',
+        defaultWorkedHours: Number(parsed.defaultWorkedHours) || 0,
+        defaultSalaryRate: Number(parsed.defaultSalaryRate) || 0,
+        defaultSalaryAmount: Number(parsed.defaultSalaryAmount) || 0,
+      });
+    } catch (error) {
+      console.error('Failed to parse planner prefs:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(PLANNER_PREFS_KEY, JSON.stringify(prefs));
+  }, [prefs]);
 
   useEffect(() => {
     let cancelled = false;
@@ -249,6 +288,14 @@ const CalendarPlanner: React.FC = () => {
             </button>
             <button
               type="button"
+              className={styles.reportBtn}
+              onClick={() => setShowPlannerSettings((prev) => !prev)}
+              aria-label={t('planner', 'plannerSettings')}
+            >
+              ⚙
+            </button>
+            <button
+              type="button"
               className={styles.arrowBtn}
               onClick={() => onMonthChange(shiftMonth(month, 1))}
               aria-label={t('planner', 'nextMonth')}
@@ -263,6 +310,58 @@ const CalendarPlanner: React.FC = () => {
             />
           </div>
         </div>
+        {showPlannerSettings && (
+          <div className={styles.reportCard}>
+            <h3 className={styles.sectionTitle}>{t('planner', 'plannerSettings')}</h3>
+            <div className={styles.formRow}>
+              <label>{t('planner', 'currency')}</label>
+              <select
+                className={styles.selectInput}
+                value={prefs.currency}
+                onChange={(e) =>
+                  setPrefs((prev) => ({ ...prev, currency: e.target.value === 'PLN' ? 'PLN' : 'UAH' }))
+                }
+              >
+                <option value="UAH">{t('planner', 'currencyUah')}</option>
+                <option value="PLN">{t('planner', 'currencyPln')}</option>
+              </select>
+            </div>
+            <div className={styles.formRow}>
+              <label>{t('planner', 'defaultWorkedHours')}</label>
+              <input
+                type="number"
+                min={0}
+                step="0.5"
+                value={prefs.defaultWorkedHours || ''}
+                onChange={(e) =>
+                  setPrefs((prev) => ({ ...prev, defaultWorkedHours: Number(e.target.value || 0) }))
+                }
+              />
+            </div>
+            <div className={styles.formRow}>
+              <label>{t('planner', 'defaultSalaryRate')}</label>
+              <input
+                type="number"
+                min={0}
+                value={prefs.defaultSalaryRate || ''}
+                onChange={(e) =>
+                  setPrefs((prev) => ({ ...prev, defaultSalaryRate: Number(e.target.value || 0) }))
+                }
+              />
+            </div>
+            <div className={styles.formRow}>
+              <label>{t('planner', 'defaultSalaryAmount')}</label>
+              <input
+                type="number"
+                min={0}
+                value={prefs.defaultSalaryAmount || ''}
+                onChange={(e) =>
+                  setPrefs((prev) => ({ ...prev, defaultSalaryAmount: Number(e.target.value || 0) }))
+                }
+              />
+            </div>
+          </div>
+        )}
         <div className={styles.weekdays}>
           {weekdays.map((dayName) => (
             <span key={dayName} className={styles.weekday}>
@@ -307,7 +406,7 @@ const CalendarPlanner: React.FC = () => {
           </div>
           <div className={styles.quickStatItem}>
             <span>{t('planner', 'expectedSalary')}</span>
-            <strong>₴{report.salary.toFixed(2)}</strong>
+            <strong>{currencySymbol(prefs.currency)}{report.salary.toFixed(2)}</strong>
           </div>
         </div>
         {loading && <p className={styles.loading}>{t('planner', 'loading')}</p>}
@@ -329,7 +428,7 @@ const CalendarPlanner: React.FC = () => {
             </div>
             <div className={styles.reportRow}>
               <span>{t('planner', 'expectedSalary')}</span>
-              <strong>₴{report.salary.toFixed(2)}</strong>
+              <strong>{currencySymbol(prefs.currency)}{report.salary.toFixed(2)}</strong>
             </div>
           </div>
         )}
@@ -347,7 +446,12 @@ const CalendarPlanner: React.FC = () => {
               className={styles.addShiftBtn}
               onClick={() => {
                 setEditorOpened(true);
-                updateCurrent({ hasShift: true });
+                updateCurrent({
+                  hasShift: true,
+                  workedHours: current.workedHours || prefs.defaultWorkedHours,
+                  salaryRate: current.salaryRate || prefs.defaultSalaryRate,
+                  salaryAmount: current.salaryAmount || prefs.defaultSalaryAmount,
+                });
               }}
             >
               {t('planner', 'addShift')}
