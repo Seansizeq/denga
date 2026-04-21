@@ -320,6 +320,8 @@ const CalendarPlanner: React.FC = () => {
     if (ok) setChooserOpen(false);
   };
 
+  const todayIsoStr = todayIso();
+
   return (
     <div className={styles.container}>
       <header className={styles.header}>
@@ -347,13 +349,15 @@ const CalendarPlanner: React.FC = () => {
           {calendarCells.map((dayIso, idx) => {
             if (!dayIso) return <span key={`empty-${idx}`} className={styles.emptyDay} aria-hidden="true" />;
             const dayNum = Number(dayIso.slice(-2));
-            const active = dayIso === selectedDay;
+            const isToday = dayIso === todayIsoStr;
+            const isSelected = dayIso === selectedDay;
             const hasData = Boolean(store[dayIso]?.hasShift || store[dayIso]?.salaryAmount || store[dayIso]?.note);
             return (
               <button
                 key={dayIso}
                 type="button"
-                className={`${styles.day} ${active ? styles.dayActive : ''}`}
+                className={`${styles.day} ${isSelected ? styles.dayActive : ''} ${isToday ? styles.dayToday : ''}`}
+                aria-current={isToday ? 'date' : undefined}
                 onClick={() => {
                   setSelectedDay(dayIso);
                   setChooserOpen(true);

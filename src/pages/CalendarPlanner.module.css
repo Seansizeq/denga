@@ -154,6 +154,20 @@
     0 4px 10px rgba(255, 213, 59, 0.18);
 }
 
+/* Сьогодні завжди видно, навіть якщо обрано інший день */
+.dayToday {
+  border-color: rgba(155, 124, 255, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(124, 92, 255, 0.35);
+}
+
+.dayToday.dayActive {
+  border-color: var(--accent-yellow);
+  box-shadow:
+    inset 0 0 0 1px var(--accent-yellow),
+    0 4px 10px rgba(255, 213, 59, 0.18),
+    0 0 0 1px rgba(124, 92, 255, 0.45);
+}
+
 .dot {
   width: 6px;
   height: 6px;
