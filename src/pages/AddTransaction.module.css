@@ -144,6 +144,101 @@
   color: var(--text-tertiary);
 }
 
+.customCategoryCard {
+  margin-top: 14px;
+  padding: 14px;
+  border-radius: 14px;
+  background: var(--bg-card);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.customCategoryTitle {
+  margin: 0 0 10px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.iconPickerLabel {
+  margin: 10px 0 8px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.iconPickerGrid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}
+
+.iconPickBtn {
+  height: 38px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.iconPickBtnSelected {
+  border-color: rgba(255, 213, 59, 0.6);
+  color: #ffd53b;
+  background: rgba(255, 213, 59, 0.1);
+}
+
+.colorPickerGrid {
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  gap: 8px;
+}
+
+.colorPickBtn {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  cursor: pointer;
+}
+
+.colorPickBtnSelected {
+  border-color: #ffffff;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.2);
+}
+
+.customCategoryActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.customCategoryCancelBtn,
+.customCategoryCreateBtn {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.customCategoryCancelBtn {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
+.customCategoryCreateBtn {
+  background: linear-gradient(135deg, var(--accent-fab) 0%, var(--accent-fab-strong) 100%);
+  color: #1B1708;
+}
+
+.customCategoryCreateBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .noteInput {
   width: 100%;
   padding: 14px 20px;

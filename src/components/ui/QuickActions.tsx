@@ -1,10 +1,10 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, ArrowUpRight, ArrowDown, Receipt } from 'lucide-react';
+import { Plus, ArrowUpRight, ArrowDown } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import styles from './QuickActions.module.css';
 
-type Tone = 'income' | 'expense' | 'history' | 'transfer';
+type Tone = 'income' | 'expense' | 'transfer';
 
 interface ActionItem {
   id: string;
@@ -38,13 +38,6 @@ const QuickActions: React.FC = () => {
       labelKey: 'Витрата',
       tone: 'expense',
       onPress: () => navigate('/add?type=expense'),
-    },
-    {
-      id: 'history',
-      icon: Receipt,
-      labelKey: 'Історія',
-      tone: 'history',
-      onPress: () => navigate('/history'),
     },
   ];
 

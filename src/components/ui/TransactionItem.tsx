@@ -1,7 +1,7 @@
 import React from 'react';
 import * as LucideIcons from 'lucide-react';
 import type { Transaction } from '../../types';
-import { findCategory, getCustomCategoryName } from '../../constants/categories';
+import { findCategory, getCustomCategoryData } from '../../constants/categories';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { useTranslation } from '../../i18n/LanguageContext';
 import type { CategoryKey } from '../../i18n/translations';
@@ -14,11 +14,13 @@ interface TransactionItemProps {
 
 const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onDelete }) => {
   const { t, locale } = useTranslation();
-  const customCategoryName = getCustomCategoryName(transaction.categoryId);
-  const category = customCategoryName
+  const customCategory = getCustomCategoryData(transaction.categoryId);
+  const category = customCategory
     ? findCategory(transaction.type === 'income' ? 'other_income' : 'other_expense')
     : findCategory(transaction.categoryId);
-  const IconComponent = (LucideIcons as any)[category.icon] ?? LucideIcons.Circle;
+  const IconComponent = customCategory
+    ? ((LucideIcons as any)[customCategory.icon] ?? LucideIcons.Tag)
+    : ((LucideIcons as any)[category.icon] ?? LucideIcons.Circle);
 
   const handleDelete = () => {
     if (!onDelete) return;
@@ -33,7 +35,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onDelete
     handleDelete();
   };
 
-  const categoryName = customCategoryName ?? t('categories', category.id as CategoryKey);
+  const categoryName = customCategory?.name ?? t('categories', category.id as CategoryKey);
   const subtitle = transaction.note?.trim() || formatDate(transaction.date, locale);
   const isIncome = transaction.type === 'income';
 
@@ -44,7 +46,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onDelete
       onDoubleClick={handleDelete}
     >
       <div className={styles.iconCircle}>
-        <IconComponent size={22} color={category.color} strokeWidth={2} />
+        <IconComponent size={22} color={customCategory?.color ?? category.color} strokeWidth={2} />
       </div>
 
       <div className={styles.info}>

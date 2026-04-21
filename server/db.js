@@ -33,5 +33,16 @@ export async function initDb() {
     )
   `);
 
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS planner_days (
+      day TEXT PRIMARY KEY,
+      hasShift INTEGER NOT NULL DEFAULT 0,
+      salaryRate REAL NOT NULL DEFAULT 0,
+      salaryAmount REAL NOT NULL DEFAULT 0,
+      note TEXT NOT NULL DEFAULT '',
+      updatedAt TEXT NOT NULL
+    )
+  `);
+
   return db;
 }

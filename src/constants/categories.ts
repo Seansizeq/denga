@@ -20,20 +20,70 @@ export const CATEGORIES: CategoryDef[] = [
 ];
 
 const CUSTOM_CATEGORY_PREFIX = 'custom:';
+const CUSTOM_CATEGORY_SEPARATOR = '|';
 
-export const createCustomCategoryId = (name: string): string => {
-  return `${CUSTOM_CATEGORY_PREFIX}${encodeURIComponent(name.trim())}`;
+export const CUSTOM_CATEGORY_ICONS = [
+  'Tag',
+  'ShoppingBag',
+  'Car',
+  'Home',
+  'Coffee',
+  'Heart',
+  'Briefcase',
+  'Gift',
+  'Book',
+  'Plane',
+] as const;
+
+export type CustomCategoryIcon = typeof CUSTOM_CATEGORY_ICONS[number];
+
+export interface CustomCategoryData {
+  name: string;
+  icon: CustomCategoryIcon;
+  color: string;
+}
+
+export const CUSTOM_CATEGORY_COLORS = [
+  '#FF9F0A',
+  '#0A84FF',
+  '#5E5CE6',
+  '#AF52DE',
+  '#FF2D55',
+  '#32D74B',
+  '#30B0C7',
+  '#FFD53B',
+  '#8E8E93',
+] as const;
+
+export const createCustomCategoryId = (
+  name: string,
+  icon: CustomCategoryIcon = 'Tag',
+  color: string = '#8E8E93'
+): string => {
+  return `${CUSTOM_CATEGORY_PREFIX}${encodeURIComponent(name.trim())}${CUSTOM_CATEGORY_SEPARATOR}${icon}${CUSTOM_CATEGORY_SEPARATOR}${encodeURIComponent(color)}`;
+};
+
+export const getCustomCategoryData = (id: string): CustomCategoryData | null => {
+  if (!id.startsWith(CUSTOM_CATEGORY_PREFIX)) return null;
+  const raw = id.slice(CUSTOM_CATEGORY_PREFIX.length);
+  if (!raw) return null;
+  const [encoded, iconRaw, colorRaw] = raw.split(CUSTOM_CATEGORY_SEPARATOR);
+  if (!encoded) return null;
+  try {
+    const decodedName = decodeURIComponent(encoded);
+    const icon = CUSTOM_CATEGORY_ICONS.includes(iconRaw as CustomCategoryIcon)
+      ? (iconRaw as CustomCategoryIcon)
+      : 'Tag';
+    const decodedColor = colorRaw ? decodeURIComponent(colorRaw) : '#8E8E93';
+    const color = /^#([0-9A-Fa-f]{6})$/.test(decodedColor) ? decodedColor : '#8E8E93';
+    return { name: decodedName, icon, color };
+  } catch {
+    return { name: encoded, icon: 'Tag', color: '#8E8E93' };
+  }
 };
 
 export const getCustomCategoryName = (id: string): string | null => {
-  if (!id.startsWith(CUSTOM_CATEGORY_PREFIX)) return null;
-  const encoded = id.slice(CUSTOM_CATEGORY_PREFIX.length);
-  if (!encoded) return null;
-  try {
-    return decodeURIComponent(encoded);
-  } catch {
-    return encoded;
-  }
+  return getCustomCategoryData(id)?.name ?? null;
 };
 
 export const findCategory = (id: string): CategoryDef => {

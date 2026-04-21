@@ -144,6 +144,65 @@ app.delete('/api/transactions/:id', async (req, res) => {
   res.status(204).send();
 });
 
+app.get('/api/planner', async (req, res) => {
+  const month = String(req.query.month ?? '');
+  if (!/^\d{4}-\d{2}$/.test(month)) {
+    res.status(400).json({ error: 'month query must be in YYYY-MM format' });
+    return;
+  }
+
+  const days = await db.all(
+    'SELECT day, hasShift, salaryRate, salaryAmount, note, updatedAt FROM planner_days WHERE day LIKE ? ORDER BY day ASC',
+    [`${month}-%`]
+  );
+
+  res.json(
+    days.map((row) => ({
+      day: row.day,
+      hasShift: Boolean(row.hasShift),
+      salaryRate: Number(row.salaryRate) || 0,
+      salaryAmount: Number(row.salaryAmount) || 0,
+      note: row.note ?? '',
+      updatedAt: row.updatedAt,
+    }))
+  );
+});
+
+app.put('/api/planner/:day', async (req, res) => {
+  const { day } = req.params;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+    res.status(400).json({ error: 'day param must be in YYYY-MM-DD format' });
+    return;
+  }
+
+  const hasShift = req.body.hasShift ? 1 : 0;
+  const salaryRate = Number(req.body.salaryRate) || 0;
+  const salaryAmount = Number(req.body.salaryAmount) || 0;
+  const note = typeof req.body.note === 'string' ? req.body.note.trim() : '';
+  const updatedAt = new Date().toISOString();
+
+  await db.run(
+    `INSERT INTO planner_days (day, hasShift, salaryRate, salaryAmount, note, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(day) DO UPDATE SET
+       hasShift = excluded.hasShift,
+       salaryRate = excluded.salaryRate,
+       salaryAmount = excluded.salaryAmount,
+       note = excluded.note,
+       updatedAt = excluded.updatedAt`,
+    [day, hasShift, salaryRate, salaryAmount, note, updatedAt]
+  );
+
+  res.json({
+    day,
+    hasShift: Boolean(hasShift),
+    salaryRate,
+    salaryAmount,
+    note,
+    updatedAt,
+  });
+});
+
 // Serve index.html for any other requests (SPA fallback)
 app.use((req, res) => {
   res.sendFile(path.join(__dirname, '../dist/index.html'));

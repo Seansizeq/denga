@@ -14,7 +14,7 @@ export const LANGUAGE_FLAGS: Record<Language, string> = {
 };
 
 type Dict = {
-  nav: { home: string; history: string; stats: string; settings: string };
+  nav: { home: string; calendar: string; stats: string; settings: string };
   dashboard: {
     greeting: string;
     recentTitle: string;
@@ -38,8 +38,25 @@ type Dict = {
     note: string;
     notePlaceholder: string;
     customCategoryPlaceholder: string;
+    addCategory: string;
+    createCategory: string;
+    chooseIcon: string;
+    chooseColor: string;
+    create: string;
   };
   history: { title: string; empty: string; deleteConfirm: string };
+  planner: {
+    title: string;
+    subtitle: string;
+    selectedDate: string;
+    hasShift: string;
+    salaryRate: string;
+    salaryAmount: string;
+    note: string;
+    notePlaceholder: string;
+    save: string;
+    saved: string;
+  };
   stats: {
     title: string;
     thisMonth: string;
@@ -78,7 +95,7 @@ type Dict = {
 };
 
 const uk: Dict = {
-  nav: { home: 'Головна', history: 'Історія', stats: 'Статистика', settings: 'Налаштування' },
+  nav: { home: 'Головна', calendar: 'Календар', stats: 'Статистика', settings: 'Налаштування' },
   dashboard: {
     greeting: 'Привіт',
     recentTitle: 'Операції',
@@ -102,11 +119,28 @@ const uk: Dict = {
     note: 'Примітка',
     notePlaceholder: 'Необов’язково',
     customCategoryPlaceholder: 'Або введіть свою категорію',
+    addCategory: 'Нова категорія',
+    createCategory: 'Створити категорію',
+    chooseIcon: 'Оберіть іконку',
+    chooseColor: 'Оберіть колір',
+    create: 'Створити',
   },
   history: {
     title: 'Історія',
     empty: 'Операцій поки немає',
     deleteConfirm: 'Видалити цю операцію?',
+  },
+  planner: {
+    title: 'Календар',
+    subtitle: 'Відмічайте зміни, ставку та зарплату по днях',
+    selectedDate: 'Обрана дата',
+    hasShift: 'Є зміна',
+    salaryRate: 'Ставка за зміну',
+    salaryAmount: 'Зарплата за день',
+    note: 'Нотатка',
+    notePlaceholder: 'Наприклад: нічна зміна',
+    save: 'Зберегти',
+    saved: 'Збережено',
   },
   stats: {
     title: 'Статистика',
@@ -151,7 +185,7 @@ const uk: Dict = {
 };
 
 const ru: Dict = {
-  nav: { home: 'Главная', history: 'История', stats: 'Статистика', settings: 'Настройки' },
+  nav: { home: 'Главная', calendar: 'Календарь', stats: 'Статистика', settings: 'Настройки' },
   dashboard: {
     greeting: 'Привет',
     recentTitle: 'Операции',
@@ -175,11 +209,28 @@ const ru: Dict = {
     note: 'Заметка',
     notePlaceholder: 'Необязательно',
     customCategoryPlaceholder: 'Или введите свою категорию',
+    addCategory: 'Новая категория',
+    createCategory: 'Создать категорию',
+    chooseIcon: 'Выберите иконку',
+    chooseColor: 'Выберите цвет',
+    create: 'Создать',
   },
   history: {
     title: 'История',
     empty: 'Операций пока нет',
     deleteConfirm: 'Удалить эту операцию?',
+  },
+  planner: {
+    title: 'Календарь',
+    subtitle: 'Отмечайте смены, ставку и зарплату по дням',
+    selectedDate: 'Выбранная дата',
+    hasShift: 'Есть смена',
+    salaryRate: 'Ставка за смену',
+    salaryAmount: 'Зарплата за день',
+    note: 'Заметка',
+    notePlaceholder: 'Например: ночная смена',
+    save: 'Сохранить',
+    saved: 'Сохранено',
   },
   stats: {
     title: 'Статистика',
@@ -224,7 +275,7 @@ const ru: Dict = {
 };
 
 const en: Dict = {
-  nav: { home: 'Home', history: 'History', stats: 'Stats', settings: 'Settings' },
+  nav: { home: 'Home', calendar: 'Calendar', stats: 'Stats', settings: 'Settings' },
   dashboard: {
     greeting: 'Hello',
     recentTitle: 'Transactions',
@@ -248,11 +299,28 @@ const en: Dict = {
     note: 'Note',
     notePlaceholder: 'Optional',
     customCategoryPlaceholder: 'Or enter your own category',
+    addCategory: 'New category',
+    createCategory: 'Create category',
+    chooseIcon: 'Choose icon',
+    chooseColor: 'Choose color',
+    create: 'Create',
   },
   history: {
     title: 'History',
     empty: 'No transactions yet',
     deleteConfirm: 'Delete this transaction?',
+  },
+  planner: {
+    title: 'Calendar',
+    subtitle: 'Track shifts, salary rate and pay by date',
+    selectedDate: 'Selected date',
+    hasShift: 'Has shift',
+    salaryRate: 'Shift rate',
+    salaryAmount: 'Daily salary',
+    note: 'Note',
+    notePlaceholder: 'Example: night shift',
+    save: 'Save',
+    saved: 'Saved',
   },
   stats: {
     title: 'Stats',

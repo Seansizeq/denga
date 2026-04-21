@@ -1,10 +1,12 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Home, Wallet, BarChart2, Settings as SettingsIcon, Plus } from 'lucide-react';
+import { Home, CalendarDays, BarChart2, Settings as SettingsIcon, Plus } from 'lucide-react';
+import { useTranslation } from '../i18n/LanguageContext';
 import styles from './BottomNavigation.module.css';
 
 const BottomNavigation: React.FC = () => {
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   return (
     <nav className={styles.nav}>
@@ -19,11 +21,11 @@ const BottomNavigation: React.FC = () => {
         </NavLink>
 
         <NavLink
-          to="/history"
+          to="/calendar"
           className={({ isActive }) => (isActive ? styles.active : styles.link)}
-          aria-label="History"
+          aria-label={t('nav', 'calendar')}
         >
-          <Wallet size={24} strokeWidth={2} />
+          <CalendarDays size={24} strokeWidth={2} />
         </NavLink>
 
         <button

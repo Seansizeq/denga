@@ -3,7 +3,7 @@ import * as LucideIcons from 'lucide-react';
 import { useTransactions } from '../context/TransactionContext';
 import { useTranslation } from '../i18n/LanguageContext';
 import { formatCurrency, isSameMonth } from '../utils/formatters';
-import { findCategory, getCustomCategoryName } from '../constants/categories';
+import { findCategory, getCustomCategoryData } from '../constants/categories';
 import type { CategoryKey } from '../i18n/translations';
 import styles from './Stats.module.css';
 
@@ -83,24 +83,30 @@ const Stats: React.FC = () => {
         ) : (
           <ul className={styles.catList}>
             {byCategory.map((row) => {
-              const customCategoryName = getCustomCategoryName(row.id);
-              const category = customCategoryName
+              const customCategory = getCustomCategoryData(row.id);
+              const category = customCategory
                 ? findCategory('other_expense')
                 : findCategory(row.id);
               const IconComponent =
-                (LucideIcons as any)[category.icon] ?? LucideIcons.Circle;
+                customCategory
+                  ? ((LucideIcons as any)[customCategory.icon] ?? LucideIcons.Tag)
+                  : ((LucideIcons as any)[category.icon] ?? LucideIcons.Circle);
               const percentage = maxExpense
                 ? Math.round((row.total / maxExpense) * 100)
                 : 0;
               return (
                 <li key={row.id} className={styles.catRow}>
                   <div className={styles.catIcon}>
-                    <IconComponent size={22} color={category.color} strokeWidth={2} />
+                    <IconComponent
+                      size={22}
+                      color={customCategory?.color ?? category.color}
+                      strokeWidth={2}
+                    />
                   </div>
                   <div className={styles.catBody}>
                     <div className={styles.catTopLine}>
                       <span className={styles.catName}>
-                        {customCategoryName ?? t('categories', category.id as CategoryKey)}
+                        {customCategory?.name ?? t('categories', category.id as CategoryKey)}
                       </span>
                       <span className={styles.catTotal}>
                         {formatCurrency(row.total, locale)}
@@ -111,7 +117,7 @@ const Stats: React.FC = () => {
                         className={styles.catBarFill}
                         style={{
                           width: `${percentage}%`,
-                          backgroundColor: category.color,
+                          backgroundColor: customCategory?.color ?? category.color,
                         }}
                       />
                     </div>

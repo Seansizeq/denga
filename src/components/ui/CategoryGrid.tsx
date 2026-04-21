@@ -9,13 +9,15 @@ interface CategoryGridProps {
   selectedId: string;
   type: 'income' | 'expense';
   onSelect: (id: string) => void;
-  customCategories?: Array<{ id: string; name: string }>;
+  onAddCustom?: () => void;
+  customCategories?: Array<{ id: string; name: string; icon: string; color: string }>;
 }
 
 const CategoryGrid: React.FC<CategoryGridProps> = ({
   selectedId,
   type,
   onSelect,
+  onAddCustom,
   customCategories = [],
 }) => {
   const { t } = useTranslation();
@@ -43,6 +45,8 @@ const CategoryGrid: React.FC<CategoryGridProps> = ({
         );
       })}
       {customCategories.map((category) => {
+        const IconComponent =
+          (LucideIcons as any)[category.icon] ?? LucideIcons.Tag;
         const selected = selectedId === category.id;
         return (
           <button
@@ -52,12 +56,22 @@ const CategoryGrid: React.FC<CategoryGridProps> = ({
             onClick={() => onSelect(category.id)}
           >
             <div className={styles.iconBox}>
-              <LucideIcons.Tag size={24} color="#8E8E93" strokeWidth={1.5} />
+              <IconComponent size={24} color={category.color} strokeWidth={1.5} />
             </div>
             <span className={styles.name}>{category.name}</span>
           </button>
         );
       })}
+      <button
+        type="button"
+        className={styles.categoryBtn}
+        onClick={onAddCustom}
+      >
+        <div className={`${styles.iconBox} ${styles.addIconBox}`}>
+          <LucideIcons.Plus size={24} color="#FFD53B" strokeWidth={2} />
+        </div>
+        <span className={styles.name}>+</span>
+      </button>
     </div>
   );
 };

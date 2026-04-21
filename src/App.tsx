@@ -5,6 +5,7 @@ import BottomNavigation from './components/BottomNavigation';
 import Dashboard from './pages/Dashboard';
 import AddTransaction from './pages/AddTransaction';
 import History from './pages/History';
+import CalendarPlanner from './pages/CalendarPlanner';
 import Settings from './pages/Settings';
 import Stats from './pages/Stats';
 import { useTranslation } from './i18n/LanguageContext';
@@ -89,6 +90,7 @@ const TelegramApp: React.FC = () => {
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/history" element={<History />} />
+            <Route path="/calendar" element={<CalendarPlanner />} />
             <Route path="/add" element={<AddTransaction />} />
             <Route path="/stats" element={<Stats />} />
             <Route path="/settings" element={<Settings />} />
