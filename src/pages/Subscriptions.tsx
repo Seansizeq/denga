@@ -128,27 +128,7 @@ const Subscriptions: React.FC = () => {
   return (
     <div className={styles.container}>
       <header className={styles.header}>
-        <div className={styles.headerRow}>
-          <h1 className={styles.title}>{t('subscriptions', 'title')}</h1>
-          <button
-            type="button"
-            className={styles.addIconBtn}
-            aria-label={t('subscriptions', 'add')}
-            onClick={() => {
-              if (!isFormOpen) {
-                setName('');
-                setAmount('');
-                setCycle('monthly');
-                setNextChargeDate(new Date().toISOString().slice(0, 10));
-                setNote('');
-                setEditingId(null);
-              }
-              setIsFormOpen((prev) => !prev);
-            }}
-          >
-            <Plus size={20} strokeWidth={2.4} />
-          </button>
-        </div>
+        <h1 className={styles.title}>{t('subscriptions', 'title')}</h1>
         <span className={styles.subtitle}>{t('subscriptions', 'subtitle')}</span>
       </header>
 
@@ -250,6 +230,25 @@ const Subscriptions: React.FC = () => {
           </div>
         </section>
       ) : null}
+
+      <button
+        type="button"
+        className={styles.floatingAddBtn}
+        aria-label={t('subscriptions', 'add')}
+        onClick={() => {
+          if (!isFormOpen) {
+            setName('');
+            setAmount('');
+            setCycle('monthly');
+            setNextChargeDate(new Date().toISOString().slice(0, 10));
+            setNote('');
+            setEditingId(null);
+          }
+          setIsFormOpen((prev) => !prev);
+        }}
+      >
+        <Plus size={22} strokeWidth={2.4} />
+      </button>
     </div>
   );
 };
