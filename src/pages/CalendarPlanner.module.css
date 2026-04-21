@@ -7,13 +7,6 @@
   margin-bottom: 14px;
 }
 
-.headerRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
 .title {
   margin: 0;
   font-size: 28px;
@@ -44,9 +37,6 @@
 }
 
 .monthBlock {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
   min-width: 0;
   flex: 1;
 }
@@ -71,14 +61,7 @@
   text-overflow: ellipsis;
 }
 
-.monthHint {
-  color: var(--text-tertiary);
-  font-size: 12px;
-}
-
-.arrowBtn,
-.reportBtn,
-.topSettingsBtn {
+.arrowBtn {
   background: #171521;
   color: var(--text-primary);
   border: 1px solid #2f2c3f;
@@ -94,17 +77,6 @@
   font-size: 16px;
 }
 
-.topSettingsBtn {
-  min-width: 40px;
-  padding: 8px 12px;
-}
-
-.topSettingsBtn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
 .monthInput {
   background: #171521;
   color: var(--text-primary);
@@ -112,55 +84,6 @@
   border-radius: 10px;
   padding: 8px 10px;
   width: 132px;
-}
-
-.quickStats {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  margin: 8px 0 14px;
-}
-
-.quickStatItem {
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 12px;
-  background: rgba(23, 21, 33, 0.7);
-  padding: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.quickStatItem span {
-  color: var(--text-tertiary);
-  font-size: 11px;
-}
-
-.quickStatItem strong {
-  color: var(--text-primary);
-  font-size: 15px;
-}
-
-.reportCard {
-  margin-top: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: #171521;
-  border-radius: 12px;
-  padding: 10px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.reportRow {
-  display: flex;
-  justify-content: space-between;
-  color: var(--text-secondary);
-  font-size: 14px;
-}
-
-.reportRow strong {
-  color: var(--text-primary);
 }
 
 .grid {
@@ -205,11 +128,8 @@
 
 .day:focus-visible,
 .arrowBtn:focus-visible,
-.reportBtn:focus-visible,
-.topSettingsBtn:focus-visible,
 .monthInput:focus-visible,
 .addShiftBtn:focus-visible,
-.selectInput:focus-visible,
 .saveBtn:focus-visible,
 .formRow input:focus-visible,
 .formRow textarea:focus-visible {
@@ -224,11 +144,6 @@
     0 4px 10px rgba(255, 213, 59, 0.18);
 }
 
-.dayToday {
-  border-color: #6f5cff;
-  box-shadow: inset 0 0 0 1px rgba(111, 92, 255, 0.7);
-}
-
 .dot {
   width: 6px;
   height: 6px;
@@ -237,62 +152,6 @@
   position: absolute;
   right: 6px;
   top: 6px;
-}
-
-.dayWork {
-  border-color: rgba(86, 182, 139, 0.35);
-}
-
-.dayOff {
-  opacity: 0.82;
-}
-
-.legend {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 6px;
-}
-
-.legendItem {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--text-tertiary);
-  font-size: 12px;
-}
-
-.legendDot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
-
-.todayDot {
-  background: #6f5cff;
-}
-
-.filledDot {
-  background: var(--accent-green);
-}
-
-.sectionTitle {
-  margin: 0 0 14px;
-  color: var(--text-primary);
-  font-size: 16px;
-}
-
-.emptyState {
-  border: 1px dashed rgba(255, 255, 255, 0.16);
-  border-radius: 14px;
-  background: rgba(23, 21, 33, 0.55);
-  padding: 16px;
-}
-
-.emptyStateText {
-  margin: 0 0 12px;
-  color: var(--text-secondary);
-  font-size: 13px;
 }
 
 .addShiftBtn {
@@ -304,14 +163,6 @@
   font-weight: 700;
   padding: 11px 12px;
   cursor: pointer;
-}
-
-.switchRow {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-primary);
-  margin-bottom: 14px;
 }
 
 .formRow {
@@ -327,38 +178,12 @@
 }
 
 .formRow input,
-.formRow textarea,
-.selectInput {
+.formRow textarea {
   background: #171521;
   color: var(--text-primary);
   border: 1px solid #2f2c3f;
   border-radius: 10px;
   padding: 10px;
-}
-
-.templateList {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.templateBtn {
-  border: 1px solid #2f2c3f;
-  background: #171521;
-  color: var(--text-secondary);
-  border-radius: 10px;
-  padding: 8px 12px;
-  cursor: pointer;
-}
-
-.templateBtnActive {
-  color: var(--text-primary);
-  border-color: var(--accent-yellow);
-  box-shadow: inset 0 0 0 1px var(--accent-yellow);
-}
-
-.hiddenInput {
-  display: none;
 }
 
 .saveBtn {
@@ -400,68 +225,6 @@
   gap: 10px;
 }
 
-.templateCard {
-  width: 100%;
-  max-width: 420px;
-  background: #1f1f27;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 24px;
-  padding: 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.templateTitle {
-  margin: 0;
-  text-align: center;
-  font-size: 34px;
-  font-weight: 700;
-}
-
-.templateGroup {
-  background: #2a2b32;
-  border-radius: 18px;
-  padding: 8px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.templateInput {
-  border: none;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
-  background: transparent;
-  color: var(--text-primary);
-  padding: 10px 4px;
-  font-size: 18px;
-}
-
-.templateInput:last-child {
-  border-bottom: none;
-}
-
-.addBtn {
-  flex: 1;
-  border: none;
-  border-radius: 12px;
-  background: var(--accent-yellow);
-  color: #1a1200;
-  padding: 12px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.cancelBtn {
-  border: none;
-  border-radius: 12px;
-  padding: 12px;
-  font-weight: 700;
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--text-primary);
-  cursor: pointer;
-}
-
 .editorCard {
   width: 100%;
   max-width: 420px;
@@ -470,17 +233,6 @@
   border-radius: 16px;
   padding: 14px;
   box-shadow: 0 20px 36px rgba(0, 0, 0, 0.45);
-}
-
-.templateChooser {
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  padding-top: 8px;
-}
-
-.templateChooserTitle {
-  margin: 0 0 8px;
-  font-size: 12px;
-  color: var(--text-tertiary);
 }
 
 .loading {

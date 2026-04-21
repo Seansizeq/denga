@@ -146,11 +146,10 @@ const CalendarPlanner: React.FC = () => {
     }
   };
 
-  const applyShift = async (payload: DayPlan) => {
+  const applyShift = (payload: DayPlan) => {
     setStore((prev) => ({ ...prev, [selectedDay]: payload }));
     setEditorOpened(true);
     setChooserOpen(false);
-    await saveDay(selectedDay, payload);
   };
 
   return (
