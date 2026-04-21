@@ -105,6 +105,10 @@ type Dict = {
     deleteShiftConfirm: string;
     deleteTemplate: string;
     deleteTemplateConfirm: string;
+    monthReportTitle: string;
+    reportHoursTotal: string;
+    salaryForReportHint: string;
+    shiftPayment: string;
   };
   subscriptions: {
     title: string;
@@ -261,6 +265,10 @@ const uk: Dict = {
     deleteShiftConfirm: 'Прибрати зміну з цього дня?',
     deleteTemplate: 'Видалити шаблон',
     deleteTemplateConfirm: 'Видалити цей шаблон зі списку?',
+    monthReportTitle: 'Звіт за місяць',
+    reportHoursTotal: 'Відпрацьовано годин',
+    salaryForReportHint: 'Для звіту вкажіть ставку (₴/год) або фіксовану суму за зміну (₴).',
+    shiftPayment: 'Оплата за зміну',
   },
   subscriptions: {
     title: 'Підписки',
@@ -422,6 +430,10 @@ const ru: Dict = {
     deleteShiftConfirm: 'Убрать смену с этого дня?',
     deleteTemplate: 'Удалить шаблон',
     deleteTemplateConfirm: 'Удалить этот шаблон из списка?',
+    monthReportTitle: 'Отчёт за месяц',
+    reportHoursTotal: 'Отработано часов',
+    salaryForReportHint: 'Для отчёта укажите ставку (₴/ч) или фиксированную сумму за смену (₴).',
+    shiftPayment: 'Оплата за смену',
   },
   subscriptions: {
     title: 'Подписки',
@@ -583,6 +595,10 @@ const en: Dict = {
     deleteShiftConfirm: 'Remove the shift from this day?',
     deleteTemplate: 'Delete template',
     deleteTemplateConfirm: 'Remove this template from the list?',
+    monthReportTitle: 'Monthly summary',
+    reportHoursTotal: 'Hours worked',
+    salaryForReportHint: 'For the report: hourly rate (₴/h) or fixed amount per shift (₴).',
+    shiftPayment: 'Pay for this shift',
   },
   subscriptions: {
     title: 'Subscriptions',

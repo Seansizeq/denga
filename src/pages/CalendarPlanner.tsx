@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from '../i18n/LanguageContext';
+import { formatCurrency } from '../utils/formatters';
 import styles from './CalendarPlanner.module.css';
 
 interface DayPlan {
@@ -83,6 +84,18 @@ const parseNoteToNameSymbol = (note: string): { name: string; symbol: string } =
   return { name: parts[0] ?? '', symbol: '' };
 };
 
+const parseMoneyInput = (raw: string): number => {
+  const n = parseFloat(String(raw).replace(',', '.').trim());
+  return Number.isFinite(n) ? Math.max(0, n) : 0;
+};
+
+const expectedPayForDay = (p: DayPlan): number => {
+  if (!p.hasShift) return 0;
+  if (p.salaryAmount > 0) return p.salaryAmount;
+  if (p.salaryRate > 0 && p.workedHours > 0) return p.salaryRate * p.workedHours;
+  return 0;
+};
+
 const readVisualOverlayBox = (): { top: number; height: number; keyboardOpen: boolean } => {
   const vv = window.visualViewport;
   if (!vv) {
@@ -113,6 +126,8 @@ const CalendarPlanner: React.FC = () => {
   const [endTime, setEndTime] = useState('17:00');
   const [vvRev, setVvRev] = useState(0);
   const [shiftTemplates, setShiftTemplates] = useState<ShiftTemplate[]>([]);
+  const [salaryRateInput, setSalaryRateInput] = useState('');
+  const [salaryAmountInput, setSalaryAmountInput] = useState('');
 
   const modalAnyOpen = chooserOpen || editorOpened;
 
@@ -154,6 +169,19 @@ const CalendarPlanner: React.FC = () => {
   };
 
   const dayHasShift = Boolean(current.hasShift || current.note.trim());
+
+  const monthReport = useMemo(() => {
+    const days = buildDaysForMonth(month);
+    let totalHours = 0;
+    let totalSalary = 0;
+    for (const day of days) {
+      const p = store[day];
+      if (!p?.hasShift) continue;
+      totalHours += p.workedHours || 0;
+      totalSalary += expectedPayForDay(p);
+    }
+    return { totalHours, totalSalary };
+  }, [store, month]);
 
   useEffect(() => {
     let cancelled = false;
@@ -266,6 +294,8 @@ const CalendarPlanner: React.FC = () => {
     setIsFullDay(true);
     setStartTime('09:00');
     setEndTime('17:00');
+    setSalaryRateInput('');
+    setSalaryAmountInput('');
   };
 
   const prefillEditorFromPlan = (plan: DayPlan) => {
@@ -286,6 +316,8 @@ const CalendarPlanner: React.FC = () => {
       setStartTime('09:00');
       setEndTime('17:00');
     }
+    setSalaryRateInput(plan.salaryRate > 0 ? String(plan.salaryRate) : '');
+    setSalaryAmountInput(plan.salaryAmount > 0 ? String(plan.salaryAmount) : '');
   };
 
   const openEditShift = () => {
@@ -301,6 +333,8 @@ const CalendarPlanner: React.FC = () => {
       hasShift: false,
       workedHours: 0,
       note: '',
+      salaryRate: 0,
+      salaryAmount: 0,
     };
     setStore((prev) => ({ ...prev, [selectedDay]: payload }));
     const ok = await saveDay(selectedDay, payload);
@@ -350,6 +384,20 @@ const CalendarPlanner: React.FC = () => {
             <button type="button" className={styles.arrowBtn} onClick={() => setMonth(shiftMonth(month, -1))}>←</button>
             <button type="button" className={styles.arrowBtn} onClick={() => setMonth(shiftMonth(month, 1))}>→</button>
             <input type="month" className={styles.monthInput} value={month} onChange={(e) => setMonth(e.target.value)} />
+          </div>
+        </div>
+
+        <div className={styles.reportCard}>
+          <h3 className={styles.reportCardTitle}>{t('planner', 'monthReportTitle')}</h3>
+          <div className={styles.reportRow}>
+            <span className={styles.reportLabel}>{t('planner', 'reportHoursTotal')}</span>
+            <strong className={styles.reportValue}>
+              {monthReport.totalHours.toLocaleString(locale, { maximumFractionDigits: 1, minimumFractionDigits: 0 })}
+            </strong>
+          </div>
+          <div className={styles.reportRow}>
+            <span className={styles.reportLabel}>{t('planner', 'expectedSalary')}</span>
+            <strong className={styles.reportValue}>{formatCurrency(monthReport.totalSalary, locale)}</strong>
           </div>
         </div>
 
@@ -544,6 +592,39 @@ const CalendarPlanner: React.FC = () => {
                   />
                 </div>
               </div>
+
+              <h3 className={styles.groupTitle}>{t('planner', 'shiftPayment')}</h3>
+              <p className={styles.salaryHint}>{t('planner', 'salaryForReportHint')}</p>
+              <div className={styles.formBlock}>
+                <div className={styles.formRow}>
+                  <label htmlFor="shift-rate">{t('planner', 'salaryRate')}</label>
+                  <input
+                    id="shift-rate"
+                    type="text"
+                    inputMode="decimal"
+                    enterKeyHint="next"
+                    autoComplete="off"
+                    placeholder="0"
+                    value={salaryRateInput}
+                    onChange={(e) => setSalaryRateInput(e.target.value)}
+                    className={styles.fieldInput}
+                  />
+                </div>
+                <div className={styles.formRow}>
+                  <label htmlFor="shift-amount">{t('planner', 'salaryAmount')}</label>
+                  <input
+                    id="shift-amount"
+                    type="text"
+                    inputMode="decimal"
+                    enterKeyHint="done"
+                    autoComplete="off"
+                    placeholder="0"
+                    value={salaryAmountInput}
+                    onChange={(e) => setSalaryAmountInput(e.target.value)}
+                    className={styles.fieldInput}
+                  />
+                </div>
+              </div>
             </div>
 
             <button
@@ -552,10 +633,14 @@ const CalendarPlanner: React.FC = () => {
               disabled={saving}
               onClick={async () => {
                 const workedHours = isFullDay ? 8 : hoursFromTimeRange(startTime, endTime);
+                const salaryRate = parseMoneyInput(salaryRateInput);
+                const salaryAmount = parseMoneyInput(salaryAmountInput);
                 const payload: DayPlan = {
                   ...current,
                   hasShift: true,
                   workedHours,
+                  salaryRate,
+                  salaryAmount,
                   note: [shiftName.trim(), shiftSymbol.trim()].filter(Boolean).join(' • '),
                 };
                 setStore((prev) => ({ ...prev, [selectedDay]: payload }));
