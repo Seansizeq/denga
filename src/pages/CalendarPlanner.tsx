@@ -260,9 +260,71 @@ const CalendarPlanner: React.FC = () => {
   return (
     <div className={styles.container}>
       <header className={styles.header}>
-        <h1 className={styles.title}>{t('planner', 'title')}</h1>
+        <div className={styles.headerRow}>
+          <h1 className={styles.title}>{t('planner', 'title')}</h1>
+          <button
+            type="button"
+            className={styles.topSettingsBtn}
+            onClick={() => setShowPlannerSettings((prev) => !prev)}
+            aria-label={t('planner', 'plannerSettings')}
+          >
+            ⚙
+          </button>
+        </div>
         <p className={styles.subtitle}>{t('planner', 'subtitle')}</p>
       </header>
+      {showPlannerSettings && (
+        <section className={styles.panel}>
+          <h3 className={styles.sectionTitle}>{t('planner', 'plannerSettings')}</h3>
+          <div className={styles.formRow}>
+            <label>{t('planner', 'currency')}</label>
+            <select
+              className={styles.selectInput}
+              value={prefs.currency}
+              onChange={(e) =>
+                setPrefs((prev) => ({ ...prev, currency: e.target.value === 'PLN' ? 'PLN' : 'UAH' }))
+              }
+            >
+              <option value="UAH">{t('planner', 'currencyUah')}</option>
+              <option value="PLN">{t('planner', 'currencyPln')}</option>
+            </select>
+          </div>
+          <div className={styles.formRow}>
+            <label>{t('planner', 'defaultWorkedHours')}</label>
+            <input
+              type="number"
+              min={0}
+              step="0.5"
+              value={prefs.defaultWorkedHours || ''}
+              onChange={(e) =>
+                setPrefs((prev) => ({ ...prev, defaultWorkedHours: Number(e.target.value || 0) }))
+              }
+            />
+          </div>
+          <div className={styles.formRow}>
+            <label>{t('planner', 'defaultSalaryRate')}</label>
+            <input
+              type="number"
+              min={0}
+              value={prefs.defaultSalaryRate || ''}
+              onChange={(e) =>
+                setPrefs((prev) => ({ ...prev, defaultSalaryRate: Number(e.target.value || 0) }))
+              }
+            />
+          </div>
+          <div className={styles.formRow}>
+            <label>{t('planner', 'defaultSalaryAmount')}</label>
+            <input
+              type="number"
+              min={0}
+              value={prefs.defaultSalaryAmount || ''}
+              onChange={(e) =>
+                setPrefs((prev) => ({ ...prev, defaultSalaryAmount: Number(e.target.value || 0) }))
+              }
+            />
+          </div>
+        </section>
+      )}
 
       <section className={styles.panel}>
         <div className={styles.monthRow}>
@@ -288,14 +350,6 @@ const CalendarPlanner: React.FC = () => {
             </button>
             <button
               type="button"
-              className={styles.reportBtn}
-              onClick={() => setShowPlannerSettings((prev) => !prev)}
-              aria-label={t('planner', 'plannerSettings')}
-            >
-              ⚙
-            </button>
-            <button
-              type="button"
               className={styles.arrowBtn}
               onClick={() => onMonthChange(shiftMonth(month, 1))}
               aria-label={t('planner', 'nextMonth')}
@@ -310,58 +364,6 @@ const CalendarPlanner: React.FC = () => {
             />
           </div>
         </div>
-        {showPlannerSettings && (
-          <div className={styles.reportCard}>
-            <h3 className={styles.sectionTitle}>{t('planner', 'plannerSettings')}</h3>
-            <div className={styles.formRow}>
-              <label>{t('planner', 'currency')}</label>
-              <select
-                className={styles.selectInput}
-                value={prefs.currency}
-                onChange={(e) =>
-                  setPrefs((prev) => ({ ...prev, currency: e.target.value === 'PLN' ? 'PLN' : 'UAH' }))
-                }
-              >
-                <option value="UAH">{t('planner', 'currencyUah')}</option>
-                <option value="PLN">{t('planner', 'currencyPln')}</option>
-              </select>
-            </div>
-            <div className={styles.formRow}>
-              <label>{t('planner', 'defaultWorkedHours')}</label>
-              <input
-                type="number"
-                min={0}
-                step="0.5"
-                value={prefs.defaultWorkedHours || ''}
-                onChange={(e) =>
-                  setPrefs((prev) => ({ ...prev, defaultWorkedHours: Number(e.target.value || 0) }))
-                }
-              />
-            </div>
-            <div className={styles.formRow}>
-              <label>{t('planner', 'defaultSalaryRate')}</label>
-              <input
-                type="number"
-                min={0}
-                value={prefs.defaultSalaryRate || ''}
-                onChange={(e) =>
-                  setPrefs((prev) => ({ ...prev, defaultSalaryRate: Number(e.target.value || 0) }))
-                }
-              />
-            </div>
-            <div className={styles.formRow}>
-              <label>{t('planner', 'defaultSalaryAmount')}</label>
-              <input
-                type="number"
-                min={0}
-                value={prefs.defaultSalaryAmount || ''}
-                onChange={(e) =>
-                  setPrefs((prev) => ({ ...prev, defaultSalaryAmount: Number(e.target.value || 0) }))
-                }
-              />
-            </div>
-          </div>
-        )}
         <div className={styles.weekdays}>
           {weekdays.map((dayName) => (
             <span key={dayName} className={styles.weekday}>

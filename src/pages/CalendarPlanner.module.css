@@ -7,6 +7,13 @@
   margin-bottom: 14px;
 }
 
+.headerRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .title {
   margin: 0;
   font-size: 28px;
@@ -63,7 +70,8 @@
 }
 
 .arrowBtn,
-.reportBtn {
+.reportBtn,
+.topSettingsBtn {
   background: #171521;
   color: var(--text-primary);
   border: 1px solid #2f2c3f;
@@ -77,6 +85,11 @@
   min-width: 36px;
   padding: 8px 10px;
   font-size: 16px;
+}
+
+.topSettingsBtn {
+  min-width: 40px;
+  padding: 8px 12px;
 }
 
 .monthInput {
@@ -179,6 +192,7 @@
 .day:focus-visible,
 .arrowBtn:focus-visible,
 .reportBtn:focus-visible,
+.topSettingsBtn:focus-visible,
 .monthInput:focus-visible,
 .addShiftBtn:focus-visible,
 .selectInput:focus-visible,
