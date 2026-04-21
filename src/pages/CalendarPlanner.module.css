@@ -400,6 +400,17 @@
   gap: 10px;
 }
 
+.templateChooser {
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding-top: 8px;
+}
+
+.templateChooserTitle {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
 .loading {
   margin: 10px 0 0;
   font-size: 13px;

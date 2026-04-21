@@ -10,8 +10,16 @@ interface DayPlan {
   note: string;
 }
 
+interface ShiftTemplate {
+  id: string;
+  name: string;
+  hasShift: boolean;
+  workedHours: number;
+  salaryRate: number;
+  salaryAmount: number;
+}
+
 type PlannerStore = Record<string, DayPlan>;
-type DayAction = 'default' | 'template';
 
 const API_URL = import.meta.env.VITE_API_URL ?? '';
 const PLANNER_PREFS_KEY = 'planner_preferences_v1';
@@ -65,22 +73,26 @@ const CalendarPlanner: React.FC = () => {
   const [chooserOpen, setChooserOpen] = useState(false);
   const [editorOpened, setEditorOpened] = useState(false);
 
-  const templateDefaults = useMemo(() => {
+  const templates = useMemo<ShiftTemplate[]>(() => {
     try {
       const raw = localStorage.getItem(PLANNER_PREFS_KEY);
-      if (!raw) return { workedHours: 10, salaryRate: 0, salaryAmount: 0 };
+      if (!raw) return [];
       const parsed = JSON.parse(raw) as any;
-      const template = Array.isArray(parsed?.templates) ? parsed.templates.find((tpl: any) => tpl.id === parsed?.selectedTemplateId) : null;
-      if (!template) return { workedHours: 10, salaryRate: 0, salaryAmount: 0 };
-      return {
-        workedHours: toNumber(template.workedHours),
-        salaryRate: toNumber(template.salaryRate),
-        salaryAmount: toNumber(template.salaryAmount),
-      };
+      if (!Array.isArray(parsed?.templates)) return [];
+      return parsed.templates
+        .filter((tpl: any) => tpl && typeof tpl.name === 'string')
+        .map((tpl: any) => ({
+          id: typeof tpl.id === 'string' ? tpl.id : crypto.randomUUID(),
+          name: String(tpl.name),
+          hasShift: Boolean(tpl.hasShift),
+          workedHours: toNumber(tpl.workedHours),
+          salaryRate: toNumber(tpl.salaryRate),
+          salaryAmount: toNumber(tpl.salaryAmount),
+        }));
     } catch {
-      return { workedHours: 10, salaryRate: 0, salaryAmount: 0 };
+      return [];
     }
-  }, []);
+  }, [chooserOpen]);
 
   const calendarCells = useMemo(() => buildCalendarCells(month), [month]);
   const weekdays = useMemo(() => {
@@ -165,11 +177,7 @@ const CalendarPlanner: React.FC = () => {
     }
   };
 
-  const applyShift = async (action: DayAction) => {
-    const payload: DayPlan =
-      action === 'template'
-        ? { hasShift: true, workedHours: templateDefaults.workedHours, salaryRate: templateDefaults.salaryRate, salaryAmount: templateDefaults.salaryAmount, note: '' }
-        : { hasShift: true, workedHours: 8, salaryRate: 0, salaryAmount: 0, note: '' };
+  const applyShift = async (payload: DayPlan) => {
     setStore((prev) => ({ ...prev, [selectedDay]: payload }));
     setEditorOpened(true);
     setChooserOpen(false);
@@ -252,12 +260,46 @@ const CalendarPlanner: React.FC = () => {
       {chooserOpen ? (
         <div className={styles.modalOverlay} onClick={() => setChooserOpen(false)}>
           <div className={styles.modalCard} onClick={(e) => e.stopPropagation()}>
-            <button type="button" className={styles.addShiftBtn} onClick={() => applyShift('default')}>
+            <button
+              type="button"
+              className={styles.addShiftBtn}
+              onClick={() =>
+                applyShift({
+                  hasShift: true,
+                  workedHours: 8,
+                  salaryRate: 0,
+                  salaryAmount: 0,
+                  note: '',
+                })
+              }
+            >
               {t('planner', 'addShift')}
             </button>
-            <button type="button" className={styles.reportBtn} onClick={() => applyShift('template')}>
-              {t('planner', 'applyTemplate')}
-            </button>
+            {templates.length > 0 ? (
+              <div className={styles.templateChooser}>
+                <p className={styles.templateChooserTitle}>{t('planner', 'templates')}</p>
+                <div className={styles.templateList}>
+                  {templates.map((tpl) => (
+                    <button
+                      key={tpl.id}
+                      type="button"
+                      className={styles.reportBtn}
+                      onClick={() =>
+                        applyShift({
+                          hasShift: tpl.hasShift,
+                          workedHours: tpl.workedHours,
+                          salaryRate: tpl.salaryRate,
+                          salaryAmount: tpl.salaryAmount,
+                          note: '',
+                        })
+                      }
+                    >
+                      {tpl.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}
