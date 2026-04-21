@@ -281,8 +281,16 @@
   overscroll-behavior: contain;
 }
 
+.templateRow {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
 .templateBtn {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
+  width: auto;
   text-align: left;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 12px;
@@ -306,6 +314,38 @@
 }
 
 .templateBtn:focus-visible {
+  outline: 2px solid rgba(255, 213, 59, 0.9);
+  outline-offset: 1px;
+}
+
+.templateDeleteBtn {
+  flex-shrink: 0;
+  width: 42px;
+  border: 1px solid rgba(255, 69, 58, 0.25);
+  border-radius: 12px;
+  background: rgba(255, 69, 58, 0.12);
+  color: #ff6b63;
+  font-size: 22px;
+  line-height: 1;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 0;
+}
+
+.templateDeleteBtn:hover {
+  background: rgba(255, 69, 58, 0.2);
+}
+
+.templateDeleteBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.templateDeleteBtn:focus-visible {
   outline: 2px solid rgba(255, 213, 59, 0.9);
   outline-offset: 1px;
 }

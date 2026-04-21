@@ -320,6 +320,18 @@ const CalendarPlanner: React.FC = () => {
     if (ok) setChooserOpen(false);
   };
 
+  const deleteShiftTemplate = async (tpl: ShiftTemplate) => {
+    if (!window.confirm(t('planner', 'deleteTemplateConfirm'))) return;
+    try {
+      const response = await fetch(`${API_URL}/api/planner/shift-templates/${encodeURIComponent(tpl.id)}`, {
+        method: 'DELETE',
+      });
+      if (response.ok) void loadShiftTemplates();
+    } catch (error) {
+      console.error('Failed to delete shift template:', error);
+    }
+  };
+
   const todayIsoStr = todayIso();
 
   return (
@@ -421,7 +433,7 @@ const CalendarPlanner: React.FC = () => {
                         ? `${tpl.name.trim()} · ${tpl.symbol.trim()}`
                         : tpl.name.trim() || tpl.symbol.trim();
                     return (
-                      <li key={tpl.id}>
+                      <li key={tpl.id} className={styles.templateRow}>
                         <button
                           type="button"
                           className={styles.templateBtn}
@@ -429,6 +441,19 @@ const CalendarPlanner: React.FC = () => {
                           onClick={() => void applyTemplateToDay(tpl)}
                         >
                           {label}
+                        </button>
+                        <button
+                          type="button"
+                          className={styles.templateDeleteBtn}
+                          disabled={saving}
+                          aria-label={t('planner', 'deleteTemplate')}
+                          title={t('planner', 'deleteTemplate')}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void deleteShiftTemplate(tpl);
+                          }}
+                        >
+                          ×
                         </button>
                       </li>
                     );

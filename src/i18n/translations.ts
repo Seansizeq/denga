@@ -103,6 +103,8 @@ type Dict = {
     editShift: string;
     deleteShift: string;
     deleteShiftConfirm: string;
+    deleteTemplate: string;
+    deleteTemplateConfirm: string;
   };
   subscriptions: {
     title: string;
@@ -257,6 +259,8 @@ const uk: Dict = {
     editShift: 'Редагувати зміну',
     deleteShift: 'Видалити зміну',
     deleteShiftConfirm: 'Прибрати зміну з цього дня?',
+    deleteTemplate: 'Видалити шаблон',
+    deleteTemplateConfirm: 'Видалити цей шаблон зі списку?',
   },
   subscriptions: {
     title: 'Підписки',
@@ -416,6 +420,8 @@ const ru: Dict = {
     editShift: 'Редактировать смену',
     deleteShift: 'Удалить смену',
     deleteShiftConfirm: 'Убрать смену с этого дня?',
+    deleteTemplate: 'Удалить шаблон',
+    deleteTemplateConfirm: 'Удалить этот шаблон из списка?',
   },
   subscriptions: {
     title: 'Подписки',
@@ -575,6 +581,8 @@ const en: Dict = {
     editShift: 'Edit shift',
     deleteShift: 'Remove shift',
     deleteShiftConfirm: 'Remove the shift from this day?',
+    deleteTemplate: 'Delete template',
+    deleteTemplateConfirm: 'Remove this template from the list?',
   },
   subscriptions: {
     title: 'Subscriptions',

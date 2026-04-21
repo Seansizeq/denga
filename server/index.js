@@ -486,6 +486,20 @@ app.post('/api/planner/shift-templates', async (req, res) => {
   });
 });
 
+app.delete('/api/planner/shift-templates/:id', async (req, res) => {
+  const id = typeof req.params.id === 'string' ? req.params.id.trim() : '';
+  if (!id) {
+    res.status(400).json({ error: 'invalid id' });
+    return;
+  }
+  const result = await db.run('DELETE FROM planner_shift_templates WHERE id = ?', [id]);
+  if (!result.changes) {
+    res.status(404).json({ error: 'not found' });
+    return;
+  }
+  res.status(204).end();
+});
+
 // Serve index.html for any other requests (SPA fallback)
 app.use((req, res) => {
   res.sendFile(path.join(__dirname, '../dist/index.html'));
