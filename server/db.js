@@ -84,5 +84,20 @@ export async function initDb() {
     )
   `);
 
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS planner_shift_templates (
+      id TEXT PRIMARY KEY,
+      normalized_key TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL DEFAULT '',
+      symbol TEXT NOT NULL DEFAULT '',
+      is_full_day INTEGER NOT NULL DEFAULT 1,
+      start_time TEXT NOT NULL DEFAULT '09:00',
+      end_time TEXT NOT NULL DEFAULT '17:00',
+      worked_hours REAL NOT NULL DEFAULT 8,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
   return db;
 }

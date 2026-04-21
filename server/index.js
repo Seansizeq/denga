@@ -417,6 +417,75 @@ app.put('/api/planner/:day', async (req, res) => {
   });
 });
 
+const normalizeShiftTemplateKey = (name, symbol) =>
+  `${String(name).trim().toLowerCase()}::${String(symbol).trim().toLowerCase()}`;
+
+app.get('/api/planner/shift-templates', async (_req, res) => {
+  const rows = await db.all(
+    `SELECT id, name, symbol, is_full_day, start_time, end_time, worked_hours, updated_at
+     FROM planner_shift_templates
+     ORDER BY updated_at DESC`
+  );
+  res.json(
+    rows.map((row) => ({
+      id: row.id,
+      name: row.name ?? '',
+      symbol: row.symbol ?? '',
+      isFullDay: Boolean(row.is_full_day),
+      startTime: row.start_time ?? '09:00',
+      endTime: row.end_time ?? '17:00',
+      workedHours: Number(row.worked_hours) || 0,
+      updatedAt: row.updated_at,
+    }))
+  );
+});
+
+app.post('/api/planner/shift-templates', async (req, res) => {
+  const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
+  const symbol = typeof req.body.symbol === 'string' ? req.body.symbol.trim() : '';
+  if (!name && !symbol) {
+    res.status(400).json({ error: 'name or symbol required' });
+    return;
+  }
+  const isFullDay = Boolean(req.body.isFullDay);
+  const startTime = typeof req.body.startTime === 'string' && /^\d{2}:\d{2}$/.test(req.body.startTime) ? req.body.startTime : '09:00';
+  const endTime = typeof req.body.endTime === 'string' && /^\d{2}:\d{2}$/.test(req.body.endTime) ? req.body.endTime : '17:00';
+  let workedHours = Number(req.body.workedHours);
+  if (!Number.isFinite(workedHours) || workedHours < 0) workedHours = isFullDay ? 8 : 0;
+
+  const normalized_key = normalizeShiftTemplateKey(name, symbol);
+  const now = new Date().toISOString();
+  const existing = await db.get('SELECT id FROM planner_shift_templates WHERE normalized_key = ?', [normalized_key]);
+  const id = existing?.id ?? uuidv4();
+
+  if (existing) {
+    await db.run(
+      `UPDATE planner_shift_templates SET
+        name = ?, symbol = ?, is_full_day = ?, start_time = ?, end_time = ?, worked_hours = ?, updated_at = ?
+       WHERE id = ?`,
+      [name, symbol, isFullDay ? 1 : 0, startTime, endTime, workedHours, now, id]
+    );
+  } else {
+    await db.run(
+      `INSERT INTO planner_shift_templates
+        (id, normalized_key, name, symbol, is_full_day, start_time, end_time, worked_hours, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, normalized_key, name, symbol, isFullDay ? 1 : 0, startTime, endTime, workedHours, now, now]
+    );
+  }
+
+  res.json({
+    id,
+    name,
+    symbol,
+    isFullDay,
+    startTime,
+    endTime,
+    workedHours,
+    updatedAt: now,
+  });
+});
+
 // Serve index.html for any other requests (SPA fallback)
 app.use((req, res) => {
   res.sendFile(path.join(__dirname, '../dist/index.html'));

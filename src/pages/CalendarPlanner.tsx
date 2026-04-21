@@ -12,6 +12,16 @@ interface DayPlan {
 
 type PlannerStore = Record<string, DayPlan>;
 
+interface ShiftTemplate {
+  id: string;
+  name: string;
+  symbol: string;
+  isFullDay: boolean;
+  startTime: string;
+  endTime: string;
+  workedHours: number;
+}
+
 const API_URL = import.meta.env.VITE_API_URL ?? '';
 
 const toIsoLocal = (date: Date): string => {
@@ -81,6 +91,7 @@ const CalendarPlanner: React.FC = () => {
   const [startTime, setStartTime] = useState('09:00');
   const [endTime, setEndTime] = useState('17:00');
   const [vvRev, setVvRev] = useState(0);
+  const [shiftTemplates, setShiftTemplates] = useState<ShiftTemplate[]>([]);
 
   const modalAnyOpen = chooserOpen || editorOpened;
 
@@ -154,7 +165,56 @@ const CalendarPlanner: React.FC = () => {
     };
   }, [month]);
 
-  const saveDay = async (dayIso: string, payload: DayPlan) => {
+  const loadShiftTemplates = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/planner/shift-templates`);
+      if (!response.ok) return;
+      const rows = (await response.json()) as ShiftTemplate[];
+      setShiftTemplates(Array.isArray(rows) ? rows : []);
+    } catch (error) {
+      console.error('Failed to load shift templates:', error);
+    }
+  };
+
+  useEffect(() => {
+    void loadShiftTemplates();
+  }, []);
+
+  const hoursFromTimeRange = (start: string, end: string): number => {
+    const [sh, sm] = start.split(':').map(Number);
+    const [eh, em] = end.split(':').map(Number);
+    if (!Number.isFinite(sh) || !Number.isFinite(sm) || !Number.isFinite(eh) || !Number.isFinite(em)) return 0;
+    const startMin = sh * 60 + sm;
+    let endMin = eh * 60 + em;
+    if (endMin <= startMin) endMin += 24 * 60;
+    return Math.max(0, Number(((endMin - startMin) / 60).toFixed(2)));
+  };
+
+  const persistShiftTemplate = async () => {
+    const name = shiftName.trim();
+    const symbol = shiftSymbol.trim();
+    if (!name && !symbol) return;
+    try {
+      const workedHours = isFullDay ? 8 : hoursFromTimeRange(startTime, endTime);
+      const response = await fetch(`${API_URL}/api/planner/shift-templates`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          symbol,
+          isFullDay,
+          startTime,
+          endTime,
+          workedHours,
+        }),
+      });
+      if (response.ok) void loadShiftTemplates();
+    } catch (error) {
+      console.error('Failed to save shift template:', error);
+    }
+  };
+
+  const saveDay = async (dayIso: string, payload: DayPlan): Promise<boolean> => {
     setSaving(true);
     try {
       const response = await fetch(`${API_URL}/api/planner/${dayIso}`, {
@@ -165,8 +225,10 @@ const CalendarPlanner: React.FC = () => {
       if (!response.ok) throw new Error(`Planner save failed: ${response.status}`);
       setJustSaved(true);
       window.setTimeout(() => setJustSaved(false), 1200);
+      return true;
     } catch (error) {
       console.error('Failed to save planner day:', error);
+      return false;
     } finally {
       setSaving(false);
     }
@@ -183,14 +245,17 @@ const CalendarPlanner: React.FC = () => {
     setEndTime('17:00');
   };
 
-  const hoursFromTimeRange = (start: string, end: string): number => {
-    const [sh, sm] = start.split(':').map(Number);
-    const [eh, em] = end.split(':').map(Number);
-    if (!Number.isFinite(sh) || !Number.isFinite(sm) || !Number.isFinite(eh) || !Number.isFinite(em)) return 0;
-    const startMin = sh * 60 + sm;
-    let endMin = eh * 60 + em;
-    if (endMin <= startMin) endMin += 24 * 60;
-    return Math.max(0, Number(((endMin - startMin) / 60).toFixed(2)));
+  const applyTemplateToDay = async (tpl: ShiftTemplate) => {
+    const note = [tpl.name.trim(), tpl.symbol.trim()].filter(Boolean).join(' • ');
+    const payload: DayPlan = {
+      ...current,
+      hasShift: true,
+      workedHours: tpl.workedHours,
+      note,
+    };
+    setStore((prev) => ({ ...prev, [selectedDay]: payload }));
+    const ok = await saveDay(selectedDay, payload);
+    if (ok) setChooserOpen(false);
   };
 
   return (
@@ -264,6 +329,31 @@ const CalendarPlanner: React.FC = () => {
             >
               {t('planner', 'addShift')}
             </button>
+            {shiftTemplates.length > 0 ? (
+              <>
+                <p className={styles.templateSectionLabel}>{t('planner', 'templates')}</p>
+                <ul className={styles.templateList} role="list">
+                  {shiftTemplates.map((tpl) => {
+                    const label =
+                      tpl.name.trim() && tpl.symbol.trim()
+                        ? `${tpl.name.trim()} · ${tpl.symbol.trim()}`
+                        : tpl.name.trim() || tpl.symbol.trim();
+                    return (
+                      <li key={tpl.id}>
+                        <button
+                          type="button"
+                          className={styles.templateBtn}
+                          disabled={saving}
+                          onClick={() => void applyTemplateToDay(tpl)}
+                        >
+                          {label}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </>
+            ) : null}
           </div>
         </div>
       ) : null}
@@ -362,8 +452,11 @@ const CalendarPlanner: React.FC = () => {
                   note: [shiftName.trim(), shiftSymbol.trim()].filter(Boolean).join(' • '),
                 };
                 setStore((prev) => ({ ...prev, [selectedDay]: payload }));
-                await saveDay(selectedDay, payload);
-                setEditorOpened(false);
+                const ok = await saveDay(selectedDay, payload);
+                if (ok) {
+                  await persistShiftTemplate();
+                  setEditorOpened(false);
+                }
               }}
             >
               {justSaved ? t('planner', 'saved') : saving ? '...' : t('planner', 'save')}
