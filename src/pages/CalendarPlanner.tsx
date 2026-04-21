@@ -62,6 +62,27 @@ const toNumber = (value: unknown): number => {
   return Number.isFinite(n) ? Math.max(0, n) : 0;
 };
 
+const addHoursToTime = (start: string, hours: number): string => {
+  const [h, m] = start.split(':').map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return '17:00';
+  const startMin = h * 60 + m;
+  const endMin = startMin + Math.round(hours * 60);
+  const total = ((endMin % (24 * 60)) + 24 * 60) % (24 * 60);
+  const eh = Math.floor(total / 60);
+  const em = total % 60;
+  return `${String(eh).padStart(2, '0')}:${String(em).padStart(2, '0')}`;
+};
+
+const parseNoteToNameSymbol = (note: string): { name: string; symbol: string } => {
+  const raw = note.trim();
+  if (!raw) return { name: '', symbol: '' };
+  const parts = raw.split(/\s*•\s*/).map((s) => s.trim()).filter(Boolean);
+  if (parts.length >= 2) {
+    return { name: parts[0], symbol: parts.slice(1).join(' • ') };
+  }
+  return { name: parts[0] ?? '', symbol: '' };
+};
+
 const readVisualOverlayBox = (): { top: number; height: number; keyboardOpen: boolean } => {
   const vv = window.visualViewport;
   if (!vv) {
@@ -131,6 +152,8 @@ const CalendarPlanner: React.FC = () => {
     salaryAmount: 0,
     note: '',
   };
+
+  const dayHasShift = Boolean(current.hasShift || current.note.trim());
 
   useEffect(() => {
     let cancelled = false;
@@ -245,6 +268,45 @@ const CalendarPlanner: React.FC = () => {
     setEndTime('17:00');
   };
 
+  const prefillEditorFromPlan = (plan: DayPlan) => {
+    const { name, symbol } = parseNoteToNameSymbol(plan.note);
+    setShiftName(name);
+    setShiftSymbol(symbol);
+    const wh = plan.workedHours;
+    if (Math.abs(wh - 8) < 0.05) {
+      setIsFullDay(true);
+      setStartTime('09:00');
+      setEndTime('17:00');
+    } else if (wh > 0) {
+      setIsFullDay(false);
+      setStartTime('09:00');
+      setEndTime(addHoursToTime('09:00', wh));
+    } else {
+      setIsFullDay(true);
+      setStartTime('09:00');
+      setEndTime('17:00');
+    }
+  };
+
+  const openEditShift = () => {
+    prefillEditorFromPlan(current);
+    setEditorOpened(true);
+    setChooserOpen(false);
+  };
+
+  const removeShiftFromDay = async () => {
+    if (!window.confirm(t('planner', 'deleteShiftConfirm'))) return;
+    const payload: DayPlan = {
+      ...current,
+      hasShift: false,
+      workedHours: 0,
+      note: '',
+    };
+    setStore((prev) => ({ ...prev, [selectedDay]: payload }));
+    const ok = await saveDay(selectedDay, payload);
+    if (ok) setChooserOpen(false);
+  };
+
   const applyTemplateToDay = async (tpl: ShiftTemplate) => {
     const note = [tpl.name.trim(), tpl.symbol.trim()].filter(Boolean).join(' • ');
     const payload: DayPlan = {
@@ -314,21 +376,37 @@ const CalendarPlanner: React.FC = () => {
           onClick={() => setChooserOpen(false)}
         >
           <div className={styles.modalSheet} onClick={(e) => e.stopPropagation()}>
-            <button
-              type="button"
-              className={styles.addShiftBtn}
-              onClick={() =>
-                applyShift({
-                  hasShift: true,
-                  workedHours: 8,
-                  salaryRate: 0,
-                  salaryAmount: 0,
-                  note: '',
-                })
-              }
-            >
-              {t('planner', 'addShift')}
-            </button>
+            {dayHasShift ? (
+              <div className={styles.dayShiftActions}>
+                <button type="button" className={styles.editShiftBtn} onClick={openEditShift}>
+                  {t('planner', 'editShift')}
+                </button>
+                <button
+                  type="button"
+                  className={styles.deleteShiftBtn}
+                  disabled={saving}
+                  onClick={() => void removeShiftFromDay()}
+                >
+                  {t('planner', 'deleteShift')}
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className={styles.addShiftBtn}
+                onClick={() =>
+                  applyShift({
+                    hasShift: true,
+                    workedHours: 8,
+                    salaryRate: 0,
+                    salaryAmount: 0,
+                    note: '',
+                  })
+                }
+              >
+                {t('planner', 'addShift')}
+              </button>
+            )}
             {shiftTemplates.length > 0 ? (
               <>
                 <p className={styles.templateSectionLabel}>{t('planner', 'templates')}</p>

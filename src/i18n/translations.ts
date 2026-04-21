@@ -100,6 +100,9 @@ type Dict = {
     timeStart: string;
     timeEnd: string;
     dismiss: string;
+    editShift: string;
+    deleteShift: string;
+    deleteShiftConfirm: string;
   };
   subscriptions: {
     title: string;
@@ -251,6 +254,9 @@ const uk: Dict = {
     timeStart: 'Початок',
     timeEnd: 'Кінець',
     dismiss: 'Закрити',
+    editShift: 'Редагувати зміну',
+    deleteShift: 'Видалити зміну',
+    deleteShiftConfirm: 'Прибрати зміну з цього дня?',
   },
   subscriptions: {
     title: 'Підписки',
@@ -407,6 +413,9 @@ const ru: Dict = {
     timeStart: 'Начало',
     timeEnd: 'Конец',
     dismiss: 'Закрыть',
+    editShift: 'Редактировать смену',
+    deleteShift: 'Удалить смену',
+    deleteShiftConfirm: 'Убрать смену с этого дня?',
   },
   subscriptions: {
     title: 'Подписки',
@@ -563,6 +572,9 @@ const en: Dict = {
     timeStart: 'Start',
     timeEnd: 'End',
     dismiss: 'Close',
+    editShift: 'Edit shift',
+    deleteShift: 'Remove shift',
+    deleteShiftConfirm: 'Remove the shift from this day?',
   },
   subscriptions: {
     title: 'Subscriptions',

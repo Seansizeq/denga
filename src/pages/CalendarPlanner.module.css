@@ -202,6 +202,49 @@
   gap: 0;
 }
 
+.dayShiftActions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.editShiftBtn {
+  width: 100%;
+  border: none;
+  border-radius: 12px;
+  background: rgba(10, 132, 255, 0.18);
+  color: #59a7ff;
+  font-weight: 700;
+  padding: 12px 14px;
+  font-size: 15px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.deleteShiftBtn {
+  width: 100%;
+  border: none;
+  border-radius: 12px;
+  background: rgba(255, 69, 58, 0.15);
+  color: #ff6b63;
+  font-weight: 700;
+  padding: 12px 14px;
+  font-size: 15px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.deleteShiftBtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.editShiftBtn:focus-visible,
+.deleteShiftBtn:focus-visible {
+  outline: 2px solid rgba(255, 213, 59, 0.9);
+  outline-offset: 1px;
+}
+
 .templateSectionLabel {
   margin: 14px 0 8px;
   font-size: 12px;
