@@ -61,6 +61,7 @@ const CalendarPlanner: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showReport, setShowReport] = useState(false);
+  const today = todayIso();
 
   const days = useMemo(() => buildDaysForMonth(month), [month]);
   const calendarCells = useMemo(() => buildCalendarCells(month), [month]);
@@ -238,12 +239,13 @@ const CalendarPlanner: React.FC = () => {
             }
             const dayNum = Number(dayIso.slice(-2));
             const active = dayIso === selectedDay;
+            const isToday = dayIso === today;
             const hasData = Boolean(store[dayIso]?.hasShift || store[dayIso]?.salaryAmount || store[dayIso]?.note);
             return (
               <button
                 key={dayIso}
                 type="button"
-                className={`${styles.day} ${active ? styles.dayActive : ''}`}
+                className={`${styles.day} ${active ? styles.dayActive : ''} ${isToday ? styles.dayToday : ''}`}
                 onClick={() => {
                   if (!canLeaveDraft()) return;
                   setSelectedDay(dayIso);
@@ -258,6 +260,16 @@ const CalendarPlanner: React.FC = () => {
         {loading && <p className={styles.loading}>Loading...</p>}
         {showReport && (
           <div className={styles.reportCard}>
+            <div className={styles.legend}>
+              <span className={styles.legendItem}>
+                <span className={`${styles.legendDot} ${styles.todayDot}`} />
+                Today
+              </span>
+              <span className={styles.legendItem}>
+                <span className={`${styles.legendDot} ${styles.filledDot}`} />
+                Filled day
+              </span>
+            </div>
             <div className={styles.reportRow}>
               <span>{t('planner', 'workedHours')}</span>
               <strong>{report.hours.toFixed(1)}</strong>
