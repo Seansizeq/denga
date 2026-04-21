@@ -245,6 +245,76 @@ app.post('/api/custom-categories', async (req, res) => {
   res.status(201).json({ id, type, name, icon, color, updatedAt: now });
 });
 
+app.get('/api/subscriptions', async (_req, res) => {
+  const rows = await db.all(
+    `SELECT id, name, amount, cycle, nextChargeDate, note, active, createdAt, updatedAt
+     FROM subscriptions
+     ORDER BY active DESC, nextChargeDate ASC, createdAt DESC`
+  );
+  res.json(
+    rows.map((row) => ({
+      ...row,
+      amount: Number(row.amount) || 0,
+      active: Boolean(row.active),
+    }))
+  );
+});
+
+app.post('/api/subscriptions', async (req, res) => {
+  const name = typeof req.body?.name === 'string' ? req.body.name.trim().replace(/\s+/g, ' ') : '';
+  const amount = Number(req.body?.amount);
+  const cycle = req.body?.cycle === 'yearly' ? 'yearly' : 'monthly';
+  const nextChargeDate = typeof req.body?.nextChargeDate === 'string' ? req.body.nextChargeDate : '';
+  const note = typeof req.body?.note === 'string' ? req.body.note.trim() : '';
+
+  if (!name) {
+    res.status(400).json({ error: 'name is required' });
+    return;
+  }
+  if (!amount || amount <= 0) {
+    res.status(400).json({ error: 'amount must be > 0' });
+    return;
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(nextChargeDate)) {
+    res.status(400).json({ error: 'nextChargeDate must be in YYYY-MM-DD format' });
+    return;
+  }
+
+  const id = uuidv4();
+  const now = new Date().toISOString();
+  await db.run(
+    `INSERT INTO subscriptions (id, name, amount, cycle, nextChargeDate, note, active, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+    [id, name, amount, cycle, nextChargeDate, note, now, now]
+  );
+
+  res.status(201).json({
+    id,
+    name,
+    amount,
+    cycle,
+    nextChargeDate,
+    note,
+    active: true,
+    createdAt: now,
+    updatedAt: now,
+  });
+});
+
+app.patch('/api/subscriptions/:id', async (req, res) => {
+  const { id } = req.params;
+  const current = await db.get('SELECT * FROM subscriptions WHERE id = ? LIMIT 1', [id]);
+  if (!current) {
+    res.status(404).json({ error: 'Subscription not found' });
+    return;
+  }
+
+  const active = req.body?.active === undefined ? Boolean(current.active) : Boolean(req.body.active);
+  const now = new Date().toISOString();
+  await db.run('UPDATE subscriptions SET active = ?, updatedAt = ? WHERE id = ?', [active ? 1 : 0, now, id]);
+  res.json({ ...current, active, updatedAt: now });
+});
+
 app.get('/api/planner', async (req, res) => {
   const month = String(req.query.month ?? '');
   if (!/^\d{4}-\d{2}$/.test(month)) {
@@ -253,7 +323,7 @@ app.get('/api/planner', async (req, res) => {
   }
 
   const days = await db.all(
-    'SELECT day, hasShift, salaryRate, salaryAmount, note, updatedAt FROM planner_days WHERE day LIKE ? ORDER BY day ASC',
+    'SELECT day, hasShift, workedHours, salaryRate, salaryAmount, note, updatedAt FROM planner_days WHERE day LIKE ? ORDER BY day ASC',
     [`${month}-%`]
   );
 
@@ -261,6 +331,7 @@ app.get('/api/planner', async (req, res) => {
     days.map((row) => ({
       day: row.day,
       hasShift: Boolean(row.hasShift),
+      workedHours: Number(row.workedHours) || 0,
       salaryRate: Number(row.salaryRate) || 0,
       salaryAmount: Number(row.salaryAmount) || 0,
       note: row.note ?? '',
@@ -277,26 +348,29 @@ app.put('/api/planner/:day', async (req, res) => {
   }
 
   const hasShift = req.body.hasShift ? 1 : 0;
+  const workedHours = Number(req.body.workedHours) || 0;
   const salaryRate = Number(req.body.salaryRate) || 0;
   const salaryAmount = Number(req.body.salaryAmount) || 0;
   const note = typeof req.body.note === 'string' ? req.body.note.trim() : '';
   const updatedAt = new Date().toISOString();
 
   await db.run(
-    `INSERT INTO planner_days (day, hasShift, salaryRate, salaryAmount, note, updatedAt)
-     VALUES (?, ?, ?, ?, ?, ?)
+    `INSERT INTO planner_days (day, hasShift, workedHours, salaryRate, salaryAmount, note, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(day) DO UPDATE SET
        hasShift = excluded.hasShift,
+       workedHours = excluded.workedHours,
        salaryRate = excluded.salaryRate,
        salaryAmount = excluded.salaryAmount,
        note = excluded.note,
        updatedAt = excluded.updatedAt`,
-    [day, hasShift, salaryRate, salaryAmount, note, updatedAt]
+    [day, hasShift, workedHours, salaryRate, salaryAmount, note, updatedAt]
   );
 
   res.json({
     day,
     hasShift: Boolean(hasShift),
+    workedHours,
     salaryRate,
     salaryAmount,
     note,

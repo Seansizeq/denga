@@ -94,6 +94,24 @@
   gap: 8px;
 }
 
+.weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.weekday {
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.emptyDay {
+  height: 40px;
+}
+
 .day {
   position: relative;
   background: #171521;

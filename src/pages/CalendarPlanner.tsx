@@ -4,6 +4,7 @@ import styles from './CalendarPlanner.module.css';
 
 interface DayPlan {
   hasShift: boolean;
+  workedHours: number;
   salaryRate: number;
   salaryAmount: number;
   note: string;
@@ -13,7 +14,19 @@ type PlannerStore = Record<string, DayPlan>;
 
 const API_URL = import.meta.env.VITE_API_URL ?? '';
 
-const todayIso = (): string => new Date().toISOString().slice(0, 10);
+const toIsoLocal = (date: Date): string => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
+const todayIso = (): string => toIsoLocal(new Date());
+
+const parseIsoLocal = (iso: string): Date => {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, (m || 1) - 1, d || 1);
+};
 
 const monthLabel = (value: string, locale: string): string => {
   const [year, month] = value.split('-').map(Number);
@@ -30,30 +43,49 @@ const buildDaysForMonth = (monthValue: string): string[] => {
   });
 };
 
+const buildCalendarCells = (monthValue: string): Array<string | null> => {
+  const days = buildDaysForMonth(monthValue);
+  const [year, month] = monthValue.split('-').map(Number);
+  const firstDay = new Date(year, month - 1, 1);
+  const mondayStartOffset = (firstDay.getDay() + 6) % 7;
+  return [...Array.from({ length: mondayStartOffset }, () => null), ...days];
+};
+
 const CalendarPlanner: React.FC = () => {
   const { t, locale } = useTranslation();
   const [month, setMonth] = useState(todayIso().slice(0, 7));
   const [selectedDay, setSelectedDay] = useState(todayIso());
   const [store, setStore] = useState<PlannerStore>({});
+  const [loadedStore, setLoadedStore] = useState<PlannerStore>({});
   const [justSaved, setJustSaved] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showReport, setShowReport] = useState(false);
 
   const days = useMemo(() => buildDaysForMonth(month), [month]);
+  const calendarCells = useMemo(() => buildCalendarCells(month), [month]);
+  const weekdays = useMemo(() => {
+    const baseMonday = new Date(2024, 0, 1); // Monday
+    return Array.from({ length: 7 }, (_, i) =>
+      new Intl.DateTimeFormat(locale, { weekday: 'short' }).format(
+        new Date(baseMonday.getFullYear(), baseMonday.getMonth(), baseMonday.getDate() + i)
+      )
+    );
+  }, [locale]);
+  const isDirty = useMemo(
+    () => JSON.stringify(store) !== JSON.stringify(loadedStore),
+    [store, loadedStore]
+  );
+
   const report = useMemo(() => {
     return days.reduce(
       (acc, dayIso) => {
         const day = store[dayIso];
         if (!day?.hasShift) return acc;
 
-        const salaryAmount = Number(day.salaryAmount) || 0;
-        const salaryRate = Number(day.salaryRate) || 0;
-        const hours = salaryRate > 0 && salaryAmount > 0 ? salaryAmount / salaryRate : 0;
-
         return {
-          hours: acc.hours + hours,
-          salary: acc.salary + salaryAmount,
+          hours: acc.hours + (Number(day.workedHours) || 0),
+          salary: acc.salary + (Number(day.salaryAmount) || 0),
         };
       },
       { hours: 0, salary: 0 }
@@ -62,6 +94,7 @@ const CalendarPlanner: React.FC = () => {
 
   const current = store[selectedDay] ?? {
     hasShift: false,
+    workedHours: 0,
     salaryRate: 0,
     salaryAmount: 0,
     note: '',
@@ -79,6 +112,7 @@ const CalendarPlanner: React.FC = () => {
         const rows = (await response.json()) as Array<{
           day: string;
           hasShift: boolean;
+          workedHours: number;
           salaryRate: number;
           salaryAmount: number;
           note: string;
@@ -88,15 +122,20 @@ const CalendarPlanner: React.FC = () => {
         for (const row of rows) {
           next[row.day] = {
             hasShift: Boolean(row.hasShift),
+            workedHours: Number(row.workedHours) || 0,
             salaryRate: Number(row.salaryRate) || 0,
             salaryAmount: Number(row.salaryAmount) || 0,
             note: row.note ?? '',
           };
         }
         setStore(next);
+        setLoadedStore(next);
       } catch (error) {
         console.error('Failed to load planner data:', error);
-        if (!cancelled) setStore({});
+        if (!cancelled) {
+          setStore({});
+          setLoadedStore({});
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -114,6 +153,7 @@ const CalendarPlanner: React.FC = () => {
       [selectedDay]: {
         ...(prev[selectedDay] ?? {
           hasShift: false,
+          workedHours: 0,
           salaryRate: 0,
           salaryAmount: 0,
           note: '',
@@ -141,8 +181,14 @@ const CalendarPlanner: React.FC = () => {
       return;
     }
     setSaving(false);
+    setLoadedStore(store);
     setJustSaved(true);
     window.setTimeout(() => setJustSaved(false), 1300);
+  };
+
+  const canLeaveDraft = () => {
+    if (!isDirty) return true;
+    return window.confirm('Є незбережені зміни. Продовжити без збереження?');
   };
 
   return (
@@ -168,6 +214,7 @@ const CalendarPlanner: React.FC = () => {
               className={styles.monthInput}
               value={month}
               onChange={(e) => {
+                if (!canLeaveDraft()) return;
                 const nextMonth = e.target.value;
                 setMonth(nextMonth);
                 const [year, m] = nextMonth.split('-');
@@ -177,8 +224,18 @@ const CalendarPlanner: React.FC = () => {
           </div>
         </div>
 
+        <div className={styles.weekdays}>
+          {weekdays.map((dayName) => (
+            <span key={dayName} className={styles.weekday}>
+              {dayName}
+            </span>
+          ))}
+        </div>
         <div className={styles.grid}>
-          {days.map((dayIso) => {
+          {calendarCells.map((dayIso, idx) => {
+            if (!dayIso) {
+              return <span key={`empty-${idx}`} className={styles.emptyDay} aria-hidden="true" />;
+            }
             const dayNum = Number(dayIso.slice(-2));
             const active = dayIso === selectedDay;
             const hasData = Boolean(store[dayIso]?.hasShift || store[dayIso]?.salaryAmount || store[dayIso]?.note);
@@ -187,7 +244,10 @@ const CalendarPlanner: React.FC = () => {
                 key={dayIso}
                 type="button"
                 className={`${styles.day} ${active ? styles.dayActive : ''}`}
-                onClick={() => setSelectedDay(dayIso)}
+                onClick={() => {
+                  if (!canLeaveDraft()) return;
+                  setSelectedDay(dayIso);
+                }}
               >
                 {dayNum}
                 {hasData && <span className={styles.dot} />}
@@ -212,7 +272,7 @@ const CalendarPlanner: React.FC = () => {
 
       <section className={styles.panel}>
         <h2 className={styles.sectionTitle}>
-          {t('planner', 'selectedDate')}: {new Date(selectedDay).toLocaleDateString(locale)}
+          {t('planner', 'selectedDate')}: {parseIsoLocal(selectedDay).toLocaleDateString(locale)}
         </h2>
 
         <label className={styles.switchRow}>
@@ -223,6 +283,17 @@ const CalendarPlanner: React.FC = () => {
           />
           <span>{t('planner', 'hasShift')}</span>
         </label>
+
+        <div className={styles.formRow}>
+          <label>{t('planner', 'workedHours')}</label>
+          <input
+            type="number"
+            min={0}
+            step="0.5"
+            value={current.workedHours || ''}
+            onChange={(e) => updateCurrent({ workedHours: Number(e.target.value || 0) })}
+          />
+        </div>
 
         <div className={styles.formRow}>
           <label>{t('planner', 'salaryRate')}</label>

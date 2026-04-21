@@ -114,6 +114,30 @@
   margin-bottom: 28px;
 }
 
+.categoryTabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.categoryTabBtn {
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.categoryTabBtnActive {
+  border-color: rgba(255, 213, 59, 0.6);
+  background: rgba(255, 213, 59, 0.12);
+  color: #ffd53b;
+}
+
 .sectionTitle {
   font-size: 12px;
   text-transform: uppercase;

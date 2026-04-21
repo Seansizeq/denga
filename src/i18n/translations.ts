@@ -14,7 +14,7 @@ export const LANGUAGE_FLAGS: Record<Language, string> = {
 };
 
 type Dict = {
-  nav: { home: string; calendar: string; stats: string; settings: string };
+  nav: { home: string; calendar: string; subscriptions: string; settings: string };
   dashboard: {
     greeting: string;
     recentTitle: string;
@@ -40,6 +40,8 @@ type Dict = {
     customCategoryPlaceholder: string;
     addCategory: string;
     createCategory: string;
+    categoryTabSelect: string;
+    categoryTabCreate: string;
     chooseIcon: string;
     chooseColor: string;
     create: string;
@@ -59,6 +61,24 @@ type Dict = {
     expectedSalary: string;
     save: string;
     saved: string;
+  };
+  subscriptions: {
+    title: string;
+    subtitle: string;
+    monthlyTotal: string;
+    yearlyTotal: string;
+    activeCount: string;
+    empty: string;
+    addTitle: string;
+    name: string;
+    amount: string;
+    cycle: string;
+    monthly: string;
+    yearly: string;
+    nextChargeDate: string;
+    note: string;
+    add: string;
+    disable: string;
   };
   stats: {
     title: string;
@@ -98,7 +118,7 @@ type Dict = {
 };
 
 const uk: Dict = {
-  nav: { home: 'Головна', calendar: 'Календар', stats: 'Статистика', settings: 'Налаштування' },
+  nav: { home: 'Головна', calendar: 'Календар', subscriptions: 'Підписки', settings: 'Налаштування' },
   dashboard: {
     greeting: 'Привіт',
     recentTitle: 'Операції',
@@ -124,6 +144,8 @@ const uk: Dict = {
     customCategoryPlaceholder: 'Або введіть свою категорію',
     addCategory: 'Нова категорія',
     createCategory: 'Створити категорію',
+    categoryTabSelect: 'Вибрати',
+    categoryTabCreate: 'Нова',
     chooseIcon: 'Оберіть іконку',
     chooseColor: 'Оберіть колір',
     create: 'Створити',
@@ -147,6 +169,24 @@ const uk: Dict = {
     expectedSalary: 'Очікувана зарплата',
     save: 'Зберегти',
     saved: 'Збережено',
+  },
+  subscriptions: {
+    title: 'Підписки',
+    subtitle: 'Контролюйте регулярні платежі та скільки йде щомісяця',
+    monthlyTotal: 'За місяць',
+    yearlyTotal: 'За рік',
+    activeCount: 'Активних',
+    empty: 'Немає підписок. Додайте першу нижче.',
+    addTitle: 'Нова підписка',
+    name: 'Назва',
+    amount: 'Сума',
+    cycle: 'Цикл',
+    monthly: 'Щомісяця',
+    yearly: 'Щороку',
+    nextChargeDate: 'Наступне списання',
+    note: 'Нотатка',
+    add: 'Додати підписку',
+    disable: 'Вимкнути',
   },
   stats: {
     title: 'Статистика',
@@ -191,7 +231,7 @@ const uk: Dict = {
 };
 
 const ru: Dict = {
-  nav: { home: 'Главная', calendar: 'Календарь', stats: 'Статистика', settings: 'Настройки' },
+  nav: { home: 'Главная', calendar: 'Календарь', subscriptions: 'Подписки', settings: 'Настройки' },
   dashboard: {
     greeting: 'Привет',
     recentTitle: 'Операции',
@@ -217,6 +257,8 @@ const ru: Dict = {
     customCategoryPlaceholder: 'Или введите свою категорию',
     addCategory: 'Новая категория',
     createCategory: 'Создать категорию',
+    categoryTabSelect: 'Выбрать',
+    categoryTabCreate: 'Новая',
     chooseIcon: 'Выберите иконку',
     chooseColor: 'Выберите цвет',
     create: 'Создать',
@@ -240,6 +282,24 @@ const ru: Dict = {
     expectedSalary: 'Ожидаемая зарплата',
     save: 'Сохранить',
     saved: 'Сохранено',
+  },
+  subscriptions: {
+    title: 'Подписки',
+    subtitle: 'Контролируйте регулярные платежи и расходы в месяц',
+    monthlyTotal: 'За месяц',
+    yearlyTotal: 'За год',
+    activeCount: 'Активных',
+    empty: 'Подписок пока нет. Добавьте первую ниже.',
+    addTitle: 'Новая подписка',
+    name: 'Название',
+    amount: 'Сумма',
+    cycle: 'Цикл',
+    monthly: 'Ежемесячно',
+    yearly: 'Ежегодно',
+    nextChargeDate: 'Следующее списание',
+    note: 'Заметка',
+    add: 'Добавить подписку',
+    disable: 'Отключить',
   },
   stats: {
     title: 'Статистика',
@@ -284,7 +344,7 @@ const ru: Dict = {
 };
 
 const en: Dict = {
-  nav: { home: 'Home', calendar: 'Calendar', stats: 'Stats', settings: 'Settings' },
+  nav: { home: 'Home', calendar: 'Calendar', subscriptions: 'Subscriptions', settings: 'Settings' },
   dashboard: {
     greeting: 'Hello',
     recentTitle: 'Transactions',
@@ -310,6 +370,8 @@ const en: Dict = {
     customCategoryPlaceholder: 'Or enter your own category',
     addCategory: 'New category',
     createCategory: 'Create category',
+    categoryTabSelect: 'Select',
+    categoryTabCreate: 'New',
     chooseIcon: 'Choose icon',
     chooseColor: 'Choose color',
     create: 'Create',
@@ -333,6 +395,24 @@ const en: Dict = {
     expectedSalary: 'Expected salary',
     save: 'Save',
     saved: 'Saved',
+  },
+  subscriptions: {
+    title: 'Subscriptions',
+    subtitle: 'Track recurring payments and monthly subscription spending',
+    monthlyTotal: 'Per month',
+    yearlyTotal: 'Per year',
+    activeCount: 'Active',
+    empty: 'No subscriptions yet. Add your first one below.',
+    addTitle: 'New subscription',
+    name: 'Name',
+    amount: 'Amount',
+    cycle: 'Cycle',
+    monthly: 'Monthly',
+    yearly: 'Yearly',
+    nextChargeDate: 'Next charge date',
+    note: 'Note',
+    add: 'Add subscription',
+    disable: 'Disable',
   },
   stats: {
     title: 'Stats',
