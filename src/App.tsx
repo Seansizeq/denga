@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { TransactionProvider } from './context/TransactionContext';
 import BottomNavigation from './components/BottomNavigation';
 import Dashboard from './pages/Dashboard';
+import Accounts from './pages/Accounts';
 import AddTransaction from './pages/AddTransaction';
 import History from './pages/History';
 import CalendarPlanner from './pages/CalendarPlanner';
@@ -90,6 +91,7 @@ const TelegramApp: React.FC = () => {
         <div className="app-content">
           <Routes>
             <Route path="/" element={<Dashboard />} />
+            <Route path="/accounts" element={<Accounts />} />
             <Route path="/history" element={<History />} />
             <Route path="/calendar" element={<CalendarPlanner />} />
             <Route path="/subscriptions" element={<Subscriptions />} />

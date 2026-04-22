@@ -1,0 +1,144 @@
+import React, { useMemo } from 'react';
+import Header from '../components/ui/Header';
+import AccountsSnapshot from '../components/ui/AccountsSnapshot';
+import { useTransactions } from '../context/TransactionContext';
+import styles from './Accounts.module.css';
+
+const formatGroupAmount = (amount: number, currency: string) => {
+  const normalized = Number.isFinite(amount) ? amount : 0;
+  const abs = Math.abs(normalized).toLocaleString('ru-RU', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+  const sign = normalized < 0 ? '−' : '';
+  const suffix = currency === 'PLN' ? 'zł' : currency;
+  return `${sign}${abs} ${suffix}`;
+};
+
+const getCurrencyFromNote = (note?: string): string => {
+  if (!note) return 'UAH';
+  const match = note.match(/Currency:\s*([A-Za-z#0-9_-]+)/i);
+  const raw = match?.[1]?.toUpperCase();
+  if (!raw) return 'UAH';
+  if (raw.startsWith('C#')) return raw.slice(2).toUpperCase();
+  return raw;
+};
+
+const Accounts: React.FC = () => {
+  const { transactions } = useTransactions();
+
+  const sections = useMemo(() => {
+    const base = {
+      bank: {
+        id: 'bank',
+        title: 'Рахунки',
+        total: '',
+        rows: [] as Array<{ id: string; name: string; amount: string; badge: string; subAmount?: string }>,
+      },
+      cash: {
+        id: 'cash',
+        title: 'Готівка',
+        total: '',
+        rows: [] as Array<{ id: string; name: string; amount: string; badge: string; subAmount?: string }>,
+      },
+      crypto: {
+        id: 'crypto',
+        title: 'Акції та Крипта',
+        total: '',
+        rows: [] as Array<{ id: string; name: string; amount: string; badge: string; subAmount?: string }>,
+      },
+      debt: {
+        id: 'debt',
+        title: 'Борг',
+        total: '',
+        rows: [] as Array<{ id: string; name: string; amount: string; badge: string; subAmount?: string }>,
+      },
+    };
+
+    const accountMeta: Record<
+      string,
+      { section: 'bank' | 'cash' | 'crypto' | 'debt'; label: string; badge: string; debtPhrase?: string }
+    > = {
+      pumb: { section: 'bank', label: 'pumb', badge: 'P' },
+      privat24: { section: 'bank', label: 'Privat24', badge: 'PB' },
+      wallet: { section: 'cash', label: 'Wallet', badge: 'W' },
+      crypto: { section: 'crypto', label: 'crypto', badge: '₿' },
+      sol: { section: 'crypto', label: 'sol', badge: 'S' },
+      ton: { section: 'crypto', label: 'Ton', badge: 'T' },
+      usdt: { section: 'crypto', label: 'usdt', badge: 'U' },
+      misha: { section: 'debt', label: 'Misha', badge: 'M', debtPhrase: 'мені винні' },
+    };
+
+    const accountTotals = new Map<string, { fiatAmount: number; fiatCurrency: string; byCurrency: Map<string, number> }>();
+    transactions.forEach((tx) => {
+      const key = tx.categoryId.trim().toLowerCase();
+      const meta = accountMeta[key];
+      if (!meta) return;
+      const sign = tx.type === 'income' ? 1 : -1;
+      const currency = getCurrencyFromNote(tx.note);
+      const isFiat = currency === 'UAH' || currency === 'PLN';
+      const current = accountTotals.get(key) ?? { fiatAmount: 0, fiatCurrency: 'PLN', byCurrency: new Map() };
+      current.byCurrency.set(currency, (current.byCurrency.get(currency) ?? 0) + sign * tx.amount);
+      if (isFiat) {
+        current.fiatAmount += sign * tx.amount;
+        current.fiatCurrency = currency;
+      }
+      accountTotals.set(key, current);
+    });
+
+    const pushAccount = (key: keyof typeof accountMeta) => {
+      const meta = accountMeta[key];
+      const total = accountTotals.get(key);
+      if (!meta || !total) return;
+      const amountText = formatGroupAmount(total.fiatAmount, total.fiatCurrency);
+      const firstNonFiat = Array.from(total.byCurrency.entries()).find(
+        ([currency, amount]) => currency !== 'UAH' && currency !== 'PLN' && amount > 0
+      );
+      base[meta.section].rows.push({
+        id: key,
+        name: meta.label,
+        amount: meta.debtPhrase ? `${meta.debtPhrase} ${amountText}` : amountText,
+        badge: meta.badge,
+        subAmount: firstNonFiat
+          ? `${Math.abs(firstNonFiat[1]).toLocaleString('ru-RU', { maximumFractionDigits: 8 })} ${firstNonFiat[0]}`
+          : undefined,
+      });
+    };
+
+    pushAccount('pumb');
+    pushAccount('privat24');
+    pushAccount('wallet');
+    pushAccount('crypto');
+    pushAccount('sol');
+    pushAccount('ton');
+    pushAccount('usdt');
+    pushAccount('misha');
+
+    const calculateSectionTotal = (rows: Array<{ id: string }>, defaultCurrency = 'UAH') => {
+      if (!rows.length) return `0 ${defaultCurrency === 'PLN' ? 'zł' : defaultCurrency}`;
+      const first = accountTotals.get(rows[0].id);
+      const currency = first?.fiatCurrency ?? defaultCurrency;
+      const sum = rows.reduce((acc, row) => acc + (accountTotals.get(row.id)?.fiatAmount ?? 0), 0);
+      return formatGroupAmount(sum, currency);
+    };
+
+    base.bank.total = calculateSectionTotal(base.bank.rows, 'UAH');
+    base.cash.total = calculateSectionTotal(base.cash.rows, 'PLN');
+    base.crypto.total = calculateSectionTotal(base.crypto.rows, 'PLN');
+    base.debt.total = calculateSectionTotal(base.debt.rows, 'PLN');
+
+    return [base.bank, base.cash, base.crypto, base.debt];
+  }, [transactions]);
+
+  return (
+    <div className={styles.container}>
+      <div className={styles.content}>
+        <Header />
+        <AccountsSnapshot sections={sections} />
+        <div className={styles.spacer} />
+      </div>
+    </div>
+  );
+};
+
+export default Accounts;
