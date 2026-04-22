@@ -1,26 +1,43 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import * as LucideIcons from 'lucide-react';
 import { useTransactions } from '../context/TransactionContext';
 import { useTranslation } from '../i18n/LanguageContext';
 import { formatCurrency, isSameMonth } from '../utils/formatters';
 import { findCategory, getCustomCategoryData } from '../constants/categories';
 import type { CategoryKey } from '../i18n/translations';
+import type { RangeFilter } from '../components/ui/RecentTransactions';
 import styles from './Stats.module.css';
 
 const Stats: React.FC = () => {
   const { t, locale } = useTranslation();
   const { transactions } = useTransactions();
+  const [range, setRange] = useState<RangeFilter>('month');
 
-  const monthly = useMemo(
-    () => transactions.filter((tx) => isSameMonth(tx.date)),
-    [transactions]
+  const inRange = useMemo(() => {
+    const now = new Date();
+    return (iso: string) => {
+      const d = new Date(iso);
+      if (range === 'all') return true;
+      if (range === 'today') return d.toDateString() === now.toDateString();
+      if (range === 'week') {
+        const diff = (now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24);
+        return diff >= 0 && diff <= 7;
+      }
+      if (range === 'month') return isSameMonth(iso);
+      return true;
+    };
+  }, [range]);
+
+  const filtered = useMemo(
+    () => transactions.filter((tx) => inRange(tx.date)),
+    [transactions, inRange]
   );
 
-  const income = monthly
+  const income = filtered
     .filter((tx) => tx.type === 'income')
     .reduce((sum, tx) => sum + tx.amount, 0);
 
-  const expense = monthly
+  const expense = filtered
     .filter((tx) => tx.type === 'expense')
     .reduce((sum, tx) => sum + tx.amount, 0);
 
@@ -28,7 +45,7 @@ const Stats: React.FC = () => {
 
   const byCategory = useMemo(() => {
     const map = new Map<string, { id: string; total: number; count: number }>();
-    for (const tx of monthly) {
+    for (const tx of filtered) {
       if (tx.type !== 'expense') continue;
       const existing = map.get(tx.categoryId) ?? { id: tx.categoryId, total: 0, count: 0 };
       existing.total += tx.amount;
@@ -36,7 +53,9 @@ const Stats: React.FC = () => {
       map.set(tx.categoryId, existing);
     }
     return Array.from(map.values()).sort((a, b) => b.total - a.total);
-  }, [monthly]);
+  }, [filtered]);
+
+  const periodLabel = t('range', range);
 
   const maxExpense = byCategory[0]?.total ?? 0;
 
@@ -44,8 +63,20 @@ const Stats: React.FC = () => {
     <div className={styles.container}>
       <header className={styles.header}>
         <h1 className={styles.title}>{t('stats', 'title')}</h1>
-        <span className={styles.subtitle}>{t('stats', 'thisMonth')}</span>
+        <span className={styles.subtitle}>{periodLabel}</span>
       </header>
+      <div className={styles.rangeRow}>
+        {(['today', 'week', 'month', 'all'] as const).map((key) => (
+          <button
+            key={key}
+            type="button"
+            className={`${styles.rangeBtn} ${range === key ? styles.rangeBtnActive : ''}`}
+            onClick={() => setRange(key)}
+          >
+            {t('range', key)}
+          </button>
+        ))}
+      </div>
 
       <div className={styles.summaryGrid}>
         <div className={styles.summaryCard}>
