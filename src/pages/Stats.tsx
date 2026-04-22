@@ -10,7 +10,7 @@ import styles from './Stats.module.css';
 type StatsRange = 'week' | 'month' | 'year';
 
 const Stats: React.FC = () => {
-  const { t, locale } = useTranslation();
+  const { t, locale, displayCurrency } = useTranslation();
   const { transactions } = useTransactions();
   const [range, setRange] = useState<StatsRange>('month');
   const [hiddenCategoryIds, setHiddenCategoryIds] = useState<string[]>([]);
@@ -137,13 +137,13 @@ const Stats: React.FC = () => {
         <div className={styles.summaryCard}>
           <span className={styles.summaryLabel}>{t('stats', 'totalIncome')}</span>
           <span className={`${styles.summaryValue} ${styles.income}`}>
-            {formatCurrency(income, locale)}
+            {formatCurrency(income, locale, displayCurrency)}
           </span>
         </div>
         <div className={styles.summaryCard}>
           <span className={styles.summaryLabel}>{t('stats', 'totalExpense')}</span>
           <span className={`${styles.summaryValue} ${styles.expense}`}>
-            {formatCurrency(expense, locale)}
+            {formatCurrency(expense, locale, displayCurrency)}
           </span>
         </div>
       </div>
@@ -154,7 +154,7 @@ const Stats: React.FC = () => {
           className={`${styles.netValue} ${net < 0 ? styles.negative : styles.positive}`}
         >
           {net < 0 ? '−' : '+'}
-          {formatCurrency(net, locale)}
+          {formatCurrency(net, locale, displayCurrency)}
         </span>
       </div>
 
@@ -173,7 +173,7 @@ const Stats: React.FC = () => {
               <div className={styles.donut} style={{ background: donutBackground }}>
                 <div className={styles.donutInner}>
                   <span className={styles.donutLabel}>{t('stats', 'totalExpense')}</span>
-                  <span className={styles.donutValue}>{formatCurrency(visibleExpenseTotal, locale)}</span>
+                  <span className={styles.donutValue}>{formatCurrency(visibleExpenseTotal, locale, displayCurrency)}</span>
                   <span className={styles.donutSubLabel}>
                     {visibleCategoryRows.length} {t('stats', 'byCategory').toLowerCase()}
                   </span>
@@ -197,7 +197,7 @@ const Stats: React.FC = () => {
                         ? `${Math.round((row.total / totalExpenseByCategories) * 100)}%`
                         : '0%'}
                     </span>
-                    <span className={styles.legendValue}>{formatCurrency(row.total, locale)}</span>
+                    <span className={styles.legendValue}>{formatCurrency(row.total, locale, displayCurrency)}</span>
                     <button
                       type="button"
                       className={styles.legendToggleBtn}

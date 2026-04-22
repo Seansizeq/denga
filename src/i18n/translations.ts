@@ -26,7 +26,14 @@ type Dict = {
   };
   quickActions: { add: string; income: string; expense: string; history: string; subscriptions: string };
   range: { today: string; week: string; month: string; year: string; all: string };
-  balance: { label: string; income: string; expense: string };
+  balance: {
+    label: string;
+    income: string;
+    expense: string;
+    tapHint: string;
+    moneySources: string;
+    byCurrency: string;
+  };
   addTx: {
     title: string;
     editTitle: string;
@@ -153,6 +160,11 @@ type Dict = {
     title: string;
     language: string;
     languageDescription: string;
+    currency: string;
+    currencyDescription: string;
+    currencyUah: string;
+    currencyPln: string;
+    currencyUsd: string;
     display: string;
     fullscreen: string;
     fullscreenDescription: string;
@@ -189,7 +201,14 @@ const uk: Dict = {
   },
   quickActions: { add: 'Додати', income: 'Дохід', expense: 'Витрата', history: 'Історія', subscriptions: 'Підписки' },
   range: { today: 'Сьогодні', week: 'Тиждень', month: 'Місяць', year: 'Рік', all: 'Усі' },
-  balance: { label: 'Баланс цього місяця', income: 'Доходи', expense: 'Витрати' },
+  balance: {
+    label: 'Баланс цього місяця',
+    income: 'Доходи',
+    expense: 'Витрати',
+    tapHint: 'Натисніть на суму, щоб побачити деталі',
+    moneySources: 'Звідки гроші',
+    byCurrency: 'Баланс за валютами',
+  },
   addTx: {
     title: 'Нова операція',
     editTitle: 'Редагування операції',
@@ -322,6 +341,11 @@ const uk: Dict = {
     title: 'Налаштування',
     language: 'Мова інтерфейсу',
     languageDescription: 'Оберіть мову, якою відображатиметься застосунок',
+    currency: 'Валюта відображення',
+    currencyDescription: 'Оберіть валюту, в якій показуються суми в застосунку',
+    currencyUah: 'Гривня (₴)',
+    currencyPln: 'Злотий (zł)',
+    currencyUsd: 'Долар ($)',
     display: 'Відображення',
     fullscreen: 'Повноекранний режим',
     fullscreenDescription: 'Розгортає застосунок на весь екран і приховує шапку Telegram',
@@ -363,7 +387,14 @@ const ru: Dict = {
   },
   quickActions: { add: 'Добавить', income: 'Доход', expense: 'Расход', history: 'История', subscriptions: 'Подписки' },
   range: { today: 'Сегодня', week: 'Неделя', month: 'Месяц', year: 'Год', all: 'Все' },
-  balance: { label: 'Баланс за этот месяц', income: 'Доходы', expense: 'Расходы' },
+  balance: {
+    label: 'Баланс за этот месяц',
+    income: 'Доходы',
+    expense: 'Расходы',
+    tapHint: 'Нажмите на сумму, чтобы увидеть детали',
+    moneySources: 'Откуда деньги',
+    byCurrency: 'Баланс по валютам',
+  },
   addTx: {
     title: 'Новая операция',
     editTitle: 'Редактирование операции',
@@ -496,6 +527,11 @@ const ru: Dict = {
     title: 'Настройки',
     language: 'Язык интерфейса',
     languageDescription: 'Выберите язык, на котором будет отображаться приложение',
+    currency: 'Валюта отображения',
+    currencyDescription: 'Выберите валюту, в которой отображаются суммы в приложении',
+    currencyUah: 'Гривна (₴)',
+    currencyPln: 'Злотый (zł)',
+    currencyUsd: 'Доллар ($)',
     display: 'Отображение',
     fullscreen: 'Полноэкранный режим',
     fullscreenDescription: 'Разворачивает приложение на весь экран и скрывает шапку Telegram',
@@ -537,7 +573,14 @@ const en: Dict = {
   },
   quickActions: { add: 'Add', income: 'Income', expense: 'Expense', history: 'History', subscriptions: 'Subscriptions' },
   range: { today: 'Today', week: 'Week', month: 'Month', year: 'Year', all: 'All' },
-  balance: { label: 'This month', income: 'Income', expense: 'Expenses' },
+  balance: {
+    label: 'This month',
+    income: 'Income',
+    expense: 'Expenses',
+    tapHint: 'Tap amount to see details',
+    moneySources: 'Money sources',
+    byCurrency: 'Balance by currency',
+  },
   addTx: {
     title: 'New transaction',
     editTitle: 'Edit transaction',
@@ -670,6 +713,11 @@ const en: Dict = {
     title: 'Settings',
     language: 'Interface language',
     languageDescription: 'Choose the language the app is displayed in',
+    currency: 'Display currency',
+    currencyDescription: 'Choose the currency used to display amounts in the app',
+    currencyUah: 'Hryvnia (₴)',
+    currencyPln: 'Zloty (zł)',
+    currencyUsd: 'US Dollar ($)',
     display: 'Display',
     fullscreen: 'Fullscreen mode',
     fullscreenDescription: 'Expands the app to the whole screen and hides the Telegram header',

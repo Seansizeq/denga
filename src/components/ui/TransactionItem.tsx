@@ -15,7 +15,7 @@ interface TransactionItemProps {
 }
 
 const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onDelete, onEdit }) => {
-  const { t, locale } = useTranslation();
+  const { t, locale, displayCurrency } = useTranslation();
   const customCategory = getCustomCategoryData(transaction.categoryId);
   const category = customCategory
     ? findCategory(transaction.type === 'income' ? 'other_income' : 'other_expense')
@@ -58,7 +58,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onDelete
           className={`${styles.amount} ${isIncome ? styles.income : styles.expense}`}
         >
           {isIncome ? '+' : '−'}
-          {formatCurrency(transaction.amount, locale)}
+          {formatCurrency(transaction.amount, locale, displayCurrency)}
         </span>
         {(onEdit || onDelete) ? (
           <div className={styles.actions}>

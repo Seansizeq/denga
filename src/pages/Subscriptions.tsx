@@ -19,7 +19,7 @@ interface Subscription {
 const API_URL = import.meta.env.VITE_API_URL ?? '';
 
 const Subscriptions: React.FC = () => {
-  const { t, locale } = useTranslation();
+  const { t, locale, displayCurrency } = useTranslation();
   const [items, setItems] = useState<Subscription[]>([]);
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState('');
@@ -135,11 +135,11 @@ const Subscriptions: React.FC = () => {
       <div className={styles.summaryGrid}>
         <div className={styles.summaryCard}>
           <span className={styles.summaryLabel}>{t('subscriptions', 'monthlyTotal')}</span>
-          <span className={styles.summaryValue}>{formatCurrency(monthlyTotal, locale)}</span>
+          <span className={styles.summaryValue}>{formatCurrency(monthlyTotal, locale, displayCurrency)}</span>
         </div>
         <div className={styles.summaryCard}>
           <span className={styles.summaryLabel}>{t('subscriptions', 'yearlyTotal')}</span>
-          <span className={styles.summaryValue}>{formatCurrency(yearlyTotal, locale)}</span>
+          <span className={styles.summaryValue}>{formatCurrency(yearlyTotal, locale, displayCurrency)}</span>
         </div>
       </div>
 
@@ -160,7 +160,7 @@ const Subscriptions: React.FC = () => {
                 <article key={sub.id} className={styles.item}>
                 <div className={styles.itemTop}>
                   <span className={styles.itemName}>{sub.name}</span>
-                  <span className={styles.itemAmount}>{formatCurrency(sub.amount, locale)}</span>
+                  <span className={styles.itemAmount}>{formatCurrency(sub.amount, locale, displayCurrency)}</span>
                 </div>
                 <div className={styles.itemMeta}>
                   <span>{sub.cycle === 'monthly' ? t('subscriptions', 'monthly') : t('subscriptions', 'yearly')}</span>
@@ -168,7 +168,7 @@ const Subscriptions: React.FC = () => {
                 </div>
                 <div className={styles.itemYearlyRow}>
                   <span>{t('subscriptions', 'yearlyForItem')}</span>
-                  <strong>{formatCurrency(yearlyForItem, locale)}</strong>
+                  <strong>{formatCurrency(yearlyForItem, locale, displayCurrency)}</strong>
                 </div>
                 {sub.note ? <p className={styles.itemNote}>{sub.note}</p> : null}
                 <div className={styles.itemActions}>

@@ -1,4 +1,5 @@
 export type PlannerCurrency = 'UAH' | 'PLN';
+export type DisplayCurrency = PlannerCurrency | 'USD';
 
 export const formatPlannerMoney = (amount: number, locale: string, currency: PlannerCurrency): string => {
   const formatted = Math.abs(amount).toLocaleString(locale, {
@@ -8,13 +9,27 @@ export const formatPlannerMoney = (amount: number, locale: string, currency: Pla
   return currency === 'PLN' ? `${formatted} zł` : `${formatted} ₴`;
 };
 
-export const formatCurrency = (amount: number, locale = 'uk-UA'): string => {
-  return formatPlannerMoney(amount, locale, 'UAH');
+export const formatCurrency = (
+  amount: number,
+  locale = 'uk-UA',
+  currency: DisplayCurrency = 'UAH'
+): string => {
+  const formatted = Math.abs(amount).toLocaleString(locale, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+  if (currency === 'PLN') return `${formatted} zł`;
+  if (currency === 'USD') return `$${formatted}`;
+  return `${formatted} ₴`;
 };
 
-export const formatSignedCurrency = (amount: number, locale = 'uk-UA'): string => {
+export const formatSignedCurrency = (
+  amount: number,
+  locale = 'uk-UA',
+  currency: DisplayCurrency = 'UAH'
+): string => {
   const sign = amount < 0 ? '-' : '';
-  return sign + formatCurrency(amount, locale);
+  return sign + formatCurrency(amount, locale, currency);
 };
 
 export const formatDate = (date: string, locale = 'uk-UA'): string => {

@@ -2,13 +2,15 @@ import React from 'react';
 import { useTranslation } from '../i18n/LanguageContext';
 import { LANGUAGES, LANGUAGE_LABELS, LANGUAGE_FLAGS } from '../i18n/translations';
 import type { Language } from '../i18n/translations';
+import type { DisplayCurrency } from '../utils/formatters';
 import { useTelegramFullscreen } from '../hooks/useTelegramFullscreen';
 import styles from './Settings.module.css';
 
 const APP_VERSION = '1.0.0';
+const DISPLAY_CURRENCIES: DisplayCurrency[] = ['UAH', 'PLN', 'USD'];
 
 const Settings: React.FC = () => {
-  const { t, language, setLanguage } = useTranslation();
+  const { t, language, setLanguage, displayCurrency, setDisplayCurrency } = useTranslation();
   const { isSupported: fsSupported, isFullscreen, toggle: toggleFullscreen } =
     useTelegramFullscreen();
 
@@ -73,6 +75,36 @@ const Settings: React.FC = () => {
         </div>
         <p className={styles.sectionDescription}>
           {t('settings', 'languageDescription')}
+        </p>
+      </section>
+
+      <section className={styles.section}>
+        <div className={styles.sectionLabel}>{t('settings', 'currency')}</div>
+        <div className={styles.card}>
+          {DISPLAY_CURRENCIES.map((currency) => {
+            const labelKey: 'currencyUah' | 'currencyPln' | 'currencyUsd' =
+              currency === 'USD'
+                ? 'currencyUsd'
+                : currency === 'PLN'
+                  ? 'currencyPln'
+                  : 'currencyUah';
+            return (
+              <button
+                key={currency}
+                type="button"
+                className={styles.row}
+                onClick={() => setDisplayCurrency(currency)}
+              >
+                <div className={styles.rowLeft}>
+                  <span className={styles.rowLabel}>{t('settings', labelKey)}</span>
+                </div>
+                {displayCurrency === currency && <span className={styles.check}>✓</span>}
+              </button>
+            );
+          })}
+        </div>
+        <p className={styles.sectionDescription}>
+          {t('settings', 'currencyDescription')}
         </p>
       </section>
 
