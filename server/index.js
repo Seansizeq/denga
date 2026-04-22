@@ -365,16 +365,25 @@ app.delete('/api/custom-categories/:id', async (req, res) => {
     'SELECT id, type FROM custom_categories WHERE id = ? LIMIT 1',
     [id]
   );
-  if (!current) {
+  const txTypeGuess = await db.get(
+    'SELECT type FROM transactions WHERE categoryId = ? LIMIT 1',
+    [id]
+  );
+  const parsedLegacy = parseCustomCategoryId(id);
+
+  if (!current && !txTypeGuess && !parsedLegacy) {
     res.status(404).json({ error: 'Custom category not found' });
     return;
   }
 
-  const fallback = current.type === 'income' ? 'other_income' : 'other_expense';
+  const effectiveType = current?.type ?? (txTypeGuess?.type === 'income' ? 'income' : 'expense');
+  const fallback = effectiveType === 'income' ? 'other_income' : 'other_expense';
   await db.run('BEGIN');
   try {
     await db.run('UPDATE transactions SET categoryId = ? WHERE categoryId = ?', [fallback, id]);
-    await db.run('DELETE FROM custom_categories WHERE id = ?', [id]);
+    if (current) {
+      await db.run('DELETE FROM custom_categories WHERE id = ?', [id]);
+    }
     await db.run('COMMIT');
   } catch (error) {
     await db.run('ROLLBACK');
