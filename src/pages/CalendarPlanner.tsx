@@ -23,6 +23,8 @@ interface ShiftTemplate {
   startTime: string;
   endTime: string;
   workedHours: number;
+  salaryRate: number;
+  salaryAmount: number;
   salaryCurrency: PlannerCurrency;
 }
 
@@ -280,6 +282,8 @@ const CalendarPlanner: React.FC = () => {
           startTime,
           endTime,
           workedHours,
+          salaryRate: parseMoneyInput(salaryRateInput),
+          salaryAmount: parseMoneyInput(salaryAmountInput),
           salaryCurrency,
         }),
       });
@@ -368,6 +372,8 @@ const CalendarPlanner: React.FC = () => {
       ...current,
       hasShift: true,
       workedHours: tpl.workedHours,
+      salaryRate: tpl.salaryRate ?? 0,
+      salaryAmount: tpl.salaryAmount ?? 0,
       salaryCurrency: tpl.salaryCurrency === 'PLN' ? 'PLN' : 'UAH',
       note,
     };

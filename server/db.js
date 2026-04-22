@@ -63,6 +63,16 @@ export async function initDb() {
   } catch {
     /* already exists */
   }
+  try {
+    await db.exec(`ALTER TABLE planner_shift_templates ADD COLUMN salary_rate REAL NOT NULL DEFAULT 0`);
+  } catch {
+    /* already exists */
+  }
+  try {
+    await db.exec(`ALTER TABLE planner_shift_templates ADD COLUMN salary_amount REAL NOT NULL DEFAULT 0`);
+  } catch {
+    /* already exists */
+  }
 
   try {
     await db.exec(
@@ -116,6 +126,8 @@ export async function initDb() {
       start_time TEXT NOT NULL DEFAULT '09:00',
       end_time TEXT NOT NULL DEFAULT '17:00',
       worked_hours REAL NOT NULL DEFAULT 8,
+      salary_rate REAL NOT NULL DEFAULT 0,
+      salary_amount REAL NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )

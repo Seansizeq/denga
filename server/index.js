@@ -574,7 +574,7 @@ const normalizeShiftTemplateKey = (name, symbol, currency) =>
 
 app.get('/api/planner/shift-templates', async (_req, res) => {
   const rows = await db.all(
-    `SELECT id, name, symbol, is_full_day, start_time, end_time, worked_hours, currency, updated_at
+    `SELECT id, name, symbol, is_full_day, start_time, end_time, worked_hours, salary_rate, salary_amount, currency, updated_at
      FROM planner_shift_templates
      ORDER BY updated_at DESC`
   );
@@ -587,6 +587,8 @@ app.get('/api/planner/shift-templates', async (_req, res) => {
       startTime: row.start_time ?? '09:00',
       endTime: row.end_time ?? '17:00',
       workedHours: Number(row.worked_hours) || 0,
+      salaryRate: Number(row.salary_rate) || 0,
+      salaryAmount: Number(row.salary_amount) || 0,
       salaryCurrency: row.currency === 'PLN' ? 'PLN' : 'UAH',
       updatedAt: row.updated_at,
     }))
@@ -605,6 +607,8 @@ app.post('/api/planner/shift-templates', async (req, res) => {
   const endTime = typeof req.body.endTime === 'string' && /^\d{2}:\d{2}$/.test(req.body.endTime) ? req.body.endTime : '17:00';
   let workedHours = Number(req.body.workedHours);
   if (!Number.isFinite(workedHours) || workedHours < 0) workedHours = isFullDay ? 8 : 0;
+  const salaryRate = Number.isFinite(Number(req.body.salaryRate)) ? Math.max(0, Number(req.body.salaryRate)) : 0;
+  const salaryAmount = Number.isFinite(Number(req.body.salaryAmount)) ? Math.max(0, Number(req.body.salaryAmount)) : 0;
   const salaryCurrency = req.body.salaryCurrency === 'PLN' ? 'PLN' : 'UAH';
 
   const normalized_key = normalizeShiftTemplateKey(name, symbol, salaryCurrency);
@@ -615,16 +619,16 @@ app.post('/api/planner/shift-templates', async (req, res) => {
   if (existing) {
     await db.run(
       `UPDATE planner_shift_templates SET
-        name = ?, symbol = ?, is_full_day = ?, start_time = ?, end_time = ?, worked_hours = ?, currency = ?, updated_at = ?
+        name = ?, symbol = ?, is_full_day = ?, start_time = ?, end_time = ?, worked_hours = ?, salary_rate = ?, salary_amount = ?, currency = ?, updated_at = ?
        WHERE id = ?`,
-      [name, symbol, isFullDay ? 1 : 0, startTime, endTime, workedHours, salaryCurrency, now, id]
+      [name, symbol, isFullDay ? 1 : 0, startTime, endTime, workedHours, salaryRate, salaryAmount, salaryCurrency, now, id]
     );
   } else {
     await db.run(
       `INSERT INTO planner_shift_templates
-        (id, normalized_key, name, symbol, is_full_day, start_time, end_time, worked_hours, currency, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, normalized_key, name, symbol, isFullDay ? 1 : 0, startTime, endTime, workedHours, salaryCurrency, now, now]
+        (id, normalized_key, name, symbol, is_full_day, start_time, end_time, worked_hours, salary_rate, salary_amount, currency, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, normalized_key, name, symbol, isFullDay ? 1 : 0, startTime, endTime, workedHours, salaryRate, salaryAmount, salaryCurrency, now, now]
     );
   }
 
@@ -636,6 +640,8 @@ app.post('/api/planner/shift-templates', async (req, res) => {
     startTime,
     endTime,
     workedHours,
+    salaryRate,
+    salaryAmount,
     salaryCurrency,
     updatedAt: now,
   });
