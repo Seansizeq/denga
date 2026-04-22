@@ -73,27 +73,67 @@ const Accounts: React.FC = () => {
     const base = {
       bank: {
         id: 'bank',
-        title: 'Рахунки',
+        title: '',
         total: '',
-        rows: [] as Array<{ id: string; name: string; amount: string; badge: string; subAmount?: string }>,
+        tone: 'bank' as const,
+        collapsible: false,
+        defaultOpen: true,
+        rows: [] as Array<{
+          id: string;
+          name: string;
+          amount: string;
+          badge: string;
+          subAmount?: string;
+          iconTone: 'bank' | 'cash' | 'crypto' | 'debt' | 'neutral';
+        }>,
       },
       cash: {
         id: 'cash',
         title: 'Готівка',
         total: '',
-        rows: [] as Array<{ id: string; name: string; amount: string; badge: string; subAmount?: string }>,
+        tone: 'cash' as const,
+        collapsible: true,
+        defaultOpen: false,
+        rows: [] as Array<{
+          id: string;
+          name: string;
+          amount: string;
+          badge: string;
+          subAmount?: string;
+          iconTone: 'bank' | 'cash' | 'crypto' | 'debt' | 'neutral';
+        }>,
       },
       crypto: {
         id: 'crypto',
         title: 'Акції та Крипта',
         total: '',
-        rows: [] as Array<{ id: string; name: string; amount: string; badge: string; subAmount?: string }>,
+        tone: 'crypto' as const,
+        collapsible: true,
+        defaultOpen: false,
+        rows: [] as Array<{
+          id: string;
+          name: string;
+          amount: string;
+          badge: string;
+          subAmount?: string;
+          iconTone: 'bank' | 'cash' | 'crypto' | 'debt' | 'neutral';
+        }>,
       },
       debt: {
         id: 'debt',
         title: 'Борг',
         total: '',
-        rows: [] as Array<{ id: string; name: string; amount: string; badge: string; subAmount?: string }>,
+        tone: 'debt' as const,
+        collapsible: true,
+        defaultOpen: false,
+        rows: [] as Array<{
+          id: string;
+          name: string;
+          amount: string;
+          badge: string;
+          subAmount?: string;
+          iconTone: 'bank' | 'cash' | 'crypto' | 'debt' | 'neutral';
+        }>,
       },
     };
 
@@ -136,11 +176,14 @@ const Accounts: React.FC = () => {
       const firstNonFiat = Array.from(total.byCurrency.entries()).find(
         ([currency, amount]) => currency !== 'UAH' && currency !== 'PLN' && amount > 0
       );
+      const iconTone: 'bank' | 'cash' | 'crypto' | 'debt' | 'neutral' =
+        key === 'misha' ? 'debt' : meta.section === 'bank' ? 'bank' : meta.section;
       base[meta.section].rows.push({
         id: key,
         name: meta.label,
         amount: meta.debtPhrase ? `${meta.debtPhrase} ${amountText}` : amountText,
         badge: meta.badge,
+        iconTone,
         subAmount: firstNonFiat
           ? `${Math.abs(firstNonFiat[1]).toLocaleString('ru-RU', { maximumFractionDigits: 8 })} ${firstNonFiat[0]}`
           : undefined,
@@ -164,7 +207,6 @@ const Accounts: React.FC = () => {
       return formatGroupAmount(sum, currency);
     };
 
-    base.bank.total = calculateSectionTotal(base.bank.rows, 'UAH');
     base.cash.total = calculateSectionTotal(base.cash.rows, 'PLN');
     base.crypto.total = calculateSectionTotal(base.crypto.rows, 'PLN');
     base.debt.total = calculateSectionTotal(base.debt.rows, 'PLN');
@@ -176,6 +218,7 @@ const Accounts: React.FC = () => {
     <div className={styles.container}>
       <div className={styles.content}>
         <Header />
+        <AccountsSnapshot sections={sections} />
         <section className={styles.details}>
           <div className={styles.detailCard}>
             <p className={styles.detailTitle}>{t('balance', 'byCurrency')}</p>
@@ -212,7 +255,6 @@ const Accounts: React.FC = () => {
             )}
           </div>
         </section>
-        <AccountsSnapshot sections={sections} />
         <div className={styles.spacer} />
       </div>
     </div>

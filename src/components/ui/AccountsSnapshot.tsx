@@ -1,5 +1,8 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 import styles from './AccountsSnapshot.module.css';
+
+type RowIconTone = 'bank' | 'cash' | 'crypto' | 'debt' | 'neutral';
 
 type AccountRow = {
   id: string;
@@ -7,45 +10,113 @@ type AccountRow = {
   amount: string;
   subAmount?: string;
   badge?: string;
+  iconTone?: RowIconTone;
 };
+
+type SectionTone = 'bank' | 'cash' | 'crypto' | 'debt';
 
 type AccountSection = {
   id: string;
   title: string;
   total: string;
   rows: readonly AccountRow[];
+  tone: SectionTone;
+  collapsible?: boolean;
+  defaultOpen?: boolean;
 };
 
 interface AccountsSnapshotProps {
   sections: readonly AccountSection[];
 }
 
+const iconToneClass = (tone: RowIconTone) => {
+  if (tone === 'cash') return styles.iconCash;
+  if (tone === 'crypto') return styles.iconCrypto;
+  if (tone === 'debt') return styles.iconDebt;
+  if (tone === 'bank') return styles.iconBank;
+  return styles.iconNeutral;
+};
+
 const AccountsSnapshot: React.FC<AccountsSnapshotProps> = ({ sections }) => {
+  const initialOpen = useMemo(() => {
+    const map: Record<string, boolean> = {};
+    for (const s of sections) {
+      if (!s.collapsible) {
+        map[s.id] = true;
+        continue;
+      }
+      map[s.id] = s.defaultOpen ?? true;
+    }
+    return map;
+  }, [sections]);
+
+  const [open, setOpen] = useState<Record<string, boolean>>(initialOpen);
+
   return (
     <section className={styles.section}>
-      {sections.map((group) => (
-        <article key={group.id} className={styles.card}>
-          <header className={styles.cardHeader}>
-            <h3 className={styles.cardTitle}>{group.title}</h3>
-            <span className={styles.cardTotal}>{group.total}</span>
-          </header>
+      {sections.map((group) => {
+        const isCollapsible = Boolean(group.collapsible);
+        const isOpen = open[group.id] ?? true;
+        const hasHeader = Boolean(group.title?.trim() || group.total?.trim() || isCollapsible);
 
-          <div className={styles.rows}>
-            {group.rows.map((row) => (
-              <div key={row.id} className={styles.row}>
-                <div className={styles.left}>
-                  <span className={styles.icon}>{row.badge ?? row.name.slice(0, 1)}</span>
-                  <span className={styles.name}>{row.name}</span>
-                </div>
-                <div className={styles.right}>
-                  <span className={styles.amount}>{row.amount}</span>
-                  {row.subAmount ? <span className={styles.subAmount}>{row.subAmount}</span> : null}
-                </div>
+        return (
+          <article key={group.id} className={styles.card}>
+            {hasHeader ? (
+              <header className={styles.cardHeader}>
+                {isCollapsible ? (
+                  <button
+                    type="button"
+                    className={styles.headerButton}
+                    onClick={() => setOpen((prev) => ({ ...prev, [group.id]: !isOpen }))}
+                    aria-expanded={isOpen}
+                  >
+                    <div className={styles.headerLeft}>
+                      {group.title?.trim() ? <h3 className={styles.cardTitle}>{group.title}</h3> : <span />}
+                    </div>
+                    <div className={styles.headerRight}>
+                      {group.total?.trim() ? <span className={styles.cardTotal}>{group.total}</span> : null}
+                      <span className={`${styles.chevron} ${isOpen ? '' : styles.chevronClosed}`} aria-hidden="true">
+                        <ChevronDown size={16} strokeWidth={2.4} />
+                      </span>
+                    </div>
+                  </button>
+                ) : (
+                  <div className={styles.headerStatic}>
+                    <div className={styles.headerLeft}>
+                      {group.title?.trim() ? <h3 className={styles.cardTitle}>{group.title}</h3> : <span />}
+                    </div>
+                    <div className={styles.headerRight}>
+                      {group.total?.trim() ? <span className={styles.cardTotal}>{group.total}</span> : null}
+                    </div>
+                  </div>
+                )}
+              </header>
+            ) : null}
+
+            {isCollapsible && !isOpen ? null : (
+              <div className={styles.rows}>
+                {group.rows.map((row) => {
+                  const tone: RowIconTone = row.iconTone ?? 'bank';
+                  return (
+                    <div key={row.id} className={styles.row}>
+                      <div className={styles.left}>
+                        <span className={`${styles.icon} ${iconToneClass(tone)}`}>
+                          {row.badge ?? row.name.slice(0, 1)}
+                        </span>
+                        <span className={styles.name}>{row.name}</span>
+                      </div>
+                      <div className={styles.right}>
+                        <span className={styles.amount}>{row.amount}</span>
+                        {row.subAmount ? <span className={styles.subAmount}>{row.subAmount}</span> : null}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            ))}
-          </div>
-        </article>
-      ))}
+            )}
+          </article>
+        );
+      })}
     </section>
   );
 };
