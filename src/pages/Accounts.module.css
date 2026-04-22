@@ -10,6 +10,47 @@
   flex-direction: column;
 }
 
+.details {
+  margin: 12px 0;
+  display: grid;
+  gap: 10px;
+}
+
+.detailCard {
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: 16px;
+  padding: 12px;
+}
+
+.detailTitle {
+  margin: 0 0 10px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.listRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 18px;
+  color: var(--text-primary);
+}
+
+.emptyRow {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
 .spacer {
   height: 60px;
 }

@@ -2,6 +2,9 @@ import React, { useMemo } from 'react';
 import Header from '../components/ui/Header';
 import AccountsSnapshot from '../components/ui/AccountsSnapshot';
 import { useTransactions } from '../context/TransactionContext';
+import { getCustomCategoryName } from '../constants/categories';
+import { translations, type CategoryKey } from '../i18n/translations';
+import { useTranslation } from '../i18n/LanguageContext';
 import styles from './Accounts.module.css';
 
 const formatGroupAmount = (amount: number, currency: string) => {
@@ -25,7 +28,46 @@ const getCurrencyFromNote = (note?: string): string => {
 };
 
 const Accounts: React.FC = () => {
+  const { t, locale } = useTranslation();
   const { transactions } = useTransactions();
+
+  const details = useMemo(() => {
+    const categoryLabel = (id: string) => {
+      const builtIn = translations.ru.categories[id as CategoryKey];
+      if (builtIn) return builtIn;
+      return getCustomCategoryName(id) ?? id;
+    };
+
+    const sourceMap = new Map<string, { id: string; label: string; amount: number; count: number }>();
+    transactions
+      .filter((tx) => tx.type === 'income')
+      .forEach((tx) => {
+        const key = tx.categoryId;
+        const current = sourceMap.get(key) ?? {
+          id: key,
+          label: categoryLabel(key),
+          amount: 0,
+          count: 0,
+        };
+        current.amount += tx.amount;
+        current.count += 1;
+        sourceMap.set(key, current);
+      });
+
+    const currencyMap = new Map<string, number>();
+    transactions.forEach((tx) => {
+      const currency = getCurrencyFromNote(tx.note);
+      const sign = tx.type === 'income' ? 1 : -1;
+      currencyMap.set(currency, (currencyMap.get(currency) ?? 0) + sign * tx.amount);
+    });
+
+    return {
+      sources: Array.from(sourceMap.values()).sort((a, b) => b.amount - a.amount),
+      byCurrency: Array.from(currencyMap.entries())
+        .map(([currency, amount]) => ({ currency, amount }))
+        .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)),
+    };
+  }, [transactions]);
 
   const sections = useMemo(() => {
     const base = {
@@ -134,6 +176,42 @@ const Accounts: React.FC = () => {
     <div className={styles.container}>
       <div className={styles.content}>
         <Header />
+        <section className={styles.details}>
+          <div className={styles.detailCard}>
+            <p className={styles.detailTitle}>{t('balance', 'byCurrency')}</p>
+            {details.byCurrency.length === 0 ? (
+              <p className={styles.emptyRow}>—</p>
+            ) : (
+              <ul className={styles.list}>
+                {details.byCurrency.map((item) => (
+                  <li key={item.currency} className={styles.listRow}>
+                    <span>{item.currency}</span>
+                    <strong>
+                      {item.amount < 0 ? '−' : '+'}
+                      {Math.abs(item.amount).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </strong>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <div className={styles.detailCard}>
+            <p className={styles.detailTitle}>{t('balance', 'moneySources')}</p>
+            {details.sources.length === 0 ? (
+              <p className={styles.emptyRow}>—</p>
+            ) : (
+              <ul className={styles.list}>
+                {details.sources.map((source) => (
+                  <li key={source.id} className={styles.listRow}>
+                    <span>{source.label} ({source.count})</span>
+                    <strong>+{source.amount.toLocaleString(locale, { maximumFractionDigits: 2 })}</strong>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </section>
         <AccountsSnapshot sections={sections} />
         <div className={styles.spacer} />
       </div>

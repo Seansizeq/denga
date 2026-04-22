@@ -6,8 +6,6 @@ import HeroBalance from '../components/ui/HeroBalance';
 import QuickActions from '../components/ui/QuickActions';
 import RecentTransactions from '../components/ui/RecentTransactions';
 import type { RangeFilter } from '../components/ui/RecentTransactions';
-import { getCustomCategoryName } from '../constants/categories';
-import { translations, type CategoryKey } from '../i18n/translations';
 import styles from './Dashboard.module.css';
 
 const Dashboard: React.FC = () => {
@@ -47,45 +45,10 @@ const Dashboard: React.FC = () => {
       { income: 0, expense: 0 },
     );
 
-    const categoryLabel = (id: string) => {
-      const builtIn = translations.ru.categories[id as CategoryKey];
-      if (builtIn) return builtIn;
-      return getCustomCategoryName(id) ?? id;
-    };
-
-    const sourceMap = new Map<string, { id: string; label: string; amount: number; count: number }>();
-    transactions
-      .filter((tx) => tx.type === 'income')
-      .forEach((tx) => {
-        const key = tx.categoryId;
-        const current = sourceMap.get(key) ?? {
-          id: key,
-          label: categoryLabel(key),
-          amount: 0,
-          count: 0,
-        };
-        current.amount += tx.amount;
-        current.count += 1;
-        sourceMap.set(key, current);
-      });
-
-    const currencyMap = new Map<string, number>();
-    transactions.forEach((tx) => {
-      const currencyMatch = tx.note?.match(/Currency:\s*([A-Za-z#0-9_-]+)/i);
-      const currencyRaw = currencyMatch?.[1]?.toUpperCase() ?? 'UAH';
-      const currency = currencyRaw.startsWith('C#') ? currencyRaw.slice(2).toUpperCase() : currencyRaw;
-      const sign = tx.type === 'income' ? 1 : -1;
-      currencyMap.set(currency, (currencyMap.get(currency) ?? 0) + sign * tx.amount);
-    });
-
     return {
       totalIncome: totals.income,
       totalExpense: totals.expense,
       totalNet: totals.income - totals.expense,
-      sources: Array.from(sourceMap.values()).sort((a, b) => b.amount - a.amount),
-      byCurrency: Array.from(currencyMap.entries())
-        .map(([currency, amount]) => ({ currency, amount }))
-        .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)),
     };
   }, [transactions]);
 
@@ -98,8 +61,7 @@ const Dashboard: React.FC = () => {
           net={summary.totalNet}
           income={summary.totalIncome}
           expense={summary.totalExpense}
-          sources={summary.sources}
-          byCurrency={summary.byCurrency}
+          onOpenDetails={() => navigate('/accounts')}
         />
 
         <QuickActions />

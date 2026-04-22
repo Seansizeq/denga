@@ -7,8 +7,7 @@ interface HeroBalanceProps {
   net: number;
   income: number;
   expense: number;
-  sources: Array<{ id: string; label: string; amount: number; count: number }>;
-  byCurrency: Array<{ currency: string; amount: number }>;
+  onOpenDetails?: () => void;
   locale?: string;
 }
 
@@ -16,13 +15,11 @@ const HeroBalance: React.FC<HeroBalanceProps> = ({
   net,
   income,
   expense,
-  sources,
-  byCurrency,
+  onOpenDetails,
   locale: localeProp,
 }) => {
   const { locale, t, displayCurrency } = useTranslation();
   const lc = localeProp || locale;
-  const [expanded, setExpanded] = React.useState(false);
 
   const sign = net < 0 ? '−' : '';
   const ratio = income > 0 ? (net / income) * 100 : 0;
@@ -33,8 +30,7 @@ const HeroBalance: React.FC<HeroBalanceProps> = ({
       <button
         type="button"
         className={styles.amountButton}
-        onClick={() => setExpanded((v) => !v)}
-        aria-expanded={expanded}
+        onClick={onOpenDetails}
       >
         <h1 className={styles.amount}>
           {sign}
@@ -63,41 +59,6 @@ const HeroBalance: React.FC<HeroBalanceProps> = ({
         )}
       </div>
 
-      {expanded && (
-        <div className={styles.details}>
-          <div className={styles.detailSection}>
-            <p className={styles.detailTitle}>{t('balance', 'byCurrency')}</p>
-            {byCurrency.length === 0 ? (
-              <p className={styles.emptyRow}>—</p>
-            ) : (
-              <ul className={styles.list}>
-                {byCurrency.map((item) => (
-                  <li key={item.currency} className={styles.listRow}>
-                    <span>{item.currency}</span>
-                    <strong>{item.amount < 0 ? '−' : '+'}{Math.abs(item.amount).toLocaleString(lc, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          <div className={styles.detailSection}>
-            <p className={styles.detailTitle}>{t('balance', 'moneySources')}</p>
-            {sources.length === 0 ? (
-              <p className={styles.emptyRow}>—</p>
-            ) : (
-              <ul className={styles.list}>
-                {sources.map((source) => (
-                  <li key={source.id} className={styles.listRow}>
-                    <span>{source.label} ({source.count})</span>
-                    <strong>+{formatCurrency(Math.abs(source.amount), lc, displayCurrency)}</strong>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 };
