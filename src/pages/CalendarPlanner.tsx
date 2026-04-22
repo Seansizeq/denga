@@ -295,17 +295,9 @@ const CalendarPlanner: React.FC = () => {
   };
 
   const applyShift = (payload: DayPlan) => {
-    setStore((prev) => ({ ...prev, [selectedDay]: payload }));
+    prefillEditorFromPlan(payload);
     setEditorOpened(true);
     setChooserOpen(false);
-    setShiftName('');
-    setShiftSymbol('');
-    setIsFullDay(true);
-    setStartTime('09:00');
-    setEndTime('17:00');
-    setSalaryRateInput('');
-    setSalaryAmountInput('');
-    setSalaryCurrency('UAH');
   };
 
   const prefillEditorFromPlan = (plan: DayPlan) => {
@@ -348,9 +340,11 @@ const CalendarPlanner: React.FC = () => {
       salaryAmount: 0,
       salaryCurrency: 'UAH',
     };
-    setStore((prev) => ({ ...prev, [selectedDay]: payload }));
     const ok = await saveDay(selectedDay, payload);
-    if (ok) setChooserOpen(false);
+    if (ok) {
+      setStore((prev) => ({ ...prev, [selectedDay]: payload }));
+      setChooserOpen(false);
+    }
   };
 
   const applyTemplateToDay = async (tpl: ShiftTemplate) => {
@@ -362,9 +356,11 @@ const CalendarPlanner: React.FC = () => {
       salaryCurrency: tpl.salaryCurrency === 'PLN' ? 'PLN' : 'UAH',
       note,
     };
-    setStore((prev) => ({ ...prev, [selectedDay]: payload }));
     const ok = await saveDay(selectedDay, payload);
-    if (ok) setChooserOpen(false);
+    if (ok) {
+      setStore((prev) => ({ ...prev, [selectedDay]: payload }));
+      setChooserOpen(false);
+    }
   };
 
   const deleteShiftTemplate = async (tpl: ShiftTemplate) => {
@@ -693,9 +689,9 @@ const CalendarPlanner: React.FC = () => {
                   salaryCurrency,
                   note: [shiftName.trim(), shiftSymbol.trim()].filter(Boolean).join(' • '),
                 };
-                setStore((prev) => ({ ...prev, [selectedDay]: payload }));
                 const ok = await saveDay(selectedDay, payload);
                 if (ok) {
+                  setStore((prev) => ({ ...prev, [selectedDay]: payload }));
                   await persistShiftTemplate();
                   setEditorOpened(false);
                 }

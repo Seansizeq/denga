@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import * as LucideIcons from 'lucide-react';
 import { X } from 'lucide-react';
@@ -20,40 +20,29 @@ const AddTransaction: React.FC = () => {
   const { t } = useTranslation();
   const [searchParams] = useSearchParams();
   const editId = searchParams.get('edit')?.trim() ?? '';
-  const editingTransaction = useMemo(
-    () => (editId ? transactions.find((tx) => tx.id === editId) : undefined),
-    [editId, transactions]
-  );
-  const isEditing = Boolean(editingTransaction);
+  const editingTransaction = editId ? transactions.find((tx) => tx.id === editId) : undefined;
+  const isEditing = Boolean(editId);
 
   const initialType: TransactionType =
-    searchParams.get('type') === 'income' ? 'income' : 'expense';
+    editingTransaction?.type ?? (searchParams.get('type') === 'income' ? 'income' : 'expense');
 
-  const [amount, setAmount] = useState('');
+  const [amount, setAmount] = useState(() => (editingTransaction ? String(editingTransaction.amount) : ''));
   const [type, setType] = useState<TransactionType>(initialType);
-  const [categoryId, setCategoryId] = useState(initialType === 'income' ? 'salary' : 'food');
+  const [categoryId, setCategoryId] = useState(() => (
+    editingTransaction?.categoryId ?? (initialType === 'income' ? 'salary' : 'food')
+  ));
   const [isCreatingCustom, setIsCreatingCustom] = useState(false);
   const [categoryTab, setCategoryTab] = useState<'select' | 'create'>('select');
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryIcon, setNewCategoryIcon] = useState<CustomCategoryIcon>('Tag');
   const [newCategoryColor, setNewCategoryColor] = useState('#8E8E93');
-  const [note, setNote] = useState('');
+  const [note, setNote] = useState(() => editingTransaction?.note ?? '');
   const [customCategories, setCustomCategories] = useState<
     Array<{ id: string; name: string; icon: string; color: string }>
   >([]);
   const [creatingCategory, setCreatingCategory] = useState(false);
 
   const API_URL = import.meta.env.VITE_API_URL ?? '';
-
-  useEffect(() => {
-    if (!editingTransaction) return;
-    setAmount(String(editingTransaction.amount));
-    setType(editingTransaction.type);
-    setCategoryId(editingTransaction.categoryId);
-    setNote(editingTransaction.note ?? '');
-    setIsCreatingCustom(false);
-    setCategoryTab('select');
-  }, [editingTransaction]);
 
   useEffect(() => {
     let cancelled = false;
@@ -86,8 +75,8 @@ const AddTransaction: React.FC = () => {
       categoryId,
       note: note.trim() || undefined,
     };
-    if (isEditing && editingTransaction) {
-      await updateTransaction(editingTransaction.id, payload);
+    if (isEditing && editId) {
+      await updateTransaction(editId, payload);
     } else {
       await addTransaction(payload);
     }
