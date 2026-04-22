@@ -32,7 +32,6 @@ const AddTransaction: React.FC = () => {
     editingTransaction?.categoryId ?? (initialType === 'income' ? 'salary' : 'food')
   ));
   const [isCreatingCustom, setIsCreatingCustom] = useState(false);
-  const [categoryTab, setCategoryTab] = useState<'select' | 'create'>('select');
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryIcon, setNewCategoryIcon] = useState<CustomCategoryIcon>('Tag');
   const [newCategoryColor, setNewCategoryColor] = useState('#8E8E93');
@@ -109,7 +108,6 @@ const AddTransaction: React.FC = () => {
             setType('expense');
             setCategoryId('food');
             setIsCreatingCustom(false);
-            setCategoryTab('select');
           }}
         >
           {t('addTx', 'expense')}
@@ -121,7 +119,6 @@ const AddTransaction: React.FC = () => {
             setType('income');
             setCategoryId('salary');
             setIsCreatingCustom(false);
-            setCategoryTab('select');
           }}
         >
           {t('addTx', 'income')}
@@ -148,46 +145,20 @@ const AddTransaction: React.FC = () => {
       <section className={styles.categorySection}>
         <h3 className={styles.sectionTitle}>{t('addTx', 'category')}</h3>
 
-        <div className={styles.categoryTabs}>
-          <button
-            type="button"
-            className={`${styles.categoryTabBtn} ${categoryTab === 'select' ? styles.categoryTabBtnActive : ''}`}
-            onClick={() => {
-              setCategoryTab('select');
-              setIsCreatingCustom(false);
-            }}
-          >
-            {t('addTx', 'categoryTabSelect')}
-          </button>
-          <button
-            type="button"
-            className={`${styles.categoryTabBtn} ${categoryTab === 'create' ? styles.categoryTabBtnActive : ''}`}
-            onClick={() => {
-              setCategoryTab('create');
-              setIsCreatingCustom(true);
-            }}
-          >
-            {t('addTx', 'categoryTabCreate')}
-          </button>
-        </div>
+        <CategoryGrid
+          type={type}
+          selectedId={categoryId}
+          customCategories={customCategories}
+          onAddCustom={() => {
+            setIsCreatingCustom(true);
+          }}
+          onSelect={(id) => {
+            setCategoryId(id);
+            setIsCreatingCustom(false);
+          }}
+        />
 
-        {categoryTab === 'select' ? (
-          <CategoryGrid
-            type={type}
-            selectedId={categoryId}
-            customCategories={customCategories}
-            onAddCustom={() => {
-              setCategoryTab('create');
-              setIsCreatingCustom(true);
-            }}
-            onSelect={(id) => {
-              setCategoryId(id);
-              setIsCreatingCustom(false);
-            }}
-          />
-        ) : null}
-
-        {categoryTab === 'create' && isCreatingCustom ? (
+        {isCreatingCustom ? (
           <div className={styles.customCategoryCard}>
             <h4 className={styles.customCategoryTitle}>{t('addTx', 'createCategory')}</h4>
             <input
@@ -283,7 +254,6 @@ const AddTransaction: React.FC = () => {
                   setNewCategoryIcon('Tag');
                   setNewCategoryColor('#8E8E93');
                   setIsCreatingCustom(false);
-                  setCategoryTab('select');
                   setCreatingCategory(false);
                 }}
               >

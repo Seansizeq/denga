@@ -1,5 +1,4 @@
 import React, { useMemo, useState } from 'react';
-import * as LucideIcons from 'lucide-react';
 import { useTransactions } from '../context/TransactionContext';
 import { useTranslation } from '../i18n/LanguageContext';
 import { formatCurrency, isSameMonth } from '../utils/formatters';
@@ -59,7 +58,40 @@ const Stats: React.FC = () => {
   const periodLabel = t('range', range);
   const rangeOptions: RangeFilter[] = ['today', 'week', 'month', 'all'];
 
-  const totalExpenseByCategories = byCategory.reduce((sum, row) => sum + row.total, 0);
+  const categoryRows = useMemo(
+    () =>
+      byCategory.map((row) => {
+        const customCategory = getCustomCategoryData(row.id);
+        const category = customCategory ? findCategory('other_expense') : findCategory(row.id);
+        return {
+          ...row,
+          color: customCategory?.color ?? category.color,
+          name: customCategory?.name ?? t('categories', category.id as CategoryKey),
+        };
+      }),
+    [byCategory, t]
+  );
+
+  const totalExpenseByCategories = categoryRows.reduce((sum, row) => sum + row.total, 0);
+
+  const donutBackground = useMemo(() => {
+    if (!totalExpenseByCategories) {
+      return 'conic-gradient(var(--bg-card-light) 0deg 360deg)';
+    }
+    let acc = 0;
+    const gapDeg = 3;
+    const segments = categoryRows
+      .map((row) => {
+        const rawStart = (acc / totalExpenseByCategories) * 360;
+        acc += row.total;
+        const rawEnd = (acc / totalExpenseByCategories) * 360;
+        const start = rawStart + gapDeg / 2;
+        const end = Math.max(start, rawEnd - gapDeg / 2);
+        return `${row.color} ${start.toFixed(2)}deg ${end.toFixed(2)}deg`;
+      })
+      .join(', ');
+    return `conic-gradient(${segments})`;
+  }, [categoryRows, totalExpenseByCategories]);
 
   return (
     <div className={styles.container}>
@@ -130,71 +162,27 @@ const Stats: React.FC = () => {
             <p className={styles.emptyText}>{t('stats', 'noData')}</p>
           </div>
         ) : (
-          <ul className={styles.catList}>
-            {byCategory.map((row) => {
-              const customCategory = getCustomCategoryData(row.id);
-              const category = customCategory
-                ? findCategory('other_expense')
-                : findCategory(row.id);
-              const IconComponent =
-                customCategory
-                  ? ((LucideIcons as any)[customCategory.icon] ?? LucideIcons.Tag)
-                  : ((LucideIcons as any)[category.icon] ?? LucideIcons.Circle);
-              const percentage = totalExpenseByCategories
-                ? Math.round((row.total / totalExpenseByCategories) * 100)
-                : 0;
-              const circleRadius = 14;
-              const circleLength = 2 * Math.PI * circleRadius;
-              const strokeDashoffset =
-                circleLength - (Math.max(0, Math.min(100, percentage)) / 100) * circleLength;
-              return (
-                <li key={row.id} className={styles.catRow}>
-                  <div className={styles.catIcon}>
-                    <IconComponent
-                      size={22}
-                      color={customCategory?.color ?? category.color}
-                      strokeWidth={2}
-                    />
-                  </div>
-                  <div className={styles.catBody}>
-                    <div className={styles.catTopLine}>
-                      <span className={styles.catName}>
-                        {customCategory?.name ?? t('categories', category.id as CategoryKey)}
-                      </span>
-                      <span className={styles.catTotal}>
-                        {formatCurrency(row.total, locale)}
-                      </span>
-                    </div>
-                    <div className={styles.catBottomLine}>
-                      <span className={styles.catMeta}>
-                        {row.count} {t('stats', 'transactions')}
-                      </span>
-                      <div className={styles.catCircleWrap} aria-label={`${percentage}%`}>
-                        <svg className={styles.catCircle} viewBox="0 0 36 36" role="img">
-                          <circle
-                            className={styles.catCircleTrack}
-                            cx="18"
-                            cy="18"
-                            r={circleRadius}
-                          />
-                          <circle
-                            className={styles.catCircleFill}
-                            cx="18"
-                            cy="18"
-                            r={circleRadius}
-                            stroke={customCategory?.color ?? category.color}
-                            strokeDasharray={circleLength}
-                            strokeDashoffset={strokeDashoffset}
-                          />
-                        </svg>
-                        <span className={styles.catCircleLabel}>{percentage}%</span>
-                      </div>
-                    </div>
-                  </div>
+          <div className={styles.chartCard}>
+            <div className={styles.donutWrap}>
+              <div className={styles.donut} style={{ background: donutBackground }}>
+                <div className={styles.donutInner}>
+                  <span className={styles.donutValue}>{formatCurrency(totalExpenseByCategories, locale)}</span>
+                </div>
+              </div>
+            </div>
+
+            <ul className={styles.legendList}>
+              {categoryRows.map((row) => (
+                <li key={row.id} className={styles.legendItem}>
+                  <span className={styles.legendLeft}>
+                    <span className={styles.legendDot} style={{ backgroundColor: row.color }} />
+                    <span className={styles.legendName}>{row.name}</span>
+                  </span>
+                  <span className={styles.legendValue}>{formatCurrency(row.total, locale)}</span>
                 </li>
-              );
-            })}
-          </ul>
+              ))}
+            </ul>
+          </div>
         )}
       </section>
     </div>
