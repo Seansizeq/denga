@@ -59,7 +59,7 @@ const Stats: React.FC = () => {
   const periodLabel = t('range', range);
   const rangeOptions: RangeFilter[] = ['today', 'week', 'month', 'all'];
 
-  const maxExpense = byCategory[0]?.total ?? 0;
+  const totalExpenseByCategories = byCategory.reduce((sum, row) => sum + row.total, 0);
 
   return (
     <div className={styles.container}>
@@ -140,9 +140,13 @@ const Stats: React.FC = () => {
                 customCategory
                   ? ((LucideIcons as any)[customCategory.icon] ?? LucideIcons.Tag)
                   : ((LucideIcons as any)[category.icon] ?? LucideIcons.Circle);
-              const percentage = maxExpense
-                ? Math.round((row.total / maxExpense) * 100)
+              const percentage = totalExpenseByCategories
+                ? Math.round((row.total / totalExpenseByCategories) * 100)
                 : 0;
+              const circleRadius = 14;
+              const circleLength = 2 * Math.PI * circleRadius;
+              const strokeDashoffset =
+                circleLength - (Math.max(0, Math.min(100, percentage)) / 100) * circleLength;
               return (
                 <li key={row.id} className={styles.catRow}>
                   <div className={styles.catIcon}>
@@ -161,18 +165,31 @@ const Stats: React.FC = () => {
                         {formatCurrency(row.total, locale)}
                       </span>
                     </div>
-                    <div className={styles.catBarTrack}>
-                      <div
-                        className={styles.catBarFill}
-                        style={{
-                          width: `${percentage}%`,
-                          backgroundColor: customCategory?.color ?? category.color,
-                        }}
-                      />
+                    <div className={styles.catBottomLine}>
+                      <span className={styles.catMeta}>
+                        {row.count} {t('stats', 'transactions')}
+                      </span>
+                      <div className={styles.catCircleWrap} aria-label={`${percentage}%`}>
+                        <svg className={styles.catCircle} viewBox="0 0 36 36" role="img">
+                          <circle
+                            className={styles.catCircleTrack}
+                            cx="18"
+                            cy="18"
+                            r={circleRadius}
+                          />
+                          <circle
+                            className={styles.catCircleFill}
+                            cx="18"
+                            cy="18"
+                            r={circleRadius}
+                            stroke={customCategory?.color ?? category.color}
+                            strokeDasharray={circleLength}
+                            strokeDashoffset={strokeDashoffset}
+                          />
+                        </svg>
+                        <span className={styles.catCircleLabel}>{percentage}%</span>
+                      </div>
                     </div>
-                    <span className={styles.catMeta}>
-                      {row.count} {t('stats', 'transactions')}
-                    </span>
                   </div>
                 </li>
               );

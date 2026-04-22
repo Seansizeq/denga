@@ -35,6 +35,11 @@ const toIsoLocal = (date: Date): string => {
   return `${y}-${m}-${d}`;
 };
 
+const parseIsoLocal = (iso: string): Date => {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, (m || 1) - 1, d || 1);
+};
+
 const todayIso = (): string => toIsoLocal(new Date());
 const monthLabel = (value: string, locale: string): string => {
   const [year, month] = value.split('-').map(Number);
