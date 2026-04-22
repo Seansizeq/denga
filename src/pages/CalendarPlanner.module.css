@@ -23,30 +23,28 @@
 }
 
 .panel {
-  background: linear-gradient(165deg, rgba(24, 22, 38, 0.98) 0%, rgba(16, 15, 28, 0.98) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 20px;
+  background: var(--bg-card);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 16px;
   padding: 16px;
   margin-top: 16px;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.04),
-    0 10px 30px rgba(5, 4, 8, 0.28);
+  box-shadow: 0 8px 24px rgba(5, 4, 8, 0.18);
 }
 
 .monthRow {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: space-between;
   gap: 10px;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 
 .reportCard {
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--bg-card);
   border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 16px;
-  padding: 14px;
-  margin-top: 16px;
+  border-radius: 14px;
+  padding: 12px 14px;
+  margin-top: 14px;
 }
 
 .reportCardTitle {
@@ -179,8 +177,27 @@
   align-items: center;
   gap: 8px;
   flex-wrap: nowrap;
-  justify-content: center;
+  justify-content: flex-end;
   width: 100%;
+}
+
+.arrowBtn {
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: var(--bg-card-light);
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 0;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.arrowBtn:active {
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .monthPickerWrap {
@@ -202,16 +219,16 @@
 
 .monthPickerBtn {
   width: 100%;
-  height: 42px;
-  background: rgba(255, 255, 255, 0.04);
+  height: 38px;
+  background: var(--bg-card-light);
   color: var(--text-primary);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
-  padding: 0 34px 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 0 30px 0 12px;
   font-family: inherit;
-  font-size: 16px;
-  font-weight: 700;
-  letter-spacing: -0.2px;
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: normal;
   text-align: left;
   text-transform: capitalize;
   cursor: pointer;
@@ -225,10 +242,10 @@
 .monthPickerBtn::after {
   content: '▾';
   position: absolute;
-  right: 14px;
+  right: 11px;
   top: 50%;
   transform: translateY(-50%);
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-tertiary);
   pointer-events: none;
 }
@@ -252,16 +269,15 @@
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 8px;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .weekday {
   text-align: center;
   color: var(--text-tertiary);
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 12px;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.04em;
 }
 
 .emptyDay {
@@ -270,8 +286,8 @@
 
 .day {
   position: relative;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--bg-card-light);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   color: var(--text-primary);
   border-radius: 8px;
   aspect-ratio: 1 / 1;
@@ -286,8 +302,7 @@
 
 .day:hover {
   transform: translateY(-1px);
-  border-color: rgba(255, 255, 255, 0.16);
-  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
 }
 
 .day:focus-visible,
@@ -323,14 +338,13 @@
 }
 
 .dot {
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: var(--accent-green);
   position: absolute;
-  right: 8px;
-  top: 8px;
-  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.35);
+  right: 6px;
+  top: 6px;
 }
 
 /* Розмір і top задаються inline з visualViewport — не наїжджає на статус-бар і клавіатуру (iOS / WebView) */
@@ -766,7 +780,7 @@
     justify-content: space-between;
   }
 
-  .monthInput {
+  .monthPickerWrap {
     width: 100%;
     min-width: 0;
   }
