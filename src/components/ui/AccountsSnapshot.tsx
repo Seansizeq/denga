@@ -25,6 +25,7 @@ type AccountSection = {
 
 interface AccountsSnapshotProps {
   sections: readonly AccountSection[];
+  onRowPress?: (id: string) => void;
 }
 
 const iconToneClass = (tone: RowIconTone) => {
@@ -35,7 +36,7 @@ const iconToneClass = (tone: RowIconTone) => {
   return styles.iconNeutral;
 };
 
-const AccountsSnapshot: React.FC<AccountsSnapshotProps> = ({ sections }) => {
+const AccountsSnapshot: React.FC<AccountsSnapshotProps> = ({ sections, onRowPress }) => {
   const initialOpen = useMemo(() => {
     const map: Record<string, boolean> = {};
     for (const s of sections) {
@@ -105,16 +106,23 @@ const AccountsSnapshot: React.FC<AccountsSnapshotProps> = ({ sections }) => {
                   const tone: RowIconTone = row.iconTone ?? 'bank';
                   return (
                     <div key={row.id} className={styles.row}>
-                      <div className={styles.left}>
+                      <button
+                        type="button"
+                        className={styles.rowButton}
+                        onClick={() => onRowPress?.(row.id)}
+                        disabled={!onRowPress}
+                      >
+                        <div className={styles.left}>
                         <span className={`${styles.icon} ${iconToneClass(tone)}`}>
                           {row.badge ?? row.name.slice(0, 1)}
                         </span>
                         <span className={styles.name}>{row.name}</span>
-                      </div>
-                      <div className={styles.right}>
+                        </div>
+                        <div className={styles.right}>
                         <span className={styles.amount}>{row.amount}</span>
                         {row.subAmount ? <span className={styles.subAmount}>{row.subAmount}</span> : null}
-                      </div>
+                        </div>
+                      </button>
                     </div>
                   );
                 })}

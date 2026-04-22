@@ -153,12 +153,30 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 12px;
+  padding: 0;
   border-top: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .row:first-child {
   border-top: none;
+}
+
+.rowButton {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 12px 12px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  text-align: left;
+}
+
+.rowButton:disabled {
+  cursor: default;
 }
 
 .left {

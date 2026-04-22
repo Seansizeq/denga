@@ -133,5 +133,21 @@ export async function initDb() {
     )
   `);
 
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS account_portfolio (
+      account_key TEXT PRIMARY KEY,
+      section TEXT NOT NULL,
+      sort_index INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      primary_amount REAL NOT NULL,
+      primary_currency TEXT NOT NULL,
+      sub_text TEXT,
+      icon_tone TEXT NOT NULL,
+      badge TEXT,
+      debt_phrase TEXT,
+      updatedAt TEXT NOT NULL
+    )
+  `);
+
   return db;
 }
