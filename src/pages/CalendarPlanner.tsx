@@ -132,7 +132,6 @@ const CalendarPlanner: React.FC = () => {
   const [salaryAmountInput, setSalaryAmountInput] = useState('');
   const [salaryCurrency, setSalaryCurrency] = useState<PlannerCurrency>('UAH');
   const [reportRange, setReportRange] = useState<RangeFilter>('month');
-  const [reportRangeMenuOpen, setReportRangeMenuOpen] = useState(false);
   const monthInputRef = useRef<HTMLInputElement | null>(null);
 
   const modalAnyOpen = chooserOpen || editorOpened;
@@ -192,15 +191,17 @@ const CalendarPlanner: React.FC = () => {
     let totalHours = 0;
     let totalSalaryUah = 0;
     let totalSalaryPln = 0;
+    let filledDays = 0;
     for (const day of days) {
       const p = store[day];
       if (!p?.hasShift) continue;
+      filledDays += 1;
       totalHours += p.workedHours || 0;
       const pay = expectedPayForDay(p);
       if (p.salaryCurrency === 'PLN') totalSalaryPln += pay;
       else totalSalaryUah += pay;
     }
-    return { totalHours, totalSalaryUah, totalSalaryPln };
+    return { totalHours, totalSalaryUah, totalSalaryPln, filledDays };
   }, [store, month, reportRange]);
 
   useEffect(() => {
@@ -458,57 +459,62 @@ const CalendarPlanner: React.FC = () => {
         </div>
 
         <div className={styles.reportCard}>
-          <h3 className={styles.reportCardTitle}>{t('planner', 'monthReportTitle')}</h3>
-          <div className={styles.reportRangeRow}>
-            <button
-              type="button"
-              className={styles.reportRangeBtnMain}
-              onClick={() => setReportRangeMenuOpen((prev) => !prev)}
-            >
-              {t('range', reportRange)}
-            </button>
-            {reportRangeMenuOpen ? (
-              <div className={styles.reportRangeMenu}>
-                {(['today', 'week', 'month', 'all'] as const)
-                  .filter((opt) => opt !== reportRange)
-                  .map((opt) => (
-                    <button
-                      key={opt}
-                      type="button"
-                      className={styles.reportRangeBtn}
-                      onClick={() => {
-                        setReportRange(opt);
-                        setReportRangeMenuOpen(false);
-                      }}
-                    >
-                      {t('range', opt)}
-                    </button>
-                  ))}
+          <div className={styles.reportHeader}>
+            <h3 className={styles.reportCardTitle}>{t('planner', 'monthReportTitle')}</h3>
+            <div className={styles.reportRangeTabs} role="tablist" aria-label={t('planner', 'report')}>
+              {(['today', 'week', 'month', 'all'] as const).map((opt) => (
+                <button
+                  key={opt}
+                  type="button"
+                  role="tab"
+                  aria-selected={reportRange === opt}
+                  className={`${styles.reportRangeTabBtn} ${reportRange === opt ? styles.reportRangeTabBtnActive : ''}`}
+                  onClick={() => {
+                    setReportRange(opt);
+                  }}
+                >
+                  {t('range', opt)}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className={styles.reportStatsGrid}>
+            <div className={styles.reportStatItem}>
+              <span className={styles.reportLabel}>{t('planner', 'filledDays')}</span>
+              <strong className={styles.reportValue}>{monthReport.filledDays}</strong>
+            </div>
+            <div className={styles.reportStatItem}>
+              <span className={styles.reportLabel}>{t('planner', 'reportHoursTotal')}</span>
+              <strong className={styles.reportValue}>
+                {monthReport.totalHours.toLocaleString(locale, { maximumFractionDigits: 1, minimumFractionDigits: 0 })}
+              </strong>
+            </div>
+          </div>
+
+          <div className={styles.reportRows}>
+            {monthReport.totalSalaryUah > 0 ? (
+              <div className={styles.reportRow}>
+                <span className={styles.reportLabel}>{t('planner', 'expectedSalaryUah')}</span>
+                <strong className={styles.reportValue}>
+                  {formatPlannerMoney(monthReport.totalSalaryUah, locale, 'UAH')}
+                </strong>
+              </div>
+            ) : null}
+            {monthReport.totalSalaryPln > 0 ? (
+              <div className={styles.reportRow}>
+                <span className={styles.reportLabel}>{t('planner', 'expectedSalaryPln')}</span>
+                <strong className={styles.reportValue}>
+                  {formatPlannerMoney(monthReport.totalSalaryPln, locale, 'PLN')}
+                </strong>
+              </div>
+            ) : null}
+            {monthReport.totalSalaryUah <= 0 && monthReport.totalSalaryPln <= 0 ? (
+              <div className={styles.reportRow}>
+                <span className={styles.reportLabel}>{t('planner', 'expectedSalary')}</span>
+                <strong className={styles.reportValue}>{formatPlannerMoney(0, locale, 'UAH')}</strong>
               </div>
             ) : null}
           </div>
-          <div className={styles.reportRow}>
-            <span className={styles.reportLabel}>{t('planner', 'reportHoursTotal')}</span>
-            <strong className={styles.reportValue}>
-              {monthReport.totalHours.toLocaleString(locale, { maximumFractionDigits: 1, minimumFractionDigits: 0 })}
-            </strong>
-          </div>
-          {monthReport.totalSalaryUah > 0 ? (
-            <div className={styles.reportRow}>
-              <span className={styles.reportLabel}>{t('planner', 'expectedSalaryUah')}</span>
-              <strong className={styles.reportValue}>
-                {formatPlannerMoney(monthReport.totalSalaryUah, locale, 'UAH')}
-              </strong>
-            </div>
-          ) : null}
-          {monthReport.totalSalaryPln > 0 ? (
-            <div className={styles.reportRow}>
-              <span className={styles.reportLabel}>{t('planner', 'expectedSalaryPln')}</span>
-              <strong className={styles.reportValue}>
-                {formatPlannerMoney(monthReport.totalSalaryPln, locale, 'PLN')}
-              </strong>
-            </div>
-          ) : null}
         </div>
 
         {loading && <p className={styles.loading}>{t('planner', 'loading')}</p>}
