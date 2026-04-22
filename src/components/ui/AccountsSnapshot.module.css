@@ -1,25 +1,28 @@
 .section {
-  margin: 10px 0 6px;
+  margin: 8px 0 6px;
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .card {
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.015) 40%, rgba(0, 0, 0, 0) 100%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.01) 45%, rgba(0, 0, 0, 0) 100%),
     var(--bg-card);
   border: 1px solid var(--border-light);
-  border-radius: 18px;
+  border-radius: 16px;
   overflow: hidden;
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.22);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
 }
 
-.cardHeader {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
-  background: rgba(255, 255, 255, 0.02);
+.cardStrip {
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.16);
 }
 
-.headerButton,
+.cardEmpty {
+  /* keep a stable height even if there are 0 sub-rows; header still provides content */
+  min-height: 0;
+}
+
 .headerStatic {
   width: 100%;
   display: flex;
@@ -28,13 +31,8 @@
   gap: 12px;
   padding: 10px 12px;
   min-height: 44px;
-}
-
-.headerButton {
-  border: none;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .headerLeft {
@@ -63,14 +61,66 @@
   margin: 0;
   font-size: 15px;
   line-height: 1.1;
-  font-weight: 700;
+  font-weight: 800;
   color: var(--text-primary);
   letter-spacing: -0.1px;
 }
 
 .cardTotal {
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 800;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.stripButton {
+  width: 100%;
+  border: none;
+  background: rgba(255, 255, 255, 0.02);
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  min-height: 44px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.stripButton:hover,
+.stripButton:focus-visible {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.stripLeft {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+}
+
+.stripRight {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.stripTitle {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.1;
+  font-weight: 850;
+  color: var(--text-primary);
+  letter-spacing: -0.1px;
+}
+
+.stripTotal {
+  font-size: 15px;
+  line-height: 1.1;
+  font-weight: 800;
   color: var(--text-secondary);
   white-space: nowrap;
 }
@@ -79,26 +129,23 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   border-radius: 10px;
   color: var(--text-tertiary);
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.08);
   transition: transform 0.22s ease, background 0.22s ease;
+  flex: 0 0 auto;
 }
 
 .chevronClosed {
   transform: rotate(-90deg);
 }
 
-.headerButton:hover .chevron,
-.headerButton:focus-visible .chevron {
-  background: rgba(255, 255, 255, 0.08);
-}
-
 .rows {
   display: grid;
+  background: rgba(0, 0, 0, 0.10);
 }
 
 .row {
@@ -107,7 +154,7 @@
   justify-content: space-between;
   gap: 12px;
   padding: 12px 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .row:first-child {
@@ -176,7 +223,7 @@
   justify-content: flex-start;
   gap: 3px;
   min-width: 0;
-  max-width: 56%;
+  max-width: 58%;
 }
 
 .amount {
@@ -192,10 +239,10 @@
   font-size: 12px;
   line-height: 1.1;
   color: var(--text-secondary);
-  white-space: nowrap;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @media (min-width: 420px) {

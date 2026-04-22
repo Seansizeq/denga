@@ -27,6 +27,8 @@ const getCurrencyFromNote = (note?: string): string => {
   return raw;
 };
 
+const normalizeLabel = (value: string) => value.trim().toLowerCase().replace(/\s+/g, ' ');
+
 const Accounts: React.FC = () => {
   const { t, locale } = useTranslation();
   const { transactions } = useTransactions();
@@ -75,8 +77,9 @@ const Accounts: React.FC = () => {
         id: 'bank',
         title: 'Карти',
         total: '',
-        collapsible: false,
-        defaultOpen: true,
+        variant: 'strip' as const,
+        collapsible: true,
+        defaultOpen: false,
         rows: [] as Array<{
           id: string;
           name: string;
@@ -90,8 +93,9 @@ const Accounts: React.FC = () => {
         id: 'cash',
         title: 'Готівка',
         total: '',
+        variant: 'strip' as const,
         collapsible: true,
-        defaultOpen: true,
+        defaultOpen: false,
         rows: [] as Array<{
           id: string;
           name: string;
@@ -105,8 +109,9 @@ const Accounts: React.FC = () => {
         id: 'crypto',
         title: 'Акції та Крипта',
         total: '',
+        variant: 'strip' as const,
         collapsible: true,
-        defaultOpen: true,
+        defaultOpen: false,
         rows: [] as Array<{
           id: string;
           name: string;
@@ -120,8 +125,9 @@ const Accounts: React.FC = () => {
         id: 'debt',
         title: 'Борг',
         total: '',
+        variant: 'strip' as const,
         collapsible: true,
-        defaultOpen: true,
+        defaultOpen: false,
         rows: [] as Array<{
           id: string;
           name: string;
@@ -135,47 +141,108 @@ const Accounts: React.FC = () => {
 
     const accountMeta: Record<
       string,
-      { section: 'bank' | 'cash' | 'crypto' | 'debt'; label: string; badge: string; debtPhrase?: string }
+      { section: 'bank' | 'cash' | 'crypto' | 'debt'; label: string; badge: string; debtPhrase?: string; aliases?: string[] }
     > = {
-      pumb: { section: 'bank', label: 'pumb', badge: 'P' },
-      privat24: { section: 'bank', label: 'Privat24', badge: 'PB' },
-      wallet: { section: 'cash', label: 'Wallet', badge: 'W' },
+      pumb: { section: 'bank', label: 'pumb', badge: 'P', aliases: ['pumb uah', 'пумб'] },
+      privat24: { section: 'bank', label: 'Privat24', badge: 'PB', aliases: ['privat', 'приват24', 'приват'] },
+      wallet: { section: 'cash', label: 'Wallet', badge: 'W', aliases: ['готівка', 'кеш'] },
       crypto: { section: 'crypto', label: 'crypto', badge: '₿' },
       sol: { section: 'crypto', label: 'sol', badge: 'S' },
       ton: { section: 'crypto', label: 'Ton', badge: 'T' },
-      usdt: { section: 'crypto', label: 'usdt', badge: 'U' },
-      misha: { section: 'debt', label: 'Misha', badge: 'M', debtPhrase: 'мені винні' },
+      usdt: { section: 'crypto', label: 'usdt', badge: 'U', aliases: ['tether', 'usdc'] },
+      misha: { section: 'debt', label: 'Misha', badge: 'M', debtPhrase: 'мені винні', aliases: ['миша'] },
     };
 
-    const accountTotals = new Map<string, { fiatAmount: number; fiatCurrency: string; byCurrency: Map<string, number> }>();
+    const aliasToKey = new Map<string, keyof typeof accountMeta>();
+    (Object.keys(accountMeta) as Array<keyof typeof accountMeta>).forEach((k) => {
+      const meta = accountMeta[k];
+      aliasToKey.set(normalizeLabel(String(k)), k);
+      aliasToKey.set(normalizeLabel(meta.label), k);
+      for (const a of meta.aliases ?? []) {
+        aliasToKey.set(normalizeLabel(a), k);
+      }
+    });
+
+    type AccountTotals = {
+      uah: number;
+      pln: number;
+      byCurrency: Map<string, number>;
+    };
+
+    const emptyTotals = (): AccountTotals => ({
+      uah: 0,
+      pln: 0,
+      byCurrency: new Map<string, number>(),
+    });
+
+    const pickPrimaryFiat = (totals: AccountTotals): { amount: number; currency: 'UAH' | 'PLN' } => {
+      const aU = Math.abs(totals.uah);
+      const aP = Math.abs(totals.pln);
+      if (aU === 0 && aP === 0) return { amount: 0, currency: 'PLN' };
+      if (aP >= aU) return { amount: totals.pln, currency: 'PLN' };
+      return { amount: totals.uah, currency: 'UAH' };
+    };
+
+    const accountTotals = new Map<string, AccountTotals>();
+
+    const resolveAccountKey = (rawCategoryId: string): keyof typeof accountMeta | null => {
+      const id = rawCategoryId.trim();
+      if (!id) return null;
+
+      const direct = id.toLowerCase();
+      if (accountMeta[direct as keyof typeof accountMeta]) {
+        return direct as keyof typeof accountMeta;
+      }
+
+      const fromCustomName = getCustomCategoryName(id);
+      if (fromCustomName) {
+        const hit = aliasToKey.get(normalizeLabel(fromCustomName));
+        if (hit) return hit;
+      }
+
+      // Last resort: try loose substring match for known account labels
+      const hay = normalizeLabel(`${fromCustomName ?? ''} ${id}`);
+      for (const [alias, k] of aliasToKey.entries()) {
+        if (!alias) continue;
+        if (hay.includes(alias)) return k;
+      }
+
+      return null;
+    };
+
+    (Object.keys(accountMeta) as Array<keyof typeof accountMeta>).forEach((k) => {
+      accountTotals.set(String(k), emptyTotals());
+    });
+
     transactions.forEach((tx) => {
-      const key = tx.categoryId.trim().toLowerCase();
+      const key = resolveAccountKey(tx.categoryId);
+      if (!key) return;
       const meta = accountMeta[key];
       if (!meta) return;
       const sign = tx.type === 'income' ? 1 : -1;
       const currency = getCurrencyFromNote(tx.note);
       const isFiat = currency === 'UAH' || currency === 'PLN';
-      const current = accountTotals.get(key) ?? { fiatAmount: 0, fiatCurrency: 'PLN', byCurrency: new Map() };
+      const current = accountTotals.get(String(key)) ?? emptyTotals();
       current.byCurrency.set(currency, (current.byCurrency.get(currency) ?? 0) + sign * tx.amount);
       if (isFiat) {
-        current.fiatAmount += sign * tx.amount;
-        current.fiatCurrency = currency;
+        if (currency === 'PLN') current.pln += sign * tx.amount;
+        else current.uah += sign * tx.amount;
       }
-      accountTotals.set(key, current);
+      accountTotals.set(String(key), current);
     });
 
     const pushAccount = (key: keyof typeof accountMeta) => {
       const meta = accountMeta[key];
-      const total = accountTotals.get(key);
-      if (!meta || !total) return;
-      const amountText = formatGroupAmount(total.fiatAmount, total.fiatCurrency);
+      const total = accountTotals.get(String(key)) ?? emptyTotals();
+      const primary = pickPrimaryFiat(total);
+      const amountText = formatGroupAmount(primary.amount, primary.currency);
       const firstNonFiat = Array.from(total.byCurrency.entries()).find(
         ([currency, amount]) => currency !== 'UAH' && currency !== 'PLN' && amount > 0
       );
       const iconTone: 'bank' | 'cash' | 'crypto' | 'debt' | 'neutral' =
         key === 'misha' ? 'debt' : meta.section === 'bank' ? 'bank' : meta.section;
       base[meta.section].rows.push({
-        id: key,
+        id: String(key),
         name: meta.label,
         amount: meta.debtPhrase ? `${meta.debtPhrase} ${amountText}` : amountText,
         badge: meta.badge,
@@ -195,12 +262,25 @@ const Accounts: React.FC = () => {
     pushAccount('usdt');
     pushAccount('misha');
 
-    const calculateSectionTotal = (rows: Array<{ id: string }>, defaultCurrency = 'UAH') => {
+    const calculateSectionTotal = (rows: Array<{ id: string }>, defaultCurrency: 'UAH' | 'PLN' = 'UAH') => {
       if (!rows.length) return `0 ${defaultCurrency === 'PLN' ? 'zł' : defaultCurrency}`;
-      const first = accountTotals.get(rows[0].id);
-      const currency = first?.fiatCurrency ?? defaultCurrency;
-      const sum = rows.reduce((acc, row) => acc + (accountTotals.get(row.id)?.fiatAmount ?? 0), 0);
-      return formatGroupAmount(sum, currency);
+      const sums = rows.reduce(
+        (acc, row) => {
+          const t = accountTotals.get(row.id) ?? emptyTotals();
+          acc.uah += t.uah;
+          acc.pln += t.pln;
+          return acc;
+        },
+        { uah: 0, pln: 0 },
+      );
+      if (defaultCurrency === 'PLN') {
+        return formatGroupAmount(sums.pln, 'PLN');
+      }
+      // Bank section is UAH-first in UI; if there is no UAH but PLN exists, show PLN.
+      if (Math.abs(sums.uah) >= Math.abs(sums.pln)) {
+        return formatGroupAmount(sums.uah, 'UAH');
+      }
+      return formatGroupAmount(sums.pln, 'PLN');
     };
 
     base.bank.total = calculateSectionTotal(base.bank.rows, 'UAH');
@@ -226,7 +306,9 @@ const Accounts: React.FC = () => {
                 {details.byCurrency.map((item) => (
                   <li key={item.currency} className={styles.listRow}>
                     <span>{item.currency}</span>
-                    <strong>
+                    <strong
+                      className={item.amount < 0 ? styles.valueNeg : item.amount > 0 ? styles.valuePos : styles.valueZero}
+                    >
                       {item.amount < 0 ? '−' : '+'}
                       {Math.abs(item.amount).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </strong>
