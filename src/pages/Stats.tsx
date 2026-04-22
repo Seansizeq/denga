@@ -4,26 +4,25 @@ import { useTranslation } from '../i18n/LanguageContext';
 import { formatCurrency, isSameMonth } from '../utils/formatters';
 import { findCategory, getCustomCategoryData } from '../constants/categories';
 import type { CategoryKey } from '../i18n/translations';
-import type { RangeFilter } from '../components/ui/RecentTransactions';
 import styles from './Stats.module.css';
+
+type StatsRange = 'week' | 'month' | 'year';
 
 const Stats: React.FC = () => {
   const { t, locale } = useTranslation();
   const { transactions } = useTransactions();
-  const [range, setRange] = useState<RangeFilter>('today');
-  const [rangeMenuOpen, setRangeMenuOpen] = useState(false);
+  const [range, setRange] = useState<StatsRange>('month');
 
   const inRange = useMemo(() => {
     const now = new Date();
     return (iso: string) => {
       const d = new Date(iso);
-      if (range === 'all') return true;
-      if (range === 'today') return d.toDateString() === now.toDateString();
       if (range === 'week') {
         const diff = (now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24);
         return diff >= 0 && diff <= 7;
       }
       if (range === 'month') return isSameMonth(iso);
+      if (range === 'year') return d.getFullYear() === now.getFullYear();
       return true;
     };
   }, [range]);
@@ -55,8 +54,7 @@ const Stats: React.FC = () => {
     return Array.from(map.values()).sort((a, b) => b.total - a.total);
   }, [filtered]);
 
-  const periodLabel = t('range', range);
-  const rangeOptions: RangeFilter[] = ['today', 'week', 'month', 'all'];
+  const rangeOptions: StatsRange[] = ['week', 'month', 'year'];
 
   const categoryRows = useMemo(
     () =>
@@ -110,35 +108,22 @@ const Stats: React.FC = () => {
     <div className={styles.container}>
       <header className={styles.header}>
         <h1 className={styles.title}>{t('stats', 'title')}</h1>
-        <span className={styles.subtitle}>{periodLabel}</span>
       </header>
       <div className={styles.rangeRow}>
-        <button
-          type="button"
-          className={styles.rangeBtnSingle}
-          onClick={() => setRangeMenuOpen((prev) => !prev)}
-        >
-          {periodLabel}
-        </button>
-        {rangeMenuOpen ? (
-          <div className={styles.rangeMenu}>
-            {rangeOptions
-              .filter((opt) => opt !== range)
-              .map((opt) => (
-                <button
-                  key={opt}
-                  type="button"
-                  className={styles.rangeMenuBtn}
-                  onClick={() => {
-                    setRange(opt);
-                    setRangeMenuOpen(false);
-                  }}
-                >
-                  {t('range', opt)}
-                </button>
-              ))}
-          </div>
-        ) : null}
+        <div className={styles.rangeTabs} role="tablist" aria-label="Stats range">
+          {rangeOptions.map((opt) => (
+            <button
+              key={opt}
+              type="button"
+              role="tab"
+              aria-selected={range === opt}
+              className={`${styles.rangeTabBtn} ${range === opt ? styles.rangeTabBtnActive : ''}`}
+              onClick={() => setRange(opt)}
+            >
+              {t('range', opt)}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className={styles.summaryGrid}>

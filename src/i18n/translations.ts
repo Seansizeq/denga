@@ -25,7 +25,7 @@ type Dict = {
     noResults: string;
   };
   quickActions: { add: string; income: string; expense: string; history: string; subscriptions: string };
-  range: { today: string; week: string; month: string; all: string };
+  range: { today: string; week: string; month: string; year: string; all: string };
   balance: { label: string; income: string; expense: string };
   addTx: {
     title: string;
@@ -186,7 +186,7 @@ const uk: Dict = {
     noResults: 'Нічого не знайдено',
   },
   quickActions: { add: 'Додати', income: 'Дохід', expense: 'Витрата', history: 'Історія', subscriptions: 'Підписки' },
-  range: { today: 'Сьогодні', week: 'Тиждень', month: 'Місяць', all: 'Усі' },
+  range: { today: 'Сьогодні', week: 'Тиждень', month: 'Місяць', year: 'Рік', all: 'Усі' },
   balance: { label: 'Баланс цього місяця', income: 'Доходи', expense: 'Витрати' },
   addTx: {
     title: 'Нова операція',
@@ -358,7 +358,7 @@ const ru: Dict = {
     noResults: 'Ничего не найдено',
   },
   quickActions: { add: 'Добавить', income: 'Доход', expense: 'Расход', history: 'История', subscriptions: 'Подписки' },
-  range: { today: 'Сегодня', week: 'Неделя', month: 'Месяц', all: 'Все' },
+  range: { today: 'Сегодня', week: 'Неделя', month: 'Месяц', year: 'Год', all: 'Все' },
   balance: { label: 'Баланс за этот месяц', income: 'Доходы', expense: 'Расходы' },
   addTx: {
     title: 'Новая операция',
@@ -530,7 +530,7 @@ const en: Dict = {
     noResults: 'Nothing found',
   },
   quickActions: { add: 'Add', income: 'Income', expense: 'Expense', history: 'History', subscriptions: 'Subscriptions' },
-  range: { today: 'Today', week: 'Week', month: 'Month', all: 'All' },
+  range: { today: 'Today', week: 'Week', month: 'Month', year: 'Year', all: 'All' },
   balance: { label: 'This month', income: 'Income', expense: 'Expenses' },
   addTx: {
     title: 'New transaction',

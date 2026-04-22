@@ -41,10 +41,6 @@ const parseIsoLocal = (iso: string): Date => {
 };
 
 const todayIso = (): string => toIsoLocal(new Date());
-const monthLabel = (value: string, locale: string): string => {
-  const [year, month] = value.split('-').map(Number);
-  return new Date(year, month - 1, 1).toLocaleDateString(locale, { month: 'long', year: 'numeric' });
-};
 
 const shiftMonth = (monthValue: string, delta: number): string => {
   const [year, month] = monthValue.split('-').map(Number);
@@ -404,9 +400,6 @@ const CalendarPlanner: React.FC = () => {
 
       <section className={styles.panel}>
         <div className={styles.monthRow}>
-          <div className={styles.monthBlock}>
-            <span className={styles.monthLabel}>{monthLabel(month, locale)}</span>
-          </div>
           <div className={styles.monthControls}>
             <button type="button" className={styles.arrowBtn} onClick={() => setMonth(shiftMonth(month, -1))}>←</button>
             <button type="button" className={styles.arrowBtn} onClick={() => setMonth(shiftMonth(month, 1))}>→</button>
