@@ -186,7 +186,8 @@ const CalendarPlanner: React.FC = () => {
         const diff = (now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24);
         return diff >= 0 && diff <= 7;
       }
-      return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+      // days are already scoped to the selected calendar month above
+      return true;
     });
     let totalHours = 0;
     let totalSalaryUah = 0;
