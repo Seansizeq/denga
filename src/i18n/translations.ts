@@ -47,6 +47,7 @@ type Dict = {
     chooseIcon: string;
     chooseColor: string;
     create: string;
+    deleteConfirm: string;
   };
   history: { title: string; empty: string; deleteConfirm: string; edit: string; delete: string };
   planner: {
@@ -207,6 +208,7 @@ const uk: Dict = {
     chooseIcon: 'Оберіть іконку',
     chooseColor: 'Оберіть колір',
     create: 'Створити',
+    deleteConfirm: 'Видалити цю категорію?',
   },
   history: {
     title: 'Історія',
@@ -378,6 +380,7 @@ const ru: Dict = {
     chooseIcon: 'Выберите иконку',
     chooseColor: 'Выберите цвет',
     create: 'Создать',
+    deleteConfirm: 'Удалить эту категорию?',
   },
   history: {
     title: 'История',
@@ -549,6 +552,7 @@ const en: Dict = {
     chooseIcon: 'Choose icon',
     chooseColor: 'Choose color',
     create: 'Create',
+    deleteConfirm: 'Delete this category?',
   },
   history: {
     title: 'History',

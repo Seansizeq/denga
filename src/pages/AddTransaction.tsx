@@ -40,6 +40,10 @@ const AddTransaction: React.FC = () => {
     Array<{ id: string; name: string; icon: string; color: string }>
   >([]);
   const [creatingCategory, setCreatingCategory] = useState(false);
+  const [managingCustom, setManagingCustom] = useState<
+    { id: string; name: string; icon: string; color: string } | null
+  >(null);
+  const [editingCustomId, setEditingCustomId] = useState<string | null>(null);
 
   const API_URL = import.meta.env.VITE_API_URL ?? '';
 
@@ -151,16 +155,81 @@ const AddTransaction: React.FC = () => {
           customCategories={customCategories}
           onAddCustom={() => {
             setIsCreatingCustom(true);
+            setEditingCustomId(null);
+            setManagingCustom(null);
+            setNewCategoryName('');
+            setNewCategoryIcon('Tag');
+            setNewCategoryColor('#8E8E93');
           }}
           onSelect={(id) => {
             setCategoryId(id);
             setIsCreatingCustom(false);
           }}
+          onManageCustom={(category) => {
+            setManagingCustom(category);
+            setIsCreatingCustom(false);
+          }}
         />
+
+        {managingCustom && !isCreatingCustom ? (
+          <div className={styles.customCategoryCard}>
+            <h4 className={styles.customCategoryTitle}>{managingCustom.name}</h4>
+            <div className={styles.customCategoryActions}>
+              <button
+                type="button"
+                className={styles.customCategoryCancelBtn}
+                onClick={() => {
+                  setCategoryId(managingCustom.id);
+                  setManagingCustom(null);
+                }}
+              >
+                {t('addTx', 'categoryTabSelect')}
+              </button>
+              <button
+                type="button"
+                className={styles.customCategoryCancelBtn}
+                onClick={() => {
+                  setIsCreatingCustom(true);
+                  setEditingCustomId(managingCustom.id);
+                  setNewCategoryName(managingCustom.name);
+                  setNewCategoryIcon((managingCustom.icon as CustomCategoryIcon) || 'Tag');
+                  setNewCategoryColor(managingCustom.color || '#8E8E93');
+                }}
+              >
+                {t('addTx', 'edit')}
+              </button>
+              <button
+                type="button"
+                className={styles.customCategoryCreateBtn}
+                onClick={async () => {
+                  if (!window.confirm(t('addTx', 'deleteConfirm'))) return;
+                  try {
+                    const response = await fetch(`${API_URL}/api/custom-categories/${encodeURIComponent(managingCustom.id)}`, {
+                      method: 'DELETE',
+                    });
+                    if (response.ok) {
+                      setCustomCategories((prev) => prev.filter((c) => c.id !== managingCustom.id));
+                      if (categoryId === managingCustom.id) {
+                        setCategoryId(type === 'income' ? 'salary' : 'food');
+                      }
+                      setManagingCustom(null);
+                    }
+                  } catch (error) {
+                    console.error('Error deleting custom category:', error);
+                  }
+                }}
+              >
+                {t('history', 'delete')}
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         {isCreatingCustom ? (
           <div className={styles.customCategoryCard}>
-            <h4 className={styles.customCategoryTitle}>{t('addTx', 'createCategory')}</h4>
+            <h4 className={styles.customCategoryTitle}>
+              {editingCustomId ? t('addTx', 'saveChanges') : t('addTx', 'createCategory')}
+            </h4>
             <input
               type="text"
               value={newCategoryName}
@@ -202,7 +271,10 @@ const AddTransaction: React.FC = () => {
               <button
                 type="button"
                 className={styles.customCategoryCancelBtn}
-                onClick={() => setIsCreatingCustom(false)}
+                onClick={() => {
+                  setIsCreatingCustom(false);
+                  setEditingCustomId(null);
+                }}
               >
                 {t('addTx', 'cancel')}
               </button>
@@ -220,8 +292,12 @@ const AddTransaction: React.FC = () => {
                     newCategoryColor
                   );
                   try {
-                    const response = await fetch(`${API_URL}/api/custom-categories`, {
-                      method: 'POST',
+                    const isEdit = Boolean(editingCustomId);
+                    const endpoint = isEdit
+                      ? `${API_URL}/api/custom-categories/${encodeURIComponent(editingCustomId as string)}`
+                      : `${API_URL}/api/custom-categories`;
+                    const response = await fetch(endpoint, {
+                      method: isEdit ? 'PATCH' : 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({
                         name: cleanName,
@@ -234,17 +310,26 @@ const AddTransaction: React.FC = () => {
                     const nextId = saved?.id ?? fallbackId;
                     setCategoryId(nextId);
                     setCustomCategories((prev) => {
-                      const exists = prev.some((c) => c.id === nextId);
-                      if (exists) return prev;
-                      return [
-                        {
-                          id: nextId,
-                          name: saved?.name ?? cleanName,
-                          icon: saved?.icon ?? newCategoryIcon,
-                          color: saved?.color ?? newCategoryColor,
-                        },
-                        ...prev,
-                      ];
+                      const withoutOld = editingCustomId ? prev.filter((c) => c.id !== editingCustomId) : prev;
+                      const exists = withoutOld.some((c) => c.id === nextId);
+                      if (exists) {
+                        return withoutOld.map((c) =>
+                          c.id === nextId
+                            ? {
+                                ...c,
+                                name: saved?.name ?? cleanName,
+                                icon: saved?.icon ?? newCategoryIcon,
+                                color: saved?.color ?? newCategoryColor,
+                              }
+                            : c
+                        );
+                      }
+                      return [{
+                        id: nextId,
+                        name: saved?.name ?? cleanName,
+                        icon: saved?.icon ?? newCategoryIcon,
+                        color: saved?.color ?? newCategoryColor,
+                      }, ...withoutOld];
                     });
                   } catch (error) {
                     console.error('Error creating custom category:', error);
@@ -254,10 +339,12 @@ const AddTransaction: React.FC = () => {
                   setNewCategoryIcon('Tag');
                   setNewCategoryColor('#8E8E93');
                   setIsCreatingCustom(false);
+                  setManagingCustom(null);
+                  setEditingCustomId(null);
                   setCreatingCategory(false);
                 }}
               >
-                {t('addTx', 'create')}
+                {editingCustomId ? t('addTx', 'saveChanges') : t('addTx', 'create')}
               </button>
             </div>
           </div>

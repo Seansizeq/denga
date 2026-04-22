@@ -11,6 +11,7 @@ interface CategoryGridProps {
   onSelect: (id: string) => void;
   onAddCustom?: () => void;
   customCategories?: Array<{ id: string; name: string; icon: string; color: string }>;
+  onManageCustom?: (category: { id: string; name: string; icon: string; color: string }) => void;
 }
 
 const CategoryGrid: React.FC<CategoryGridProps> = ({
@@ -19,6 +20,7 @@ const CategoryGrid: React.FC<CategoryGridProps> = ({
   onSelect,
   onAddCustom,
   customCategories = [],
+  onManageCustom,
 }) => {
   const { t } = useTranslation();
   const filtered = CATEGORIES.filter((c) => c.type === type);
@@ -53,7 +55,10 @@ const CategoryGrid: React.FC<CategoryGridProps> = ({
             key={category.id}
             type="button"
             className={`${styles.categoryBtn} ${selected ? styles.selected : ''}`}
-            onClick={() => onSelect(category.id)}
+            onClick={() => {
+              onSelect(category.id);
+              onManageCustom?.(category);
+            }}
           >
             <div className={styles.iconBox}>
               <IconComponent size={24} color={category.color} strokeWidth={1.5} />

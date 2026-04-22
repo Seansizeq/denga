@@ -287,6 +287,103 @@ app.post('/api/custom-categories', async (req, res) => {
   res.status(201).json({ id, type, name, icon, color, updatedAt: now });
 });
 
+app.patch('/api/custom-categories/:id', async (req, res) => {
+  const id = typeof req.params.id === 'string' ? req.params.id.trim() : '';
+  if (!id) {
+    res.status(400).json({ error: 'invalid id' });
+    return;
+  }
+
+  const current = await db.get(
+    'SELECT id, type, name, normalized_name, icon, color, updatedAt FROM custom_categories WHERE id = ? LIMIT 1',
+    [id]
+  );
+  if (!current) {
+    res.status(404).json({ error: 'Custom category not found' });
+    return;
+  }
+
+  const rawName = typeof req.body?.name === 'string' ? req.body.name : current.name;
+  const name = rawName.trim().replace(/\s+/g, ' ');
+  if (!name) {
+    res.status(400).json({ error: 'name is required' });
+    return;
+  }
+  const normalizedName = normalizeCategoryName(name);
+  const icon = typeof req.body?.icon === 'string' && req.body.icon ? req.body.icon : current.icon;
+  const color = typeof req.body?.color === 'string' && /^#([0-9A-Fa-f]{6})$/.test(req.body.color)
+    ? req.body.color
+    : current.color;
+
+  const duplicate = await db.get(
+    'SELECT id FROM custom_categories WHERE type = ? AND normalized_name = ? AND id != ? LIMIT 1',
+    [current.type, normalizedName, id]
+  );
+  if (duplicate) {
+    res.status(409).json({ error: 'Category with this name already exists' });
+    return;
+  }
+
+  const nextId = createCustomCategoryId(name, icon, color);
+  const now = new Date().toISOString();
+  await db.run('BEGIN');
+  try {
+    await db.run(
+      `UPDATE custom_categories
+       SET id = ?, name = ?, normalized_name = ?, icon = ?, color = ?, updatedAt = ?
+       WHERE id = ?`,
+      [nextId, name, normalizedName, icon, color, now, id]
+    );
+    await db.run(
+      'UPDATE transactions SET categoryId = ? WHERE categoryId = ?',
+      [nextId, id]
+    );
+    await db.run('COMMIT');
+  } catch (error) {
+    await db.run('ROLLBACK');
+    throw error;
+  }
+
+  res.json({
+    id: nextId,
+    type: current.type,
+    name,
+    icon,
+    color,
+    updatedAt: now,
+  });
+});
+
+app.delete('/api/custom-categories/:id', async (req, res) => {
+  const id = typeof req.params.id === 'string' ? req.params.id.trim() : '';
+  if (!id) {
+    res.status(400).json({ error: 'invalid id' });
+    return;
+  }
+
+  const current = await db.get(
+    'SELECT id, type FROM custom_categories WHERE id = ? LIMIT 1',
+    [id]
+  );
+  if (!current) {
+    res.status(404).json({ error: 'Custom category not found' });
+    return;
+  }
+
+  const fallback = current.type === 'income' ? 'other_income' : 'other_expense';
+  await db.run('BEGIN');
+  try {
+    await db.run('UPDATE transactions SET categoryId = ? WHERE categoryId = ?', [fallback, id]);
+    await db.run('DELETE FROM custom_categories WHERE id = ?', [id]);
+    await db.run('COMMIT');
+  } catch (error) {
+    await db.run('ROLLBACK');
+    throw error;
+  }
+
+  res.status(204).end();
+});
+
 app.get('/api/subscriptions', async (_req, res) => {
   const rows = await db.all(
     `SELECT id, name, amount, cycle, nextChargeDate, note, active, createdAt, updatedAt
