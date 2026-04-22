@@ -196,7 +196,7 @@ const AddTransaction: React.FC = () => {
                   setNewCategoryColor(managingCustom.color || '#8E8E93');
                 }}
               >
-                {t('addTx', 'edit')}
+                {t('history', 'edit')}
               </button>
               <button
                 type="button"

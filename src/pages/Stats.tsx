@@ -166,7 +166,11 @@ const Stats: React.FC = () => {
             <div className={styles.donutWrap}>
               <div className={styles.donut} style={{ background: donutBackground }}>
                 <div className={styles.donutInner}>
+                  <span className={styles.donutLabel}>{t('stats', 'totalExpense')}</span>
                   <span className={styles.donutValue}>{formatCurrency(totalExpenseByCategories, locale)}</span>
+                  <span className={styles.donutSubLabel}>
+                    {categoryRows.length} {t('stats', 'byCategory').toLowerCase()}
+                  </span>
                 </div>
               </div>
             </div>
