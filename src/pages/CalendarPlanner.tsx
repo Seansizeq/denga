@@ -46,12 +46,6 @@ const monthLabel = (value: string, locale: string): string => {
   return new Date(year, month - 1, 1).toLocaleDateString(locale, { month: 'long', year: 'numeric' });
 };
 
-const shiftMonth = (monthValue: string, delta: number): string => {
-  const [year, month] = monthValue.split('-').map(Number);
-  const shifted = new Date(year, (month - 1) + delta, 1);
-  return `${shifted.getFullYear()}-${String(shifted.getMonth() + 1).padStart(2, '0')}`;
-};
-
 const buildDaysForMonth = (monthValue: string): string[] => {
   const [year, month] = monthValue.split('-').map(Number);
   const count = new Date(year, month, 0).getDate();
@@ -431,10 +425,6 @@ const CalendarPlanner: React.FC = () => {
               aria-label={t('planner', 'monthHint')}
               onChange={(e) => setMonth(e.target.value)}
             />
-          </div>
-          <div className={styles.monthArrows}>
-            <button type="button" className={styles.arrowBtn} onClick={() => setMonth(shiftMonth(month, -1))} aria-label={t('planner', 'prevMonth')}>‹</button>
-            <button type="button" className={styles.arrowBtn} onClick={() => setMonth(shiftMonth(month, 1))} aria-label={t('planner', 'nextMonth')}>›</button>
           </div>
         </div>
 
