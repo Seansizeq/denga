@@ -56,6 +56,12 @@ const Stats: React.FC = () => {
   }, [filtered]);
 
   const periodLabel = t('range', range);
+  const rangeOrder: RangeFilter[] = ['today', 'week', 'month', 'all'];
+  const cycleRange = () => {
+    const idx = rangeOrder.indexOf(range);
+    const next = rangeOrder[(idx + 1) % rangeOrder.length];
+    setRange(next);
+  };
 
   const maxExpense = byCategory[0]?.total ?? 0;
 
@@ -66,16 +72,9 @@ const Stats: React.FC = () => {
         <span className={styles.subtitle}>{periodLabel}</span>
       </header>
       <div className={styles.rangeRow}>
-        {(['today', 'week', 'month', 'all'] as const).map((key) => (
-          <button
-            key={key}
-            type="button"
-            className={`${styles.rangeBtn} ${range === key ? styles.rangeBtnActive : ''}`}
-            onClick={() => setRange(key)}
-          >
-            {t('range', key)}
-          </button>
-        ))}
+        <button type="button" className={styles.rangeBtnSingle} onClick={cycleRange}>
+          {periodLabel}
+        </button>
       </div>
 
       <div className={styles.summaryGrid}>
