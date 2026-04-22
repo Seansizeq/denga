@@ -406,35 +406,35 @@ const CalendarPlanner: React.FC = () => {
 
       <section className={styles.panel}>
         <div className={styles.monthRow}>
-          <div className={styles.monthControls}>
+          <div className={styles.monthPickerWrap}>
+            <button
+              type="button"
+              className={styles.monthPickerBtn}
+              onClick={() => {
+                const picker = monthInputRef.current as (HTMLInputElement & { showPicker?: () => void }) | null;
+                if (!picker) return;
+                if (typeof picker.showPicker === 'function') {
+                  picker.showPicker();
+                  return;
+                }
+                picker.focus();
+                picker.click();
+              }}
+            >
+              {currentMonthLabel}
+            </button>
+            <input
+              ref={monthInputRef}
+              type="month"
+              className={styles.monthInputNative}
+              value={month}
+              aria-label={t('planner', 'monthHint')}
+              onChange={(e) => setMonth(e.target.value)}
+            />
+          </div>
+          <div className={styles.monthArrows}>
             <button type="button" className={styles.arrowBtn} onClick={() => setMonth(shiftMonth(month, -1))} aria-label={t('planner', 'prevMonth')}>‹</button>
             <button type="button" className={styles.arrowBtn} onClick={() => setMonth(shiftMonth(month, 1))} aria-label={t('planner', 'nextMonth')}>›</button>
-            <div className={styles.monthPickerWrap}>
-              <button
-                type="button"
-                className={styles.monthPickerBtn}
-                onClick={() => {
-                  const picker = monthInputRef.current as (HTMLInputElement & { showPicker?: () => void }) | null;
-                  if (!picker) return;
-                  if (typeof picker.showPicker === 'function') {
-                    picker.showPicker();
-                    return;
-                  }
-                  picker.focus();
-                  picker.click();
-                }}
-              >
-                {currentMonthLabel}
-              </button>
-              <input
-                ref={monthInputRef}
-                type="month"
-                className={styles.monthInputNative}
-                value={month}
-                aria-label={t('planner', 'monthHint')}
-                onChange={(e) => setMonth(e.target.value)}
-              />
-            </div>
           </div>
         </div>
 

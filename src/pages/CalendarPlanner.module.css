@@ -36,7 +36,7 @@
 .monthRow {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
   gap: 10px;
   margin-bottom: 14px;
 }
@@ -183,9 +183,16 @@
   width: 100%;
 }
 
+.monthArrows {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 .monthPickerWrap {
   position: relative;
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
 }
 
@@ -228,7 +235,7 @@
   border-radius: 12px;
   padding: 0 34px 0 12px;
   font-family: inherit;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
   letter-spacing: -0.2px;
   text-align: left;
