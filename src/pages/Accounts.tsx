@@ -73,9 +73,8 @@ const Accounts: React.FC = () => {
     const base = {
       bank: {
         id: 'bank',
-        title: '',
+        title: 'Карти',
         total: '',
-        tone: 'bank' as const,
         collapsible: false,
         defaultOpen: true,
         rows: [] as Array<{
@@ -91,9 +90,8 @@ const Accounts: React.FC = () => {
         id: 'cash',
         title: 'Готівка',
         total: '',
-        tone: 'cash' as const,
         collapsible: true,
-        defaultOpen: false,
+        defaultOpen: true,
         rows: [] as Array<{
           id: string;
           name: string;
@@ -107,9 +105,8 @@ const Accounts: React.FC = () => {
         id: 'crypto',
         title: 'Акції та Крипта',
         total: '',
-        tone: 'crypto' as const,
         collapsible: true,
-        defaultOpen: false,
+        defaultOpen: true,
         rows: [] as Array<{
           id: string;
           name: string;
@@ -123,9 +120,8 @@ const Accounts: React.FC = () => {
         id: 'debt',
         title: 'Борг',
         total: '',
-        tone: 'debt' as const,
         collapsible: true,
-        defaultOpen: false,
+        defaultOpen: true,
         rows: [] as Array<{
           id: string;
           name: string;
@@ -207,6 +203,7 @@ const Accounts: React.FC = () => {
       return formatGroupAmount(sum, currency);
     };
 
+    base.bank.total = calculateSectionTotal(base.bank.rows, 'UAH');
     base.cash.total = calculateSectionTotal(base.cash.rows, 'PLN');
     base.crypto.total = calculateSectionTotal(base.crypto.rows, 'PLN');
     base.debt.total = calculateSectionTotal(base.debt.rows, 'PLN');

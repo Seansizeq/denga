@@ -13,14 +13,11 @@ type AccountRow = {
   iconTone?: RowIconTone;
 };
 
-type SectionTone = 'bank' | 'cash' | 'crypto' | 'debt';
-
 type AccountSection = {
   id: string;
   title: string;
   total: string;
   rows: readonly AccountRow[];
-  tone: SectionTone;
   collapsible?: boolean;
   defaultOpen?: boolean;
 };
@@ -71,7 +68,7 @@ const AccountsSnapshot: React.FC<AccountsSnapshotProps> = ({ sections }) => {
                     aria-expanded={isOpen}
                   >
                     <div className={styles.headerLeft}>
-                      {group.title?.trim() ? <h3 className={styles.cardTitle}>{group.title}</h3> : <span />}
+                      {group.title?.trim() ? <h3 className={styles.cardTitle}>{group.title}</h3> : <span className={styles.headerSpacer} />}
                     </div>
                     <div className={styles.headerRight}>
                       {group.total?.trim() ? <span className={styles.cardTotal}>{group.total}</span> : null}
@@ -83,7 +80,7 @@ const AccountsSnapshot: React.FC<AccountsSnapshotProps> = ({ sections }) => {
                 ) : (
                   <div className={styles.headerStatic}>
                     <div className={styles.headerLeft}>
-                      {group.title?.trim() ? <h3 className={styles.cardTitle}>{group.title}</h3> : <span />}
+                      {group.title?.trim() ? <h3 className={styles.cardTitle}>{group.title}</h3> : <span className={styles.headerSpacer} />}
                     </div>
                     <div className={styles.headerRight}>
                       {group.total?.trim() ? <span className={styles.cardTotal}>{group.total}</span> : null}

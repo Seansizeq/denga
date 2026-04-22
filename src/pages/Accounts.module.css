@@ -11,22 +11,27 @@
 }
 
 .details {
-  margin: 12px 0;
+  margin: 6px 0 0;
   display: grid;
   gap: 10px;
 }
 
 .detailCard {
-  background: var(--bg-card);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.01) 45%, rgba(0, 0, 0, 0) 100%),
+    var(--bg-card);
   border: 1px solid var(--border-light);
-  border-radius: 16px;
-  padding: 12px;
+  border-radius: 18px;
+  padding: 12px 12px 10px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
 }
 
 .detailTitle {
   margin: 0 0 10px;
-  font-size: 14px;
+  font-size: 13px;
+  font-weight: 700;
   color: var(--text-secondary);
+  letter-spacing: 0.1px;
 }
 
 .list {
@@ -42,8 +47,16 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  font-size: 18px;
+  font-size: 15px;
+  line-height: 1.1;
   color: var(--text-primary);
+  padding: 6px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.listRow:first-of-type {
+  border-top: none;
+  padding-top: 0;
 }
 
 .emptyRow {
