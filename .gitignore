@@ -27,6 +27,7 @@ dist-ssr
 .env
 .deploy.env
 database.sqlite
+database.*.sqlite
 pass.txt
 
 # Deployment artifacts
