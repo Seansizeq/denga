@@ -3,12 +3,33 @@ import { useNavigate } from 'react-router-dom';
 import { useTransactions } from '../context/TransactionContext';
 import Header from '../components/ui/Header';
 import HeroBalance from '../components/ui/HeroBalance';
+import AccountsSnapshot from '../components/ui/AccountsSnapshot';
 import QuickActions from '../components/ui/QuickActions';
 import RecentTransactions from '../components/ui/RecentTransactions';
 import type { RangeFilter } from '../components/ui/RecentTransactions';
 import { getCustomCategoryName } from '../constants/categories';
 import { translations, type CategoryKey } from '../i18n/translations';
 import styles from './Dashboard.module.css';
+
+const formatGroupAmount = (amount: number, currency: string) => {
+  const normalized = Number.isFinite(amount) ? amount : 0;
+  const abs = Math.abs(normalized).toLocaleString('ru-RU', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+  const sign = normalized < 0 ? '−' : '';
+  const suffix = currency === 'PLN' ? 'zł' : currency;
+  return `${sign}${abs} ${suffix}`;
+};
+
+const getCurrencyFromNote = (note?: string): string => {
+  if (!note) return 'UAH';
+  const match = note.match(/Currency:\s*([A-Za-z#0-9_-]+)/i);
+  const raw = match?.[1]?.toUpperCase();
+  if (!raw) return 'UAH';
+  if (raw.startsWith('C#')) return raw.slice(2).toUpperCase();
+  return raw;
+};
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -69,15 +90,9 @@ const Dashboard: React.FC = () => {
         sourceMap.set(key, current);
       });
 
-    const currencyFromNote = (note?: string): string => {
-      if (!note) return 'UAH';
-      const match = note.match(/Currency:\s*([A-Za-z#0-9_-]+)/i);
-      return match?.[1]?.toUpperCase() ?? 'UAH';
-    };
-
     const currencyMap = new Map<string, number>();
     transactions.forEach((tx) => {
-      const currency = currencyFromNote(tx.note);
+      const currency = getCurrencyFromNote(tx.note);
       const sign = tx.type === 'income' ? 1 : -1;
       currencyMap.set(currency, (currencyMap.get(currency) ?? 0) + sign * tx.amount);
     });
@@ -93,6 +108,108 @@ const Dashboard: React.FC = () => {
     };
   }, [transactions]);
 
+  const accountSections = useMemo(() => {
+    const sections = {
+      bank: {
+        id: 'bank',
+        title: 'Рахунки',
+        total: '',
+        rows: [] as Array<{ id: string; name: string; amount: string; badge: string }>,
+      },
+      cash: {
+        id: 'cash',
+        title: 'Готівка',
+        total: '',
+        rows: [] as Array<{ id: string; name: string; amount: string; badge: string }>,
+      },
+      crypto: {
+        id: 'crypto',
+        title: 'Акції та Крипта',
+        total: '',
+        rows: [] as Array<{ id: string; name: string; amount: string; subAmount?: string; badge: string }>,
+      },
+      debt: {
+        id: 'debt',
+        title: 'Борг',
+        total: '',
+        rows: [] as Array<{ id: string; name: string; amount: string; badge: string }>,
+      },
+    };
+
+    const accountMeta: Record<
+      string,
+      { section: 'bank' | 'cash' | 'crypto' | 'debt'; label: string; badge: string; debtPhrase?: string }
+    > = {
+      pumb: { section: 'bank', label: 'pumb', badge: 'P' },
+      privat24: { section: 'bank', label: 'Privat24', badge: 'PB' },
+      wallet: { section: 'cash', label: 'Wallet', badge: 'W' },
+      crypto: { section: 'crypto', label: 'crypto', badge: '₿' },
+      sol: { section: 'crypto', label: 'sol', badge: 'S' },
+      ton: { section: 'crypto', label: 'Ton', badge: 'T' },
+      usdt: { section: 'crypto', label: 'usdt', badge: 'U' },
+      misha: { section: 'debt', label: 'Misha', badge: 'M', debtPhrase: 'мені винні' },
+    };
+
+    const accountTotals = new Map<string, { fiatAmount: number; fiatCurrency: string; byCurrency: Map<string, number> }>();
+    transactions.forEach((tx) => {
+      const key = tx.categoryId.trim().toLowerCase();
+      const meta = accountMeta[key];
+      if (!meta) return;
+      const sign = tx.type === 'income' ? 1 : -1;
+      const currency = getCurrencyFromNote(tx.note);
+      const isFiat = currency === 'UAH' || currency === 'PLN';
+      const current = accountTotals.get(key) ?? { fiatAmount: 0, fiatCurrency: 'PLN', byCurrency: new Map() };
+      current.byCurrency.set(currency, (current.byCurrency.get(currency) ?? 0) + sign * tx.amount);
+      if (isFiat) {
+        current.fiatAmount += sign * tx.amount;
+        current.fiatCurrency = currency;
+      }
+      accountTotals.set(key, current);
+    });
+
+    const pushAccount = (key: keyof typeof accountMeta) => {
+      const meta = accountMeta[key];
+      const total = accountTotals.get(key);
+      if (!meta || !total) return;
+      const amountText = formatGroupAmount(total.fiatAmount, total.fiatCurrency);
+      const firstNonFiat = Array.from(total.byCurrency.entries()).find(
+        ([currency, amount]) => currency !== 'UAH' && currency !== 'PLN' && amount > 0,
+      );
+      const row = {
+        id: key,
+        name: meta.label,
+        amount: meta.debtPhrase ? `${meta.debtPhrase} ${amountText}` : amountText,
+        subAmount: firstNonFiat ? `${Math.abs(firstNonFiat[1]).toLocaleString('ru-RU', { maximumFractionDigits: 8 })} ${firstNonFiat[0]}` : undefined,
+        badge: meta.badge,
+      };
+      sections[meta.section].rows.push(row);
+    };
+
+    pushAccount('pumb');
+    pushAccount('privat24');
+    pushAccount('wallet');
+    pushAccount('crypto');
+    pushAccount('sol');
+    pushAccount('ton');
+    pushAccount('usdt');
+    pushAccount('misha');
+
+    const calculateSectionTotal = (rows: Array<{ id: string }>, defaultCurrency = 'UAH') => {
+      if (!rows.length) return `0 ${defaultCurrency === 'PLN' ? 'zł' : defaultCurrency}`;
+      const first = accountTotals.get(rows[0].id);
+      const currency = first?.fiatCurrency ?? defaultCurrency;
+      const sum = rows.reduce((acc, row) => acc + (accountTotals.get(row.id)?.fiatAmount ?? 0), 0);
+      return formatGroupAmount(sum, currency);
+    };
+
+    sections.bank.total = calculateSectionTotal(sections.bank.rows, 'UAH');
+    sections.cash.total = calculateSectionTotal(sections.cash.rows, 'PLN');
+    sections.crypto.total = calculateSectionTotal(sections.crypto.rows, 'PLN');
+    sections.debt.total = calculateSectionTotal(sections.debt.rows, 'PLN');
+
+    return [sections.bank, sections.cash, sections.crypto, sections.debt];
+  }, [transactions]);
+
   return (
     <div className={styles.container}>
       <div className={styles.content}>
@@ -105,6 +222,8 @@ const Dashboard: React.FC = () => {
           sources={summary.sources}
           byCurrency={summary.byCurrency}
         />
+
+        <AccountsSnapshot sections={accountSections} />
 
         <QuickActions />
 
