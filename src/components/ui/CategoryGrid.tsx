@@ -11,7 +11,8 @@ interface CategoryGridProps {
   onSelect: (id: string) => void;
   onAddCustom?: () => void;
   customCategories?: Array<{ id: string; name: string; icon: string; color: string }>;
-  onManageCustom?: (category: { id: string; name: string; icon: string; color: string }) => void;
+  categoryOverrides?: Record<string, { name?: string; icon?: string; color?: string }>;
+  onManageCategory?: (category: { id: string; name: string; icon: string; color: string; isCustom: boolean }) => void;
 }
 
 const CategoryGrid: React.FC<CategoryGridProps> = ({
@@ -20,7 +21,8 @@ const CategoryGrid: React.FC<CategoryGridProps> = ({
   onSelect,
   onAddCustom,
   customCategories = [],
-  onManageCustom,
+  categoryOverrides = {},
+  onManageCategory,
 }) => {
   const { t } = useTranslation();
   const filtered = CATEGORIES.filter((c) => c.type === type);
@@ -28,21 +30,32 @@ const CategoryGrid: React.FC<CategoryGridProps> = ({
   return (
     <div className={styles.grid}>
       {filtered.map((category) => {
-        const IconComponent = (LucideIcons as any)[category.icon] ?? LucideIcons.Circle;
+        const override = categoryOverrides[category.id] ?? {};
+        const iconName = override.icon ?? category.icon;
+        const iconColor = override.color ?? category.color;
+        const displayName = override.name?.trim() || t('categories', category.id as CategoryKey);
+        const IconComponent = (LucideIcons as any)[iconName] ?? LucideIcons.Circle;
         const selected = selectedId === category.id;
         return (
           <button
             key={category.id}
             type="button"
             className={`${styles.categoryBtn} ${selected ? styles.selected : ''}`}
-            onClick={() => onSelect(category.id)}
+            onClick={() => {
+              onSelect(category.id);
+              onManageCategory?.({
+                id: category.id,
+                name: displayName,
+                icon: iconName,
+                color: iconColor,
+                isCustom: false,
+              });
+            }}
           >
             <div className={styles.iconBox}>
-              <IconComponent size={24} color={category.color} strokeWidth={1.5} />
+              <IconComponent size={24} color={iconColor} strokeWidth={1.5} />
             </div>
-            <span className={styles.name}>
-              {t('categories', category.id as CategoryKey)}
-            </span>
+            <span className={styles.name}>{displayName}</span>
           </button>
         );
       })}
@@ -57,7 +70,7 @@ const CategoryGrid: React.FC<CategoryGridProps> = ({
             className={`${styles.categoryBtn} ${selected ? styles.selected : ''}`}
             onClick={() => {
               onSelect(category.id);
-              onManageCustom?.(category);
+              onManageCategory?.({ ...category, isCustom: true });
             }}
           >
             <div className={styles.iconBox}>

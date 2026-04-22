@@ -40,8 +40,9 @@ const AddTransaction: React.FC = () => {
     Array<{ id: string; name: string; icon: string; color: string }>
   >([]);
   const [creatingCategory, setCreatingCategory] = useState(false);
+  const [categoryOverrides, setCategoryOverrides] = useState<Record<string, { name?: string; icon?: string; color?: string }>>({});
   const [managingCustom, setManagingCustom] = useState<
-    { id: string; name: string; icon: string; color: string } | null
+    { id: string; name: string; icon: string; color: string; isCustom: boolean } | null
   >(null);
   const [editingCustomId, setEditingCustomId] = useState<string | null>(null);
 
@@ -66,6 +67,21 @@ const AddTransaction: React.FC = () => {
       cancelled = true;
     };
   }, [API_URL, type]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('category_overrides_v1');
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') setCategoryOverrides(parsed);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('category_overrides_v1', JSON.stringify(categoryOverrides));
+  }, [categoryOverrides]);
 
   const canCreateCustomCategory = newCategoryName.trim().length > 0;
 
@@ -153,6 +169,7 @@ const AddTransaction: React.FC = () => {
           type={type}
           selectedId={categoryId}
           customCategories={customCategories}
+          categoryOverrides={categoryOverrides}
           onAddCustom={() => {
             setIsCreatingCustom(true);
             setEditingCustomId(null);
@@ -165,7 +182,7 @@ const AddTransaction: React.FC = () => {
             setCategoryId(id);
             setIsCreatingCustom(false);
           }}
-          onManageCustom={(category) => {
+          onManageCategory={(category) => {
             setManagingCustom(category);
             setIsCreatingCustom(false);
           }}
@@ -190,7 +207,7 @@ const AddTransaction: React.FC = () => {
                 className={styles.customCategoryCancelBtn}
                 onClick={() => {
                   setIsCreatingCustom(true);
-                  setEditingCustomId(managingCustom.id);
+                  setEditingCustomId(managingCustom.isCustom ? managingCustom.id : null);
                   setNewCategoryName(managingCustom.name);
                   setNewCategoryIcon((managingCustom.icon as CustomCategoryIcon) || 'Tag');
                   setNewCategoryColor(managingCustom.color || '#8E8E93');
@@ -198,29 +215,31 @@ const AddTransaction: React.FC = () => {
               >
                 {t('history', 'edit')}
               </button>
-              <button
-                type="button"
-                className={styles.customCategoryCreateBtn}
-                onClick={async () => {
-                  if (!window.confirm(t('addTx', 'deleteConfirm'))) return;
-                  try {
-                    const response = await fetch(`${API_URL}/api/custom-categories/${encodeURIComponent(managingCustom.id)}`, {
-                      method: 'DELETE',
-                    });
-                    if (response.ok) {
-                      setCustomCategories((prev) => prev.filter((c) => c.id !== managingCustom.id));
-                      if (categoryId === managingCustom.id) {
-                        setCategoryId(type === 'income' ? 'salary' : 'food');
+              {managingCustom.isCustom ? (
+                <button
+                  type="button"
+                  className={styles.customCategoryCreateBtn}
+                  onClick={async () => {
+                    if (!window.confirm(t('addTx', 'deleteConfirm'))) return;
+                    try {
+                      const response = await fetch(`${API_URL}/api/custom-categories/${encodeURIComponent(managingCustom.id)}`, {
+                        method: 'DELETE',
+                      });
+                      if (response.ok) {
+                        setCustomCategories((prev) => prev.filter((c) => c.id !== managingCustom.id));
+                        if (categoryId === managingCustom.id) {
+                          setCategoryId(type === 'income' ? 'salary' : 'food');
+                        }
+                        setManagingCustom(null);
                       }
-                      setManagingCustom(null);
+                    } catch (error) {
+                      console.error('Error deleting custom category:', error);
                     }
-                  } catch (error) {
-                    console.error('Error deleting custom category:', error);
-                  }
-                }}
-              >
-                {t('history', 'delete')}
-              </button>
+                  }}
+                >
+                  {t('history', 'delete')}
+                </button>
+              ) : null}
             </div>
           </div>
         ) : null}
@@ -293,6 +312,7 @@ const AddTransaction: React.FC = () => {
                   );
                   try {
                     const isEdit = Boolean(editingCustomId);
+                    const isBuiltInEdit = Boolean(managingCustom && !managingCustom.isCustom);
                     const endpoint = isEdit
                       ? `${API_URL}/api/custom-categories/${encodeURIComponent(editingCustomId as string)}`
                       : `${API_URL}/api/custom-categories`;
@@ -307,30 +327,42 @@ const AddTransaction: React.FC = () => {
                       }),
                     });
                     const saved = response.ok ? await response.json() : null;
-                    const nextId = saved?.id ?? fallbackId;
-                    setCategoryId(nextId);
-                    setCustomCategories((prev) => {
-                      const withoutOld = editingCustomId ? prev.filter((c) => c.id !== editingCustomId) : prev;
-                      const exists = withoutOld.some((c) => c.id === nextId);
-                      if (exists) {
-                        return withoutOld.map((c) =>
-                          c.id === nextId
-                            ? {
-                                ...c,
-                                name: saved?.name ?? cleanName,
-                                icon: saved?.icon ?? newCategoryIcon,
-                                color: saved?.color ?? newCategoryColor,
-                              }
-                            : c
-                        );
-                      }
-                      return [{
-                        id: nextId,
-                        name: saved?.name ?? cleanName,
-                        icon: saved?.icon ?? newCategoryIcon,
-                        color: saved?.color ?? newCategoryColor,
-                      }, ...withoutOld];
-                    });
+                    if (isBuiltInEdit && managingCustom) {
+                      setCategoryOverrides((prev) => ({
+                        ...prev,
+                        [managingCustom.id]: {
+                          name: cleanName,
+                          icon: newCategoryIcon,
+                          color: newCategoryColor,
+                        },
+                      }));
+                      setCategoryId(managingCustom.id);
+                    } else {
+                      const nextId = saved?.id ?? fallbackId;
+                      setCategoryId(nextId);
+                      setCustomCategories((prev) => {
+                        const withoutOld = editingCustomId ? prev.filter((c) => c.id !== editingCustomId) : prev;
+                        const exists = withoutOld.some((c) => c.id === nextId);
+                        if (exists) {
+                          return withoutOld.map((c) =>
+                            c.id === nextId
+                              ? {
+                                  ...c,
+                                  name: saved?.name ?? cleanName,
+                                  icon: saved?.icon ?? newCategoryIcon,
+                                  color: saved?.color ?? newCategoryColor,
+                                }
+                              : c
+                          );
+                        }
+                        return [{
+                          id: nextId,
+                          name: saved?.name ?? cleanName,
+                          icon: saved?.icon ?? newCategoryIcon,
+                          color: saved?.color ?? newCategoryColor,
+                        }, ...withoutOld];
+                      });
+                    }
                   } catch (error) {
                     console.error('Error creating custom category:', error);
                     setCategoryId(fallbackId);
