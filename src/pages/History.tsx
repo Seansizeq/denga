@@ -1,10 +1,12 @@
 import { useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useTransactions } from '../context/TransactionContext';
 import TransactionItem from '../components/ui/TransactionItem';
 import { useTranslation } from '../i18n/LanguageContext';
 import styles from './History.module.css';
 
 const History: React.FC = () => {
+  const navigate = useNavigate();
   const { transactions, deleteTransaction } = useTransactions();
   const { t, locale } = useTranslation();
 
@@ -46,6 +48,7 @@ const History: React.FC = () => {
                     key={tx.id}
                     transaction={tx}
                     onDelete={deleteTransaction}
+                    onEdit={(id) => navigate(`/add?edit=${id}`)}
                   />
                 ))}
               </div>

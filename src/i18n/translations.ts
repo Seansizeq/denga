@@ -29,8 +29,10 @@ type Dict = {
   balance: { label: string; income: string; expense: string };
   addTx: {
     title: string;
+    editTitle: string;
     cancel: string;
     save: string;
+    saveChanges: string;
     expense: string;
     income: string;
     category: string;
@@ -46,7 +48,7 @@ type Dict = {
     chooseColor: string;
     create: string;
   };
-  history: { title: string; empty: string; deleteConfirm: string };
+  history: { title: string; empty: string; deleteConfirm: string; edit: string; delete: string };
   planner: {
     title: string;
     subtitle: string;
@@ -187,8 +189,10 @@ const uk: Dict = {
   balance: { label: 'Баланс цього місяця', income: 'Доходи', expense: 'Витрати' },
   addTx: {
     title: 'Нова операція',
+    editTitle: 'Редагування операції',
     cancel: 'Скасувати',
     save: 'Зберегти',
+    saveChanges: 'Зберегти зміни',
     expense: 'Витрата',
     income: 'Дохід',
     category: 'Категорія',
@@ -208,6 +212,8 @@ const uk: Dict = {
     title: 'Історія',
     empty: 'Операцій поки немає',
     deleteConfirm: 'Видалити цю операцію?',
+    edit: 'Редагувати',
+    delete: 'Видалити',
   },
   planner: {
     title: 'Календар',
@@ -354,8 +360,10 @@ const ru: Dict = {
   balance: { label: 'Баланс за этот месяц', income: 'Доходы', expense: 'Расходы' },
   addTx: {
     title: 'Новая операция',
+    editTitle: 'Редактирование операции',
     cancel: 'Отмена',
     save: 'Сохранить',
+    saveChanges: 'Сохранить изменения',
     expense: 'Расход',
     income: 'Доход',
     category: 'Категория',
@@ -375,6 +383,8 @@ const ru: Dict = {
     title: 'История',
     empty: 'Операций пока нет',
     deleteConfirm: 'Удалить эту операцию?',
+    edit: 'Редактировать',
+    delete: 'Удалить',
   },
   planner: {
     title: 'Календарь',
@@ -521,8 +531,10 @@ const en: Dict = {
   balance: { label: 'This month', income: 'Income', expense: 'Expenses' },
   addTx: {
     title: 'New transaction',
+    editTitle: 'Edit transaction',
     cancel: 'Cancel',
     save: 'Save',
+    saveChanges: 'Save changes',
     expense: 'Expense',
     income: 'Income',
     category: 'Category',
@@ -542,6 +554,8 @@ const en: Dict = {
     title: 'History',
     empty: 'No transactions yet',
     deleteConfirm: 'Delete this transaction?',
+    edit: 'Edit',
+    delete: 'Delete',
   },
   planner: {
     title: 'Calendar',

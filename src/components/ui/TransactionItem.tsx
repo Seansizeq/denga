@@ -1,5 +1,6 @@
 import React from 'react';
 import * as LucideIcons from 'lucide-react';
+import { Pencil, Trash2 } from 'lucide-react';
 import type { Transaction } from '../../types';
 import { findCategory, getCustomCategoryData } from '../../constants/categories';
 import { formatCurrency, formatDate } from '../../utils/formatters';
@@ -10,9 +11,10 @@ import styles from './TransactionItem.module.css';
 interface TransactionItemProps {
   transaction: Transaction;
   onDelete?: (id: string) => void;
+  onEdit?: (id: string) => void;
 }
 
-const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onDelete }) => {
+const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onDelete, onEdit }) => {
   const { t, locale } = useTranslation();
   const customCategory = getCustomCategoryData(transaction.categoryId);
   const category = customCategory
@@ -29,10 +31,9 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onDelete
     }
   };
 
-  const handleContextMenu = (e: React.MouseEvent) => {
-    if (!onDelete) return;
-    e.preventDefault();
-    handleDelete();
+  const handleEdit = () => {
+    if (!onEdit) return;
+    onEdit(transaction.id);
   };
 
   const categoryName = customCategory?.name ?? t('categories', category.id as CategoryKey);
@@ -42,8 +43,6 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onDelete
   return (
     <div
       className={styles.row}
-      onContextMenu={handleContextMenu}
-      onDoubleClick={handleDelete}
     >
       <div className={styles.iconCircle}>
         <IconComponent size={22} color={customCategory?.color ?? category.color} strokeWidth={2} />
@@ -61,6 +60,20 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onDelete
           {isIncome ? '+' : '−'}
           {formatCurrency(transaction.amount, locale)}
         </span>
+        {(onEdit || onDelete) ? (
+          <div className={styles.actions}>
+            {onEdit ? (
+              <button type="button" className={styles.actionBtn} onClick={handleEdit} aria-label={t('history', 'edit')}>
+                <Pencil size={14} />
+              </button>
+            ) : null}
+            {onDelete ? (
+              <button type="button" className={styles.actionBtn} onClick={handleDelete} aria-label={t('history', 'delete')}>
+                <Trash2 size={14} />
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </div>
   );

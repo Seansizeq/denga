@@ -3,8 +3,9 @@ import type { Transaction, Balance } from '../types';
 
 interface TransactionContextType {
   transactions: Transaction[];
-  addTransaction: (transaction: Omit<Transaction, 'id' | 'date'>) => void;
-  deleteTransaction: (id: string) => void;
+  addTransaction: (transaction: Omit<Transaction, 'id' | 'date'>) => Promise<void>;
+  updateTransaction: (id: string, transaction: Omit<Transaction, 'id' | 'date'>) => Promise<void>;
+  deleteTransaction: (id: string) => Promise<void>;
   balance: Balance;
 }
 
@@ -75,8 +76,22 @@ export const TransactionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   };
 
+  const updateTransaction = async (id: string, t: Omit<Transaction, 'id' | 'date'>) => {
+    try {
+      const response = await fetch(`${API_URL}/api/transactions/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(t),
+      });
+      const updated = await response.json();
+      setTransactions((prev) => prev.map((tx) => (tx.id === id ? updated : tx)));
+    } catch (error) {
+      console.error('Error updating transaction:', error);
+    }
+  };
+
   return (
-    <TransactionContext.Provider value={{ transactions, addTransaction, deleteTransaction, balance }}>
+    <TransactionContext.Provider value={{ transactions, addTransaction, updateTransaction, deleteTransaction, balance }}>
       {children}
     </TransactionContext.Provider>
   );

@@ -10,34 +10,6 @@
   flex-direction: column;
 }
 
-.searchBar {
-  display: flex;
-  align-items: center;
-  background: var(--bg-card);
-  border-radius: 999px;
-  padding: 14px 20px;
-  margin: 8px 0 24px;
-}
-
-.searchIcon {
-  color: var(--text-secondary);
-  margin-right: 12px;
-}
-
-.searchInput {
-  flex: 1;
-  background: transparent;
-  border: none;
-  color: var(--text-primary);
-  font-size: 15px;
-  outline: none;
-  font-family: inherit;
-}
-
-.searchInput::placeholder {
-  color: var(--text-secondary);
-}
-
 .spacer {
   height: 60px;
 }

@@ -161,6 +161,48 @@ app.post('/api/transactions', async (req, res) => {
   res.status(201).json(transaction);
 });
 
+app.patch('/api/transactions/:id', async (req, res) => {
+  const { id } = req.params;
+  const current = await db.get('SELECT * FROM transactions WHERE id = ? LIMIT 1', [id]);
+  if (!current) {
+    res.status(404).json({ error: 'Transaction not found' });
+    return;
+  }
+
+  const amount = req.body?.amount === undefined ? Number(current.amount) : Number(req.body.amount);
+  const categoryId = typeof req.body?.categoryId === 'string' ? req.body.categoryId : current.categoryId;
+  const type = req.body?.type === 'income' || req.body?.type === 'expense' ? req.body.type : current.type;
+  const note = req.body?.note === undefined
+    ? (current.note ?? '')
+    : (typeof req.body.note === 'string' ? req.body.note.trim() : '');
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    res.status(400).json({ error: 'amount must be > 0' });
+    return;
+  }
+  if (!categoryId) {
+    res.status(400).json({ error: 'categoryId is required' });
+    return;
+  }
+  if (type !== 'income' && type !== 'expense') {
+    res.status(400).json({ error: 'type must be income or expense' });
+    return;
+  }
+
+  await db.run(
+    'UPDATE transactions SET amount = ?, categoryId = ?, type = ?, note = ? WHERE id = ?',
+    [amount, categoryId, type, note || null, id]
+  );
+
+  res.json({
+    ...current,
+    amount,
+    categoryId,
+    type,
+    note: note || undefined,
+  });
+});
+
 app.delete('/api/transactions/:id', async (req, res) => {
   const { id } = req.params;
   await db.run('DELETE FROM transactions WHERE id = ?', [id]);

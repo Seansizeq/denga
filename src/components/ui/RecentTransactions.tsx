@@ -12,6 +12,7 @@ interface Props {
   transactions: Transaction[];
   limit?: number;
   onDelete?: (id: string) => void;
+  onEdit?: (id: string) => void;
   showFilter?: boolean;
   filter?: RangeFilter;
   onFilterChange?: (f: RangeFilter) => void;
@@ -23,6 +24,7 @@ const RecentTransactions: React.FC<Props> = ({
   transactions,
   limit = 8,
   onDelete,
+  onEdit,
   showFilter = true,
   filter = 'today',
   onFilterChange,
@@ -105,6 +107,7 @@ const RecentTransactions: React.FC<Props> = ({
               key={tx.id}
               transaction={tx}
               onDelete={onDelete}
+              onEdit={onEdit}
             />
           ))}
         </div>

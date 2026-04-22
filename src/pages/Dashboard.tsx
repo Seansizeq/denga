@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Search } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useTransactions } from '../context/TransactionContext';
 import Header from '../components/ui/Header';
 import HeroBalance from '../components/ui/HeroBalance';
@@ -9,6 +9,7 @@ import type { RangeFilter } from '../components/ui/RecentTransactions';
 import styles from './Dashboard.module.css';
 
 const Dashboard: React.FC = () => {
+  const navigate = useNavigate();
   const { transactions, deleteTransaction } = useTransactions();
   const [range, setRange] = useState<RangeFilter>('today');
 
@@ -51,18 +52,10 @@ const Dashboard: React.FC = () => {
 
         <QuickActions />
 
-        <div className={styles.searchBar}>
-          <Search size={20} className={styles.searchIcon} strokeWidth={2} />
-          <input 
-            type="text" 
-            placeholder="Шукати за категорією чи приміткою" 
-            className={styles.searchInput}
-          />
-        </div>
-
         <RecentTransactions
           transactions={filtered}
           onDelete={deleteTransaction}
+          onEdit={(id) => navigate(`/add?edit=${id}`)}
           filter={range}
           onFilterChange={setRange}
           showSeeAll

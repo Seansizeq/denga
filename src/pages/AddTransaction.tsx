@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import * as LucideIcons from 'lucide-react';
 import { X } from 'lucide-react';
@@ -16,9 +16,15 @@ import styles from './AddTransaction.module.css';
 
 const AddTransaction: React.FC = () => {
   const navigate = useNavigate();
-  const { addTransaction } = useTransactions();
+  const { transactions, addTransaction, updateTransaction } = useTransactions();
   const { t } = useTranslation();
   const [searchParams] = useSearchParams();
+  const editId = searchParams.get('edit')?.trim() ?? '';
+  const editingTransaction = useMemo(
+    () => (editId ? transactions.find((tx) => tx.id === editId) : undefined),
+    [editId, transactions]
+  );
+  const isEditing = Boolean(editingTransaction);
 
   const initialType: TransactionType =
     searchParams.get('type') === 'income' ? 'income' : 'expense';
@@ -38,6 +44,16 @@ const AddTransaction: React.FC = () => {
   const [creatingCategory, setCreatingCategory] = useState(false);
 
   const API_URL = import.meta.env.VITE_API_URL ?? '';
+
+  useEffect(() => {
+    if (!editingTransaction) return;
+    setAmount(String(editingTransaction.amount));
+    setType(editingTransaction.type);
+    setCategoryId(editingTransaction.categoryId);
+    setNote(editingTransaction.note ?? '');
+    setIsCreatingCustom(false);
+    setCategoryTab('select');
+  }, [editingTransaction]);
 
   useEffect(() => {
     let cancelled = false;
@@ -61,15 +77,20 @@ const AddTransaction: React.FC = () => {
 
   const canCreateCustomCategory = newCategoryName.trim().length > 0;
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const numAmount = parseFloat(amount.replace(',', '.'));
     if (!numAmount || numAmount <= 0) return;
-    addTransaction({
+    const payload = {
       amount: numAmount,
       type,
       categoryId,
       note: note.trim() || undefined,
-    });
+    };
+    if (isEditing && editingTransaction) {
+      await updateTransaction(editingTransaction.id, payload);
+    } else {
+      await addTransaction(payload);
+    }
 
     navigate('/');
   };
@@ -87,7 +108,7 @@ const AddTransaction: React.FC = () => {
         >
           <X size={20} strokeWidth={2.5} />
         </button>
-        <h2 className={styles.title}>{t('addTx', 'title')}</h2>
+        <h2 className={styles.title}>{isEditing ? t('addTx', 'editTitle') : t('addTx', 'title')}</h2>
         <span className={styles.headerSpacer} aria-hidden="true" />
       </header>
 
@@ -305,7 +326,7 @@ const AddTransaction: React.FC = () => {
           className={styles.saveBtn}
           disabled={!isValid}
         >
-          {t('addTx', 'save')}
+          {isEditing ? t('addTx', 'saveChanges') : t('addTx', 'save')}
         </button>
       </div>
     </div>
