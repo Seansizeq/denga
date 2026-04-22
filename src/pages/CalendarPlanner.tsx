@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from '../i18n/LanguageContext';
 import { formatPlannerMoney, type PlannerCurrency } from '../utils/formatters';
+import type { RangeFilter } from '../components/ui/RecentTransactions';
 import styles from './CalendarPlanner.module.css';
 
 interface DayPlan {
@@ -131,6 +132,8 @@ const CalendarPlanner: React.FC = () => {
   const [salaryRateInput, setSalaryRateInput] = useState('');
   const [salaryAmountInput, setSalaryAmountInput] = useState('');
   const [salaryCurrency, setSalaryCurrency] = useState<PlannerCurrency>('UAH');
+  const [reportRange, setReportRange] = useState<RangeFilter>('month');
+  const [reportRangeMenuOpen, setReportRangeMenuOpen] = useState(false);
 
   const modalAnyOpen = chooserOpen || editorOpened;
 
@@ -175,7 +178,17 @@ const CalendarPlanner: React.FC = () => {
   const dayHasShift = Boolean(current.hasShift || current.note.trim());
 
   const monthReport = useMemo(() => {
-    const days = buildDaysForMonth(month);
+    const days = buildDaysForMonth(month).filter((iso) => {
+      const d = parseIsoLocal(iso);
+      const now = new Date();
+      if (reportRange === 'all') return true;
+      if (reportRange === 'today') return d.toDateString() === now.toDateString();
+      if (reportRange === 'week') {
+        const diff = (now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24);
+        return diff >= 0 && diff <= 7;
+      }
+      return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+    });
     let totalHours = 0;
     let totalSalaryUah = 0;
     let totalSalaryPln = 0;
@@ -188,7 +201,7 @@ const CalendarPlanner: React.FC = () => {
       else totalSalaryUah += pay;
     }
     return { totalHours, totalSalaryUah, totalSalaryPln };
-  }, [store, month]);
+  }, [store, month, reportRange]);
 
   useEffect(() => {
     let cancelled = false;
@@ -427,6 +440,34 @@ const CalendarPlanner: React.FC = () => {
 
         <div className={styles.reportCard}>
           <h3 className={styles.reportCardTitle}>{t('planner', 'monthReportTitle')}</h3>
+          <div className={styles.reportRangeRow}>
+            <button
+              type="button"
+              className={styles.reportRangeBtnMain}
+              onClick={() => setReportRangeMenuOpen((prev) => !prev)}
+            >
+              {t('range', reportRange)}
+            </button>
+            {reportRangeMenuOpen ? (
+              <div className={styles.reportRangeMenu}>
+                {(['today', 'week', 'month', 'all'] as const)
+                  .filter((opt) => opt !== reportRange)
+                  .map((opt) => (
+                    <button
+                      key={opt}
+                      type="button"
+                      className={styles.reportRangeBtn}
+                      onClick={() => {
+                        setReportRange(opt);
+                        setReportRangeMenuOpen(false);
+                      }}
+                    >
+                      {t('range', opt)}
+                    </button>
+                  ))}
+              </div>
+            ) : null}
+          </div>
           <div className={styles.reportRow}>
             <span className={styles.reportLabel}>{t('planner', 'reportHoursTotal')}</span>
             <strong className={styles.reportValue}>

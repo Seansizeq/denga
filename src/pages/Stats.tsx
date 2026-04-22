@@ -11,7 +11,8 @@ import styles from './Stats.module.css';
 const Stats: React.FC = () => {
   const { t, locale } = useTranslation();
   const { transactions } = useTransactions();
-  const [range, setRange] = useState<RangeFilter>('month');
+  const [range, setRange] = useState<RangeFilter>('today');
+  const [rangeMenuOpen, setRangeMenuOpen] = useState(false);
 
   const inRange = useMemo(() => {
     const now = new Date();
@@ -56,12 +57,7 @@ const Stats: React.FC = () => {
   }, [filtered]);
 
   const periodLabel = t('range', range);
-  const rangeOrder: RangeFilter[] = ['today', 'week', 'month', 'all'];
-  const cycleRange = () => {
-    const idx = rangeOrder.indexOf(range);
-    const next = rangeOrder[(idx + 1) % rangeOrder.length];
-    setRange(next);
-  };
+  const rangeOptions: RangeFilter[] = ['today', 'week', 'month', 'all'];
 
   const maxExpense = byCategory[0]?.total ?? 0;
 
@@ -72,9 +68,32 @@ const Stats: React.FC = () => {
         <span className={styles.subtitle}>{periodLabel}</span>
       </header>
       <div className={styles.rangeRow}>
-        <button type="button" className={styles.rangeBtnSingle} onClick={cycleRange}>
+        <button
+          type="button"
+          className={styles.rangeBtnSingle}
+          onClick={() => setRangeMenuOpen((prev) => !prev)}
+        >
           {periodLabel}
         </button>
+        {rangeMenuOpen ? (
+          <div className={styles.rangeMenu}>
+            {rangeOptions
+              .filter((opt) => opt !== range)
+              .map((opt) => (
+                <button
+                  key={opt}
+                  type="button"
+                  className={styles.rangeMenuBtn}
+                  onClick={() => {
+                    setRange(opt);
+                    setRangeMenuOpen(false);
+                  }}
+                >
+                  {t('range', opt)}
+                </button>
+              ))}
+          </div>
+        ) : null}
       </div>
 
       <div className={styles.summaryGrid}>
