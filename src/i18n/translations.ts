@@ -33,6 +33,12 @@ type Dict = {
     tapHint: string;
     moneySources: string;
     byCurrency: string;
+    portfolioByCurrency: string;
+    bySection: string;
+    sectionBank: string;
+    sectionCash: string;
+    sectionCrypto: string;
+    sectionDebt: string;
   };
   addTx: {
     title: string;
@@ -208,6 +214,12 @@ const uk: Dict = {
     tapHint: 'Натисніть на суму, щоб побачити деталі',
     moneySources: 'Звідки гроші',
     byCurrency: 'Баланс за валютами',
+    portfolioByCurrency: 'Портфель за валютами',
+    bySection: 'По розділах',
+    sectionBank: 'Карти',
+    sectionCash: 'Готівка',
+    sectionCrypto: 'Акції та крипта',
+    sectionDebt: 'Борг',
   },
   addTx: {
     title: 'Нова операція',
@@ -394,6 +406,12 @@ const ru: Dict = {
     tapHint: 'Нажмите на сумму, чтобы увидеть детали',
     moneySources: 'Откуда деньги',
     byCurrency: 'Баланс по валютам',
+    portfolioByCurrency: 'Портфель по валютам',
+    bySection: 'По разделам',
+    sectionBank: 'Карты',
+    sectionCash: 'Наличные',
+    sectionCrypto: 'Акции и крипта',
+    sectionDebt: 'Долг',
   },
   addTx: {
     title: 'Новая операция',
@@ -580,6 +598,12 @@ const en: Dict = {
     tapHint: 'Tap amount to see details',
     moneySources: 'Money sources',
     byCurrency: 'Balance by currency',
+    portfolioByCurrency: 'Portfolio by currency',
+    bySection: 'By section',
+    sectionBank: 'Cards',
+    sectionCash: 'Cash',
+    sectionCrypto: 'Stocks & crypto',
+    sectionDebt: 'Debt',
   },
   addTx: {
     title: 'New transaction',

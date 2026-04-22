@@ -121,7 +121,7 @@ const Accounts: React.FC = () => {
     return () => window.clearTimeout(t);
   }, [loadPortfolio]);
 
-  const details = useMemo(() => {
+  const txDetails = useMemo(() => {
     const categoryLabel = (id: string) => {
       const builtIn = translations.ru.categories[id as CategoryKey];
       if (builtIn) return builtIn;
@@ -158,6 +158,46 @@ const Accounts: React.FC = () => {
         .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)),
     };
   }, [transactions]);
+
+  const portfolioDetails = useMemo(() => {
+    const uah = portfolio.reduce((a, r) => a + (r.primaryCurrency === 'UAH' ? r.primaryAmount : 0), 0);
+    const pln = portfolio.reduce((a, r) => a + (r.primaryCurrency === 'PLN' ? r.primaryAmount : 0), 0);
+    const byCurrency = [
+      { currency: 'UAH', amount: uah },
+      { currency: 'PLN', amount: pln },
+    ];
+    const sectionOrder: PortfolioSection[] = ['bank', 'cash', 'crypto', 'debt'];
+    const sections = sectionOrder.map((section) => {
+      let sUah = 0;
+      let sPln = 0;
+      for (const r of portfolio) {
+        if (r.section !== section) continue;
+        if (r.primaryCurrency === 'PLN') sPln += r.primaryAmount;
+        else sUah += r.primaryAmount;
+      }
+      return { id: section, uah: sUah, pln: sPln };
+    });
+    return { byCurrency, sections };
+  }, [portfolio]);
+
+  const fromPortfolio = portfolio.length > 0;
+  const statByCurrency = fromPortfolio ? portfolioDetails.byCurrency : txDetails.byCurrency;
+  const statSecondTitle = fromPortfolio ? t('balance', 'bySection') : t('balance', 'moneySources');
+
+  const sectionLabel = (s: PortfolioSection) => {
+    if (s === 'bank') return t('balance', 'sectionBank');
+    if (s === 'cash') return t('balance', 'sectionCash');
+    if (s === 'crypto') return t('balance', 'sectionCrypto');
+    return t('balance', 'sectionDebt');
+  };
+
+  const formatSectionLine = (uah: number, pln: number) => {
+    if (uah === 0 && pln === 0) return '—';
+    const parts: string[] = [];
+    if (uah !== 0) parts.push(formatGroupAmount(uah, 'UAH'));
+    if (pln !== 0) parts.push(formatGroupAmount(pln, 'PLN'));
+    return parts.length > 0 ? parts.join(' · ') : '—';
+  };
 
   const txSections = useMemo(() => {
     const base = {
@@ -511,12 +551,14 @@ const Accounts: React.FC = () => {
         <AccountsSnapshot sections={sections} onRowPress={portfolio.length > 0 ? handleRowPress : undefined} />
         <section className={styles.details}>
           <div className={styles.detailCard}>
-            <p className={styles.detailTitle}>{t('balance', 'byCurrency')}</p>
-            {details.byCurrency.length === 0 ? (
+            <p className={styles.detailTitle}>
+              {fromPortfolio ? t('balance', 'portfolioByCurrency') : t('balance', 'byCurrency')}
+            </p>
+            {statByCurrency.length === 0 ? (
               <p className={styles.emptyRow}>—</p>
             ) : (
               <ul className={styles.list}>
-                {details.byCurrency.map((item) => (
+                {statByCurrency.map((item) => (
                   <li key={item.currency} className={styles.listRow}>
                     <span>{item.currency}</span>
                     <strong>
@@ -530,14 +572,25 @@ const Accounts: React.FC = () => {
           </div>
 
           <div className={styles.detailCard}>
-            <p className={styles.detailTitle}>{t('balance', 'moneySources')}</p>
-            {details.sources.length === 0 ? (
+            <p className={styles.detailTitle}>{statSecondTitle}</p>
+            {fromPortfolio ? (
+              <ul className={styles.list}>
+                {portfolioDetails.sections.map((row) => (
+                  <li key={row.id} className={styles.listRow}>
+                    <span>{sectionLabel(row.id)}</span>
+                    <strong>{formatSectionLine(row.uah, row.pln)}</strong>
+                  </li>
+                ))}
+              </ul>
+            ) : txDetails.sources.length === 0 ? (
               <p className={styles.emptyRow}>—</p>
             ) : (
               <ul className={styles.list}>
-                {details.sources.map((source) => (
+                {txDetails.sources.map((source) => (
                   <li key={source.id} className={styles.listRow}>
-                    <span>{source.label} ({source.count})</span>
+                    <span>
+                      {source.label} ({source.count})
+                    </span>
                     <strong>+{source.amount.toLocaleString(locale, { maximumFractionDigits: 2 })}</strong>
                   </li>
                 ))}
