@@ -508,6 +508,7 @@ const Accounts: React.FC = () => {
     <div className={styles.container}>
       <div className={styles.content}>
         <Header />
+        <AccountsSnapshot sections={sections} onRowPress={portfolio.length > 0 ? handleRowPress : undefined} />
         <section className={styles.details}>
           <div className={styles.detailCard}>
             <p className={styles.detailTitle}>{t('balance', 'byCurrency')}</p>
@@ -518,9 +519,7 @@ const Accounts: React.FC = () => {
                 {details.byCurrency.map((item) => (
                   <li key={item.currency} className={styles.listRow}>
                     <span>{item.currency}</span>
-                    <strong
-                      className={item.amount < 0 ? styles.valueNeg : item.amount > 0 ? styles.valuePos : styles.valueZero}
-                    >
+                    <strong>
                       {item.amount < 0 ? '−' : '+'}
                       {Math.abs(item.amount).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </strong>
@@ -538,9 +537,7 @@ const Accounts: React.FC = () => {
               <ul className={styles.list}>
                 {details.sources.map((source) => (
                   <li key={source.id} className={styles.listRow}>
-                    <span>
-                      {source.label} ({source.count})
-                    </span>
+                    <span>{source.label} ({source.count})</span>
                     <strong>+{source.amount.toLocaleString(locale, { maximumFractionDigits: 2 })}</strong>
                   </li>
                 ))}
@@ -548,7 +545,6 @@ const Accounts: React.FC = () => {
             )}
           </div>
         </section>
-        <AccountsSnapshot sections={sections} onRowPress={portfolio.length > 0 ? handleRowPress : undefined} />
         <div className={styles.spacer} />
       </div>
       {editing ? (
