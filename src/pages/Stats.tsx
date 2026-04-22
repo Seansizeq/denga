@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { Eye, EyeOff } from 'lucide-react';
 import { useTransactions } from '../context/TransactionContext';
 import { useTranslation } from '../i18n/LanguageContext';
 import { formatCurrency, isSameMonth } from '../utils/formatters';
@@ -12,6 +13,7 @@ const Stats: React.FC = () => {
   const { t, locale } = useTranslation();
   const { transactions } = useTransactions();
   const [range, setRange] = useState<StatsRange>('month');
+  const [hiddenCategoryIds, setHiddenCategoryIds] = useState<string[]>([]);
 
   const inRange = useMemo(() => {
     const now = new Date();
@@ -71,6 +73,11 @@ const Stats: React.FC = () => {
   );
 
   const totalExpenseByCategories = categoryRows.reduce((sum, row) => sum + row.total, 0);
+  const visibleCategoryRows = useMemo(
+    () => categoryRows.filter((row) => !hiddenCategoryIds.includes(row.id)),
+    [categoryRows, hiddenCategoryIds]
+  );
+  const visibleExpenseTotal = visibleCategoryRows.reduce((sum, row) => sum + row.total, 0);
 
   const shiftHex = (hex: string, amount: number): string => {
     const safe = /^#([0-9A-Fa-f]{6})$/.test(hex) ? hex : '#8E8E93';
@@ -82,16 +89,16 @@ const Stats: React.FC = () => {
   };
 
   const donutBackground = useMemo(() => {
-    if (!totalExpenseByCategories) {
+    if (!visibleExpenseTotal) {
       return 'conic-gradient(var(--bg-card-light) 0deg 360deg)';
     }
     let acc = 0;
     const gapDeg = 4;
-    const segments = categoryRows
+    const segments = visibleCategoryRows
       .map((row) => {
-        const rawStart = (acc / totalExpenseByCategories) * 360;
+        const rawStart = (acc / visibleExpenseTotal) * 360;
         acc += row.total;
-        const rawEnd = (acc / totalExpenseByCategories) * 360;
+        const rawEnd = (acc / visibleExpenseTotal) * 360;
         const start = rawStart + gapDeg / 2;
         const end = Math.max(start, rawEnd - gapDeg / 2);
         const length = Math.max(0.1, end - start);
@@ -102,7 +109,7 @@ const Stats: React.FC = () => {
       })
       .join(', ');
     return `conic-gradient(${segments})`;
-  }, [categoryRows, totalExpenseByCategories]);
+  }, [visibleCategoryRows, visibleExpenseTotal]);
 
   return (
     <div className={styles.container}>
@@ -166,9 +173,9 @@ const Stats: React.FC = () => {
               <div className={styles.donut} style={{ background: donutBackground }}>
                 <div className={styles.donutInner}>
                   <span className={styles.donutLabel}>{t('stats', 'totalExpense')}</span>
-                  <span className={styles.donutValue}>{formatCurrency(totalExpenseByCategories, locale)}</span>
+                  <span className={styles.donutValue}>{formatCurrency(visibleExpenseTotal, locale)}</span>
                   <span className={styles.donutSubLabel}>
-                    {categoryRows.length} {t('stats', 'byCategory').toLowerCase()}
+                    {visibleCategoryRows.length} {t('stats', 'byCategory').toLowerCase()}
                   </span>
                 </div>
               </div>
@@ -176,12 +183,43 @@ const Stats: React.FC = () => {
 
             <ul className={styles.legendList}>
               {categoryRows.map((row) => (
-                <li key={row.id} className={styles.legendItem}>
+                <li
+                  key={row.id}
+                  className={`${styles.legendItem} ${hiddenCategoryIds.includes(row.id) ? styles.legendItemHidden : ''}`}
+                >
                   <span className={styles.legendLeft}>
                     <span className={styles.legendDot} style={{ backgroundColor: row.color }} />
                     <span className={styles.legendName}>{row.name}</span>
                   </span>
-                  <span className={styles.legendValue}>{formatCurrency(row.total, locale)}</span>
+                  <span className={styles.legendRight}>
+                    <span className={styles.legendPercent}>
+                      {totalExpenseByCategories
+                        ? `${Math.round((row.total / totalExpenseByCategories) * 100)}%`
+                        : '0%'}
+                    </span>
+                    <span className={styles.legendValue}>{formatCurrency(row.total, locale)}</span>
+                    <button
+                      type="button"
+                      className={styles.legendToggleBtn}
+                      onClick={() =>
+                        setHiddenCategoryIds((prev) =>
+                          prev.includes(row.id) ? prev.filter((id) => id !== row.id) : [...prev, row.id]
+                        )
+                      }
+                      aria-label={
+                        hiddenCategoryIds.includes(row.id)
+                          ? t('stats', 'showCategory')
+                          : t('stats', 'hideCategory')
+                      }
+                      title={
+                        hiddenCategoryIds.includes(row.id)
+                          ? t('stats', 'showCategory')
+                          : t('stats', 'hideCategory')
+                      }
+                    >
+                      {hiddenCategoryIds.includes(row.id) ? <Eye size={14} /> : <EyeOff size={14} />}
+                    </button>
+                  </span>
                 </li>
               ))}
             </ul>

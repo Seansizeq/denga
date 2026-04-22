@@ -146,6 +146,8 @@ type Dict = {
     byCategory: string;
     noData: string;
     transactions: string;
+    hideCategory: string;
+    showCategory: string;
   };
   settings: {
     title: string;
@@ -313,6 +315,8 @@ const uk: Dict = {
     byCategory: 'За категоріями',
     noData: 'Немає даних для цього періоду',
     transactions: 'операцій',
+    hideCategory: 'Сховати категорію',
+    showCategory: 'Показати категорію',
   },
   settings: {
     title: 'Налаштування',
@@ -485,6 +489,8 @@ const ru: Dict = {
     byCategory: 'По категориям',
     noData: 'Нет данных за этот период',
     transactions: 'операций',
+    hideCategory: 'Скрыть категорию',
+    showCategory: 'Показать категорию',
   },
   settings: {
     title: 'Настройки',
@@ -657,6 +663,8 @@ const en: Dict = {
     byCategory: 'By category',
     noData: 'No data for this period',
     transactions: 'transactions',
+    hideCategory: 'Hide category',
+    showCategory: 'Show category',
   },
   settings: {
     title: 'Settings',
