@@ -226,10 +226,11 @@
   color: var(--text-primary);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 12px;
-  padding: 0 36px 0 14px;
+  padding: 0 34px 0 12px;
   font-family: inherit;
-  font-size: 28px;
-  font-weight: 600;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
   text-align: left;
   text-transform: capitalize;
   cursor: pointer;
