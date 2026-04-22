@@ -14,7 +14,7 @@
   --bar-side-padding: 8px;
   height: var(--bottom-nav-height);
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   align-items: center;
   padding: 0 var(--bar-side-padding);
   position: relative;
@@ -32,7 +32,7 @@
     0 6px 14px rgba(0, 0, 0, 0.22);
   left: calc(
     var(--bar-side-padding) +
-    ((100% - (var(--bar-side-padding) * 2)) / 5) * (var(--indicator-col) - 0.5)
+    ((100% - (var(--bar-side-padding) * 2)) / 6) * (var(--indicator-col) - 0.5)
   );
   top: 50%;
   transform: translate(-50%, -50%);

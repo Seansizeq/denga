@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { Home, CalendarDays, WalletCards, Settings as SettingsIcon, Plus } from 'lucide-react';
+import { Home, CalendarDays, WalletCards, Settings as SettingsIcon, Plus, PieChart } from 'lucide-react';
 import { useTranslation } from '../i18n/LanguageContext';
 import styles from './BottomNavigation.module.css';
 
@@ -17,9 +17,11 @@ const BottomNavigation: React.FC = () => {
         ? 2
         : pathname.startsWith('/accounts')
           ? 4
-          : pathname.startsWith('/settings')
+          : pathname.startsWith('/stats')
             ? 5
-            : null;
+            : pathname.startsWith('/settings')
+              ? 6
+              : null;
 
   return (
     <nav className={styles.nav}>
@@ -65,6 +67,14 @@ const BottomNavigation: React.FC = () => {
           aria-label="Accounts"
         >
           <WalletCards size={24} strokeWidth={2} />
+        </NavLink>
+
+        <NavLink
+          to="/stats"
+          className={({ isActive }) => (isActive ? styles.active : styles.link)}
+          aria-label={t('nav', 'stats')}
+        >
+          <PieChart size={24} strokeWidth={2} />
         </NavLink>
 
         <NavLink

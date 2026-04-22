@@ -14,7 +14,7 @@ export const LANGUAGE_FLAGS: Record<Language, string> = {
 };
 
 type Dict = {
-  nav: { home: string; calendar: string; subscriptions: string; settings: string };
+  nav: { home: string; calendar: string; stats: string; subscriptions: string; settings: string };
   dashboard: {
     greeting: string;
     recentTitle: string;
@@ -195,7 +195,7 @@ type Dict = {
 };
 
 const uk: Dict = {
-  nav: { home: 'Головна', calendar: 'Календар', subscriptions: 'Підписки', settings: 'Налаштування' },
+  nav: { home: 'Головна', calendar: 'Календар', stats: 'Статистика', subscriptions: 'Підписки', settings: 'Налаштування' },
   dashboard: {
     greeting: 'Привіт',
     recentTitle: 'Операції',
@@ -387,7 +387,7 @@ const uk: Dict = {
 };
 
 const ru: Dict = {
-  nav: { home: 'Главная', calendar: 'Календарь', subscriptions: 'Подписки', settings: 'Настройки' },
+  nav: { home: 'Главная', calendar: 'Календарь', stats: 'Статистика', subscriptions: 'Подписки', settings: 'Настройки' },
   dashboard: {
     greeting: 'Привет',
     recentTitle: 'Операции',
@@ -579,7 +579,7 @@ const ru: Dict = {
 };
 
 const en: Dict = {
-  nav: { home: 'Home', calendar: 'Calendar', subscriptions: 'Subscriptions', settings: 'Settings' },
+  nav: { home: 'Home', calendar: 'Calendar', stats: 'Stats', subscriptions: 'Subscriptions', settings: 'Settings' },
   dashboard: {
     greeting: 'Hello',
     recentTitle: 'Transactions',
