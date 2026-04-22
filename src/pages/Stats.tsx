@@ -217,7 +217,7 @@ const Stats: React.FC = () => {
                           : t('stats', 'hideCategory')
                       }
                     >
-                      {hiddenCategoryIds.includes(row.id) ? <Eye size={14} /> : <EyeOff size={14} />}
+                      {hiddenCategoryIds.includes(row.id) ? <EyeOff size={14} /> : <Eye size={14} />}
                     </button>
                   </span>
                 </li>

@@ -213,9 +213,9 @@
   list-style: none;
   margin: 0;
   padding: 0;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .legendItem {
@@ -238,6 +238,7 @@
   display: inline-flex;
   align-items: center;
   gap: 7px;
+  flex: 1;
   min-width: 0;
 }
 
@@ -251,7 +252,7 @@
 
 .legendName {
   font-size: 13px;
-  color: var(--text-secondary);
+  color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -267,7 +268,8 @@
 .legendRight {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 .legendPercent {
@@ -293,6 +295,14 @@
 
 .legendToggleBtn:active {
   background: rgba(255, 255, 255, 0.1);
+}
+
+@media (min-width: 560px) {
+  .legendList {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 14px;
+  }
 }
 
 .emptyState {
