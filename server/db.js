@@ -52,6 +52,28 @@ export async function initDb() {
     // Column already exists.
   }
 
+  try {
+    await db.exec(`ALTER TABLE planner_days ADD COLUMN salary_currency TEXT NOT NULL DEFAULT 'UAH'`);
+  } catch {
+    /* already exists */
+  }
+
+  try {
+    await db.exec(`ALTER TABLE planner_shift_templates ADD COLUMN currency TEXT NOT NULL DEFAULT 'UAH'`);
+  } catch {
+    /* already exists */
+  }
+
+  try {
+    await db.exec(
+      `UPDATE planner_shift_templates SET normalized_key = normalized_key || '::UAH'
+       WHERE normalized_key NOT LIKE '%::UAH' AND normalized_key NOT LIKE '%::PLN'
+         AND normalized_key LIKE '%::%' AND normalized_key NOT LIKE '%::%::%'`
+    );
+  } catch {
+    /* ignore */
+  }
+
   await db.exec(`
     CREATE TABLE IF NOT EXISTS custom_categories (
       id TEXT PRIMARY KEY,

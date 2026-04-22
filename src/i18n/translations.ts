@@ -90,6 +90,8 @@ type Dict = {
     filledDays: string;
     workedHours: string;
     expectedSalary: string;
+    expectedSalaryUah: string;
+    expectedSalaryPln: string;
     loading: string;
     unsavedConfirm: string;
     save: string;
@@ -250,6 +252,8 @@ const uk: Dict = {
     filledDays: 'Заповнено днів',
     workedHours: 'Відпрацьовано годин',
     expectedSalary: 'Очікувана зарплата',
+    expectedSalaryUah: 'Очікувана зарплата (₴)',
+    expectedSalaryPln: 'Очікувана зарплата (zł)',
     loading: 'Завантаження...',
     unsavedConfirm: 'Є незбережені зміни. Продовжити без збереження?',
     save: 'Зберегти',
@@ -267,7 +271,7 @@ const uk: Dict = {
     deleteTemplateConfirm: 'Видалити цей шаблон зі списку?',
     monthReportTitle: 'Звіт за місяць',
     reportHoursTotal: 'Відпрацьовано годин',
-    salaryForReportHint: 'Для звіту вкажіть ставку (₴/год) або фіксовану суму за зміну (₴).',
+    salaryForReportHint: 'Для звіту вкажіть ставку за годину або фіксовану суму за зміну. Валюта: гривня або злотий.',
     shiftPayment: 'Оплата за зміну',
   },
   subscriptions: {
@@ -415,6 +419,8 @@ const ru: Dict = {
     filledDays: 'Заполнено дней',
     workedHours: 'Отработано часов',
     expectedSalary: 'Ожидаемая зарплата',
+    expectedSalaryUah: 'Ожидаемая зарплата (₴)',
+    expectedSalaryPln: 'Ожидаемая зарплата (zł)',
     loading: 'Загрузка...',
     unsavedConfirm: 'Есть несохранённые изменения. Продолжить без сохранения?',
     save: 'Сохранить',
@@ -432,7 +438,7 @@ const ru: Dict = {
     deleteTemplateConfirm: 'Удалить этот шаблон из списка?',
     monthReportTitle: 'Отчёт за месяц',
     reportHoursTotal: 'Отработано часов',
-    salaryForReportHint: 'Для отчёта укажите ставку (₴/ч) или фиксированную сумму за смену (₴).',
+    salaryForReportHint: 'Для отчёта укажите ставку за час или фиксированную сумму за смену. Валюта: гривна или злотый.',
     shiftPayment: 'Оплата за смену',
   },
   subscriptions: {
@@ -580,6 +586,8 @@ const en: Dict = {
     filledDays: 'Filled days',
     workedHours: 'Worked hours',
     expectedSalary: 'Expected salary',
+    expectedSalaryUah: 'Expected salary (₴)',
+    expectedSalaryPln: 'Expected salary (zł)',
     loading: 'Loading...',
     unsavedConfirm: 'You have unsaved changes. Continue without saving?',
     save: 'Save',
@@ -597,7 +605,7 @@ const en: Dict = {
     deleteTemplateConfirm: 'Remove this template from the list?',
     monthReportTitle: 'Monthly summary',
     reportHoursTotal: 'Hours worked',
-    salaryForReportHint: 'For the report: hourly rate (₴/h) or fixed amount per shift (₴).',
+    salaryForReportHint: 'For the report: hourly rate or fixed amount per shift. Currency: hryvnia or zloty.',
     shiftPayment: 'Pay for this shift',
   },
   subscriptions: {

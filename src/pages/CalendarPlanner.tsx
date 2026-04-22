@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from '../i18n/LanguageContext';
-import { formatCurrency } from '../utils/formatters';
+import { formatPlannerMoney, type PlannerCurrency } from '../utils/formatters';
 import styles from './CalendarPlanner.module.css';
 
 interface DayPlan {
@@ -8,6 +8,7 @@ interface DayPlan {
   workedHours: number;
   salaryRate: number;
   salaryAmount: number;
+  salaryCurrency: PlannerCurrency;
   note: string;
 }
 
@@ -21,6 +22,7 @@ interface ShiftTemplate {
   startTime: string;
   endTime: string;
   workedHours: number;
+  salaryCurrency: PlannerCurrency;
 }
 
 const API_URL = import.meta.env.VITE_API_URL ?? '';
@@ -128,6 +130,7 @@ const CalendarPlanner: React.FC = () => {
   const [shiftTemplates, setShiftTemplates] = useState<ShiftTemplate[]>([]);
   const [salaryRateInput, setSalaryRateInput] = useState('');
   const [salaryAmountInput, setSalaryAmountInput] = useState('');
+  const [salaryCurrency, setSalaryCurrency] = useState<PlannerCurrency>('UAH');
 
   const modalAnyOpen = chooserOpen || editorOpened;
 
@@ -165,6 +168,7 @@ const CalendarPlanner: React.FC = () => {
     workedHours: 0,
     salaryRate: 0,
     salaryAmount: 0,
+    salaryCurrency: 'UAH' as PlannerCurrency,
     note: '',
   };
 
@@ -173,14 +177,17 @@ const CalendarPlanner: React.FC = () => {
   const monthReport = useMemo(() => {
     const days = buildDaysForMonth(month);
     let totalHours = 0;
-    let totalSalary = 0;
+    let totalSalaryUah = 0;
+    let totalSalaryPln = 0;
     for (const day of days) {
       const p = store[day];
       if (!p?.hasShift) continue;
       totalHours += p.workedHours || 0;
-      totalSalary += expectedPayForDay(p);
+      const pay = expectedPayForDay(p);
+      if (p.salaryCurrency === 'PLN') totalSalaryPln += pay;
+      else totalSalaryUah += pay;
     }
-    return { totalHours, totalSalary };
+    return { totalHours, totalSalaryUah, totalSalaryPln };
   }, [store, month]);
 
   useEffect(() => {
@@ -199,6 +206,7 @@ const CalendarPlanner: React.FC = () => {
             workedHours: toNumber(row.workedHours),
             salaryRate: toNumber(row.salaryRate),
             salaryAmount: toNumber(row.salaryAmount),
+            salaryCurrency: row.salaryCurrency === 'PLN' ? 'PLN' : 'UAH',
             note: row.note ?? '',
           };
         }
@@ -257,6 +265,7 @@ const CalendarPlanner: React.FC = () => {
           startTime,
           endTime,
           workedHours,
+          salaryCurrency,
         }),
       });
       if (response.ok) void loadShiftTemplates();
@@ -296,6 +305,7 @@ const CalendarPlanner: React.FC = () => {
     setEndTime('17:00');
     setSalaryRateInput('');
     setSalaryAmountInput('');
+    setSalaryCurrency('UAH');
   };
 
   const prefillEditorFromPlan = (plan: DayPlan) => {
@@ -318,6 +328,7 @@ const CalendarPlanner: React.FC = () => {
     }
     setSalaryRateInput(plan.salaryRate > 0 ? String(plan.salaryRate) : '');
     setSalaryAmountInput(plan.salaryAmount > 0 ? String(plan.salaryAmount) : '');
+    setSalaryCurrency(plan.salaryCurrency === 'PLN' ? 'PLN' : 'UAH');
   };
 
   const openEditShift = () => {
@@ -335,6 +346,7 @@ const CalendarPlanner: React.FC = () => {
       note: '',
       salaryRate: 0,
       salaryAmount: 0,
+      salaryCurrency: 'UAH',
     };
     setStore((prev) => ({ ...prev, [selectedDay]: payload }));
     const ok = await saveDay(selectedDay, payload);
@@ -347,6 +359,7 @@ const CalendarPlanner: React.FC = () => {
       ...current,
       hasShift: true,
       workedHours: tpl.workedHours,
+      salaryCurrency: tpl.salaryCurrency === 'PLN' ? 'PLN' : 'UAH',
       note,
     };
     setStore((prev) => ({ ...prev, [selectedDay]: payload }));
@@ -424,10 +437,22 @@ const CalendarPlanner: React.FC = () => {
               {monthReport.totalHours.toLocaleString(locale, { maximumFractionDigits: 1, minimumFractionDigits: 0 })}
             </strong>
           </div>
-          <div className={styles.reportRow}>
-            <span className={styles.reportLabel}>{t('planner', 'expectedSalary')}</span>
-            <strong className={styles.reportValue}>{formatCurrency(monthReport.totalSalary, locale)}</strong>
-          </div>
+          {monthReport.totalSalaryUah > 0 ? (
+            <div className={styles.reportRow}>
+              <span className={styles.reportLabel}>{t('planner', 'expectedSalaryUah')}</span>
+              <strong className={styles.reportValue}>
+                {formatPlannerMoney(monthReport.totalSalaryUah, locale, 'UAH')}
+              </strong>
+            </div>
+          ) : null}
+          {monthReport.totalSalaryPln > 0 ? (
+            <div className={styles.reportRow}>
+              <span className={styles.reportLabel}>{t('planner', 'expectedSalaryPln')}</span>
+              <strong className={styles.reportValue}>
+                {formatPlannerMoney(monthReport.totalSalaryPln, locale, 'PLN')}
+              </strong>
+            </div>
+          ) : null}
         </div>
 
         {loading && <p className={styles.loading}>{t('planner', 'loading')}</p>}
@@ -464,6 +489,7 @@ const CalendarPlanner: React.FC = () => {
                     workedHours: 8,
                     salaryRate: 0,
                     salaryAmount: 0,
+                    salaryCurrency: 'UAH',
                     note: '',
                   })
                 }
@@ -480,6 +506,7 @@ const CalendarPlanner: React.FC = () => {
                       tpl.name.trim() && tpl.symbol.trim()
                         ? `${tpl.name.trim()} · ${tpl.symbol.trim()}`
                         : tpl.name.trim() || tpl.symbol.trim();
+                    const curTag = tpl.salaryCurrency === 'PLN' ? 'zł' : '₴';
                     return (
                       <li key={tpl.id} className={styles.templateRow}>
                         <button
@@ -489,6 +516,7 @@ const CalendarPlanner: React.FC = () => {
                           onClick={() => void applyTemplateToDay(tpl)}
                         >
                           {label}
+                          <span className={styles.templateCurrencyTag}>{curTag}</span>
                         </button>
                         <button
                           type="button"
@@ -596,6 +624,27 @@ const CalendarPlanner: React.FC = () => {
               <h3 className={styles.groupTitle}>{t('planner', 'shiftPayment')}</h3>
               <p className={styles.salaryHint}>{t('planner', 'salaryForReportHint')}</p>
               <div className={styles.formBlock}>
+                <div className={styles.rowBetween}>
+                  <span className={styles.rowLabel}>{t('planner', 'currency')}</span>
+                  <div className={styles.currencySegment} role="group" aria-label={t('planner', 'currency')}>
+                    <button
+                      type="button"
+                      className={styles.currencySegmentBtn}
+                      aria-pressed={salaryCurrency === 'UAH'}
+                      onClick={() => setSalaryCurrency('UAH')}
+                    >
+                      ₴
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.currencySegmentBtn}
+                      aria-pressed={salaryCurrency === 'PLN'}
+                      onClick={() => setSalaryCurrency('PLN')}
+                    >
+                      zł
+                    </button>
+                  </div>
+                </div>
                 <div className={styles.formRow}>
                   <label htmlFor="shift-rate">{t('planner', 'salaryRate')}</label>
                   <input
@@ -641,6 +690,7 @@ const CalendarPlanner: React.FC = () => {
                   workedHours,
                   salaryRate,
                   salaryAmount,
+                  salaryCurrency,
                   note: [shiftName.trim(), shiftSymbol.trim()].filter(Boolean).join(' • '),
                 };
                 setStore((prev) => ({ ...prev, [selectedDay]: payload }));
