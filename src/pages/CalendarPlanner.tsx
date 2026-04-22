@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from '../i18n/LanguageContext';
 import { formatPlannerMoney, type PlannerCurrency } from '../utils/formatters';
 import type { RangeFilter } from '../components/ui/RecentTransactions';
@@ -41,6 +41,10 @@ const parseIsoLocal = (iso: string): Date => {
 };
 
 const todayIso = (): string => toIsoLocal(new Date());
+const monthLabel = (value: string, locale: string): string => {
+  const [year, month] = value.split('-').map(Number);
+  return new Date(year, month - 1, 1).toLocaleDateString(locale, { month: 'long', year: 'numeric' });
+};
 
 const shiftMonth = (monthValue: string, delta: number): string => {
   const [year, month] = monthValue.split('-').map(Number);
@@ -135,6 +139,7 @@ const CalendarPlanner: React.FC = () => {
   const [salaryCurrency, setSalaryCurrency] = useState<PlannerCurrency>('UAH');
   const [reportRange, setReportRange] = useState<RangeFilter>('month');
   const [reportRangeMenuOpen, setReportRangeMenuOpen] = useState(false);
+  const monthInputRef = useRef<HTMLInputElement | null>(null);
 
   const modalAnyOpen = chooserOpen || editorOpened;
 
@@ -390,6 +395,7 @@ const CalendarPlanner: React.FC = () => {
   };
 
   const todayIsoStr = todayIso();
+  const currentMonthLabel = monthLabel(month, locale);
 
   return (
     <div className={styles.container}>
@@ -401,9 +407,34 @@ const CalendarPlanner: React.FC = () => {
       <section className={styles.panel}>
         <div className={styles.monthRow}>
           <div className={styles.monthControls}>
-            <button type="button" className={styles.arrowBtn} onClick={() => setMonth(shiftMonth(month, -1))}>←</button>
-            <button type="button" className={styles.arrowBtn} onClick={() => setMonth(shiftMonth(month, 1))}>→</button>
-            <input type="month" className={styles.monthInput} value={month} onChange={(e) => setMonth(e.target.value)} />
+            <button type="button" className={styles.arrowBtn} onClick={() => setMonth(shiftMonth(month, -1))} aria-label={t('planner', 'prevMonth')}>‹</button>
+            <button type="button" className={styles.arrowBtn} onClick={() => setMonth(shiftMonth(month, 1))} aria-label={t('planner', 'nextMonth')}>›</button>
+            <div className={styles.monthPickerWrap}>
+              <button
+                type="button"
+                className={styles.monthPickerBtn}
+                onClick={() => {
+                  const picker = monthInputRef.current as (HTMLInputElement & { showPicker?: () => void }) | null;
+                  if (!picker) return;
+                  if (typeof picker.showPicker === 'function') {
+                    picker.showPicker();
+                    return;
+                  }
+                  picker.focus();
+                  picker.click();
+                }}
+              >
+                {currentMonthLabel}
+              </button>
+              <input
+                ref={monthInputRef}
+                type="month"
+                className={styles.monthInputNative}
+                value={month}
+                aria-label={t('planner', 'monthHint')}
+                onChange={(e) => setMonth(e.target.value)}
+              />
+            </div>
           </div>
         </div>
 
