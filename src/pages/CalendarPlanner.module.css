@@ -3,7 +3,6 @@
   position: relative;
   padding: 20px 18px calc(var(--bottom-nav-height) + 40px);
   padding-top: calc(20px + var(--safe-area-inset-top));
-  background-color: var(--bg-primary);
   color: var(--text-primary);
 }
 
