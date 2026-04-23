@@ -3,9 +3,9 @@ import type { Transaction, Balance } from '../types';
 
 interface TransactionContextType {
   transactions: Transaction[];
-  addTransaction: (transaction: Omit<Transaction, 'id' | 'date'>) => Promise<void>;
-  updateTransaction: (id: string, transaction: Omit<Transaction, 'id' | 'date'>) => Promise<void>;
-  deleteTransaction: (id: string) => Promise<void>;
+  addTransaction: (transaction: Omit<Transaction, 'id' | 'date'>) => Promise<boolean>;
+  updateTransaction: (id: string, transaction: Omit<Transaction, 'id' | 'date'>) => Promise<boolean>;
+  deleteTransaction: (id: string) => Promise<boolean>;
   balance: Balance;
 }
 
@@ -21,6 +21,7 @@ export const TransactionProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const fetchTransactions = async () => {
     try {
       const response = await fetch(`${API_URL}/api/transactions`);
+      if (!response.ok) return;
       const data = await response.json();
       setTransactions(data);
     } catch (error) {
@@ -58,21 +59,27 @@ export const TransactionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(t),
       });
+      if (!response.ok) return false;
       const newTransaction = await response.json();
-      setTransactions(prev => [newTransaction, ...prev]);
+      setTransactions((prev) => [newTransaction, ...prev]);
+      return true;
     } catch (error) {
       console.error('Error adding transaction:', error);
+      return false;
     }
   };
 
   const deleteTransaction = async (id: string) => {
     try {
-      await fetch(`${API_URL}/api/transactions/${id}`, {
+      const res = await fetch(`${API_URL}/api/transactions/${id}`, {
         method: 'DELETE',
       });
-      setTransactions(prev => prev.filter(t => t.id !== id));
+      if (res.status !== 204 && !res.ok) return false;
+      setTransactions((prev) => prev.filter((t) => t.id !== id));
+      return true;
     } catch (error) {
       console.error('Error deleting transaction:', error);
+      return false;
     }
   };
 
@@ -83,10 +90,13 @@ export const TransactionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(t),
       });
+      if (!response.ok) return false;
       const updated = await response.json();
       setTransactions((prev) => prev.map((tx) => (tx.id === id ? updated : tx)));
+      return true;
     } catch (error) {
       console.error('Error updating transaction:', error);
+      return false;
     }
   };
 

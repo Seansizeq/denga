@@ -4,15 +4,25 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const dbPath = process.env.DATABASE_PATH
-  ? path.resolve(process.env.DATABASE_PATH)
-  : path.resolve(__dirname, '../database.sqlite');
+
+export const getDatabasePath = () =>
+  process.env.DATABASE_PATH ? path.resolve(process.env.DATABASE_PATH) : path.resolve(__dirname, '../database.sqlite');
 
 export async function initDb() {
+  const dbPath = getDatabasePath();
   const db = await open({
     filename: dbPath,
     driver: sqlite3.Database
   });
+
+  // Durability: fewer torn writes on crash; WAL allows safer concurrent read during backup.
+  try {
+    await db.exec('PRAGMA journal_mode = WAL');
+    await db.exec('PRAGMA synchronous = FULL');
+    await db.exec('PRAGMA busy_timeout = 8000');
+  } catch (e) {
+    console.error('[db] PRAGMA setup failed', e);
+  }
 
   await db.exec(`
     CREATE TABLE IF NOT EXISTS transactions (

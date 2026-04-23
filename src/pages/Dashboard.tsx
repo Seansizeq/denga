@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTransactions } from '../context/TransactionContext';
+import { useTranslation } from '../i18n/LanguageContext';
 import Header from '../components/ui/Header';
 import HeroBalance from '../components/ui/HeroBalance';
 import QuickActions from '../components/ui/QuickActions';
@@ -10,6 +11,7 @@ import styles from './Dashboard.module.css';
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const { transactions, deleteTransaction } = useTransactions();
   const [range, setRange] = useState<RangeFilter>('today');
 
@@ -68,7 +70,10 @@ const Dashboard: React.FC = () => {
 
         <RecentTransactions
           transactions={filtered}
-          onDelete={deleteTransaction}
+          onDelete={async (id) => {
+            const ok = await deleteTransaction(id);
+            if (!ok) window.alert(t('addTx', 'saveFailed'));
+          }}
           onEdit={(id) => navigate(`/add?edit=${id}`)}
           filter={range}
           onFilterChange={setRange}

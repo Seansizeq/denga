@@ -49,6 +49,17 @@
   display: inline-block;
 }
 
+.saveError {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 80, 80, 0.12);
+  border: 1px solid rgba(255, 100, 100, 0.35);
+  color: #ffb4b4;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
 .typeSelector {
   display: flex;
   background-color: var(--bg-card);

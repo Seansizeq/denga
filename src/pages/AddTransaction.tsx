@@ -36,6 +36,7 @@ const AddTransaction: React.FC = () => {
   const [newCategoryIcon, setNewCategoryIcon] = useState<CustomCategoryIcon>('Tag');
   const [newCategoryColor, setNewCategoryColor] = useState('#8E8E93');
   const [note, setNote] = useState(() => editingTransaction?.note ?? '');
+  const [saveError, setSaveError] = useState('');
   const [customCategories, setCustomCategories] = useState<
     Array<{ id: string; name: string; icon: string; color: string }>
   >([]);
@@ -86,6 +87,7 @@ const AddTransaction: React.FC = () => {
   const canCreateCustomCategory = newCategoryName.trim().length > 0;
 
   const handleSave = async () => {
+    setSaveError('');
     const numAmount = parseFloat(amount.replace(',', '.'));
     if (!numAmount || numAmount <= 0) return;
     const payload = {
@@ -94,12 +96,11 @@ const AddTransaction: React.FC = () => {
       categoryId,
       note: note.trim() || undefined,
     };
-    if (isEditing && editId) {
-      await updateTransaction(editId, payload);
-    } else {
-      await addTransaction(payload);
+    const ok = isEditing && editId ? await updateTransaction(editId, payload) : await addTransaction(payload);
+    if (!ok) {
+      setSaveError(t('addTx', 'saveFailed'));
+      return;
     }
-
     navigate('/');
   };
 
@@ -119,6 +120,12 @@ const AddTransaction: React.FC = () => {
         <h2 className={styles.title}>{isEditing ? t('addTx', 'editTitle') : t('addTx', 'title')}</h2>
         <span className={styles.headerSpacer} aria-hidden="true" />
       </header>
+
+      {saveError ? (
+        <p className={styles.saveError} role="alert">
+          {saveError}
+        </p>
+      ) : null}
 
       <div className={styles.typeSelector}>
         <button

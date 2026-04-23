@@ -11,7 +11,7 @@ export type RangeFilter = 'today' | 'week' | 'month' | 'all';
 interface Props {
   transactions: Transaction[];
   limit?: number;
-  onDelete?: (id: string) => void;
+  onDelete?: (id: string) => void | Promise<void>;
   onEdit?: (id: string) => void;
   showFilter?: boolean;
   filter?: RangeFilter;

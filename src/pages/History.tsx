@@ -10,6 +10,11 @@ const History: React.FC = () => {
   const { transactions, deleteTransaction } = useTransactions();
   const { t, locale } = useTranslation();
 
+  const handleDelete = async (id: string) => {
+    const ok = await deleteTransaction(id);
+    if (!ok) window.alert(t('addTx', 'saveFailed'));
+  };
+
   const grouped = useMemo(() => {
     const map = new Map<string, { label: string; items: typeof transactions }>();
     for (const tx of transactions) {
@@ -47,7 +52,7 @@ const History: React.FC = () => {
                   <TransactionItem
                     key={tx.id}
                     transaction={tx}
-                    onDelete={deleteTransaction}
+                    onDelete={handleDelete}
                     onEdit={(id) => navigate(`/add?edit=${id}`)}
                   />
                 ))}

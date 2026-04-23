@@ -61,6 +61,7 @@ type Dict = {
     chooseColor: string;
     create: string;
     deleteConfirm: string;
+    saveFailed: string;
   };
   history: { title: string; empty: string; deleteConfirm: string; edit: string; delete: string };
   planner: {
@@ -149,6 +150,10 @@ type Dict = {
     saveChanges: string;
     cancelEdit: string;
     disable: string;
+    loadError: string;
+    saveError: string;
+    disabledSection: string;
+    enable: string;
   };
   stats: {
     title: string;
@@ -242,6 +247,7 @@ const uk: Dict = {
     chooseColor: 'Оберіть колір',
     create: 'Створити',
     deleteConfirm: 'Видалити цю категорію?',
+    saveFailed: 'Не вдалося зберегти. Перевір з’єднання і спробуй ще раз.',
   },
   history: {
     title: 'Історія',
@@ -336,6 +342,10 @@ const uk: Dict = {
     saveChanges: 'Зберегти зміни',
     cancelEdit: 'Скасувати редагування',
     disable: 'Вимкнути',
+    loadError: 'Не вдалося завантажити підписки. Спробуй пізніше.',
+    saveError: 'Не вдалося зберегти підписку. Перевір з’єднання.',
+    disabledSection: 'Вимкнені (залишились у базі)',
+    enable: 'Увімкнути',
   },
   stats: {
     title: 'Статистика',
@@ -434,6 +444,7 @@ const ru: Dict = {
     chooseColor: 'Выберите цвет',
     create: 'Создать',
     deleteConfirm: 'Удалить эту категорию?',
+    saveFailed: 'Не удалось сохранить. Проверь соединение и попробуй снова.',
   },
   history: {
     title: 'История',
@@ -528,6 +539,10 @@ const ru: Dict = {
     saveChanges: 'Сохранить изменения',
     cancelEdit: 'Отменить редактирование',
     disable: 'Отключить',
+    loadError: 'Не удалось загрузить подписки. Попробуй позже.',
+    saveError: 'Не удалось сохранить подписку. Проверь соединение.',
+    disabledSection: 'Отключённые (в базе остаются)',
+    enable: 'Включить',
   },
   stats: {
     title: 'Статистика',
@@ -626,6 +641,7 @@ const en: Dict = {
     chooseColor: 'Choose color',
     create: 'Create',
     deleteConfirm: 'Delete this category?',
+    saveFailed: 'Could not save. Check your connection and try again.',
   },
   history: {
     title: 'History',
@@ -720,6 +736,10 @@ const en: Dict = {
     saveChanges: 'Save changes',
     cancelEdit: 'Cancel editing',
     disable: 'Disable',
+    loadError: 'Could not load subscriptions. Try again later.',
+    saveError: 'Could not save subscription. Check your connection.',
+    disabledSection: 'Disabled (still in database)',
+    enable: 'Enable',
   },
   stats: {
     title: 'Stats',

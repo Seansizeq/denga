@@ -3,7 +3,8 @@ import cors from 'cors';
 import TelegramBot from 'node-telegram-bot-api';
 import dotenv from 'dotenv';
 import { v4 as uuidv4 } from 'uuid';
-import { initDb } from './db.js';
+import { getDatabasePath, initDb } from './db.js';
+import { startScheduledDatabaseBackups } from './backup.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -31,6 +32,7 @@ app.use((req, res, next) => {
 app.use(express.static(path.join(__dirname, '../dist')));
 
 const db = await initDb();
+startScheduledDatabaseBackups(db, getDatabasePath());
 
 const seedAccountPortfolioIfEmpty = async () => {
   const row = await db.get('SELECT COUNT(*) AS c FROM account_portfolio');

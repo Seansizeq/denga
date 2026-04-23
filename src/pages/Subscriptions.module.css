@@ -56,6 +56,24 @@
   color: var(--text-secondary);
 }
 
+.bannerError {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 80, 80, 0.12);
+  border: 1px solid rgba(255, 100, 100, 0.35);
+  color: #ffb4b4;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.subsectionTitle {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
 .listSection {
   margin-bottom: 18px;
 }
@@ -71,6 +89,11 @@
   border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: 14px;
   padding: 12px;
+}
+
+.itemDisabled {
+  opacity: 0.88;
+  border-style: dashed;
 }
 
 .itemTop {
@@ -122,7 +145,8 @@
 }
 
 .editBtn,
-.disableBtn {
+.disableBtn,
+.enableBtn {
   border: none;
   border-radius: 10px;
   padding: 8px 10px;
@@ -138,6 +162,12 @@
 .disableBtn {
   background: rgba(255, 69, 58, 0.15);
   color: #ff6b63;
+}
+
+.enableBtn {
+  flex: 1;
+  background: rgba(48, 209, 88, 0.16);
+  color: #5ad97a;
 }
 
 .emptyText {
@@ -165,6 +195,12 @@
   border-radius: 18px;
   padding: 14px;
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+}
+
+.formError {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: #ffb4b4;
 }
 
 .formTitle {
