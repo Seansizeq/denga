@@ -61,74 +61,65 @@ const AccountsSnapshot: React.FC<AccountsSnapshotProps> = ({ sections, onRowPres
         const isCollapsible = Boolean(group.collapsible);
         const isOpen = open[group.id] ?? false;
         const needsHeader = Boolean(group.title?.trim() || group.total?.trim() || isCollapsible);
-        const isStrip = (group.variant ?? 'default') === 'strip' || isCollapsible;
         const hasBody = group.rows.length > 0;
         const showBody = isCollapsible ? isOpen && hasBody : hasBody;
 
+        if (!needsHeader && !hasBody) return null;
+
         return (
-          <article
-            key={group.id}
-            className={`${styles.card} ${isStrip ? styles.cardStrip : ''} ${!needsHeader && !showBody ? styles.cardEmpty : ''}`}
-          >
+          <div key={group.id} className={styles.group}>
             {needsHeader ? (
-              isCollapsible ? (
-                <button
-                  type="button"
-                  className={styles.stripButton}
-                  onClick={() => setOpen((prev) => ({ ...prev, [group.id]: !isOpen }))}
-                  aria-expanded={isOpen}
-                >
-                  <div className={styles.stripLeft}>
-                    {group.title?.trim() ? <h3 className={styles.stripTitle}>{group.title}</h3> : <span className={styles.headerSpacer} />}
-                  </div>
-                  <div className={styles.stripRight}>
-                    {group.total?.trim() ? <span className={styles.stripTotal}>{group.total}</span> : null}
-                    <span className={`${styles.chevron} ${isOpen ? '' : styles.chevronClosed}`} aria-hidden="true">
-                      <ChevronDown size={16} strokeWidth={2.4} />
-                    </span>
-                  </div>
-                </button>
-              ) : (
-                <div className={styles.headerStatic}>
-                  <div className={styles.headerLeft}>
-                    {group.title?.trim() ? <h3 className={styles.cardTitle}>{group.title}</h3> : <span className={styles.headerSpacer} />}
-                  </div>
-                  <div className={styles.headerRight}>
-                    {group.total?.trim() ? <span className={styles.cardTotal}>{group.total}</span> : null}
-                  </div>
+              <div 
+                className={styles.header}
+                onClick={isCollapsible ? () => setOpen(prev => ({ ...prev, [group.id]: !isOpen })) : undefined}
+                style={{ cursor: isCollapsible ? 'pointer' : 'default' }}
+                role={isCollapsible ? 'button' : undefined}
+                aria-expanded={isCollapsible ? isOpen : undefined}
+              >
+                <div className={styles.headerLeft}>
+                  {group.title?.trim() ? <h3 className={styles.title}>{group.title}</h3> : null}
                 </div>
-              )
+                <div className={styles.headerRight}>
+                  {group.total?.trim() ? <span className={styles.total}>{group.total}</span> : null}
+                  {isCollapsible ? (
+                    <ChevronDown size={18} strokeWidth={2.4} className={`${styles.chevron} ${isOpen ? '' : styles.chevronClosed}`} />
+                  ) : null}
+                </div>
+              </div>
             ) : null}
 
             {showBody ? (
-              <div className={styles.rows}>
+              <div className={styles.list}>
                 {group.rows.map((row) => {
                   const tone: RowIconTone = row.iconTone ?? 'bank';
                   return (
-                    <div key={row.id} className={styles.row}>
-                      <button
-                        type="button"
-                        className={styles.rowButton}
-                        onClick={() => onRowPress?.(row.id)}
-                        disabled={!onRowPress}
-                      >
-                        <div className={styles.left}>
+                    <button
+                      key={row.id}
+                      type="button"
+                      className={styles.row}
+                      onClick={() => onRowPress?.(row.id)}
+                      disabled={!onRowPress}
+                    >
+                      <div className={styles.iconCircle}>
                         <span className={`${styles.icon} ${iconToneClass(tone)}`}>
                           {row.badge ?? row.name.slice(0, 1)}
                         </span>
+                      </div>
+
+                      <div className={styles.info}>
                         <span className={styles.name}>{row.name}</span>
-                        </div>
-                        <div className={styles.right}>
+                        {row.subAmount ? <span className={styles.subtitle}>{row.subAmount}</span> : null}
+                      </div>
+
+                      <div className={styles.right}>
                         <span className={styles.amount}>{row.amount}</span>
-                        {row.subAmount ? <span className={styles.subAmount}>{row.subAmount}</span> : null}
-                        </div>
-                      </button>
-                    </div>
+                      </div>
+                    </button>
                   );
                 })}
               </div>
             ) : null}
-          </article>
+          </div>
         );
       })}
     </section>
