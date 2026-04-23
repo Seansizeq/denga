@@ -32,13 +32,14 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
   const [name, setName] = useState(() => initial.name);
   const [amount, setAmount] = useState(() => String(initial.primaryAmount));
   const [currency, setCurrency] = useState<'UAH' | 'PLN'>(() => initial.primaryCurrency);
+  const [section, setSection] = useState<EditableAccount['section']>(() => initial.section);
   const [subText, setSubText] = useState(() => initial.subText);
   const [badge, setBadge] = useState(() => initial.badge);
   const [debtPhrase, setDebtPhrase] = useState(() => initial.debtPhrase);
   const [iconTone, setIconTone] = useState<EditableAccount['iconTone']>(() => initial.iconTone);
   const [saving, setSaving] = useState(false);
 
-  const canEditDebtPhrase = useMemo(() => initial.section === 'debt', [initial.section]);
+  const canEditDebtPhrase = useMemo(() => section === 'debt', [section]);
   const isCreateMode = useMemo(() => !initial.accountKey.trim(), [initial.accountKey]);
 
   const handleSave = async () => {
@@ -48,6 +49,7 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
     try {
       await onSave({
         ...initial,
+        section,
         name: name.trim(),
         primaryAmount: n,
         primaryCurrency: currency,
@@ -106,6 +108,21 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
               <input className={styles.input} value={badge} onChange={(e) => setBadge(e.target.value)} maxLength={3} />
             </label>
             <label className={styles.label}>
+              Розділ
+              <select
+                className={styles.select}
+                value={section}
+                onChange={(e) => setSection((e.target.value as EditableAccount['section']) ?? 'bank')}
+              >
+                <option value="bank">Карти</option>
+                <option value="cash">Готівка</option>
+                <option value="crypto">Крипта</option>
+                <option value="debt">Борг</option>
+              </select>
+            </label>
+          </div>
+
+          <label className={styles.label}>
               Тон іконки
               <select
                 className={styles.select}
@@ -119,7 +136,6 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
                 <option value="neutral">neutral</option>
               </select>
             </label>
-          </div>
 
           {canEditDebtPhrase ? (
             <label className={styles.label}>
