@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus } from 'lucide-react';
 import { useTransactions } from '../context/TransactionContext';
@@ -10,11 +10,16 @@ import RecentTransactions from '../components/ui/RecentTransactions';
 import type { RangeFilter } from '../components/ui/RecentTransactions';
 import styles from './Dashboard.module.css';
 
+const API_URL = import.meta.env.VITE_API_URL ?? '';
+
+type PortfolioWorth = { uah: number; pln: number };
+
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
-  const { t } = useTranslation();
+  const { t, displayCurrency } = useTranslation();
   const { transactions, deleteTransaction } = useTransactions();
   const [range, setRange] = useState<RangeFilter>('today');
+  const [worth, setWorth] = useState<PortfolioWorth | null>(null);
 
   const inRange = useMemo(() => {
     const now = new Date();
@@ -55,6 +60,56 @@ const Dashboard: React.FC = () => {
     };
   }, [transactions]);
 
+  const loadWorth = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/accounts`);
+      if (!res.ok) {
+        setWorth(null);
+        return;
+      }
+      const data: unknown = await res.json();
+      if (!Array.isArray(data) || data.length === 0) {
+        setWorth(null);
+        return;
+      }
+      let uah = 0;
+      let pln = 0;
+      for (const row of data) {
+        if (!row || typeof row !== 'object') continue;
+        const r = row as Record<string, unknown>;
+        const amt = Number(r.primaryAmount);
+        if (!Number.isFinite(amt)) continue;
+        if (r.primaryCurrency === 'PLN') pln += amt;
+        else uah += amt;
+      }
+      setWorth({ uah, pln });
+    } catch {
+      setWorth(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadWorth();
+    const id = window.setInterval(() => void loadWorth(), 5000);
+    return () => window.clearInterval(id);
+  }, [loadWorth]);
+
+  const wealthMode = worth !== null;
+  const usePlnMain = displayCurrency === 'PLN';
+  const mainNet = wealthMode && worth
+    ? (usePlnMain ? worth.pln : worth.uah)
+    : summary.totalNet;
+  const mainAmountCurrency: 'UAH' | 'PLN' = usePlnMain ? 'PLN' : 'UAH';
+  const wealthOther =
+    worth && wealthMode
+      ? (() => {
+          const { uah, pln } = worth;
+          if (usePlnMain && uah > 0) return { amount: uah, currency: 'UAH' as const };
+          if (!usePlnMain && pln > 0) return { amount: pln, currency: 'PLN' as const };
+          return undefined;
+        })()
+      : undefined;
+
   return (
     <div className={styles.container}>
       <button
@@ -63,17 +118,20 @@ const Dashboard: React.FC = () => {
         onClick={() => navigate('/add')}
         aria-label={t('dashboard', 'addTransaction')}
       >
-        <Plus size={28} strokeWidth={2.4} />
+        <Plus size={34} strokeWidth={2.4} />
       </button>
 
       <div className={styles.content}>
         <Header />
 
         <HeroBalance
-          net={summary.totalNet}
+          net={mainNet}
           income={summary.totalIncome}
           expense={summary.totalExpense}
           onOpenDetails={() => navigate('/accounts')}
+          wealthMode={wealthMode}
+          mainAmountCurrency={wealthMode ? mainAmountCurrency : 'UAH'}
+          wealthOther={wealthMode ? wealthOther : undefined}
         />
 
         <QuickActions />
