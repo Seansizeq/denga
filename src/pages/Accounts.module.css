@@ -10,6 +10,27 @@
   flex-direction: column;
 }
 
+.addButton {
+  margin: 8px 0 2px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+  border-radius: 14px;
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.addButton:hover,
+.addButton:focus-visible {
+  background: rgba(255, 255, 255, 0.08);
+}
+
 .details {
   margin: 6px 0 0;
   display: grid;

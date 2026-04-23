@@ -39,6 +39,7 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
   const [saving, setSaving] = useState(false);
 
   const canEditDebtPhrase = useMemo(() => initial.section === 'debt', [initial.section]);
+  const isCreateMode = useMemo(() => !initial.accountKey.trim(), [initial.accountKey]);
 
   const handleSave = async () => {
     const n = parseMoney(amount);
@@ -70,7 +71,7 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
           <button type="button" className={styles.iconBtn} onClick={onClose} aria-label="Close">
             <X size={18} strokeWidth={2.4} />
           </button>
-          <h2 className={styles.title}>Редагувати акаунт</h2>
+          <h2 className={styles.title}>{isCreateMode ? 'Новий акаунт' : 'Редагувати акаунт'}</h2>
           <span className={styles.headerSpacer} />
         </div>
 
@@ -133,7 +134,7 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
             Скасувати
           </button>
           <button type="button" className={styles.primary} onClick={handleSave} disabled={saving || !name.trim() || parseMoney(amount) === null}>
-            {saving ? 'Збереження…' : 'Зберегти'}
+            {saving ? 'Збереження…' : isCreateMode ? 'Створити' : 'Зберегти'}
           </button>
         </div>
       </div>

@@ -282,6 +282,88 @@ app.get('/api/accounts', async (_req, res) => {
   res.json(rows);
 });
 
+app.post('/api/accounts', async (req, res) => {
+  const name = typeof req.body?.name === 'string' ? req.body.name.trim().replace(/\s+/g, ' ') : '';
+  const primaryAmount = Number(req.body?.primaryAmount);
+  const primaryCurrency = req.body?.primaryCurrency === 'PLN' ? 'PLN' : 'UAH';
+  const subText = typeof req.body?.subText === 'string' ? req.body.subText.trim() : '';
+  const iconTone = typeof req.body?.iconTone === 'string' ? req.body.iconTone.trim() : '';
+  const badge = typeof req.body?.badge === 'string' ? req.body.badge.trim() : '';
+  const debtPhrase = typeof req.body?.debtPhrase === 'string' ? req.body.debtPhrase.trim() : '';
+  const section = typeof req.body?.section === 'string' ? req.body.section.trim() : '';
+  const sortIndex = req.body?.sortIndex === undefined ? undefined : Number(req.body.sortIndex);
+
+  if (!name) {
+    res.status(400).json({ error: 'name is required' });
+    return;
+  }
+  if (!Number.isFinite(primaryAmount)) {
+    res.status(400).json({ error: 'primaryAmount must be a number' });
+    return;
+  }
+  if (!['bank', 'cash', 'crypto', 'debt'].includes(section)) {
+    res.status(400).json({ error: 'section must be bank, cash, crypto, or debt' });
+    return;
+  }
+  if (!Number.isFinite(sortIndex)) {
+    res.status(400).json({ error: 'sortIndex must be a number' });
+    return;
+  }
+  if (!['bank', 'cash', 'crypto', 'debt', 'neutral'].includes(iconTone)) {
+    res.status(400).json({ error: 'iconTone must be bank, cash, crypto, debt, or neutral' });
+    return;
+  }
+
+  const normalizedBase = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'account';
+  let accountKey = normalizedBase;
+  let suffix = 2;
+  while (await db.get('SELECT 1 FROM account_portfolio WHERE account_key = ? LIMIT 1', [accountKey])) {
+    accountKey = `${normalizedBase}_${suffix}`;
+    suffix += 1;
+  }
+
+  const now = new Date().toISOString();
+  await db.run(
+    `INSERT INTO account_portfolio
+     (account_key, section, sort_index, name, primary_amount, primary_currency, sub_text, icon_tone, badge, debt_phrase, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      accountKey,
+      section,
+      sortIndex,
+      name,
+      primaryAmount,
+      primaryCurrency,
+      subText ? subText : null,
+      iconTone,
+      badge ? badge : null,
+      debtPhrase ? debtPhrase : null,
+      now,
+    ]
+  );
+
+  const row = await db.get(
+    `SELECT
+       account_key AS accountKey,
+       section,
+       sort_index AS sortIndex,
+       name,
+       primary_amount AS primaryAmount,
+       primary_currency AS primaryCurrency,
+       sub_text AS subText,
+       icon_tone AS iconTone,
+       badge,
+       debt_phrase AS debtPhrase,
+       updatedAt
+     FROM account_portfolio
+     WHERE account_key = ?
+     LIMIT 1`,
+    [accountKey]
+  );
+
+  res.status(201).json(row);
+});
+
 app.put('/api/accounts/:key', async (req, res) => {
   const accountKey = String(req.params.key ?? '').trim();
   if (!accountKey) {

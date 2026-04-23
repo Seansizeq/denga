@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Plus } from 'lucide-react';
 import Header from '../components/ui/Header';
 import AccountsSnapshot from '../components/ui/AccountsSnapshot';
 import AccountEditSheet, { type EditableAccount } from '../components/ui/AccountEditSheet';
@@ -72,6 +73,24 @@ const mapPortfolioToEditable = (r: PortfolioAccountRow): EditableAccount => ({
   badge: r.badge ?? '',
   debtPhrase: r.debtPhrase ?? '',
 });
+
+const createEmptyAccount = (section: PortfolioSection, existing: readonly PortfolioAccountRow[]): EditableAccount => {
+  const maxSort = existing
+    .filter((r) => r.section === section)
+    .reduce((max, r) => Math.max(max, r.sortIndex), 0);
+  return {
+    accountKey: '',
+    section,
+    sortIndex: maxSort + 10,
+    name: '',
+    primaryAmount: 0,
+    primaryCurrency: 'UAH',
+    subText: '',
+    iconTone: section,
+    badge: '',
+    debtPhrase: section === 'debt' ? 'мені винні' : '',
+  };
+};
 
 const formatGroupAmount = (amount: number, currency: string) => {
   const normalized = Number.isFinite(amount) ? amount : 0;
@@ -521,8 +540,13 @@ const Accounts: React.FC = () => {
 
   const handleSaveAccount = useCallback(
     async (next: EditableAccount) => {
-      const res = await fetch(`${API_URL}/api/accounts/${encodeURIComponent(next.accountKey)}`, {
-        method: 'PUT',
+      const isCreate = !next.accountKey.trim();
+      const url = isCreate
+        ? `${API_URL}/api/accounts`
+        : `${API_URL}/api/accounts/${encodeURIComponent(next.accountKey)}`;
+      const method = isCreate ? 'POST' : 'PUT';
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: next.name,
@@ -548,6 +572,17 @@ const Accounts: React.FC = () => {
     <div className={styles.container}>
       <div className={styles.content}>
         <Header />
+        {portfolio.length > 0 ? (
+          <button
+            type="button"
+            className={styles.addButton}
+            onClick={() => setEditing(createEmptyAccount('bank', portfolio))}
+            aria-label="Додати акаунт"
+          >
+            <Plus size={18} strokeWidth={2.6} />
+            <span>Додати рахунок</span>
+          </button>
+        ) : null}
         <AccountsSnapshot sections={sections} onRowPress={portfolio.length > 0 ? handleRowPress : undefined} />
         <section className={styles.details}>
           <div className={styles.detailCard}>
