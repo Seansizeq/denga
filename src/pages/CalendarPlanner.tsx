@@ -54,6 +54,15 @@ const buildDaysForMonth = (monthValue: string): string[] => {
   return Array.from({ length: count }, (_, i) => `${year}-${String(month).padStart(2, '0')}-${String(i + 1).padStart(2, '0')}`);
 };
 
+/** Усі дні календарного року (рік = рік вибраного місяця в планеру). */
+const buildDaysForYear = (y: number): string[] => {
+  const out: string[] = [];
+  for (let m = 1; m <= 12; m += 1) {
+    out.push(...buildDaysForMonth(`${y}-${String(m).padStart(2, '0')}`));
+  }
+  return out;
+};
+
 const buildCalendarCells = (monthValue: string): Array<string | null> => {
   const days = buildDaysForMonth(monthValue);
   const [year, month] = monthValue.split('-').map(Number);
@@ -179,17 +188,20 @@ const CalendarPlanner: React.FC = () => {
   const dayHasShift = Boolean(current.hasShift || current.note.trim());
 
   const monthReport = useMemo(() => {
-    const days = buildDaysForMonth(month).filter((iso) => {
+    const now = new Date();
+    const reportYear = Number(month.split('-')[0]);
+    const baseDays =
+      reportRange === 'year' ? buildDaysForYear(reportYear) : buildDaysForMonth(month);
+    const days = baseDays.filter((iso) => {
       const d = parseIsoLocal(iso);
-      const now = new Date();
-      if (reportRange === 'all') return true;
+      if (reportRange === 'year') return true;
       if (reportRange === 'today') return d.toDateString() === now.toDateString();
       if (reportRange === 'week') {
         const diff = (now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24);
         return diff >= 0 && diff <= 7;
       }
-      // days are already scoped to the selected calendar month above
-      return true;
+      if (reportRange === 'month') return true;
+      return false;
     });
     let totalHours = 0;
     let totalSalaryUah = 0;
@@ -212,7 +224,10 @@ const CalendarPlanner: React.FC = () => {
     const loadMonth = async () => {
       setLoading(true);
       try {
-        const response = await fetch(`${API_URL}/api/planner?month=${month}`);
+        const yearQ = month.slice(0, 4);
+        const q =
+          reportRange === 'year' ? `year=${encodeURIComponent(yearQ)}` : `month=${encodeURIComponent(month)}`;
+        const response = await fetch(`${API_URL}/api/planner?${q}`);
         if (!response.ok) throw new Error(`Planner load failed: ${response.status}`);
         const rows = (await response.json()) as Array<DayPlan & { day: string }>;
         if (cancelled) return;
@@ -239,7 +254,7 @@ const CalendarPlanner: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [month]);
+  }, [month, reportRange]);
 
   const loadShiftTemplates = async () => {
     try {
@@ -467,9 +482,11 @@ const CalendarPlanner: React.FC = () => {
 
         <div className={styles.reportCard}>
           <div className={styles.reportHeader}>
-            <h3 className={styles.reportCardTitle}>{t('planner', 'monthReportTitle')}</h3>
+            <h3 className={styles.reportCardTitle}>
+              {reportRange === 'year' ? t('planner', 'yearReportTitle') : t('planner', 'monthReportTitle')}
+            </h3>
             <div className={styles.reportRangeTabs} role="tablist" aria-label={t('planner', 'report')}>
-              {(['today', 'week', 'month', 'all'] as const).map((opt) => (
+              {(['today', 'week', 'month', 'year'] as const).map((opt) => (
                 <button
                   key={opt}
                   type="button"

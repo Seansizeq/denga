@@ -25,7 +25,7 @@ type Dict = {
     noResults: string;
   };
   quickActions: { add: string; income: string; expense: string; history: string; subscriptions: string };
-  range: { today: string; week: string; month: string; year: string; all: string };
+  range: { today: string; week: string; month: string; year: string };
   balance: {
     label: string;
     income: string;
@@ -125,6 +125,7 @@ type Dict = {
     deleteTemplate: string;
     deleteTemplateConfirm: string;
     monthReportTitle: string;
+    yearReportTitle: string;
     reportHoursTotal: string;
     salaryForReportHint: string;
     shiftPayment: string;
@@ -211,7 +212,7 @@ const uk: Dict = {
     noResults: 'Нічого не знайдено',
   },
   quickActions: { add: 'Додати', income: 'Дохід', expense: 'Витрата', history: 'Історія', subscriptions: 'Підписки' },
-  range: { today: 'Сьогодні', week: 'Тиждень', month: 'Місяць', year: 'Рік', all: 'Усі' },
+  range: { today: 'Сьогодні', week: 'Тиждень', month: 'Місяць', year: 'Рік' },
   balance: {
     label: 'Баланс цього місяця',
     income: 'Доходи',
@@ -317,6 +318,7 @@ const uk: Dict = {
     deleteTemplate: 'Видалити шаблон',
     deleteTemplateConfirm: 'Видалити цей шаблон зі списку?',
     monthReportTitle: 'Звіт за місяць',
+    yearReportTitle: 'Звіт за рік',
     reportHoursTotal: 'Відпрацьовано годин',
     salaryForReportHint: 'Для звіту вкажіть ставку за годину або фіксовану суму за зміну. Валюта: гривня або злотий.',
     shiftPayment: 'Оплата за зміну',
@@ -408,7 +410,7 @@ const ru: Dict = {
     noResults: 'Ничего не найдено',
   },
   quickActions: { add: 'Добавить', income: 'Доход', expense: 'Расход', history: 'История', subscriptions: 'Подписки' },
-  range: { today: 'Сегодня', week: 'Неделя', month: 'Месяц', year: 'Год', all: 'Все' },
+  range: { today: 'Сегодня', week: 'Неделя', month: 'Месяц', year: 'Год' },
   balance: {
     label: 'Баланс за этот месяц',
     income: 'Доходы',
@@ -514,6 +516,7 @@ const ru: Dict = {
     deleteTemplate: 'Удалить шаблон',
     deleteTemplateConfirm: 'Удалить этот шаблон из списка?',
     monthReportTitle: 'Отчёт за месяц',
+    yearReportTitle: 'Отчёт за год',
     reportHoursTotal: 'Отработано часов',
     salaryForReportHint: 'Для отчёта укажите ставку за час или фиксированную сумму за смену. Валюта: гривна или злотый.',
     shiftPayment: 'Оплата за смену',
@@ -605,7 +608,7 @@ const en: Dict = {
     noResults: 'Nothing found',
   },
   quickActions: { add: 'Add', income: 'Income', expense: 'Expense', history: 'History', subscriptions: 'Subscriptions' },
-  range: { today: 'Today', week: 'Week', month: 'Month', year: 'Year', all: 'All' },
+  range: { today: 'Today', week: 'Week', month: 'Month', year: 'Year' },
   balance: {
     label: 'This month',
     income: 'Income',
@@ -711,6 +714,7 @@ const en: Dict = {
     deleteTemplate: 'Delete template',
     deleteTemplateConfirm: 'Remove this template from the list?',
     monthReportTitle: 'Monthly summary',
+    yearReportTitle: 'Yearly summary',
     reportHoursTotal: 'Hours worked',
     salaryForReportHint: 'For the report: hourly rate or fixed amount per shift. Currency: hryvnia or zloty.',
     shiftPayment: 'Pay for this shift',

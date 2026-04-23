@@ -861,15 +861,24 @@ app.patch('/api/subscriptions/:id', async (req, res) => {
 });
 
 app.get('/api/planner', async (req, res) => {
+  const yearQ = String(req.query.year ?? '');
   const month = String(req.query.month ?? '');
-  if (!/^\d{4}-\d{2}$/.test(month)) {
-    res.status(400).json({ error: 'month query must be in YYYY-MM format' });
+
+  let likePattern;
+  if (yearQ && /^\d{4}$/.test(yearQ)) {
+    likePattern = `${yearQ}-%`;
+  } else if (/^\d{4}-\d{2}$/.test(month)) {
+    likePattern = `${month}-%`;
+  } else {
+    res
+      .status(400)
+      .json({ error: 'Query month=YYYY-MM or year=YYYY' });
     return;
   }
 
   const days = await db.all(
     'SELECT day, hasShift, workedHours, salaryRate, salaryAmount, salary_currency, note, updatedAt FROM planner_days WHERE day LIKE ? ORDER BY day ASC',
-    [`${month}-%`]
+    [likePattern]
   );
 
   res.json(

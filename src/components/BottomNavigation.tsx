@@ -1,11 +1,10 @@
 import React from 'react';
-import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { Home, CalendarDays, WalletCards, Settings as SettingsIcon, Plus, PieChart } from 'lucide-react';
+import { NavLink, useLocation } from 'react-router-dom';
+import { Home, CalendarDays, WalletCards, Settings as SettingsIcon, PieChart } from 'lucide-react';
 import { useTranslation } from '../i18n/LanguageContext';
 import styles from './BottomNavigation.module.css';
 
 const BottomNavigation: React.FC = () => {
-  const navigate = useNavigate();
   const location = useLocation();
   const { t } = useTranslation();
   const pathname = location.pathname;
@@ -16,11 +15,11 @@ const BottomNavigation: React.FC = () => {
       : pathname.startsWith('/calendar')
         ? 2
         : pathname.startsWith('/accounts')
-          ? 4
+          ? 3
           : pathname.startsWith('/stats')
-            ? 5
+            ? 4
             : pathname.startsWith('/settings')
-              ? 6
+              ? 5
               : null;
 
   return (
@@ -51,15 +50,6 @@ const BottomNavigation: React.FC = () => {
         >
           <CalendarDays size={24} strokeWidth={2} />
         </NavLink>
-
-        <button
-          type="button"
-          className={styles.fab}
-          onClick={() => navigate('/add')}
-          aria-label="Add transaction"
-        >
-          <Plus size={28} strokeWidth={2.4} />
-        </button>
 
         <NavLink
           to="/accounts"

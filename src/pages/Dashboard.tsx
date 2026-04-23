@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Plus } from 'lucide-react';
 import { useTransactions } from '../context/TransactionContext';
 import { useTranslation } from '../i18n/LanguageContext';
 import Header from '../components/ui/Header';
@@ -19,7 +20,6 @@ const Dashboard: React.FC = () => {
     const now = new Date();
     return (iso: string) => {
       const d = new Date(iso);
-      if (range === 'all') return true;
       if (range === 'today') return d.toDateString() === now.toDateString();
       if (range === 'week') {
         const diff = (now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24);
@@ -28,7 +28,8 @@ const Dashboard: React.FC = () => {
       if (range === 'month') {
         return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
       }
-      return true;
+      if (range === 'year') return d.getFullYear() === now.getFullYear();
+      return false;
     };
   }, [range]);
 
@@ -56,6 +57,15 @@ const Dashboard: React.FC = () => {
 
   return (
     <div className={styles.container}>
+      <button
+        type="button"
+        className={styles.fabAdd}
+        onClick={() => navigate('/add')}
+        aria-label={t('dashboard', 'addTransaction')}
+      >
+        <Plus size={28} strokeWidth={2.4} />
+      </button>
+
       <div className={styles.content}>
         <Header />
 

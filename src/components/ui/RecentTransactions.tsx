@@ -6,7 +6,7 @@ import { useTranslation } from '../../i18n/LanguageContext';
 import TransactionItem from './TransactionItem';
 import styles from './RecentTransactions.module.css';
 
-export type RangeFilter = 'today' | 'week' | 'month' | 'all';
+export type RangeFilter = 'today' | 'week' | 'month' | 'year';
 
 interface Props {
   transactions: Transaction[];
@@ -48,7 +48,7 @@ const RecentTransactions: React.FC<Props> = ({
 
   const visible = transactions.slice(0, limit);
 
-  const ranges: RangeFilter[] = ['today', 'week', 'month', 'all'];
+  const ranges: RangeFilter[] = ['today', 'week', 'month', 'year'];
 
   return (
     <section className={styles.section}>

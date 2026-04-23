@@ -4,6 +4,43 @@
   position: relative;
 }
 
+.fabAdd {
+  position: fixed;
+  z-index: 1001;
+  right: max(20px, var(--safe-area-inset-right));
+  bottom: calc(var(--bottom-nav-height) + var(--safe-area-inset-bottom) + 12px);
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: none;
+  background: var(--accent-yellow);
+  color: #1a1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow:
+    0 8px 22px rgba(255, 213, 59, 0.28),
+    0 2px 8px rgba(0, 0, 0, 0.22);
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.28s ease,
+    filter 0.28s ease;
+}
+
+.fabAdd:active {
+  transform: scale(0.95);
+  box-shadow:
+    0 4px 12px rgba(255, 213, 59, 0.22),
+    0 1px 4px rgba(0, 0, 0, 0.16);
+  filter: brightness(0.98);
+}
+
+.fabAdd:focus-visible {
+  outline: 2px solid rgba(255, 213, 59, 0.95);
+  outline-offset: 3px;
+}
+
 .content {
   padding: 0 20px;
   display: flex;
