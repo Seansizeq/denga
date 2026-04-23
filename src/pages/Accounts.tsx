@@ -146,7 +146,7 @@ const Accounts: React.FC = () => {
         title: t('balance', 'sectionBank'),
         total: '',
         variant: 'strip' as const,
-        collapsible: false,
+        collapsible: true,
         defaultOpen: true,
         rows: [] as Array<{
           id: string;
@@ -414,7 +414,7 @@ const Accounts: React.FC = () => {
         title: t('balance', 'sectionBank'),
         total: sumSectionFiat('bank', 'UAH'),
         variant: 'strip' as const,
-        collapsible: false,
+        collapsible: true,
         defaultOpen: true,
         rows: bankRows,
       },
