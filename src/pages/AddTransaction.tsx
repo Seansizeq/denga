@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import * as LucideIcons from 'lucide-react';
 import { X } from 'lucide-react';
@@ -11,13 +11,32 @@ import {
   type CustomCategoryIcon,
 } from '../constants/categories';
 import { useTranslation } from '../i18n/LanguageContext';
+import type { Language } from '../i18n/translations';
 import type { TransactionType } from '../types';
+import {
+  ACCOUNT_NOTE_KEYS,
+  getAccountSlugFromNote,
+  mergeAccountIntoNote,
+  stripAccountFromNote,
+  type AccountNoteKey,
+} from '../utils/transactionAccount';
 import styles from './AddTransaction.module.css';
+
+const ACCOUNT_CHIP_LABELS: Record<AccountNoteKey, Record<Language, string>> = {
+  pumb: { uk: 'PUMB', ru: 'PUMB', en: 'PUMB' },
+  privat24: { uk: 'Privat24', ru: 'Privat24', en: 'Privat24' },
+  wallet: { uk: 'Готівка', ru: 'Наличные', en: 'Cash' },
+  crypto: { uk: 'Crypto', ru: 'Крипто', en: 'Crypto' },
+  sol: { uk: 'SOL', ru: 'SOL', en: 'SOL' },
+  ton: { uk: 'TON', ru: 'TON', en: 'TON' },
+  usdt: { uk: 'USDT', ru: 'USDT', en: 'USDT' },
+  misha: { uk: 'Борг', ru: 'Долг', en: 'Debt' },
+};
 
 const AddTransaction: React.FC = () => {
   const navigate = useNavigate();
   const { transactions, addTransaction, updateTransaction } = useTransactions();
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const [searchParams] = useSearchParams();
   const editId = searchParams.get('edit')?.trim() ?? '';
   const editingTransaction = editId ? transactions.find((tx) => tx.id === editId) : undefined;
@@ -35,8 +54,10 @@ const AddTransaction: React.FC = () => {
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryIcon, setNewCategoryIcon] = useState<CustomCategoryIcon>('Tag');
   const [newCategoryColor, setNewCategoryColor] = useState('#8E8E93');
-  const [note, setNote] = useState(() => editingTransaction?.note ?? '');
+  const [note, setNote] = useState(() => stripAccountFromNote(editingTransaction?.note ?? ''));
+  const [paymentAccount, setPaymentAccount] = useState<string>(() => getAccountSlugFromNote(editingTransaction?.note) ?? '');
   const [saveError, setSaveError] = useState('');
+  const hydratedEditRef = useRef<string>('');
   const [customCategories, setCustomCategories] = useState<
     Array<{ id: string; name: string; icon: string; color: string }>
   >([]);
@@ -46,8 +67,64 @@ const AddTransaction: React.FC = () => {
     { id: string; name: string; icon: string; color: string; isCustom: boolean } | null
   >(null);
   const [editingCustomId, setEditingCustomId] = useState<string | null>(null);
+  const [portfolioAccounts, setPortfolioAccounts] = useState<Array<{ key: string; name: string }>>([]);
 
   const API_URL = import.meta.env.VITE_API_URL ?? '';
+
+  const allowedPaymentKeys = useMemo(() => {
+    const s = new Set<string>([...ACCOUNT_NOTE_KEYS]);
+    portfolioAccounts.forEach((r) => s.add(r.key));
+    return s;
+  }, [portfolioAccounts]);
+
+  const paymentChipOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const out: { key: string; label: string }[] = [];
+    for (const r of portfolioAccounts) {
+      if (!r.key || seen.has(r.key)) continue;
+      seen.add(r.key);
+      out.push({ key: r.key, label: r.name });
+    }
+    for (const k of ACCOUNT_NOTE_KEYS) {
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push({ key: k, label: ACCOUNT_CHIP_LABELS[k][language] });
+    }
+    return out;
+  }, [portfolioAccounts, language]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadPortfolio = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/accounts`);
+        if (!res.ok || cancelled) return;
+        const data: unknown = await res.json();
+        if (!Array.isArray(data) || cancelled) return;
+        const list: Array<{ key: string; name: string }> = [];
+        for (const row of data) {
+          if (!row || typeof row !== 'object') continue;
+          const r = row as Record<string, unknown>;
+          const key = String(r.accountKey ?? '')
+            .trim()
+            .toLowerCase();
+          if (!key) continue;
+          const name = String(r.name ?? r.accountKey ?? '')
+            .trim()
+            .slice(0, 40);
+          list.push({ key, name: name || key });
+        }
+        list.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+        if (!cancelled) setPortfolioAccounts(list);
+      } catch {
+        if (!cancelled) setPortfolioAccounts([]);
+      }
+    };
+    void loadPortfolio();
+    return () => {
+      cancelled = true;
+    };
+  }, [API_URL]);
 
   useEffect(() => {
     let cancelled = false;
@@ -84,17 +161,41 @@ const AddTransaction: React.FC = () => {
     localStorage.setItem('category_overrides_v1', JSON.stringify(categoryOverrides));
   }, [categoryOverrides]);
 
+  useEffect(() => {
+    if (!editId) {
+      hydratedEditRef.current = '';
+      return;
+    }
+    if (hydratedEditRef.current === editId) return;
+    const tx = transactions.find((x) => x.id === editId);
+    if (!tx) return;
+    hydratedEditRef.current = editId;
+    setAmount(String(tx.amount));
+    setType(tx.type);
+    setCategoryId(tx.categoryId);
+    setPaymentAccount(getAccountSlugFromNote(tx.note) ?? '');
+    setNote(stripAccountFromNote(tx.note ?? ''));
+  }, [editId, transactions]);
+
+  useEffect(() => {
+    if (!editId) setPaymentAccount('');
+  }, [editId]);
+
   const canCreateCustomCategory = newCategoryName.trim().length > 0;
 
   const handleSave = async () => {
     setSaveError('');
     const numAmount = parseFloat(amount.replace(',', '.'));
     if (!numAmount || numAmount <= 0) return;
+    const mergedNote =
+      type === 'expense'
+        ? mergeAccountIntoNote(note.trim(), paymentAccount, allowedPaymentKeys)
+        : stripAccountFromNote(note.trim());
     const payload = {
       amount: numAmount,
       type,
       categoryId,
-      note: note.trim() || undefined,
+      note: mergedNote || undefined,
     };
     const ok = isEditing && editId ? await updateTransaction(editId, payload) : await addTransaction(payload);
     if (!ok) {
@@ -146,6 +247,7 @@ const AddTransaction: React.FC = () => {
             setType('income');
             setCategoryId('salary');
             setIsCreatingCustom(false);
+            setPaymentAccount('');
           }}
         >
           {t('addTx', 'income')}
@@ -168,6 +270,32 @@ const AddTransaction: React.FC = () => {
         />
         <span className={styles.currency}>₴</span>
       </div>
+
+      {type === 'expense' ? (
+        <section className={styles.paymentSection} aria-label={t('addTx', 'paymentAccount')}>
+          <h3 className={styles.sectionTitle}>{t('addTx', 'paymentAccount')}</h3>
+          <p className={styles.paymentHint}>{t('addTx', 'paymentAccountHint')}</p>
+          <div className={styles.paymentChips}>
+            <button
+              type="button"
+              className={`${styles.paymentChip} ${paymentAccount === '' ? styles.paymentChipActive : ''}`}
+              onClick={() => setPaymentAccount('')}
+            >
+              {t('addTx', 'paymentAccountNone')}
+            </button>
+            {paymentChipOptions.map(({ key, label }) => (
+              <button
+                key={key}
+                type="button"
+                className={`${styles.paymentChip} ${paymentAccount === key ? styles.paymentChipActive : ''}`}
+                onClick={() => setPaymentAccount(paymentAccount === key ? '' : key)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section className={styles.categorySection}>
         <h3 className={styles.sectionTitle}>{t('addTx', 'category')}</h3>
@@ -398,7 +526,7 @@ const AddTransaction: React.FC = () => {
           onChange={(e) => setNote(e.target.value)}
           placeholder={t('addTx', 'notePlaceholder')}
           className={styles.noteInput}
-          maxLength={80}
+          maxLength={120}
         />
       </section>
 

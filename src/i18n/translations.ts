@@ -62,6 +62,9 @@ type Dict = {
     create: string;
     deleteConfirm: string;
     saveFailed: string;
+    paymentAccount: string;
+    paymentAccountHint: string;
+    paymentAccountNone: string;
   };
   history: { title: string; empty: string; deleteConfirm: string; edit: string; delete: string };
   planner: {
@@ -249,6 +252,9 @@ const uk: Dict = {
     create: 'Створити',
     deleteConfirm: 'Видалити цю категорію?',
     saveFailed: 'Не вдалося зберегти. Перевір з’єднання і спробуй ще раз.',
+    paymentAccount: 'Звідки списати',
+    paymentAccountHint: 'Обери карту чи готівку — на «Рахунках» оновиться відповідний баланс',
+    paymentAccountNone: 'Не вказано',
   },
   history: {
     title: 'Історія',
@@ -447,6 +453,9 @@ const ru: Dict = {
     create: 'Создать',
     deleteConfirm: 'Удалить эту категорию?',
     saveFailed: 'Не удалось сохранить. Проверь соединение и попробуй снова.',
+    paymentAccount: 'Откуда списать',
+    paymentAccountHint: 'Выбери карту или наличные — на «Счетах» обновится баланс',
+    paymentAccountNone: 'Не указано',
   },
   history: {
     title: 'История',
@@ -645,6 +654,9 @@ const en: Dict = {
     create: 'Create',
     deleteConfirm: 'Delete this category?',
     saveFailed: 'Could not save. Check your connection and try again.',
+    paymentAccount: 'Debit from',
+    paymentAccountHint: 'Pick a card or cash — balances update on Accounts',
+    paymentAccountNone: 'Not set',
   },
   history: {
     title: 'History',

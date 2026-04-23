@@ -5,6 +5,7 @@ import AccountsSnapshot from '../components/ui/AccountsSnapshot';
 import AccountEditSheet, { type EditableAccount } from '../components/ui/AccountEditSheet';
 import { useTransactions } from '../context/TransactionContext';
 import { getCustomCategoryName } from '../constants/categories';
+import { getAccountSlugFromNote } from '../utils/transactionAccount';
 import { useTranslation } from '../i18n/LanguageContext';
 import styles from './Accounts.module.css';
 
@@ -221,8 +222,40 @@ const Accounts: React.FC = () => {
       misha: { section: 'debt', label: 'Misha', badge: 'M', debtPhrase: 'мені винні', aliases: ['миша'] },
     };
 
-    const aliasToKey = new Map<string, keyof typeof accountMeta>();
-    (Object.keys(accountMeta) as Array<keyof typeof accountMeta>).forEach((k) => {
+    for (const row of portfolio) {
+      const k = row.accountKey.trim().toLowerCase();
+      if (!k) continue;
+      const badgeRaw = (row.badge ?? '').trim();
+      const nameRaw = row.name.trim() || k;
+      const badge =
+        badgeRaw.slice(0, 2).toUpperCase() ||
+        nameRaw.replace(/[^a-zA-Zа-яА-ЯіІїЇєЄґҐ0-9]/g, '').slice(0, 2).toUpperCase() ||
+        k.slice(0, 2).toUpperCase();
+      const prev = accountMeta[k];
+      accountMeta[k] = {
+        section: row.section,
+        label: nameRaw,
+        badge: badge.slice(0, 2),
+        debtPhrase:
+          row.section === 'debt' && row.debtPhrase?.trim()
+            ? row.debtPhrase.trim()
+            : prev?.debtPhrase,
+        aliases: prev?.aliases,
+      };
+    }
+
+    transactions.forEach((tx) => {
+      const slug = getAccountSlugFromNote(tx.note);
+      if (!slug || accountMeta[slug]) return;
+      accountMeta[slug] = {
+        section: 'bank',
+        label: slug,
+        badge: slug.slice(0, 2).toUpperCase(),
+      };
+    });
+
+    const aliasToKey = new Map<string, string>();
+    (Object.keys(accountMeta) as string[]).forEach((k) => {
       const meta = accountMeta[k];
       aliasToKey.set(normalizeLabel(String(k)), k);
       aliasToKey.set(normalizeLabel(meta.label), k);
@@ -253,13 +286,13 @@ const Accounts: React.FC = () => {
 
     const accountTotals = new Map<string, AccountTotals>();
 
-    const resolveAccountKey = (rawCategoryId: string): keyof typeof accountMeta | null => {
+    const resolveAccountKey = (rawCategoryId: string): string | null => {
       const id = rawCategoryId.trim();
       if (!id) return null;
 
       const direct = id.toLowerCase();
-      if (accountMeta[direct as keyof typeof accountMeta]) {
-        return direct as keyof typeof accountMeta;
+      if (accountMeta[direct]) {
+        return direct;
       }
 
       const fromCustomName = getCustomCategoryName(id);
@@ -268,7 +301,6 @@ const Accounts: React.FC = () => {
         if (hit) return hit;
       }
 
-      // Last resort: try loose substring match for known account labels
       const hay = normalizeLabel(`${fromCustomName ?? ''} ${id}`);
       for (const [alias, k] of aliasToKey.entries()) {
         if (!alias) continue;
@@ -278,14 +310,22 @@ const Accounts: React.FC = () => {
       return null;
     };
 
-    (Object.keys(accountMeta) as Array<keyof typeof accountMeta>).forEach((k) => {
+    const resolveTransactionAccountKey = (tx: { categoryId: string; note?: string }): string | null => {
+      const fromNote = getAccountSlugFromNote(tx.note);
+      if (fromNote && accountMeta[fromNote]) {
+        return fromNote;
+      }
+      return resolveAccountKey(tx.categoryId);
+    };
+
+    (Object.keys(accountMeta) as string[]).forEach((k) => {
       accountTotals.set(String(k), emptyTotals());
     });
 
     transactions.forEach((tx) => {
-      const key = resolveAccountKey(tx.categoryId);
+      const key = resolveTransactionAccountKey(tx);
       if (!key) return;
-      const meta = accountMeta[key];
+      const meta = accountMeta[key as string];
       if (!meta) return;
       const sign = tx.type === 'income' ? 1 : -1;
       const currency = getCurrencyFromNote(tx.note);
@@ -299,7 +339,7 @@ const Accounts: React.FC = () => {
       accountTotals.set(String(key), current);
     });
 
-    const pushAccount = (key: keyof typeof accountMeta) => {
+    const pushAccount = (key: string) => {
       const meta = accountMeta[key];
       const total = accountTotals.get(String(key)) ?? emptyTotals();
       const primary = pickPrimaryFiat(total);
@@ -308,7 +348,7 @@ const Accounts: React.FC = () => {
         ([currency, amount]) => currency !== 'UAH' && currency !== 'PLN' && amount > 0
       );
       const iconTone: 'bank' | 'cash' | 'crypto' | 'debt' | 'neutral' =
-        key === 'misha' ? 'debt' : meta.section === 'bank' ? 'bank' : meta.section;
+        meta.section === 'debt' ? 'debt' : meta.section === 'bank' ? 'bank' : meta.section;
       base[meta.section].rows.push({
         id: String(key),
         name: meta.label,
@@ -321,14 +361,14 @@ const Accounts: React.FC = () => {
       });
     };
 
-    pushAccount('pumb');
-    pushAccount('privat24');
-    pushAccount('wallet');
-    pushAccount('crypto');
-    pushAccount('sol');
-    pushAccount('ton');
-    pushAccount('usdt');
-    pushAccount('misha');
+    const ROW_KEY_ORDER = ['pumb', 'privat24', 'wallet', 'crypto', 'sol', 'ton', 'usdt', 'misha'];
+    const orderedAccountKeys = [
+      ...ROW_KEY_ORDER.filter((k) => accountMeta[k]),
+      ...Object.keys(accountMeta)
+        .filter((k) => !ROW_KEY_ORDER.includes(k))
+        .sort((a, b) => a.localeCompare(b)),
+    ];
+    orderedAccountKeys.forEach((k) => pushAccount(k));
 
     const calculateSectionTotal = (rows: Array<{ id: string }>, defaultCurrency: 'UAH' | 'PLN' = 'UAH') => {
       if (!rows.length) return `0 ${defaultCurrency === 'PLN' ? 'zł' : defaultCurrency}`;
@@ -357,7 +397,7 @@ const Accounts: React.FC = () => {
     base.debt.total = calculateSectionTotal(base.debt.rows, 'PLN');
 
     return [base.bank, base.cash, base.crypto, base.debt];
-  }, [transactions, t]);
+  }, [transactions, t, portfolio]);
 
   const portfolioSnapshotSections = useMemo(() => {
     type Row = {
