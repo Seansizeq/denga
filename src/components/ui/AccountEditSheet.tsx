@@ -28,12 +28,19 @@ const parseMoney = (raw: string): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
+const COLOR_OPTIONS: Array<{ tone: EditableAccount['iconTone']; label: string; swatch: string }> = [
+  { tone: 'bank', label: 'Жовтий', swatch: '#ffb020' },
+  { tone: 'cash', label: 'Фіолетовий', swatch: '#8f74ff' },
+  { tone: 'crypto', label: 'Блакитний', swatch: '#58b7ff' },
+  { tone: 'debt', label: 'Сірий', swatch: '#9a9aa3' },
+  { tone: 'neutral', label: 'Нейтральний', swatch: '#73737c' },
+];
+
 const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, onSave }) => {
   const [name, setName] = useState(() => initial.name);
   const [amount, setAmount] = useState(() => String(initial.primaryAmount));
   const [currency, setCurrency] = useState<'UAH' | 'PLN'>(() => initial.primaryCurrency);
   const [section, setSection] = useState<EditableAccount['section']>(() => initial.section);
-  const [subText, setSubText] = useState(() => initial.subText);
   const [badge, setBadge] = useState(() => initial.badge);
   const [debtPhrase, setDebtPhrase] = useState(() => initial.debtPhrase);
   const [iconTone, setIconTone] = useState<EditableAccount['iconTone']>(() => initial.iconTone);
@@ -53,7 +60,7 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
         name: name.trim(),
         primaryAmount: n,
         primaryCurrency: currency,
-        subText: subText.trim(),
+        subText: initial.subText,
         badge: badge.trim(),
         debtPhrase: debtPhrase.trim(),
         iconTone,
@@ -97,11 +104,6 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
             </label>
           </div>
 
-          <label className={styles.label}>
-            Підпис (крипта / деталі)
-            <input className={styles.input} value={subText} onChange={(e) => setSubText(e.target.value)} maxLength={80} />
-          </label>
-
           <div className={styles.row2}>
             <label className={styles.label}>
               Бейдж
@@ -122,20 +124,23 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
             </label>
           </div>
 
-          <label className={styles.label}>
-              Тон іконки
-              <select
-                className={styles.select}
-                value={iconTone}
-                onChange={(e) => setIconTone(e.target.value as EditableAccount['iconTone'])}
-              >
-                <option value="bank">bank</option>
-                <option value="cash">cash</option>
-                <option value="crypto">crypto</option>
-                <option value="debt">debt</option>
-                <option value="neutral">neutral</option>
-              </select>
-            </label>
+          <fieldset className={styles.colorFieldset}>
+            <legend className={styles.label}>Колір</legend>
+            <div className={styles.colorGrid}>
+              {COLOR_OPTIONS.map((option) => (
+                <button
+                  key={option.tone}
+                  type="button"
+                  className={`${styles.colorButton} ${iconTone === option.tone ? styles.colorButtonActive : ''}`}
+                  onClick={() => setIconTone(option.tone)}
+                  aria-pressed={iconTone === option.tone}
+                >
+                  <span className={styles.colorSwatch} style={{ backgroundColor: option.swatch }} />
+                  <span>{option.label}</span>
+                </button>
+              ))}
+            </div>
+          </fieldset>
 
           {canEditDebtPhrase ? (
             <label className={styles.label}>

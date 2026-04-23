@@ -87,6 +87,47 @@
   letter-spacing: 0.04em;
 }
 
+.colorFieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.colorGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.colorButton {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #1c1c1e;
+  color: #fff;
+  border-radius: 12px;
+  min-height: 40px;
+  padding: 8px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.84rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: left;
+}
+
+.colorButtonActive {
+  border-color: rgba(255, 255, 255, 0.35);
+  background: #2a2a2e;
+}
+
+.colorSwatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.3);
+  flex: 0 0 auto;
+}
+
 .input,
 .select {
   width: 100%;
