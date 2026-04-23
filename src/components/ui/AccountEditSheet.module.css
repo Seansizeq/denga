@@ -1,11 +1,12 @@
 .overlay {
   position: fixed;
   inset: 0;
-  z-index: 60;
+  z-index: 120;
   display: flex;
   align-items: flex-end;
   justify-content: center;
   pointer-events: auto;
+  padding: 0 10px calc(var(--bottom-nav-height) + 10px + env(safe-area-inset-bottom));
 }
 
 .scrim {
@@ -19,11 +20,15 @@
   position: relative;
   width: 100%;
   max-width: 520px;
+  max-height: min(78vh, 760px);
   border-top-left-radius: 18px;
   border-top-right-radius: 18px;
   background: #111113;
   border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: 0 -18px 50px rgba(0, 0, 0, 0.55);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .sheetHeader {
@@ -64,10 +69,11 @@
 }
 
 .body {
-  padding: 12px 12px 4px 12px;
+  padding: 12px 12px 10px 12px;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  overflow-y: auto;
 }
 
 .label {
@@ -109,8 +115,9 @@
 .footer {
   display: flex;
   gap: 10px;
-  padding: 12px;
+  padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
   border-top: 1px solid rgba(255, 255, 255, 0.06);
+  background: #111113;
 }
 
 .primary,
@@ -141,8 +148,12 @@
 }
 
 @media (min-width: 700px) {
+  .overlay {
+    padding: 0 10px 20px;
+  }
+
   .sheet {
-    margin-bottom: 20px;
     border-radius: 18px;
+    max-height: min(86vh, 760px);
   }
 }
