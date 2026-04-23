@@ -184,18 +184,6 @@ const CATEGORIES = [
 const pendingTransactions = new Map();
 const CUSTOM_CATEGORY_PREFIX = 'custom:';
 const CUSTOM_CATEGORY_SEPARATOR = '|';
-const BOT_ACTIONS = {
-  addTransaction: '💸 Записати транзакцію',
-  startShift: '🟢 Почати зміну',
-  endShift: '🔴 Завершити зміну',
-};
-const MAIN_MENU_KEYBOARD = {
-  keyboard: [
-    [{ text: BOT_ACTIONS.addTransaction }],
-    [{ text: BOT_ACTIONS.startShift }, { text: BOT_ACTIONS.endShift }],
-  ],
-  resize_keyboard: true,
-};
 
 const normalizeCategoryName = (name) => name.trim().replace(/\s+/g, ' ').toLowerCase();
 
@@ -218,177 +206,34 @@ const parseCustomCategoryId = (id) => {
   }
 };
 
-const formatLocalDay = (isoLike) => {
-  const d = new Date(isoLike);
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
-
-const formatLocalTime = (isoLike) => {
-  const d = new Date(isoLike);
-  const hours = String(d.getHours()).padStart(2, '0');
-  const minutes = String(d.getMinutes()).padStart(2, '0');
-  return `${hours}:${minutes}`;
-};
-
-const startShiftFromBot = async (msg) => {
-  const telegramUserId = msg.from.id;
-  const chatId = msg.chat.id;
-  const active = await db.get(
-    `SELECT id, started_at
-     FROM shift_sessions
-     WHERE telegram_user_id = ? AND status = 'active'
-     LIMIT 1`,
-    [telegramUserId]
-  );
-  if (active) {
-    await bot.sendMessage(chatId, `У тебе вже є активна зміна з ${formatLocalTime(active.started_at)}.`, {
-      reply_markup: MAIN_MENU_KEYBOARD,
-    });
-    return;
-  }
-
-  const now = new Date().toISOString();
-  await db.run(
-    `INSERT INTO shift_sessions
-     (id, telegram_user_id, chat_id, started_at, status, created_at, updated_at)
-     VALUES (?, ?, ?, ?, 'active', ?, ?)`,
-    [uuidv4(), telegramUserId, chatId, now, now, now]
-  );
-  await bot.sendMessage(chatId, `Зміну розпочато о ${formatLocalTime(now)}. Коли завершиш — натисни "Завершити зміну".`, {
-    reply_markup: MAIN_MENU_KEYBOARD,
-  });
-};
-
-const endShiftFromBot = async (msg) => {
-  const telegramUserId = msg.from.id;
-  const chatId = msg.chat.id;
-  const active = await db.get(
-    `SELECT id, started_at
-     FROM shift_sessions
-     WHERE telegram_user_id = ? AND status = 'active'
-     LIMIT 1`,
-    [telegramUserId]
-  );
-  if (!active) {
-    await bot.sendMessage(chatId, 'Немає активної зміни. Спочатку натисни "Почати зміну".', {
-      reply_markup: MAIN_MENU_KEYBOARD,
-    });
-    return;
-  }
-
-  const endedAt = new Date();
-  const endedAtIso = endedAt.toISOString();
-  const startedAt = new Date(active.started_at);
-  const rawHours = Math.max(0, (endedAt.getTime() - startedAt.getTime()) / (1000 * 60 * 60));
-  const workedHours = Number(rawHours.toFixed(2));
-  const plannerDay = formatLocalDay(active.started_at);
-  const shiftNote = `Зміна ${formatLocalTime(active.started_at)}-${formatLocalTime(endedAtIso)} (бот)`;
-
-  await db.run('BEGIN');
-  try {
-    const existingPlanner = await db.get(
-      `SELECT workedHours, salaryRate, salaryAmount, salary_currency, note
-       FROM planner_days
-       WHERE day = ?
-       LIMIT 1`,
-      [plannerDay]
-    );
-    const prevWorkedHours = Number(existingPlanner?.workedHours) || 0;
-    const prevSalaryRate = Number(existingPlanner?.salaryRate) || 0;
-    const prevSalaryAmount = Number(existingPlanner?.salaryAmount) || 0;
-    const salaryCurrency = existingPlanner?.salary_currency === 'PLN' ? 'PLN' : 'UAH';
-    const prevNote = typeof existingPlanner?.note === 'string' ? existingPlanner.note.trim() : '';
-    const mergedWorkedHours = Number((prevWorkedHours + workedHours).toFixed(2));
-    const addedSalaryAmount = Number((workedHours * prevSalaryRate).toFixed(2));
-    const mergedSalaryAmount = Number((prevSalaryAmount + addedSalaryAmount).toFixed(2));
-    const mergedNote = prevNote ? `${prevNote}\n${shiftNote}` : shiftNote;
-
-    await db.run(
-      `INSERT INTO planner_days (day, hasShift, workedHours, salaryRate, salaryAmount, salary_currency, note, updatedAt)
-       VALUES (?, 1, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(day) DO UPDATE SET
-         hasShift = 1,
-         workedHours = excluded.workedHours,
-         salaryRate = excluded.salaryRate,
-         salaryAmount = excluded.salaryAmount,
-         salary_currency = excluded.salary_currency,
-         note = excluded.note,
-         updatedAt = excluded.updatedAt`,
-      [plannerDay, mergedWorkedHours, prevSalaryRate, mergedSalaryAmount, salaryCurrency, mergedNote, endedAtIso]
-    );
-
-    await db.run(
-      `UPDATE shift_sessions
-       SET ended_at = ?, worked_hours = ?, planner_day = ?, status = 'completed', updated_at = ?
-       WHERE id = ?`,
-      [endedAtIso, workedHours, plannerDay, endedAtIso, active.id]
-    );
-
-    await db.run('COMMIT');
-  } catch (error) {
-    await db.run('ROLLBACK');
-    throw error;
-  }
-
-  await bot.sendMessage(
-    chatId,
-    `Зміну завершено. Тривалість: ${workedHours} год.\nЗапис додано в календар на ${plannerDay}.`,
-    { reply_markup: MAIN_MENU_KEYBOARD }
-  );
-};
-
 bot.onText(/\/start/, async (msg) => {
   await db.run(
     'INSERT OR REPLACE INTO users (telegram_id, chat_id) VALUES (?, ?)',
     [msg.from.id, msg.chat.id]
   );
-  bot.sendMessage(
-    msg.chat.id,
-    'Привіт! Я твій помічник Denga.\n- Натисни "Записати транзакцію" і відправ суму.\n- Кнопки "Почати зміну"/"Завершити зміну" автоматично оновлюють календар.',
-    { reply_markup: MAIN_MENU_KEYBOARD }
-  );
+  bot.sendMessage(msg.chat.id, 'Привіт! Я твій помічник Denga. Надішли мені суму (наприклад, 100), щоб додати транзакцію.');
 });
 
 bot.on('message', async (msg) => {
-  const text = typeof msg.text === 'string' ? msg.text.trim() : '';
-  if (!text || text.startsWith('/')) return;
-
-  if (text === BOT_ACTIONS.startShift) {
-    await startShiftFromBot(msg);
-    return;
+  if (msg.text && !msg.text.startsWith('/')) {
+    const amount = parseFloat(msg.text);
+    if (!isNaN(amount)) {
+      pendingTransactions.set(msg.chat.id, { amount });
+      
+      const keyboard = {
+        inline_keyboard: CATEGORIES.map(c => [{ text: c.name, callback_data: `cat_${c.id}` }])
+      };
+      
+      bot.sendMessage(msg.chat.id, `Виберіть категорію для суми ${amount}:`, { reply_markup: keyboard });
+    }
   }
-  if (text === BOT_ACTIONS.endShift) {
-    await endShiftFromBot(msg);
-    return;
-  }
-  if (text === BOT_ACTIONS.addTransaction) {
-    await bot.sendMessage(msg.chat.id, 'Відправ суму числом, наприклад: 250');
-    return;
-  }
-
-  const amount = parseFloat(text.replace(',', '.'));
-  if (!Number.isNaN(amount)) {
-    pendingTransactions.set(msg.chat.id, { amount });
-    const keyboard = {
-      inline_keyboard: CATEGORIES.map((c) => [{ text: c.name, callback_data: `cat_${c.id}` }]),
-    };
-    await bot.sendMessage(msg.chat.id, `Виберіть категорію для суми ${amount}:`, { reply_markup: keyboard });
-    return;
-  }
-
-  await bot.sendMessage(msg.chat.id, 'Не зрозумів команду. Використай кнопки нижче.', {
-    reply_markup: MAIN_MENU_KEYBOARD,
-  });
 });
 
 bot.on('callback_query', async (callbackQuery) => {
   const chatId = callbackQuery.message.chat.id;
   const pending = pendingTransactions.get(chatId);
   
-  if (pending && callbackQuery.data?.startsWith('cat_')) {
+  if (pending && callbackQuery.data.startsWith('cat_')) {
     const categoryId = callbackQuery.data.replace('cat_', '');
     const category = CATEGORIES.find(c => c.id === categoryId);
     
@@ -411,9 +256,7 @@ bot.on('callback_query', async (callbackQuery) => {
 
     pendingTransactions.delete(chatId);
     bot.answerCallbackQuery(callbackQuery.id);
-    bot.sendMessage(chatId, `✅ Транзакцію ${pending.amount} (${category?.name ?? categoryId}) додано!`, {
-      reply_markup: MAIN_MENU_KEYBOARD,
-    });
+    bot.sendMessage(chatId, `✅ Транзакцію ${pending.amount} (${category.name}) додано!`);
   }
 });
 

@@ -134,27 +134,6 @@ export async function initDb() {
   `);
 
   await db.exec(`
-    CREATE TABLE IF NOT EXISTS shift_sessions (
-      id TEXT PRIMARY KEY,
-      telegram_user_id INTEGER NOT NULL,
-      chat_id INTEGER NOT NULL,
-      started_at TEXT NOT NULL,
-      ended_at TEXT,
-      worked_hours REAL NOT NULL DEFAULT 0,
-      planner_day TEXT,
-      status TEXT NOT NULL DEFAULT 'active',
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    )
-  `);
-
-  await db.exec(`
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_shift_sessions_active_user
-    ON shift_sessions(telegram_user_id)
-    WHERE status = 'active'
-  `);
-
-  await db.exec(`
     CREATE TABLE IF NOT EXISTS account_portfolio (
       account_key TEXT PRIMARY KEY,
       section TEXT NOT NULL,
