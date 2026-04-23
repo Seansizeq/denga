@@ -618,16 +618,13 @@ const CalendarPlanner: React.FC = () => {
         >
           <section className={styles.modalSheetEditor} onClick={(e) => e.stopPropagation()}>
             <div className={styles.editorTop}>
-              <button
-                type="button"
-                className={styles.closeTextBtn}
-                onClick={() => setEditorOpened(false)}
-              >
-                <span className={styles.closeGlyph} aria-hidden>
-                  ✕
-                </span>
-                <span>{t('planner', 'dismiss')}</span>
-              </button>
+                <button
+                  type="button"
+                  className={styles.closeTextBtn}
+                  onClick={() => setEditorOpened(false)}
+                >
+                  <span>{t('planner', 'dismiss')}</span>
+                </button>
               <h2 className={styles.modalTitle}>{t('planner', 'shiftTitle')}</h2>
             </div>
 

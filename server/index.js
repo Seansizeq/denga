@@ -32,7 +32,13 @@ app.use((req, res, next) => {
 app.use(express.static(path.join(__dirname, '../dist')));
 
 const db = await initDb();
-startScheduledDatabaseBackups(db, getDatabasePath());
+const backupChatRaw = process.env.TELEGRAM_BACKUP_CHAT_ID;
+const backupChatId =
+  typeof backupChatRaw === 'string' && backupChatRaw.trim() !== '' ? Number(backupChatRaw.trim()) : NaN;
+startScheduledDatabaseBackups(db, getDatabasePath(), {
+  bot,
+  telegramChatId: Number.isFinite(backupChatId) ? backupChatId : null,
+});
 
 const seedAccountPortfolioIfEmpty = async () => {
   const row = await db.get('SELECT COUNT(*) AS c FROM account_portfolio');
