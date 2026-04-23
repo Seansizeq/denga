@@ -19,6 +19,7 @@ interface AccountEditSheetProps {
   initial: EditableAccount;
   onClose: () => void;
   onSave: (next: EditableAccount) => Promise<void>;
+  onDelete?: (accountKey: string) => Promise<void>;
 }
 
 const parseMoney = (raw: string): number | null => {
@@ -32,11 +33,11 @@ const COLOR_OPTIONS: Array<{ tone: EditableAccount['iconTone']; label: string; s
   { tone: 'bank', label: 'Жовтий', swatch: '#ffb020' },
   { tone: 'cash', label: 'Фіолетовий', swatch: '#8f74ff' },
   { tone: 'crypto', label: 'Блакитний', swatch: '#58b7ff' },
-  { tone: 'debt', label: 'Сірий', swatch: '#9a9aa3' },
+  { tone: 'debt', label: 'Червоний', swatch: '#ff6b6b' },
   { tone: 'neutral', label: 'Нейтральний', swatch: '#73737c' },
 ];
 
-const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, onSave }) => {
+const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, onSave, onDelete }) => {
   const [name, setName] = useState(() => initial.name);
   const [amount, setAmount] = useState(() => String(initial.primaryAmount));
   const [currency, setCurrency] = useState<'UAH' | 'PLN'>(() => initial.primaryCurrency);
@@ -65,6 +66,19 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
         debtPhrase: debtPhrase.trim(),
         iconTone,
       });
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!onDelete || isCreateMode) return;
+    const ok = window.confirm('Видалити цей акаунт?');
+    if (!ok) return;
+    setSaving(true);
+    try {
+      await onDelete(initial.accountKey);
       onClose();
     } finally {
       setSaving(false);
@@ -151,6 +165,11 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
         </div>
 
         <div className={styles.footer}>
+          {!isCreateMode && onDelete ? (
+            <button type="button" className={styles.danger} onClick={handleDelete} disabled={saving}>
+              Видалити
+            </button>
+          ) : null}
           <button type="button" className={styles.secondary} onClick={onClose} disabled={saving}>
             Скасувати
           </button>

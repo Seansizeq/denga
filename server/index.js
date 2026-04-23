@@ -459,6 +459,23 @@ app.put('/api/accounts/:key', async (req, res) => {
   res.json(row);
 });
 
+app.delete('/api/accounts/:key', async (req, res) => {
+  const accountKey = String(req.params.key ?? '').trim();
+  if (!accountKey) {
+    res.status(400).json({ error: 'invalid key' });
+    return;
+  }
+
+  const existing = await db.get('SELECT account_key FROM account_portfolio WHERE account_key = ? LIMIT 1', [accountKey]);
+  if (!existing) {
+    res.status(404).json({ error: 'Account not found' });
+    return;
+  }
+
+  await db.run('DELETE FROM account_portfolio WHERE account_key = ?', [accountKey]);
+  res.status(204).end();
+});
+
 app.get('/api/transactions', async (req, res) => {
   const transactions = await db.all('SELECT * FROM transactions ORDER BY date DESC');
   res.json(transactions);

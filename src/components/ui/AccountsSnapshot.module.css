@@ -216,8 +216,8 @@
 }
 
 .iconDebt {
-  background: rgba(255, 255, 255, 0.10);
-  color: #ffffff;
+  background: linear-gradient(180deg, rgba(255, 132, 132, 0.95) 0%, rgba(232, 72, 72, 0.9) 100%);
+  color: #220607;
 }
 
 .iconNeutral {

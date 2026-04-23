@@ -568,6 +568,21 @@ const Accounts: React.FC = () => {
     [loadPortfolio]
   );
 
+  const handleDeleteAccount = useCallback(
+    async (accountKey: string) => {
+      const key = accountKey.trim();
+      if (!key) return;
+      const res = await fetch(`${API_URL}/api/accounts/${encodeURIComponent(key)}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        throw new Error('delete failed');
+      }
+      await loadPortfolio();
+    },
+    [loadPortfolio]
+  );
+
   return (
     <div className={styles.container}>
       <div className={styles.content}>
@@ -641,6 +656,7 @@ const Accounts: React.FC = () => {
           initial={editing}
           onClose={() => setEditing(null)}
           onSave={handleSaveAccount}
+          onDelete={handleDeleteAccount}
         />
       ) : null}
     </div>
