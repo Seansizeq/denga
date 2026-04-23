@@ -46,7 +46,7 @@ const seedAccountPortfolioIfEmpty = async () => {
       name: 'pumb',
       primary_amount: 2410,
       primary_currency: 'UAH',
-      sub_text: 'bank card',
+      sub_text: null,
       icon_tone: 'bank',
       badge: 'P',
       debt_phrase: null,
@@ -58,7 +58,7 @@ const seedAccountPortfolioIfEmpty = async () => {
       name: 'Privat24',
       primary_amount: 2,
       primary_currency: 'UAH',
-      sub_text: 'bank card',
+      sub_text: null,
       icon_tone: 'bank',
       badge: 'PB',
       debt_phrase: null,
@@ -167,19 +167,6 @@ const seedAccountPortfolioIfEmpty = async () => {
 };
 
 await seedAccountPortfolioIfEmpty();
-
-const ensureBankCardsLabeled = async () => {
-  await db.run(
-    `UPDATE account_portfolio
-     SET sub_text = 'bank card',
-         updatedAt = ?
-     WHERE account_key IN ('pumb', 'privat24')
-       AND (sub_text IS NULL OR TRIM(sub_text) = '')`,
-    [new Date().toISOString()]
-  );
-};
-
-await ensureBankCardsLabeled();
 
 // --- Bot Logic ---
 

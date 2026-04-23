@@ -222,7 +222,7 @@ const Accounts: React.FC = () => {
     const base = {
       bank: {
         id: 'bank',
-        title: '',
+        title: t('balance', 'sectionBank'),
         total: '',
         variant: 'strip' as const,
         collapsible: false,
@@ -238,7 +238,7 @@ const Accounts: React.FC = () => {
       },
       cash: {
         id: 'cash',
-        title: 'Готівка',
+        title: t('balance', 'sectionCash'),
         total: '',
         variant: 'strip' as const,
         collapsible: true,
@@ -254,7 +254,7 @@ const Accounts: React.FC = () => {
       },
       crypto: {
         id: 'crypto',
-        title: 'Акції та Крипта',
+        title: t('balance', 'sectionCrypto'),
         total: '',
         variant: 'strip' as const,
         collapsible: true,
@@ -270,7 +270,7 @@ const Accounts: React.FC = () => {
       },
       debt: {
         id: 'debt',
-        title: 'Борг',
+        title: t('balance', 'sectionDebt'),
         total: '',
         variant: 'strip' as const,
         collapsible: true,
@@ -436,7 +436,7 @@ const Accounts: React.FC = () => {
     base.debt.total = calculateSectionTotal(base.debt.rows, 'PLN');
 
     return [base.bank, base.cash, base.crypto, base.debt];
-  }, [transactions]);
+  }, [transactions, t]);
 
   const portfolioSnapshotSections = useMemo(() => {
     type Row = {
@@ -490,8 +490,8 @@ const Accounts: React.FC = () => {
     return [
       {
         id: 'bank',
-        title: '',
-        total: '',
+        title: t('balance', 'sectionBank'),
+        total: sumSectionFiat('bank', 'UAH'),
         variant: 'strip' as const,
         collapsible: false,
         defaultOpen: true,
@@ -499,7 +499,7 @@ const Accounts: React.FC = () => {
       },
       {
         id: 'cash',
-        title: 'Готівка',
+        title: t('balance', 'sectionCash'),
         total: sumSectionFiat('cash', 'PLN'),
         variant: 'strip' as const,
         collapsible: true,
@@ -508,7 +508,7 @@ const Accounts: React.FC = () => {
       },
       {
         id: 'crypto',
-        title: 'Акції та Крипта',
+        title: t('balance', 'sectionCrypto'),
         total: sumSectionFiat('crypto', 'PLN'),
         variant: 'strip' as const,
         collapsible: true,
@@ -517,7 +517,7 @@ const Accounts: React.FC = () => {
       },
       {
         id: 'debt',
-        title: 'Борг',
+        title: t('balance', 'sectionDebt'),
         total: sumSectionFiat('debt', 'PLN'),
         variant: 'strip' as const,
         collapsible: true,
@@ -525,7 +525,7 @@ const Accounts: React.FC = () => {
         rows: debtRows,
       },
     ];
-  }, [portfolio]);
+  }, [portfolio, t]);
 
   const sections = portfolio.length > 0 ? portfolioSnapshotSections : txSections;
 
