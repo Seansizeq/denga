@@ -92,6 +92,9 @@ const Stats: React.FC = () => {
     if (!visibleExpenseTotal) {
       return 'conic-gradient(var(--bg-card-light) 0deg 360deg)';
     }
+    if (visibleCategoryRows.length === 1) {
+      return `conic-gradient(${visibleCategoryRows[0].color} 0deg 360deg)`;
+    }
     let acc = 0;
     const gapDeg = 4;
     const segments = visibleCategoryRows

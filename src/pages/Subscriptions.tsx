@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { formatCurrency } from '../utils/formatters';
 import { useTranslation } from '../i18n/LanguageContext';
+import { apiFetch } from '../api/client';
 import styles from './Subscriptions.module.css';
 
 type BillingCycle = 'monthly' | 'yearly';
@@ -15,8 +16,6 @@ interface Subscription {
   note?: string;
   active: boolean;
 }
-
-const API_URL = import.meta.env.VITE_API_URL ?? '';
 
 const Subscriptions: React.FC = () => {
   const { t, locale, displayCurrency } = useTranslation();
@@ -36,7 +35,7 @@ const Subscriptions: React.FC = () => {
     setListError('');
     setLoading(true);
     try {
-      const response = await fetch(`${API_URL}/api/subscriptions`);
+      const response = await apiFetch('/api/subscriptions');
       if (!response.ok) {
         setListError(t('subscriptions', 'loadError'));
         return;
@@ -83,8 +82,8 @@ const Subscriptions: React.FC = () => {
     const numericAmount = Number(amount.replace(',', '.'));
     if (!name.trim() || !numericAmount || numericAmount <= 0 || !nextChargeDate) return;
     try {
-      const response = await fetch(
-        editingId ? `${API_URL}/api/subscriptions/${editingId}` : `${API_URL}/api/subscriptions`,
+      const response = await apiFetch(
+        editingId ? `/api/subscriptions/${editingId}` : '/api/subscriptions',
         {
           method: editingId ? 'PATCH' : 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -117,7 +116,7 @@ const Subscriptions: React.FC = () => {
   const onDisable = async (id: string) => {
     setActionError('');
     try {
-      const response = await fetch(`${API_URL}/api/subscriptions/${id}`, {
+      const response = await apiFetch(`/api/subscriptions/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ active: false }),
@@ -138,7 +137,7 @@ const Subscriptions: React.FC = () => {
     const sub = items.find((s) => s.id === id);
     if (!sub) return;
     try {
-      const response = await fetch(`${API_URL}/api/subscriptions/${id}`, {
+      const response = await apiFetch(`/api/subscriptions/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -248,7 +247,7 @@ const Subscriptions: React.FC = () => {
 
       <section className={styles.listSection}>
         {loading ? (
-          <p className={styles.emptyText}>Loading...</p>
+          <p className={styles.emptyText}>{t('planner', 'loading')}</p>
         ) : activeItems.length === 0 && disabledItems.length === 0 ? (
           <p className={styles.emptyText}>{t('subscriptions', 'empty')}</p>
         ) : null}

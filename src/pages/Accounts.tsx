@@ -7,9 +7,8 @@ import { useTransactions } from '../context/TransactionContext';
 import { getCustomCategoryName } from '../constants/categories';
 import { getAccountSlugFromNote } from '../utils/transactionAccount';
 import { useTranslation } from '../i18n/LanguageContext';
+import { apiFetch } from '../api/client';
 import styles from './Accounts.module.css';
-
-const API_URL = import.meta.env.VITE_API_URL ?? '';
 
 type PortfolioSection = 'bank' | 'cash' | 'crypto' | 'debt';
 type IconTone = 'bank' | 'cash' | 'crypto' | 'debt' | 'neutral';
@@ -122,7 +121,7 @@ const Accounts: React.FC = () => {
 
   const loadPortfolio = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/api/accounts`);
+      const res = await apiFetch('/api/accounts');
       if (!res.ok) return;
       const data: unknown = await res.json();
       if (!Array.isArray(data)) return;
@@ -503,10 +502,10 @@ const Accounts: React.FC = () => {
     async (next: EditableAccount) => {
       const isCreate = !next.accountKey.trim();
       const url = isCreate
-        ? `${API_URL}/api/accounts`
-        : `${API_URL}/api/accounts/${encodeURIComponent(next.accountKey)}`;
+        ? '/api/accounts'
+        : `/api/accounts/${encodeURIComponent(next.accountKey)}`;
       const method = isCreate ? 'POST' : 'PUT';
-      const res = await fetch(url, {
+      const res = await apiFetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -533,7 +532,7 @@ const Accounts: React.FC = () => {
     async (accountKey: string) => {
       const key = accountKey.trim();
       if (!key) return;
-      const res = await fetch(`${API_URL}/api/accounts/${encodeURIComponent(key)}`, {
+      const res = await apiFetch(`/api/accounts/${encodeURIComponent(key)}`, {
         method: 'DELETE',
       });
       if (!res.ok) {

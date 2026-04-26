@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from '../i18n/LanguageContext';
 import { formatPlannerMoney, type PlannerCurrency } from '../utils/formatters';
 import type { RangeFilter } from '../components/ui/RecentTransactions';
+import { apiFetch } from '../api/client';
+import { buildPastDays, isWithinLastDays } from '../utils/dateRanges';
 import styles from './CalendarPlanner.module.css';
 
 interface DayPlan {
@@ -28,7 +30,6 @@ interface ShiftTemplate {
   salaryCurrency: PlannerCurrency;
 }
 
-const API_URL = import.meta.env.VITE_API_URL ?? '';
 
 const toIsoLocal = (date: Date): string => {
   const y = date.getFullYear();
@@ -191,14 +192,19 @@ const CalendarPlanner: React.FC = () => {
     const now = new Date();
     const reportYear = Number(month.split('-')[0]);
     const baseDays =
-      reportRange === 'year' ? buildDaysForYear(reportYear) : buildDaysForMonth(month);
+      reportRange === 'year'
+        ? buildDaysForYear(reportYear)
+        : reportRange === 'today'
+          ? buildPastDays(1, now)
+          : reportRange === 'week'
+            ? buildPastDays(8, now)
+            : buildDaysForMonth(month);
     const days = baseDays.filter((iso) => {
       const d = parseIsoLocal(iso);
       if (reportRange === 'year') return true;
       if (reportRange === 'today') return d.toDateString() === now.toDateString();
       if (reportRange === 'week') {
-        const diff = (now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24);
-        return diff >= 0 && diff <= 7;
+        return isWithinLastDays(iso, 7, now);
       }
       if (reportRange === 'month') return true;
       return false;
@@ -227,7 +233,7 @@ const CalendarPlanner: React.FC = () => {
         const yearQ = month.slice(0, 4);
         const q =
           reportRange === 'year' ? `year=${encodeURIComponent(yearQ)}` : `month=${encodeURIComponent(month)}`;
-        const response = await fetch(`${API_URL}/api/planner?${q}`);
+        const response = await apiFetch(`/api/planner?${q}`);
         if (!response.ok) throw new Error(`Planner load failed: ${response.status}`);
         const rows = (await response.json()) as Array<DayPlan & { day: string }>;
         if (cancelled) return;
@@ -258,7 +264,7 @@ const CalendarPlanner: React.FC = () => {
 
   const loadShiftTemplates = async () => {
     try {
-      const response = await fetch(`${API_URL}/api/planner/shift-templates`);
+      const response = await apiFetch('/api/planner/shift-templates');
       if (!response.ok) return;
       const rows = (await response.json()) as ShiftTemplate[];
       setShiftTemplates(Array.isArray(rows) ? rows : []);
@@ -287,7 +293,7 @@ const CalendarPlanner: React.FC = () => {
     if (!name && !symbol) return;
     try {
       const workedHours = isFullDay ? 8 : hoursFromTimeRange(startTime, endTime);
-      const response = await fetch(`${API_URL}/api/planner/shift-templates`, {
+      const response = await apiFetch('/api/planner/shift-templates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -311,7 +317,7 @@ const CalendarPlanner: React.FC = () => {
   const saveDay = async (dayIso: string, payload: DayPlan): Promise<boolean> => {
     setSaving(true);
     try {
-      const response = await fetch(`${API_URL}/api/planner/${dayIso}`, {
+      const response = await apiFetch(`/api/planner/${dayIso}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -402,7 +408,7 @@ const CalendarPlanner: React.FC = () => {
   const deleteShiftTemplate = async (tpl: ShiftTemplate) => {
     if (!window.confirm(t('planner', 'deleteTemplateConfirm'))) return;
     try {
-      const response = await fetch(`${API_URL}/api/planner/shift-templates/${encodeURIComponent(tpl.id)}`, {
+      const response = await apiFetch(`/api/planner/shift-templates/${encodeURIComponent(tpl.id)}`, {
         method: 'DELETE',
       });
       if (response.ok) void loadShiftTemplates();

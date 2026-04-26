@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import TelegramBot from 'node-telegram-bot-api';
 import dotenv from 'dotenv';
+import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { getDatabasePath, initDb } from './db.js';
 import { startScheduledDatabaseBackups } from './backup.js';
@@ -15,9 +16,86 @@ dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 3001;
-const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
+const botToken = process.env.TELEGRAM_BOT_TOKEN;
+const bot = botToken ? new TelegramBot(botToken, { polling: true }) : null;
+const DEV_AUTH_BYPASS = process.env.ALLOW_DEV_AUTH_BYPASS === '1';
+const AUTH_HEADER_NAME = 'x-telegram-init-data';
 
-app.use(cors());
+const parseTelegramInitData = (initDataRaw) => {
+  if (typeof initDataRaw !== 'string' || !initDataRaw.trim()) return null;
+  const initData = initDataRaw.trim();
+  const params = new URLSearchParams(initData);
+  const hash = params.get('hash');
+  if (!hash) return null;
+  const dataCheckString = [...params.entries()]
+    .filter(([k]) => k !== 'hash')
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => `${k}=${v}`)
+    .join('\n');
+  const secret = crypto.createHmac('sha256', 'WebAppData').update(botToken ?? '').digest();
+  const computedHash = crypto.createHmac('sha256', secret).update(dataCheckString).digest('hex');
+  if (computedHash !== hash) return null;
+  const userRaw = params.get('user');
+  if (!userRaw) return null;
+  let user;
+  try {
+    user = JSON.parse(userRaw);
+  } catch {
+    return null;
+  }
+  const userId = user && user.id ? String(user.id).trim() : '';
+  if (!userId) return null;
+  return { userId };
+};
+
+const authMiddleware = (req, res, next) => {
+  if (DEV_AUTH_BYPASS) {
+    req.authUserId = process.env.DEV_AUTH_USER_ID || 'dev-user';
+    next();
+    return;
+  }
+  const initData = req.get(AUTH_HEADER_NAME);
+  const parsed = parseTelegramInitData(initData);
+  if (!parsed) {
+    res.status(401).json({ error: 'Unauthorized', code: 'AUTH_INVALID_TELEGRAM_INIT_DATA' });
+    return;
+  }
+  req.authUserId = parsed.userId;
+  next();
+};
+
+const parseAmount = (value) => {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : NaN;
+};
+const plannerDayKey = (userId, day) => `${userId}:${day}`;
+const plannerDayFromStored = (userId, storedDay) => {
+  const prefix = `${userId}:`;
+  return String(storedDay).startsWith(prefix) ? String(storedDay).slice(prefix.length) : String(storedDay);
+};
+const scopedTemplateKey = (userId, normalizedKey) => `${userId}::${normalizedKey}`;
+
+const allowedOrigins = (process.env.CORS_ORIGINS ?? '')
+  .split(',')
+  .map((x) => x.trim())
+  .filter(Boolean);
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+      if (allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+      callback(new Error('CORS origin denied'));
+    },
+    methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', AUTH_HEADER_NAME],
+  })
+);
 app.use(express.json());
 // Prevent caching of index.html so updates are visible immediately
 app.use((req, res, next) => {
@@ -214,63 +292,70 @@ const parseCustomCategoryId = (id) => {
   }
 };
 
-bot.onText(/\/start/, async (msg) => {
-  await db.run(
-    'INSERT OR REPLACE INTO users (telegram_id, chat_id) VALUES (?, ?)',
-    [msg.from.id, msg.chat.id]
-  );
-  bot.sendMessage(msg.chat.id, 'Привіт! Я твій помічник Denga. Надішли мені суму (наприклад, 100), щоб додати транзакцію.');
-});
-
-bot.on('message', async (msg) => {
-  if (msg.text && !msg.text.startsWith('/')) {
-    const amount = parseFloat(msg.text);
-    if (!isNaN(amount)) {
-      pendingTransactions.set(msg.chat.id, { amount });
-      
-      const keyboard = {
-        inline_keyboard: CATEGORIES.map(c => [{ text: c.name, callback_data: `cat_${c.id}` }])
-      };
-      
-      bot.sendMessage(msg.chat.id, `Виберіть категорію для суми ${amount}:`, { reply_markup: keyboard });
-    }
-  }
-});
-
-bot.on('callback_query', async (callbackQuery) => {
-  const chatId = callbackQuery.message.chat.id;
-  const pending = pendingTransactions.get(chatId);
-  
-  if (pending && callbackQuery.data.startsWith('cat_')) {
-    const categoryId = callbackQuery.data.replace('cat_', '');
-    const category = CATEGORIES.find(c => c.id === categoryId);
-    
-    const type = (categoryId === 'salary' || categoryId === 'other_income') ? 'income' : 'expense';
-    
-    const transaction = {
-      id: uuidv4(),
-      amount: pending.amount,
-      categoryId,
-      type,
-      date: new Date().toISOString(),
-      note: 'Added via Telegram Bot',
-      telegram_user_id: callbackQuery.from.id
-    };
-
+if (bot) {
+  bot.onText(/\/start/, async (msg) => {
     await db.run(
-      'INSERT INTO transactions (id, amount, categoryId, type, date, note, telegram_user_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [transaction.id, transaction.amount, transaction.categoryId, transaction.type, transaction.date, transaction.note, transaction.telegram_user_id]
+      'INSERT OR REPLACE INTO users (telegram_id, chat_id) VALUES (?, ?)',
+      [msg.from.id, msg.chat.id]
     );
+    bot.sendMessage(msg.chat.id, 'Привіт! Я твій помічник Denga. Надішли мені суму (наприклад, 100), щоб додати транзакцію.');
+  });
 
-    pendingTransactions.delete(chatId);
-    bot.answerCallbackQuery(callbackQuery.id);
-    bot.sendMessage(chatId, `✅ Транзакцію ${pending.amount} (${category.name}) додано!`);
-  }
-});
+  bot.on('message', async (msg) => {
+    if (msg.text && !msg.text.startsWith('/')) {
+      const amount = parseFloat(msg.text);
+      if (!isNaN(amount)) {
+        pendingTransactions.set(msg.chat.id, { amount });
+
+        const keyboard = {
+          inline_keyboard: CATEGORIES.map(c => [{ text: c.name, callback_data: `cat_${c.id}` }])
+        };
+
+        bot.sendMessage(msg.chat.id, `Виберіть категорію для суми ${amount}:`, { reply_markup: keyboard });
+      }
+    }
+  });
+
+  bot.on('callback_query', async (callbackQuery) => {
+    const chatId = callbackQuery.message.chat.id;
+    const pending = pendingTransactions.get(chatId);
+
+    if (pending && callbackQuery.data.startsWith('cat_')) {
+      const categoryId = callbackQuery.data.replace('cat_', '');
+      const category = CATEGORIES.find(c => c.id === categoryId);
+
+      const type = (categoryId === 'salary' || categoryId === 'other_income') ? 'income' : 'expense';
+
+      const transaction = {
+        id: uuidv4(),
+        user_id: String(callbackQuery.from.id),
+        amount: pending.amount,
+        categoryId,
+        type,
+        date: new Date().toISOString(),
+        note: 'Added via Telegram Bot',
+        telegram_user_id: callbackQuery.from.id
+      };
+
+      await db.run(
+        'INSERT INTO transactions (id, user_id, amount, categoryId, type, date, note, telegram_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [transaction.id, transaction.user_id, transaction.amount, transaction.categoryId, transaction.type, transaction.date, transaction.note, transaction.telegram_user_id]
+      );
+
+      pendingTransactions.delete(chatId);
+      bot.answerCallbackQuery(callbackQuery.id);
+      bot.sendMessage(chatId, `✅ Транзакцію ${pending.amount} (${category.name}) додано!`);
+    }
+  });
+} else {
+  console.warn('Telegram bot is disabled: TELEGRAM_BOT_TOKEN is missing');
+}
 
 // --- API Logic ---
+app.use('/api', authMiddleware);
 
-app.get('/api/accounts', async (_req, res) => {
+app.get('/api/accounts', async (req, res) => {
+  const userId = req.authUserId;
   const rows = await db.all(
     `SELECT
        account_key AS accountKey,
@@ -285,12 +370,15 @@ app.get('/api/accounts', async (_req, res) => {
        debt_phrase AS debtPhrase,
        updatedAt
      FROM account_portfolio
-     ORDER BY sort_index ASC, account_key ASC`
+     WHERE user_id = ?
+     ORDER BY sort_index ASC, account_key ASC`,
+    [userId]
   );
   res.json(rows);
 });
 
 app.post('/api/accounts', async (req, res) => {
+  const userId = req.authUserId;
   const name = typeof req.body?.name === 'string' ? req.body.name.trim().replace(/\s+/g, ' ') : '';
   const primaryAmount = Number(req.body?.primaryAmount);
   const primaryCurrency = req.body?.primaryCurrency === 'PLN' ? 'PLN' : 'UAH';
@@ -325,7 +413,7 @@ app.post('/api/accounts', async (req, res) => {
   const normalizedBase = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'account';
   let accountKey = normalizedBase;
   let suffix = 2;
-  while (await db.get('SELECT 1 FROM account_portfolio WHERE account_key = ? LIMIT 1', [accountKey])) {
+  while (await db.get('SELECT 1 FROM account_portfolio WHERE user_id = ? AND account_key = ? LIMIT 1', [userId, accountKey])) {
     accountKey = `${normalizedBase}_${suffix}`;
     suffix += 1;
   }
@@ -333,10 +421,11 @@ app.post('/api/accounts', async (req, res) => {
   const now = new Date().toISOString();
   await db.run(
     `INSERT INTO account_portfolio
-     (account_key, section, sort_index, name, primary_amount, primary_currency, sub_text, icon_tone, badge, debt_phrase, updatedAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     (account_key, user_id, section, sort_index, name, primary_amount, primary_currency, sub_text, icon_tone, badge, debt_phrase, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       accountKey,
+      userId,
       section,
       sortIndex,
       name,
@@ -364,15 +453,16 @@ app.post('/api/accounts', async (req, res) => {
        debt_phrase AS debtPhrase,
        updatedAt
      FROM account_portfolio
-     WHERE account_key = ?
+     WHERE user_id = ? AND account_key = ?
      LIMIT 1`,
-    [accountKey]
+    [userId, accountKey]
   );
 
   res.status(201).json(row);
 });
 
 app.put('/api/accounts/:key', async (req, res) => {
+  const userId = req.authUserId;
   const accountKey = String(req.params.key ?? '').trim();
   if (!accountKey) {
     res.status(400).json({ error: 'invalid key' });
@@ -411,7 +501,7 @@ app.put('/api/accounts/:key', async (req, res) => {
   }
 
   const now = new Date().toISOString();
-  const existing = await db.get('SELECT account_key FROM account_portfolio WHERE account_key = ? LIMIT 1', [accountKey]);
+  const existing = await db.get('SELECT account_key FROM account_portfolio WHERE user_id = ? AND account_key = ? LIMIT 1', [userId, accountKey]);
   if (!existing) {
     res.status(404).json({ error: 'Account not found' });
     return;
@@ -429,7 +519,7 @@ app.put('/api/accounts/:key', async (req, res) => {
          badge = ?,
          debt_phrase = ?,
          updatedAt = ?
-     WHERE account_key = ?`,
+     WHERE user_id = ? AND account_key = ?`,
     [
       section,
       sortIndex,
@@ -441,6 +531,7 @@ app.put('/api/accounts/:key', async (req, res) => {
       badge ? badge : null,
       debtPhrase ? debtPhrase : null,
       now,
+      userId,
       accountKey,
     ]
   );
@@ -459,55 +550,78 @@ app.put('/api/accounts/:key', async (req, res) => {
        debt_phrase AS debtPhrase,
        updatedAt
      FROM account_portfolio
-     WHERE account_key = ?
+     WHERE user_id = ? AND account_key = ?
      LIMIT 1`,
-    [accountKey]
+    [userId, accountKey]
   );
 
   res.json(row);
 });
 
 app.delete('/api/accounts/:key', async (req, res) => {
+  const userId = req.authUserId;
   const accountKey = String(req.params.key ?? '').trim();
   if (!accountKey) {
     res.status(400).json({ error: 'invalid key' });
     return;
   }
 
-  const existing = await db.get('SELECT account_key FROM account_portfolio WHERE account_key = ? LIMIT 1', [accountKey]);
+  const existing = await db.get('SELECT account_key FROM account_portfolio WHERE user_id = ? AND account_key = ? LIMIT 1', [userId, accountKey]);
   if (!existing) {
     res.status(404).json({ error: 'Account not found' });
     return;
   }
 
-  await db.run('DELETE FROM account_portfolio WHERE account_key = ?', [accountKey]);
+  await db.run('DELETE FROM account_portfolio WHERE user_id = ? AND account_key = ?', [userId, accountKey]);
   res.status(204).end();
 });
 
 app.get('/api/transactions', async (req, res) => {
-  const transactions = await db.all('SELECT * FROM transactions ORDER BY date DESC');
+  const userId = req.authUserId;
+  const transactions = await db.all('SELECT * FROM transactions WHERE user_id = ? ORDER BY date DESC', [userId]);
   res.json(transactions);
 });
 
 app.post('/api/transactions', async (req, res) => {
-  const { amount, categoryId, type, note } = req.body;
+  const userId = req.authUserId;
+  const amount = parseAmount(req.body?.amount);
+  const categoryId = typeof req.body?.categoryId === 'string' ? req.body.categoryId.trim() : '';
+  const type = req.body?.type === 'income' || req.body?.type === 'expense' ? req.body.type : '';
+  const note = typeof req.body?.note === 'string' ? req.body.note.trim() : '';
+  if (!Number.isFinite(amount) || amount <= 0) {
+    res.status(400).json({ error: 'amount must be > 0', code: 'INVALID_AMOUNT' });
+    return;
+  }
+  if (!categoryId) {
+    res.status(400).json({ error: 'categoryId is required', code: 'INVALID_CATEGORY' });
+    return;
+  }
+  if (!type) {
+    res.status(400).json({ error: 'type must be income or expense', code: 'INVALID_TYPE' });
+    return;
+  }
+  if (note.length > 120) {
+    res.status(400).json({ error: 'note must be <= 120 chars', code: 'INVALID_NOTE' });
+    return;
+  }
   const transaction = {
     id: uuidv4(),
+    user_id: userId,
     amount,
     categoryId,
     type,
     date: new Date().toISOString(),
-    note
+    note: note || undefined
   };
 
   await db.run(
-    'INSERT INTO transactions (id, amount, categoryId, type, date, note) VALUES (?, ?, ?, ?, ?, ?)',
-    [transaction.id, transaction.amount, transaction.categoryId, transaction.type, transaction.date, transaction.note]
+    'INSERT INTO transactions (id, user_id, amount, categoryId, type, date, note) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [transaction.id, transaction.user_id, transaction.amount, transaction.categoryId, transaction.type, transaction.date, transaction.note ?? null]
   );
 
   // Notify all users about new web transaction
   try {
-    const users = await db.all('SELECT chat_id FROM users');
+    const users = bot ? await db.all('SELECT chat_id FROM users WHERE telegram_id = ?', [Number(userId)]) : [];
     const category = CATEGORIES.find(c => c.id === categoryId);
     for (const user of users) {
       bot.sendMessage(user.chat_id, `🌐 Нова транзакція через сайт: ${amount} (${category ? category.name : categoryId})`);
@@ -520,8 +634,9 @@ app.post('/api/transactions', async (req, res) => {
 });
 
 app.patch('/api/transactions/:id', async (req, res) => {
+  const userId = req.authUserId;
   const { id } = req.params;
-  const current = await db.get('SELECT * FROM transactions WHERE id = ? LIMIT 1', [id]);
+  const current = await db.get('SELECT * FROM transactions WHERE user_id = ? AND id = ? LIMIT 1', [userId, id]);
   if (!current) {
     res.status(404).json({ error: 'Transaction not found' });
     return;
@@ -547,10 +662,7 @@ app.patch('/api/transactions/:id', async (req, res) => {
     return;
   }
 
-  await db.run(
-    'UPDATE transactions SET amount = ?, categoryId = ?, type = ?, note = ? WHERE id = ?',
-    [amount, categoryId, type, note || null, id]
-  );
+  await db.run('UPDATE transactions SET amount = ?, categoryId = ?, type = ?, note = ? WHERE user_id = ? AND id = ?', [amount, categoryId, type, note || null, userId, id]);
 
   res.json({
     ...current,
@@ -562,12 +674,14 @@ app.patch('/api/transactions/:id', async (req, res) => {
 });
 
 app.delete('/api/transactions/:id', async (req, res) => {
+  const userId = req.authUserId;
   const { id } = req.params;
-  await db.run('DELETE FROM transactions WHERE id = ?', [id]);
+  await db.run('DELETE FROM transactions WHERE user_id = ? AND id = ?', [userId, id]);
   res.status(204).send();
 });
 
 app.get('/api/custom-categories', async (req, res) => {
+  const userId = req.authUserId;
   const type = String(req.query.type ?? '');
   if (type !== 'income' && type !== 'expense') {
     res.status(400).json({ error: 'type query must be income or expense' });
@@ -575,13 +689,13 @@ app.get('/api/custom-categories', async (req, res) => {
   }
 
   const stored = await db.all(
-    'SELECT id, type, name, icon, color, updatedAt FROM custom_categories WHERE type = ? ORDER BY updatedAt DESC',
-    [type]
+    'SELECT id, type, name, icon, color, updatedAt FROM custom_categories WHERE user_id = ? AND type = ? ORDER BY updatedAt DESC',
+    [userId, type]
   );
 
   const legacyRows = await db.all(
-    'SELECT categoryId, MAX(date) AS lastUsedAt FROM transactions WHERE type = ? AND categoryId LIKE ? GROUP BY categoryId',
-    [type, 'custom:%']
+    'SELECT categoryId, MAX(date) AS lastUsedAt FROM transactions WHERE user_id = ? AND type = ? AND categoryId LIKE ? GROUP BY categoryId',
+    [userId, type, 'custom:%']
   );
 
   const byId = new Map(stored.map((row) => [row.id, row]));
@@ -605,6 +719,7 @@ app.get('/api/custom-categories', async (req, res) => {
 });
 
 app.post('/api/custom-categories', async (req, res) => {
+  const userId = req.authUserId;
   const type = req.body?.type;
   if (type !== 'income' && type !== 'expense') {
     res.status(400).json({ error: 'type must be income or expense' });
@@ -625,8 +740,8 @@ app.post('/api/custom-categories', async (req, res) => {
     : '#8E8E93';
 
   const existing = await db.get(
-    'SELECT id, type, name, icon, color, updatedAt FROM custom_categories WHERE type = ? AND normalized_name = ? LIMIT 1',
-    [type, normalizedName]
+    'SELECT id, type, name, icon, color, updatedAt FROM custom_categories WHERE user_id = ? AND type = ? AND normalized_name = ? LIMIT 1',
+    [userId, type, normalizedName]
   );
   if (existing) {
     res.status(200).json(existing);
@@ -637,15 +752,16 @@ app.post('/api/custom-categories', async (req, res) => {
   const now = new Date().toISOString();
 
   await db.run(
-    `INSERT INTO custom_categories (id, type, name, normalized_name, icon, color, createdAt, updatedAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, type, name, normalizedName, icon, color, now, now]
+    `INSERT INTO custom_categories (id, user_id, type, name, normalized_name, icon, color, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, userId, type, name, normalizedName, icon, color, now, now]
   );
 
   res.status(201).json({ id, type, name, icon, color, updatedAt: now });
 });
 
 app.patch('/api/custom-categories/:id', async (req, res) => {
+  const userId = req.authUserId;
   const id = typeof req.params.id === 'string' ? req.params.id.trim() : '';
   if (!id) {
     res.status(400).json({ error: 'invalid id' });
@@ -653,8 +769,8 @@ app.patch('/api/custom-categories/:id', async (req, res) => {
   }
 
   const current = await db.get(
-    'SELECT id, type, name, normalized_name, icon, color, updatedAt FROM custom_categories WHERE id = ? LIMIT 1',
-    [id]
+    'SELECT id, type, name, normalized_name, icon, color, updatedAt FROM custom_categories WHERE user_id = ? AND id = ? LIMIT 1',
+    [userId, id]
   );
   if (!current) {
     res.status(404).json({ error: 'Custom category not found' });
@@ -674,8 +790,8 @@ app.patch('/api/custom-categories/:id', async (req, res) => {
     : current.color;
 
   const duplicate = await db.get(
-    'SELECT id FROM custom_categories WHERE type = ? AND normalized_name = ? AND id != ? LIMIT 1',
-    [current.type, normalizedName, id]
+    'SELECT id FROM custom_categories WHERE user_id = ? AND type = ? AND normalized_name = ? AND id != ? LIMIT 1',
+    [userId, current.type, normalizedName, id]
   );
   if (duplicate) {
     res.status(409).json({ error: 'Category with this name already exists' });
@@ -689,12 +805,12 @@ app.patch('/api/custom-categories/:id', async (req, res) => {
     await db.run(
       `UPDATE custom_categories
        SET id = ?, name = ?, normalized_name = ?, icon = ?, color = ?, updatedAt = ?
-       WHERE id = ?`,
-      [nextId, name, normalizedName, icon, color, now, id]
+       WHERE user_id = ? AND id = ?`,
+      [nextId, name, normalizedName, icon, color, now, userId, id]
     );
     await db.run(
-      'UPDATE transactions SET categoryId = ? WHERE categoryId = ?',
-      [nextId, id]
+      'UPDATE transactions SET categoryId = ? WHERE user_id = ? AND categoryId = ?',
+      [nextId, userId, id]
     );
     await db.run('COMMIT');
   } catch (error) {
@@ -713,6 +829,7 @@ app.patch('/api/custom-categories/:id', async (req, res) => {
 });
 
 app.delete('/api/custom-categories/:id', async (req, res) => {
+  const userId = req.authUserId;
   const id = typeof req.params.id === 'string' ? req.params.id.trim() : '';
   if (!id) {
     res.status(400).json({ error: 'invalid id' });
@@ -720,12 +837,12 @@ app.delete('/api/custom-categories/:id', async (req, res) => {
   }
 
   const current = await db.get(
-    'SELECT id, type FROM custom_categories WHERE id = ? LIMIT 1',
-    [id]
+    'SELECT id, type FROM custom_categories WHERE user_id = ? AND id = ? LIMIT 1',
+    [userId, id]
   );
   const txTypeGuess = await db.get(
-    'SELECT type FROM transactions WHERE categoryId = ? LIMIT 1',
-    [id]
+    'SELECT type FROM transactions WHERE user_id = ? AND categoryId = ? LIMIT 1',
+    [userId, id]
   );
   const parsedLegacy = parseCustomCategoryId(id);
 
@@ -738,9 +855,9 @@ app.delete('/api/custom-categories/:id', async (req, res) => {
   const fallback = effectiveType === 'income' ? 'other_income' : 'other_expense';
   await db.run('BEGIN');
   try {
-    await db.run('UPDATE transactions SET categoryId = ? WHERE categoryId = ?', [fallback, id]);
+    await db.run('UPDATE transactions SET categoryId = ? WHERE user_id = ? AND categoryId = ?', [fallback, userId, id]);
     if (current) {
-      await db.run('DELETE FROM custom_categories WHERE id = ?', [id]);
+      await db.run('DELETE FROM custom_categories WHERE user_id = ? AND id = ?', [userId, id]);
     }
     await db.run('COMMIT');
   } catch (error) {
@@ -751,11 +868,15 @@ app.delete('/api/custom-categories/:id', async (req, res) => {
   res.status(204).end();
 });
 
-app.get('/api/subscriptions', async (_req, res) => {
+app.get('/api/subscriptions', async (req, res) => {
+  const userId = req.authUserId;
   const rows = await db.all(
     `SELECT id, name, amount, cycle, nextChargeDate, note, active, createdAt, updatedAt
      FROM subscriptions
+     WHERE user_id = ?
      ORDER BY active DESC, nextChargeDate ASC, createdAt DESC`
+    ,
+    [userId]
   );
   res.json(
     rows.map((row) => ({
@@ -767,6 +888,7 @@ app.get('/api/subscriptions', async (_req, res) => {
 });
 
 app.post('/api/subscriptions', async (req, res) => {
+  const userId = req.authUserId;
   const name = typeof req.body?.name === 'string' ? req.body.name.trim().replace(/\s+/g, ' ') : '';
   const amount = Number(req.body?.amount);
   const cycle = req.body?.cycle === 'yearly' ? 'yearly' : 'monthly';
@@ -789,9 +911,9 @@ app.post('/api/subscriptions', async (req, res) => {
   const id = uuidv4();
   const now = new Date().toISOString();
   await db.run(
-    `INSERT INTO subscriptions (id, name, amount, cycle, nextChargeDate, note, active, createdAt, updatedAt)
-     VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)`,
-    [id, name, amount, cycle, nextChargeDate, note, now, now]
+    `INSERT INTO subscriptions (id, user_id, name, amount, cycle, nextChargeDate, note, active, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+    [id, userId, name, amount, cycle, nextChargeDate, note, now, now]
   );
 
   res.status(201).json({
@@ -808,8 +930,9 @@ app.post('/api/subscriptions', async (req, res) => {
 });
 
 app.patch('/api/subscriptions/:id', async (req, res) => {
+  const userId = req.authUserId;
   const { id } = req.params;
-  const current = await db.get('SELECT * FROM subscriptions WHERE id = ? LIMIT 1', [id]);
+  const current = await db.get('SELECT * FROM subscriptions WHERE user_id = ? AND id = ? LIMIT 1', [userId, id]);
   if (!current) {
     res.status(404).json({ error: 'Subscription not found' });
     return;
@@ -845,8 +968,8 @@ app.patch('/api/subscriptions/:id', async (req, res) => {
   await db.run(
     `UPDATE subscriptions
      SET name = ?, amount = ?, cycle = ?, nextChargeDate = ?, note = ?, active = ?, updatedAt = ?
-     WHERE id = ?`,
-    [name, amount, cycle, nextChargeDate, note, active ? 1 : 0, now, id]
+     WHERE user_id = ? AND id = ?`,
+    [name, amount, cycle, nextChargeDate, note, active ? 1 : 0, now, userId, id]
   );
   res.json({
     ...current,
@@ -861,6 +984,7 @@ app.patch('/api/subscriptions/:id', async (req, res) => {
 });
 
 app.get('/api/planner', async (req, res) => {
+  const userId = req.authUserId;
   const yearQ = String(req.query.year ?? '');
   const month = String(req.query.month ?? '');
 
@@ -878,12 +1002,12 @@ app.get('/api/planner', async (req, res) => {
 
   const days = await db.all(
     'SELECT day, hasShift, workedHours, salaryRate, salaryAmount, salary_currency, note, updatedAt FROM planner_days WHERE day LIKE ? ORDER BY day ASC',
-    [likePattern]
+    [plannerDayKey(userId, likePattern)]
   );
 
   res.json(
     days.map((row) => ({
-      day: row.day,
+      day: plannerDayFromStored(userId, row.day),
       hasShift: Boolean(row.hasShift),
       workedHours: Number(row.workedHours) || 0,
       salaryRate: Number(row.salaryRate) || 0,
@@ -896,6 +1020,7 @@ app.get('/api/planner', async (req, res) => {
 });
 
 app.put('/api/planner/:day', async (req, res) => {
+  const userId = req.authUserId;
   const { day } = req.params;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
     res.status(400).json({ error: 'day param must be in YYYY-MM-DD format' });
@@ -909,11 +1034,13 @@ app.put('/api/planner/:day', async (req, res) => {
   const salaryCurrency = req.body.salaryCurrency === 'PLN' ? 'PLN' : 'UAH';
   const note = typeof req.body.note === 'string' ? req.body.note.trim() : '';
   const updatedAt = new Date().toISOString();
+  const dayKey = plannerDayKey(userId, day);
 
   await db.run(
-    `INSERT INTO planner_days (day, hasShift, workedHours, salaryRate, salaryAmount, salary_currency, note, updatedAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO planner_days (day, user_id, hasShift, workedHours, salaryRate, salaryAmount, salary_currency, note, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(day) DO UPDATE SET
+      user_id = excluded.user_id,
        hasShift = excluded.hasShift,
        workedHours = excluded.workedHours,
        salaryRate = excluded.salaryRate,
@@ -921,7 +1048,7 @@ app.put('/api/planner/:day', async (req, res) => {
        salary_currency = excluded.salary_currency,
        note = excluded.note,
        updatedAt = excluded.updatedAt`,
-    [day, hasShift, workedHours, salaryRate, salaryAmount, salaryCurrency, note, updatedAt]
+    [dayKey, userId, hasShift, workedHours, salaryRate, salaryAmount, salaryCurrency, note, updatedAt]
   );
 
   res.json({
@@ -939,11 +1066,15 @@ app.put('/api/planner/:day', async (req, res) => {
 const normalizeShiftTemplateKey = (name, symbol, currency) =>
   `${String(name).trim().toLowerCase()}::${String(symbol).trim().toLowerCase()}::${currency === 'PLN' ? 'PLN' : 'UAH'}`;
 
-app.get('/api/planner/shift-templates', async (_req, res) => {
+app.get('/api/planner/shift-templates', async (req, res) => {
+  const userId = req.authUserId;
   const rows = await db.all(
     `SELECT id, name, symbol, is_full_day, start_time, end_time, worked_hours, salary_rate, salary_amount, currency, updated_at
      FROM planner_shift_templates
+     WHERE user_id = ?
      ORDER BY updated_at DESC`
+    ,
+    [userId]
   );
   res.json(
     rows.map((row) => ({
@@ -963,6 +1094,7 @@ app.get('/api/planner/shift-templates', async (_req, res) => {
 });
 
 app.post('/api/planner/shift-templates', async (req, res) => {
+  const userId = req.authUserId;
   const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
   const symbol = typeof req.body.symbol === 'string' ? req.body.symbol.trim() : '';
   if (!name && !symbol) {
@@ -979,23 +1111,24 @@ app.post('/api/planner/shift-templates', async (req, res) => {
   const salaryCurrency = req.body.salaryCurrency === 'PLN' ? 'PLN' : 'UAH';
 
   const normalized_key = normalizeShiftTemplateKey(name, symbol, salaryCurrency);
+  const normalizedKeyScoped = scopedTemplateKey(userId, normalized_key);
   const now = new Date().toISOString();
-  const existing = await db.get('SELECT id FROM planner_shift_templates WHERE normalized_key = ?', [normalized_key]);
+  const existing = await db.get('SELECT id FROM planner_shift_templates WHERE user_id = ? AND normalized_key = ?', [userId, normalizedKeyScoped]);
   const id = existing?.id ?? uuidv4();
 
   if (existing) {
     await db.run(
       `UPDATE planner_shift_templates SET
         name = ?, symbol = ?, is_full_day = ?, start_time = ?, end_time = ?, worked_hours = ?, salary_rate = ?, salary_amount = ?, currency = ?, updated_at = ?
-       WHERE id = ?`,
-      [name, symbol, isFullDay ? 1 : 0, startTime, endTime, workedHours, salaryRate, salaryAmount, salaryCurrency, now, id]
+       WHERE user_id = ? AND id = ?`,
+      [name, symbol, isFullDay ? 1 : 0, startTime, endTime, workedHours, salaryRate, salaryAmount, salaryCurrency, now, userId, id]
     );
   } else {
     await db.run(
       `INSERT INTO planner_shift_templates
-        (id, normalized_key, name, symbol, is_full_day, start_time, end_time, worked_hours, salary_rate, salary_amount, currency, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, normalized_key, name, symbol, isFullDay ? 1 : 0, startTime, endTime, workedHours, salaryRate, salaryAmount, salaryCurrency, now, now]
+        (id, user_id, normalized_key, name, symbol, is_full_day, start_time, end_time, worked_hours, salary_rate, salary_amount, currency, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, userId, normalizedKeyScoped, name, symbol, isFullDay ? 1 : 0, startTime, endTime, workedHours, salaryRate, salaryAmount, salaryCurrency, now, now]
     );
   }
 
@@ -1015,17 +1148,28 @@ app.post('/api/planner/shift-templates', async (req, res) => {
 });
 
 app.delete('/api/planner/shift-templates/:id', async (req, res) => {
+  const userId = req.authUserId;
   const id = typeof req.params.id === 'string' ? req.params.id.trim() : '';
   if (!id) {
     res.status(400).json({ error: 'invalid id' });
     return;
   }
-  const result = await db.run('DELETE FROM planner_shift_templates WHERE id = ?', [id]);
+  const result = await db.run('DELETE FROM planner_shift_templates WHERE user_id = ? AND id = ?', [userId, id]);
   if (!result.changes) {
     res.status(404).json({ error: 'not found' });
     return;
   }
   res.status(204).end();
+});
+
+app.use((err, _req, res, next) => {
+  if (res.headersSent) {
+    next(err);
+    return;
+  }
+  const message = err?.message || 'Internal server error';
+  const status = message.includes('CORS') ? 403 : 500;
+  res.status(status).json({ error: message, code: status === 403 ? 'CORS_DENIED' : 'INTERNAL_ERROR' });
 });
 
 // Serve index.html for any other requests (SPA fallback)

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { Transaction, Balance } from '../types';
+import { apiFetch } from '../api/client';
 
 interface TransactionContextType {
   transactions: Transaction[];
@@ -11,21 +12,26 @@ interface TransactionContextType {
 
 const TransactionContext = createContext<TransactionContextType | undefined>(undefined);
 
-/** Пустая строка = тот же origin (Vite proxy в dev, Express в prod). Иначе полный URL бэкенда. */
-const API_URL = import.meta.env.VITE_API_URL ?? '';
-
 export const TransactionProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [balance, setBalance] = useState<Balance>({ total: 0, income: 0, expense: 0 });
 
   const fetchTransactions = async () => {
     try {
-      const response = await fetch(`${API_URL}/api/transactions`);
+      const response = await apiFetch('/api/transactions');
       if (!response.ok) return;
       const data = await response.json();
       setTransactions(data);
     } catch (error) {
       console.error('Error fetching transactions:', error);
+    }
+  };
+
+  const tryParseJson = async (response: Response) => {
+    try {
+      return await response.json();
+    } catch {
+      return null;
     }
   };
 
@@ -54,14 +60,18 @@ export const TransactionProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const addTransaction = async (t: Omit<Transaction, 'id' | 'date'>) => {
     try {
-      const response = await fetch(`${API_URL}/api/transactions`, {
+      const response = await apiFetch('/api/transactions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(t),
       });
       if (!response.ok) return false;
-      const newTransaction = await response.json();
-      setTransactions((prev) => [newTransaction, ...prev]);
+      const newTransaction = await tryParseJson(response);
+      if (newTransaction && typeof newTransaction === 'object') {
+        setTransactions((prev) => [newTransaction as Transaction, ...prev]);
+      } else {
+        await fetchTransactions();
+      }
       return true;
     } catch (error) {
       console.error('Error adding transaction:', error);
@@ -71,7 +81,7 @@ export const TransactionProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const deleteTransaction = async (id: string) => {
     try {
-      const res = await fetch(`${API_URL}/api/transactions/${id}`, {
+      const res = await apiFetch(`/api/transactions/${id}`, {
         method: 'DELETE',
       });
       if (res.status !== 204 && !res.ok) return false;
@@ -85,14 +95,18 @@ export const TransactionProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const updateTransaction = async (id: string, t: Omit<Transaction, 'id' | 'date'>) => {
     try {
-      const response = await fetch(`${API_URL}/api/transactions/${id}`, {
+      const response = await apiFetch(`/api/transactions/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(t),
       });
       if (!response.ok) return false;
-      const updated = await response.json();
-      setTransactions((prev) => prev.map((tx) => (tx.id === id ? updated : tx)));
+      const updated = await tryParseJson(response);
+      if (updated && typeof updated === 'object') {
+        setTransactions((prev) => prev.map((tx) => (tx.id === id ? (updated as Transaction) : tx)));
+      } else {
+        await fetchTransactions();
+      }
       return true;
     } catch (error) {
       console.error('Error updating transaction:', error);

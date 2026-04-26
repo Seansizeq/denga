@@ -27,6 +27,8 @@ dist-ssr
 .env
 .deploy.env
 database.sqlite
+database.sqlite-wal
+database.sqlite-shm
 database.*.sqlite
 backups/
 pass.txt

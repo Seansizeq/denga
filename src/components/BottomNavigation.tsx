@@ -36,7 +36,7 @@ const BottomNavigation: React.FC = () => {
           to="/"
           end
           className={({ isActive }) => (isActive ? styles.active : styles.link)}
-          aria-label="Home"
+          aria-label={t('nav', 'home')}
         >
           <Home size={24} strokeWidth={2} />
         </NavLink>
@@ -54,7 +54,7 @@ const BottomNavigation: React.FC = () => {
         <NavLink
           to="/accounts"
           className={({ isActive }) => (isActive ? styles.active : styles.link)}
-          aria-label="Accounts"
+          aria-label={t('balance', 'moneySources')}
         >
           <WalletCards size={24} strokeWidth={2} />
         </NavLink>
@@ -70,7 +70,7 @@ const BottomNavigation: React.FC = () => {
         <NavLink
           to="/settings"
           className={({ isActive }) => (isActive ? styles.active : styles.link)}
-          aria-label="Settings"
+          aria-label={t('settings', 'title')}
         >
           <SettingsIcon size={24} strokeWidth={2} />
         </NavLink>

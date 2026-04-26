@@ -5,6 +5,8 @@ import { useTranslation } from '../../i18n/LanguageContext';
 import type { CategoryKey } from '../../i18n/translations';
 import styles from './CategoryGrid.module.css';
 
+const iconRegistry = LucideIcons as unknown as Record<string, React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>>;
+
 interface CategoryGridProps {
   selectedId: string;
   type: 'income' | 'expense';
@@ -34,7 +36,7 @@ const CategoryGrid: React.FC<CategoryGridProps> = ({
         const iconName = override.icon ?? category.icon;
         const iconColor = override.color ?? category.color;
         const displayName = override.name?.trim() || t('categories', category.id as CategoryKey);
-        const IconComponent = (LucideIcons as any)[iconName] ?? LucideIcons.Circle;
+        const IconComponent = iconRegistry[iconName] ?? LucideIcons.Circle;
         const selected = selectedId === category.id;
         return (
           <button
@@ -60,8 +62,7 @@ const CategoryGrid: React.FC<CategoryGridProps> = ({
         );
       })}
       {customCategories.map((category) => {
-        const IconComponent =
-          (LucideIcons as any)[category.icon] ?? LucideIcons.Tag;
+        const IconComponent = iconRegistry[category.icon] ?? LucideIcons.Tag;
         const selected = selectedId === category.id;
         return (
           <button

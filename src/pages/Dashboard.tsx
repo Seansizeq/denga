@@ -8,9 +8,9 @@ import HeroBalance from '../components/ui/HeroBalance';
 import QuickActions from '../components/ui/QuickActions';
 import RecentTransactions from '../components/ui/RecentTransactions';
 import type { RangeFilter } from '../components/ui/RecentTransactions';
+import { apiFetch } from '../api/client';
+import { isWithinLastDays } from '../utils/dateRanges';
 import styles from './Dashboard.module.css';
-
-const API_URL = import.meta.env.VITE_API_URL ?? '';
 
 type PortfolioWorth = { uah: number; pln: number };
 
@@ -27,8 +27,7 @@ const Dashboard: React.FC = () => {
       const d = new Date(iso);
       if (range === 'today') return d.toDateString() === now.toDateString();
       if (range === 'week') {
-        const diff = (now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24);
-        return diff <= 7;
+        return isWithinLastDays(iso, 7, now);
       }
       if (range === 'month') {
         return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
@@ -62,7 +61,7 @@ const Dashboard: React.FC = () => {
 
   const loadWorth = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/api/accounts`);
+      const res = await apiFetch('/api/accounts');
       if (!res.ok) {
         setWorth(null);
         return;

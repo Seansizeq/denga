@@ -8,6 +8,8 @@ import { useTranslation } from '../../i18n/LanguageContext';
 import type { CategoryKey } from '../../i18n/translations';
 import styles from './TransactionItem.module.css';
 
+const iconRegistry = LucideIcons as unknown as Record<string, React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>>;
+
 interface TransactionItemProps {
   transaction: Transaction;
   onDelete?: (id: string) => void;
@@ -21,8 +23,8 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onDelete
     ? findCategory(transaction.type === 'income' ? 'other_income' : 'other_expense')
     : findCategory(transaction.categoryId);
   const IconComponent = customCategory
-    ? ((LucideIcons as any)[customCategory.icon] ?? LucideIcons.Tag)
-    : ((LucideIcons as any)[category.icon] ?? LucideIcons.Circle);
+    ? (iconRegistry[customCategory.icon] ?? LucideIcons.Tag)
+    : (iconRegistry[category.icon] ?? LucideIcons.Circle);
 
   const handleDelete = () => {
     if (!onDelete) return;

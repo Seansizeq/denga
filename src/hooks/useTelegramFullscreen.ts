@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import type { TelegramWebApp, TelegramWindow } from '../types/telegram';
 
 const STORAGE_KEY = 'denga_fullscreen';
 
@@ -11,7 +12,10 @@ interface Inset {
 
 const EMPTY: Inset = { top: 0, right: 0, bottom: 0, left: 0 };
 
-const tg = () => (window as any)?.Telegram?.WebApp;
+const tg = (): TelegramWebApp | undefined => {
+  const tgWindow = window as Window & TelegramWindow;
+  return tgWindow.Telegram?.WebApp;
+};
 
 const writeInsets = () => {
   const w = tg();

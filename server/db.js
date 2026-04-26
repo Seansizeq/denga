@@ -27,6 +27,7 @@ export async function initDb() {
   await db.exec(`
     CREATE TABLE IF NOT EXISTS transactions (
       id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL DEFAULT '',
       amount REAL NOT NULL,
       categoryId TEXT NOT NULL,
       type TEXT NOT NULL,
@@ -46,6 +47,7 @@ export async function initDb() {
   await db.exec(`
     CREATE TABLE IF NOT EXISTS planner_days (
       day TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL DEFAULT '',
       hasShift INTEGER NOT NULL DEFAULT 0,
       workedHours REAL NOT NULL DEFAULT 0,
       salaryRate REAL NOT NULL DEFAULT 0,
@@ -97,6 +99,7 @@ export async function initDb() {
   await db.exec(`
     CREATE TABLE IF NOT EXISTS custom_categories (
       id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL DEFAULT '',
       type TEXT NOT NULL,
       name TEXT NOT NULL,
       normalized_name TEXT NOT NULL,
@@ -109,12 +112,13 @@ export async function initDb() {
 
   await db.exec(`
     CREATE UNIQUE INDEX IF NOT EXISTS idx_custom_categories_type_name
-    ON custom_categories(type, normalized_name)
+    ON custom_categories(user_id, type, normalized_name)
   `);
 
   await db.exec(`
     CREATE TABLE IF NOT EXISTS subscriptions (
       id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL DEFAULT '',
       name TEXT NOT NULL,
       amount REAL NOT NULL,
       cycle TEXT NOT NULL,
@@ -129,6 +133,7 @@ export async function initDb() {
   await db.exec(`
     CREATE TABLE IF NOT EXISTS planner_shift_templates (
       id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL DEFAULT '',
       normalized_key TEXT NOT NULL UNIQUE,
       name TEXT NOT NULL DEFAULT '',
       symbol TEXT NOT NULL DEFAULT '',
@@ -146,6 +151,7 @@ export async function initDb() {
   await db.exec(`
     CREATE TABLE IF NOT EXISTS account_portfolio (
       account_key TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL DEFAULT '',
       section TEXT NOT NULL,
       sort_index INTEGER NOT NULL,
       name TEXT NOT NULL,
@@ -158,6 +164,58 @@ export async function initDb() {
       updatedAt TEXT NOT NULL
     )
   `);
+
+  await db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_transactions_user_date
+    ON transactions(user_id, date DESC)
+  `);
+  await db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_subscriptions_user_active
+    ON subscriptions(user_id, active)
+  `);
+  await db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_planner_days_user_day
+    ON planner_days(user_id, day)
+  `);
+  await db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_planner_shift_templates_user
+    ON planner_shift_templates(user_id, updated_at DESC)
+  `);
+  await db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_accounts_user_sort
+    ON account_portfolio(user_id, sort_index)
+  `);
+
+  try {
+    await db.exec(`ALTER TABLE transactions ADD COLUMN user_id TEXT NOT NULL DEFAULT ''`);
+  } catch {
+    /* already exists */
+  }
+  try {
+    await db.exec(`ALTER TABLE custom_categories ADD COLUMN user_id TEXT NOT NULL DEFAULT ''`);
+  } catch {
+    /* already exists */
+  }
+  try {
+    await db.exec(`ALTER TABLE subscriptions ADD COLUMN user_id TEXT NOT NULL DEFAULT ''`);
+  } catch {
+    /* already exists */
+  }
+  try {
+    await db.exec(`ALTER TABLE planner_days ADD COLUMN user_id TEXT NOT NULL DEFAULT ''`);
+  } catch {
+    /* already exists */
+  }
+  try {
+    await db.exec(`ALTER TABLE planner_shift_templates ADD COLUMN user_id TEXT NOT NULL DEFAULT ''`);
+  } catch {
+    /* already exists */
+  }
+  try {
+    await db.exec(`ALTER TABLE account_portfolio ADD COLUMN user_id TEXT NOT NULL DEFAULT ''`);
+  } catch {
+    /* already exists */
+  }
 
   return db;
 }

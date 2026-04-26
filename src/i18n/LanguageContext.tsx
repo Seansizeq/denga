@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useMemo, useState, useCall
 import { LANGUAGES, translations, LOCALE_MAP } from './translations';
 import type { Language } from './translations';
 import type { DisplayCurrency } from '../utils/formatters';
+import type { TelegramWindow } from '../types/telegram';
 
 const STORAGE_KEY = 'denga_lang';
 const CURRENCY_STORAGE_KEY = 'denga_currency';
@@ -40,7 +41,8 @@ const detectInitialLanguage = (): Language => {
     /* ignore */
   }
 
-  const tgLang = (window as any)?.Telegram?.WebApp?.initDataUnsafe?.user?.language_code;
+  const tgWindow = window as Window & TelegramWindow;
+  const tgLang = tgWindow.Telegram?.WebApp?.initDataUnsafe?.user?.language_code;
   if (typeof tgLang === 'string') {
     const short = tgLang.slice(0, 2).toLowerCase();
     if (isSupported(short)) return short;

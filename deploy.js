@@ -45,17 +45,15 @@ const sh = (cmd, opts = {}) => {
 
 const log = (...args) => console.log('[deploy]', ...args);
 
-const pushToGithub = () => {
-  log('Committing local changes (if any)...');
-  sh('git add -A', { ignoreError: true });
+const assertCleanGitTree = () => {
   const status = sh('git status --porcelain');
   if (status) {
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-    sh(`git commit -m "deploy: ${stamp}"`);
-    log('Created commit.');
-  } else {
-    log('Nothing to commit, pushing anyway.');
+    throw new Error('Working tree is not clean. Commit or stash changes before deploy.');
   }
+};
+
+const pushToGithub = () => {
+  assertCleanGitTree();
 
   log(`Pushing to ${GIT_REMOTE_URL} (${GIT_BRANCH})...`);
   sh(`git push origin ${GIT_BRANCH}`, { stdio: 'inherit' });

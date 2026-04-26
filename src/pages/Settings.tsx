@@ -4,9 +4,10 @@ import { LANGUAGES, LANGUAGE_LABELS, LANGUAGE_FLAGS } from '../i18n/translations
 import type { Language } from '../i18n/translations';
 import type { DisplayCurrency } from '../utils/formatters';
 import { useTelegramFullscreen } from '../hooks/useTelegramFullscreen';
+import type { TelegramWindow } from '../types/telegram';
 import styles from './Settings.module.css';
 
-const APP_VERSION = '1.0.0';
+const APP_VERSION = (import.meta.env.VITE_APP_VERSION as string | undefined) ?? 'dev';
 const DISPLAY_CURRENCIES: DisplayCurrency[] = ['UAH', 'PLN', 'USD'];
 
 const Settings: React.FC = () => {
@@ -14,7 +15,8 @@ const Settings: React.FC = () => {
   const { isSupported: fsSupported, isFullscreen, toggle: toggleFullscreen } =
     useTelegramFullscreen();
 
-  const tg = (window as any).Telegram?.WebApp;
+  const tgWindow = window as Window & TelegramWindow;
+  const tg = tgWindow.Telegram?.WebApp;
   const openedFromTelegram = !!(tg?.initData || tg?.initDataUnsafe?.user?.id);
 
   return (

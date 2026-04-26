@@ -1,10 +1,14 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronDown } from 'lucide-react';
+import type { TelegramWindow } from '../../types/telegram';
+import { useTranslation } from '../../i18n/LanguageContext';
 import styles from './Header.module.css';
 
 const Header: React.FC = () => {
-  const tgUser = (window as any)?.Telegram?.WebApp?.initDataUnsafe?.user;
+  const { t } = useTranslation();
+  const tgWindow = window as Window & TelegramWindow;
+  const tgUser = tgWindow.Telegram?.WebApp?.initDataUnsafe?.user;
   const firstName: string | undefined = tgUser?.first_name;
   const lastName: string | undefined = tgUser?.last_name;
   const userName: string | undefined = tgUser?.username;
@@ -16,7 +20,7 @@ const Header: React.FC = () => {
 
   return (
     <header className={styles.header}>
-      <Link to="/settings" className={styles.profileLink} aria-label="Profile & settings">
+      <Link to="/settings" className={styles.profileLink} aria-label={t('settings', 'title')}>
         <div className={styles.avatar}>
           {photoUrl ? (
             <img src={photoUrl} alt="" className={styles.avatarImg} />

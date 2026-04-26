@@ -252,8 +252,8 @@ const uk: Dict = {
     create: 'Створити',
     deleteConfirm: 'Видалити цю категорію?',
     saveFailed: 'Не вдалося зберегти. Перевір з’єднання і спробуй ще раз.',
-    paymentAccount: 'Звідки списати',
-    paymentAccountHint: 'Обери карту чи готівку — на «Рахунках» оновиться відповідний баланс',
+    paymentAccount: 'Рахунок',
+    paymentAccountHint: 'Обери карту чи готівку — цей рахунок оновиться в «Рахунках»',
     paymentAccountNone: 'Не вказано',
   },
   history: {
@@ -453,8 +453,8 @@ const ru: Dict = {
     create: 'Создать',
     deleteConfirm: 'Удалить эту категорию?',
     saveFailed: 'Не удалось сохранить. Проверь соединение и попробуй снова.',
-    paymentAccount: 'Откуда списать',
-    paymentAccountHint: 'Выбери карту или наличные — на «Счетах» обновится баланс',
+    paymentAccount: 'Счёт',
+    paymentAccountHint: 'Выбери карту или наличные — этот счёт обновится в «Счетах»',
     paymentAccountNone: 'Не указано',
   },
   history: {
@@ -654,8 +654,8 @@ const en: Dict = {
     create: 'Create',
     deleteConfirm: 'Delete this category?',
     saveFailed: 'Could not save. Check your connection and try again.',
-    paymentAccount: 'Debit from',
-    paymentAccountHint: 'Pick a card or cash — balances update on Accounts',
+    paymentAccount: 'Account',
+    paymentAccountHint: 'Pick a card or cash — this account will update on Accounts',
     paymentAccountNone: 'Not set',
   },
   history: {

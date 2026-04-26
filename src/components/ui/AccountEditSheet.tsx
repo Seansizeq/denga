@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { X } from 'lucide-react';
+import { useTranslation } from '../../i18n/LanguageContext';
 import styles from './AccountEditSheet.module.css';
 
 export type EditableAccount = {
@@ -38,6 +39,7 @@ const COLOR_OPTIONS: Array<{ tone: EditableAccount['iconTone']; label: string; s
 ];
 
 const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, onSave, onDelete }) => {
+  const { t } = useTranslation();
   const [name, setName] = useState(() => initial.name);
   const [amount, setAmount] = useState(() => String(initial.primaryAmount));
   const [currency, setCurrency] = useState<'UAH' | 'PLN'>(() => initial.primaryCurrency);
@@ -46,6 +48,7 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
   const [debtPhrase, setDebtPhrase] = useState(() => initial.debtPhrase);
   const [iconTone, setIconTone] = useState<EditableAccount['iconTone']>(() => initial.iconTone);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
   const canEditDebtPhrase = useMemo(() => section === 'debt', [section]);
   const isCreateMode = useMemo(() => !initial.accountKey.trim(), [initial.accountKey]);
@@ -53,6 +56,7 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
   const handleSave = async () => {
     const n = parseMoney(amount);
     if (!name.trim() || n === null) return;
+    setError('');
     setSaving(true);
     try {
       await onSave({
@@ -67,6 +71,8 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
         iconTone,
       });
       onClose();
+    } catch {
+      setError(t('addTx', 'saveFailed'));
     } finally {
       setSaving(false);
     }
@@ -74,12 +80,15 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
 
   const handleDelete = async () => {
     if (!onDelete || isCreateMode) return;
-    const ok = window.confirm('Видалити цей акаунт?');
+    setError('');
+    const ok = window.confirm(t('addTx', 'deleteConfirm'));
     if (!ok) return;
     setSaving(true);
     try {
       await onDelete(initial.accountKey);
       onClose();
+    } catch {
+      setError(t('addTx', 'saveFailed'));
     } finally {
       setSaving(false);
     }
@@ -87,16 +96,17 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
 
   return (
     <div className={styles.overlay} role="dialog" aria-modal="true">
-      <button type="button" className={styles.scrim} onClick={onClose} aria-label="Close" />
+      <button type="button" className={styles.scrim} onClick={onClose} aria-label={t('addTx', 'cancel')} />
 
       <div className={styles.sheet}>
         <div className={styles.sheetHeader}>
-          <button type="button" className={styles.iconBtn} onClick={onClose} aria-label="Close">
+          <button type="button" className={styles.iconBtn} onClick={onClose} aria-label={t('addTx', 'cancel')}>
             <X size={18} strokeWidth={2.4} />
           </button>
-          <h2 className={styles.title}>{isCreateMode ? 'Новий акаунт' : 'Редагувати акаунт'}</h2>
+          <h2 className={styles.title}>{isCreateMode ? t('addTx', 'createCategory') : t('history', 'edit')}</h2>
           <span className={styles.headerSpacer} />
         </div>
+        {error ? <p className={styles.errorText}>{error}</p> : null}
 
         <div className={styles.body}>
           <label className={styles.label}>
@@ -167,14 +177,14 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
         <div className={styles.footer}>
           {!isCreateMode && onDelete ? (
             <button type="button" className={styles.danger} onClick={handleDelete} disabled={saving}>
-              Видалити
+              {t('history', 'delete')}
             </button>
           ) : null}
           <button type="button" className={styles.secondary} onClick={onClose} disabled={saving}>
-            Скасувати
+            {t('addTx', 'cancel')}
           </button>
           <button type="button" className={styles.primary} onClick={handleSave} disabled={saving || !name.trim() || parseMoney(amount) === null}>
-            {saving ? 'Збереження…' : isCreateMode ? 'Створити' : 'Зберегти'}
+            {saving ? `${t('addTx', 'save')}...` : isCreateMode ? t('addTx', 'create') : t('addTx', 'save')}
           </button>
         </div>
       </div>

@@ -20,7 +20,10 @@ import {
   stripAccountFromNote,
   type AccountNoteKey,
 } from '../utils/transactionAccount';
+import { apiFetch } from '../api/client';
 import styles from './AddTransaction.module.css';
+
+const iconRegistry = LucideIcons as unknown as Record<string, React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>>;
 
 const ACCOUNT_CHIP_LABELS: Record<AccountNoteKey, Record<Language, string>> = {
   pumb: { uk: 'PUMB', ru: 'PUMB', en: 'PUMB' },
@@ -69,8 +72,6 @@ const AddTransaction: React.FC = () => {
   const [editingCustomId, setEditingCustomId] = useState<string | null>(null);
   const [portfolioAccounts, setPortfolioAccounts] = useState<Array<{ key: string; name: string }>>([]);
 
-  const API_URL = import.meta.env.VITE_API_URL ?? '';
-
   const allowedPaymentKeys = useMemo(() => {
     const s = new Set<string>([...ACCOUNT_NOTE_KEYS]);
     portfolioAccounts.forEach((r) => s.add(r.key));
@@ -97,7 +98,7 @@ const AddTransaction: React.FC = () => {
     let cancelled = false;
     const loadPortfolio = async () => {
       try {
-        const res = await fetch(`${API_URL}/api/accounts`);
+        const res = await apiFetch('/api/accounts');
         if (!res.ok || cancelled) return;
         const data: unknown = await res.json();
         if (!Array.isArray(data) || cancelled) return;
@@ -124,13 +125,13 @@ const AddTransaction: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [API_URL]);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     const loadCustomCategories = async () => {
       try {
-        const response = await fetch(`${API_URL}/api/custom-categories?type=${type}`);
+        const response = await apiFetch(`/api/custom-categories?type=${type}`);
         if (!response.ok) return;
         const data = await response.json();
         if (!cancelled && Array.isArray(data)) {
@@ -144,7 +145,7 @@ const AddTransaction: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [API_URL, type]);
+  }, [type]);
 
   useEffect(() => {
     try {
@@ -187,10 +188,7 @@ const AddTransaction: React.FC = () => {
     setSaveError('');
     const numAmount = parseFloat(amount.replace(',', '.'));
     if (!numAmount || numAmount <= 0) return;
-    const mergedNote =
-      type === 'expense'
-        ? mergeAccountIntoNote(note.trim(), paymentAccount, allowedPaymentKeys)
-        : stripAccountFromNote(note.trim());
+    const mergedNote = mergeAccountIntoNote(note.trim(), paymentAccount, allowedPaymentKeys);
     const payload = {
       amount: numAmount,
       type,
@@ -247,7 +245,6 @@ const AddTransaction: React.FC = () => {
             setType('income');
             setCategoryId('salary');
             setIsCreatingCustom(false);
-            setPaymentAccount('');
           }}
         >
           {t('addTx', 'income')}
@@ -271,31 +268,29 @@ const AddTransaction: React.FC = () => {
         <span className={styles.currency}>₴</span>
       </div>
 
-      {type === 'expense' ? (
-        <section className={styles.paymentSection} aria-label={t('addTx', 'paymentAccount')}>
-          <h3 className={styles.sectionTitle}>{t('addTx', 'paymentAccount')}</h3>
-          <p className={styles.paymentHint}>{t('addTx', 'paymentAccountHint')}</p>
-          <div className={styles.paymentChips}>
+      <section className={styles.paymentSection} aria-label={t('addTx', 'paymentAccount')}>
+        <h3 className={styles.sectionTitle}>{t('addTx', 'paymentAccount')}</h3>
+        <p className={styles.paymentHint}>{t('addTx', 'paymentAccountHint')}</p>
+        <div className={styles.paymentChips}>
+          <button
+            type="button"
+            className={`${styles.paymentChip} ${paymentAccount === '' ? styles.paymentChipActive : ''}`}
+            onClick={() => setPaymentAccount('')}
+          >
+            {t('addTx', 'paymentAccountNone')}
+          </button>
+          {paymentChipOptions.map(({ key, label }) => (
             <button
+              key={key}
               type="button"
-              className={`${styles.paymentChip} ${paymentAccount === '' ? styles.paymentChipActive : ''}`}
-              onClick={() => setPaymentAccount('')}
+              className={`${styles.paymentChip} ${paymentAccount === key ? styles.paymentChipActive : ''}`}
+              onClick={() => setPaymentAccount(paymentAccount === key ? '' : key)}
             >
-              {t('addTx', 'paymentAccountNone')}
+              {label}
             </button>
-            {paymentChipOptions.map(({ key, label }) => (
-              <button
-                key={key}
-                type="button"
-                className={`${styles.paymentChip} ${paymentAccount === key ? styles.paymentChipActive : ''}`}
-                onClick={() => setPaymentAccount(paymentAccount === key ? '' : key)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </section>
-      ) : null}
+          ))}
+        </div>
+      </section>
 
       <section className={styles.categorySection}>
         <h3 className={styles.sectionTitle}>{t('addTx', 'category')}</h3>
@@ -357,7 +352,7 @@ const AddTransaction: React.FC = () => {
                   onClick={async () => {
                     if (!window.confirm(t('addTx', 'deleteConfirm'))) return;
                     try {
-                      const response = await fetch(`${API_URL}/api/custom-categories/${encodeURIComponent(managingCustom.id)}`, {
+                      const response = await apiFetch(`/api/custom-categories/${encodeURIComponent(managingCustom.id)}`, {
                         method: 'DELETE',
                       });
                       if (response.ok) {
@@ -395,7 +390,7 @@ const AddTransaction: React.FC = () => {
             <p className={styles.iconPickerLabel}>{t('addTx', 'chooseIcon')}</p>
             <div className={styles.iconPickerGrid}>
               {CUSTOM_CATEGORY_ICONS.map((iconName) => {
-                const IconComponent = (LucideIcons as any)[iconName] ?? LucideIcons.Tag;
+                const IconComponent = iconRegistry[iconName] ?? LucideIcons.Tag;
                 const selected = newCategoryIcon === iconName;
                 return (
                   <button
@@ -449,9 +444,9 @@ const AddTransaction: React.FC = () => {
                     const isEdit = Boolean(editingCustomId);
                     const isBuiltInEdit = Boolean(managingCustom && !managingCustom.isCustom);
                     const endpoint = isEdit
-                      ? `${API_URL}/api/custom-categories/${encodeURIComponent(editingCustomId as string)}`
-                      : `${API_URL}/api/custom-categories`;
-                    const response = await fetch(endpoint, {
+                      ? `/api/custom-categories/${encodeURIComponent(editingCustomId as string)}`
+                      : '/api/custom-categories';
+                    const response = await apiFetch(endpoint, {
                       method: isEdit ? 'PATCH' : 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({

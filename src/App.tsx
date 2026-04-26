@@ -12,6 +12,7 @@ import Settings from './pages/Settings';
 import Stats from './pages/Stats';
 import { useTranslation } from './i18n/LanguageContext';
 import { useTelegramFullscreen } from './hooks/useTelegramFullscreen';
+import type { TelegramWindow } from './types/telegram';
 import './styles/variables.css';
 
 const BOT_URL = 'https://t.me/denga_bot';
@@ -74,7 +75,8 @@ const BrowserStub = () => {
 };
 
 const isInsideTelegram = (): boolean => {
-  const tg = (window as any).Telegram?.WebApp;
+  const tgWindow = window as Window & TelegramWindow;
+  const tg = tgWindow.Telegram?.WebApp;
   if (!tg) return false;
   if (tg.initData && tg.initData.length > 0) return true;
   const unsafe = tg.initDataUnsafe;
@@ -118,11 +120,12 @@ function App() {
       return;
     }
 
-    const tg = (window as any).Telegram?.WebApp;
+    const tgWindow = window as Window & TelegramWindow;
+    const tg = tgWindow.Telegram?.WebApp;
     if (isInsideTelegram()) {
-      tg.expand();
-      tg.ready();
-      tg.disableVerticalSwipes?.();
+      tg?.expand?.();
+      tg?.ready?.();
+      tg?.disableVerticalSwipes?.();
       setIsTelegram(true);
     } else {
       setIsTelegram(false);
