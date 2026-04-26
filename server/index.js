@@ -126,6 +126,9 @@ const FX_FALLBACK = {
 };
 let fxCache = null;
 let fxCacheFetchedAt = 0;
+const CRYPTO_CACHE_TTL_MS = 2 * 60 * 1000;
+let cryptoCache = null;
+let cryptoCacheFetchedAt = 0;
 const fetchFxRates = async () => {
   const now = Date.now();
   if (fxCache && now - fxCacheFetchedAt < FX_CACHE_TTL_MS) {
@@ -154,6 +157,44 @@ const fetchFxRates = async () => {
   } catch {
     if (fxCache) return { ...fxCache, source: 'cache' };
     return FX_FALLBACK;
+  }
+};
+const fetchCryptoUsdPrices = async () => {
+  const now = Date.now();
+  if (cryptoCache && now - cryptoCacheFetchedAt < CRYPTO_CACHE_TTL_MS) {
+    return { ...cryptoCache, source: 'cache' };
+  }
+  try {
+    const ids = ['bitcoin', 'ethereum', 'solana', 'the-open-network', 'tether'];
+    const res = await fetch(
+      `https://api.coingecko.com/api/v3/simple/price?ids=${ids.join(',')}&vs_currencies=usd`,
+      { headers: { accept: 'application/json' } }
+    );
+    if (!res.ok) throw new Error(`crypto status ${res.status}`);
+    const data = await res.json();
+    const prices = {
+      BTC: Number(data?.bitcoin?.usd ?? NaN),
+      ETH: Number(data?.ethereum?.usd ?? NaN),
+      SOL: Number(data?.solana?.usd ?? NaN),
+      TON: Number(data?.['the-open-network']?.usd ?? NaN),
+      USDT: Number(data?.tether?.usd ?? NaN),
+    };
+    const allValid = Object.values(prices).every((n) => Number.isFinite(n) && n > 0);
+    if (!allValid) throw new Error('invalid crypto payload');
+    cryptoCache = {
+      prices,
+      updatedAt: new Date().toISOString(),
+      source: 'live',
+    };
+    cryptoCacheFetchedAt = now;
+    return cryptoCache;
+  } catch {
+    if (cryptoCache) return { ...cryptoCache, source: 'cache' };
+    return {
+      prices: { BTC: 0, ETH: 0, SOL: 0, TON: 0, USDT: 1 },
+      updatedAt: new Date(0).toISOString(),
+      source: 'fallback',
+    };
   }
 };
 const buildSubscriptionChargeNote = (subscription) => {
@@ -527,6 +568,11 @@ app.use('/api', authMiddleware);
 
 app.get('/api/fx-rates', async (_req, res) => {
   const payload = await fetchFxRates();
+  res.json(payload);
+});
+
+app.get('/api/crypto-prices', async (_req, res) => {
+  const payload = await fetchCryptoUsdPrices();
   res.json(payload);
 });
 

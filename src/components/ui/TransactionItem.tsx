@@ -6,6 +6,7 @@ import { findCategory, getCustomCategoryData } from '../../constants/categories'
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { useTranslation } from '../../i18n/LanguageContext';
 import type { CategoryKey } from '../../i18n/translations';
+import { stripAccountFromNote } from '../../utils/transactionAccount';
 import styles from './TransactionItem.module.css';
 
 const iconRegistry = LucideIcons as unknown as Record<string, React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>>;
@@ -39,7 +40,8 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onDelete
   };
 
   const categoryName = customCategory?.name ?? t('categories', category.id as CategoryKey);
-  const subtitle = transaction.note?.trim() || formatDate(transaction.date, locale);
+  const cleanNote = stripAccountFromNote(transaction.note?.trim() ?? '');
+  const subtitle = cleanNote || formatDate(transaction.date, locale);
   const isIncome = transaction.type === 'income';
   const txCurrency = transaction.currency;
   const displayAmount = convertAmount(transaction.amount, txCurrency);

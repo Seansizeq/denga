@@ -103,12 +103,25 @@ const formatGroupAmount = (amount: number, currency: string) => {
 };
 
 const normalizeLabel = (value: string) => value.trim().toLowerCase().replace(/\s+/g, ' ');
+const parseCryptoPosition = (subText?: string | null): { symbol: 'BTC' | 'ETH' | 'SOL' | 'TON' | 'USDT'; amount: number } | null => {
+  if (!subText) return null;
+  const m = subText.match(/([0-9]+(?:[.,][0-9]+)?)\s*([A-Za-z]{3,5})/);
+  if (!m?.[1] || !m?.[2]) return null;
+  const amount = Number(m[1].replace(',', '.'));
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  const symbol = m[2].toUpperCase();
+  if (symbol === 'BTC' || symbol === 'ETH' || symbol === 'SOL' || symbol === 'TON' || symbol === 'USDT') {
+    return { symbol, amount };
+  }
+  return null;
+};
 
 const Accounts: React.FC = () => {
   const { t, displayCurrency, convertAmount } = useTranslation();
   const { transactions } = useTransactions();
   const [portfolio, setPortfolio] = useState<readonly PortfolioAccountRow[]>([]);
   const [editing, setEditing] = useState<EditableAccount | null>(null);
+  const [cryptoUsdPrices, setCryptoUsdPrices] = useState<Record<string, number>>({});
 
   const loadPortfolio = useCallback(async () => {
     try {
@@ -129,6 +142,32 @@ const Accounts: React.FC = () => {
     }, 0);
     return () => window.clearTimeout(t);
   }, [loadPortfolio]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadCryptoPrices = async () => {
+      try {
+        const res = await apiFetch('/api/crypto-prices');
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        const prices = (data?.prices ?? {}) as Record<string, unknown>;
+        const normalized: Record<string, number> = {};
+        for (const [k, v] of Object.entries(prices)) {
+          const n = Number(v);
+          if (Number.isFinite(n) && n > 0) normalized[k.toUpperCase()] = n;
+        }
+        if (!cancelled) setCryptoUsdPrices(normalized);
+      } catch {
+        if (!cancelled) setCryptoUsdPrices({});
+      }
+    };
+    void loadCryptoPrices();
+    const id = window.setInterval(() => void loadCryptoPrices(), 120000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, []);
 
   const txSections = useMemo(() => {
     const base = {
@@ -405,9 +444,15 @@ const Accounts: React.FC = () => {
         .slice()
         .sort((a, b) => a.sortIndex - b.sortIndex || a.accountKey.localeCompare(b.accountKey))
         .map((r) => {
-          const fiat = formatGroupAmount(r.primaryAmount, r.primaryCurrency);
+          const position = r.section === 'crypto' ? parseCryptoPosition(r.subText) : null;
+          const marketUsd = position ? (cryptoUsdPrices[position.symbol] ?? 0) * position.amount : 0;
+          const dynamicPrimary =
+            position && marketUsd > 0
+              ? convertAmount(marketUsd, 'USD', r.primaryCurrency)
+              : r.primaryAmount;
+          const fiat = formatGroupAmount(dynamicPrimary, r.primaryCurrency);
           const amount = r.debtPhrase?.trim() ? `${r.debtPhrase.trim()} ${fiat}` : fiat;
-          const converted = convertAmount(r.primaryAmount, r.primaryCurrency, displayCurrency);
+          const converted = convertAmount(dynamicPrimary, r.primaryCurrency, displayCurrency);
           const fxSub = r.primaryCurrency === displayCurrency ? '' : formatGroupAmount(converted, displayCurrency);
           const subAmount = [r.subText?.trim() ?? '', fxSub].filter(Boolean).join(' · ') || undefined;
           const badge = (r.badge ?? '').trim() || r.name.slice(0, 1);
@@ -426,9 +471,29 @@ const Accounts: React.FC = () => {
       if (!list.length) {
         return preferred === 'PLN' ? '0 zł' : '0 UAH';
       }
-      const sumPreferred = list.filter((r) => r.primaryCurrency === preferred).reduce((a, r) => a + r.primaryAmount, 0);
+      const sumPreferred = list
+        .filter((r) => r.primaryCurrency === preferred)
+        .reduce((a, r) => {
+          const position = r.section === 'crypto' ? parseCryptoPosition(r.subText) : null;
+          const marketUsd = position ? (cryptoUsdPrices[position.symbol] ?? 0) * position.amount : 0;
+          const dynamicPrimary =
+            position && marketUsd > 0
+              ? convertAmount(marketUsd, 'USD', r.primaryCurrency)
+              : r.primaryAmount;
+          return a + dynamicPrimary;
+        }, 0);
       const other: 'UAH' | 'PLN' = preferred === 'PLN' ? 'UAH' : 'PLN';
-      const sumOther = list.filter((r) => r.primaryCurrency === other).reduce((a, r) => a + r.primaryAmount, 0);
+      const sumOther = list
+        .filter((r) => r.primaryCurrency === other)
+        .reduce((a, r) => {
+          const position = r.section === 'crypto' ? parseCryptoPosition(r.subText) : null;
+          const marketUsd = position ? (cryptoUsdPrices[position.symbol] ?? 0) * position.amount : 0;
+          const dynamicPrimary =
+            position && marketUsd > 0
+              ? convertAmount(marketUsd, 'USD', r.primaryCurrency)
+              : r.primaryAmount;
+          return a + dynamicPrimary;
+        }, 0);
       if (Math.abs(sumOther) > 0 && Math.abs(sumPreferred) === 0) {
         return formatGroupAmount(sumOther, other);
       }
@@ -478,7 +543,7 @@ const Accounts: React.FC = () => {
         rows: debtRows,
       },
     ];
-  }, [portfolio, t, convertAmount, displayCurrency]);
+  }, [portfolio, t, convertAmount, displayCurrency, cryptoUsdPrices]);
 
   const sections = portfolio.length > 0 ? portfolioSnapshotSections : txSections;
 
