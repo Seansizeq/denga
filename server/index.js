@@ -572,6 +572,7 @@ const CATEGORIES = [
   { id: 'other_income', name: 'Корекція балансу' },
   { id: 'other_expense', name: 'Корекція балансу' },
 ];
+const BOT_CATEGORY_OPTIONS = CATEGORIES.filter((c) => c.id !== 'other_income' && c.id !== 'other_expense');
 
 const pendingTransactions = new Map();
 const pendingShiftStarts = new Map();
@@ -766,7 +767,7 @@ if (bot) {
       createdAt: Date.now(),
     });
     const keyboard = {
-      inline_keyboard: CATEGORIES.map((c) => [{ text: c.name, callback_data: `cat_${c.id}` }]),
+      inline_keyboard: BOT_CATEGORY_OPTIONS.map((c) => [{ text: c.name, callback_data: `cat_${c.id}` }]),
     };
     bot.sendMessage(msg.chat.id, `Виберіть категорію для суми ${amount}:`, { reply_markup: keyboard });
   });
