@@ -105,9 +105,9 @@ const formatGroupAmount = (amount: number, currency: string) => {
 const normalizeLabel = (value: string) => value.trim().toLowerCase().replace(/\s+/g, ' ');
 const parseCryptoPosition = (subText?: string | null): { symbol: 'BTC' | 'ETH' | 'SOL' | 'TON' | 'USDT'; amount: number } | null => {
   if (!subText) return null;
-  const m = subText.match(/([0-9][0-9\s]*(?:[.,][0-9]+)?)\s*([A-Za-z]{3,5})/);
+  const m = subText.match(/([0-9][0-9\s\u00A0\u202F]*(?:[.,][0-9]+)?)\s*([A-Za-z]{3,5})/);
   if (!m?.[1] || !m?.[2]) return null;
-  const amount = Number(m[1].replace(/\s+/g, '').replace(',', '.'));
+  const amount = Number(m[1].replace(/[\s\u00A0\u202F]+/g, '').replace(',', '.'));
   if (!Number.isFinite(amount) || amount <= 0) return null;
   const symbol = m[2].toUpperCase();
   if (symbol === 'BTC' || symbol === 'ETH' || symbol === 'SOL' || symbol === 'TON' || symbol === 'USDT') {
@@ -399,34 +399,25 @@ const Accounts: React.FC = () => {
     ];
     orderedAccountKeys.forEach((k) => pushAccount(k));
 
-    const calculateSectionTotal = (rows: Array<{ id: string }>, defaultCurrency: 'UAH' | 'PLN' = 'UAH') => {
-      if (!rows.length) return `0 ${defaultCurrency === 'PLN' ? 'zł' : defaultCurrency}`;
-      const sums = rows.reduce(
-        (acc, row) => {
-          const t = accountTotals.get(row.id) ?? emptyTotals();
-          acc.uah += t.uah;
-          acc.pln += t.pln;
-          return acc;
-        },
-        { uah: 0, pln: 0 },
-      );
-      if (defaultCurrency === 'PLN') {
-        return formatGroupAmount(sums.pln, 'PLN');
-      }
-      // Bank section is UAH-first in UI; if there is no UAH but PLN exists, show PLN.
-      if (Math.abs(sums.uah) >= Math.abs(sums.pln)) {
-        return formatGroupAmount(sums.uah, 'UAH');
-      }
-      return formatGroupAmount(sums.pln, 'PLN');
+    const calculateSectionTotal = (rows: Array<{ id: string }>) => {
+      if (!rows.length) return formatGroupAmount(0, displayCurrency);
+      const sumDisplay = rows.reduce((acc, row) => {
+        const totals = accountTotals.get(row.id) ?? emptyTotals();
+        for (const [currency, amount] of totals.byCurrency.entries()) {
+          acc += convertAmount(amount, currency as 'UAH' | 'PLN' | 'USD', displayCurrency);
+        }
+        return acc;
+      }, 0);
+      return formatGroupAmount(sumDisplay, displayCurrency);
     };
 
-    base.bank.total = calculateSectionTotal(base.bank.rows, 'UAH');
-    base.cash.total = calculateSectionTotal(base.cash.rows, 'PLN');
-    base.crypto.total = calculateSectionTotal(base.crypto.rows, 'PLN');
-    base.debt.total = calculateSectionTotal(base.debt.rows, 'PLN');
+    base.bank.total = calculateSectionTotal(base.bank.rows);
+    base.cash.total = calculateSectionTotal(base.cash.rows);
+    base.crypto.total = calculateSectionTotal(base.crypto.rows);
+    base.debt.total = calculateSectionTotal(base.debt.rows);
 
     return [base.bank, base.cash, base.crypto, base.debt];
-  }, [transactions, t, portfolio]);
+  }, [transactions, t, portfolio, convertAmount, displayCurrency]);
 
   const portfolioSnapshotSections = useMemo(() => {
     type Row = {
@@ -466,38 +457,21 @@ const Accounts: React.FC = () => {
           } satisfies Row;
         });
 
-    const sumSectionFiat = (key: PortfolioSection, preferred: 'UAH' | 'PLN') => {
+    const sumSectionFiat = (key: PortfolioSection) => {
       const list = portfolio.filter((r) => r.section === key);
       if (!list.length) {
-        return preferred === 'PLN' ? '0 zł' : '0 UAH';
+        return formatGroupAmount(0, displayCurrency);
       }
-      const sumPreferred = list
-        .filter((r) => r.primaryCurrency === preferred)
-        .reduce((a, r) => {
+      const sumDisplay = list.reduce((a, r) => {
           const position = r.section === 'crypto' ? parseCryptoPosition(r.subText) : null;
           const marketUsd = position ? (cryptoUsdPrices[position.symbol] ?? 0) * position.amount : 0;
           const dynamicPrimary =
             position && marketUsd > 0
               ? convertAmount(marketUsd, 'USD', r.primaryCurrency)
               : r.primaryAmount;
-          return a + dynamicPrimary;
+          return a + convertAmount(dynamicPrimary, r.primaryCurrency, displayCurrency);
         }, 0);
-      const other: 'UAH' | 'PLN' = preferred === 'PLN' ? 'UAH' : 'PLN';
-      const sumOther = list
-        .filter((r) => r.primaryCurrency === other)
-        .reduce((a, r) => {
-          const position = r.section === 'crypto' ? parseCryptoPosition(r.subText) : null;
-          const marketUsd = position ? (cryptoUsdPrices[position.symbol] ?? 0) * position.amount : 0;
-          const dynamicPrimary =
-            position && marketUsd > 0
-              ? convertAmount(marketUsd, 'USD', r.primaryCurrency)
-              : r.primaryAmount;
-          return a + dynamicPrimary;
-        }, 0);
-      if (Math.abs(sumOther) > 0 && Math.abs(sumPreferred) === 0) {
-        return formatGroupAmount(sumOther, other);
-      }
-      return formatGroupAmount(sumPreferred, preferred);
+      return formatGroupAmount(sumDisplay, displayCurrency);
     };
 
     const bankRows = rowsFor('bank');
@@ -509,7 +483,7 @@ const Accounts: React.FC = () => {
       {
         id: 'bank',
         title: t('balance', 'sectionBank'),
-        total: sumSectionFiat('bank', 'UAH'),
+        total: sumSectionFiat('bank'),
         variant: 'strip' as const,
         collapsible: true,
         defaultOpen: true,
@@ -518,7 +492,7 @@ const Accounts: React.FC = () => {
       {
         id: 'cash',
         title: t('balance', 'sectionCash'),
-        total: sumSectionFiat('cash', 'PLN'),
+        total: sumSectionFiat('cash'),
         variant: 'strip' as const,
         collapsible: true,
         defaultOpen: true,
@@ -527,7 +501,7 @@ const Accounts: React.FC = () => {
       {
         id: 'crypto',
         title: t('balance', 'sectionCrypto'),
-        total: sumSectionFiat('crypto', 'PLN'),
+        total: sumSectionFiat('crypto'),
         variant: 'strip' as const,
         collapsible: true,
         defaultOpen: true,
@@ -536,7 +510,7 @@ const Accounts: React.FC = () => {
       {
         id: 'debt',
         title: t('balance', 'sectionDebt'),
-        total: sumSectionFiat('debt', 'PLN'),
+        total: sumSectionFiat('debt'),
         variant: 'strip' as const,
         collapsible: true,
         defaultOpen: true,

@@ -69,11 +69,22 @@ const AccountsSnapshot: React.FC<AccountsSnapshotProps> = ({ sections, onRowPres
         return (
           <div key={group.id} className={styles.group}>
             {needsHeader ? (
-              <div 
+              <div
                 className={styles.header}
                 onClick={isCollapsible ? () => setOpen(prev => ({ ...prev, [group.id]: !isOpen })) : undefined}
+                onKeyDown={
+                  isCollapsible
+                    ? (e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setOpen((prev) => ({ ...prev, [group.id]: !isOpen }));
+                        }
+                      }
+                    : undefined
+                }
                 style={{ cursor: isCollapsible ? 'pointer' : 'default' }}
                 role={isCollapsible ? 'button' : undefined}
+                tabIndex={isCollapsible ? 0 : undefined}
                 aria-expanded={isCollapsible ? isOpen : undefined}
               >
                 <div className={styles.headerLeft}>

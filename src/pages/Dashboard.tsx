@@ -13,6 +13,20 @@ import { isWithinLastDays } from '../utils/dateRanges';
 import styles from './Dashboard.module.css';
 
 type PortfolioWorth = { uah: number; pln: number };
+type CryptoSymbol = 'BTC' | 'ETH' | 'SOL' | 'TON' | 'USDT';
+
+const parseCryptoPosition = (subText?: string | null): { symbol: CryptoSymbol; amount: number } | null => {
+  if (!subText) return null;
+  const m = subText.match(/([0-9][0-9\s\u00A0\u202F]*(?:[.,][0-9]+)?)\s*([A-Za-z]{3,5})/);
+  if (!m?.[1] || !m?.[2]) return null;
+  const amount = Number(m[1].replace(/[\s\u00A0\u202F]+/g, '').replace(',', '.'));
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  const symbol = m[2].toUpperCase();
+  if (symbol === 'BTC' || symbol === 'ETH' || symbol === 'SOL' || symbol === 'TON' || symbol === 'USDT') {
+    return { symbol, amount };
+  }
+  return null;
+};
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -62,31 +76,55 @@ const Dashboard: React.FC = () => {
 
   const loadWorth = useCallback(async () => {
     try {
-      const res = await apiFetch('/api/accounts');
-      if (!res.ok) {
+      const [accountsRes, cryptoRes] = await Promise.all([
+        apiFetch('/api/accounts'),
+        apiFetch('/api/crypto-prices'),
+      ]);
+      if (!accountsRes.ok) {
         setWorth(null);
         return;
       }
-      const data: unknown = await res.json();
+      const data: unknown = await accountsRes.json();
       if (!Array.isArray(data) || data.length === 0) {
         setWorth(null);
         return;
+      }
+      let cryptoUsdPrices: Record<string, number> = {};
+      if (cryptoRes.ok) {
+        const cryptoPayload = await cryptoRes.json();
+        const prices = (cryptoPayload?.prices ?? {}) as Record<string, unknown>;
+        const normalized: Record<string, number> = {};
+        for (const [k, v] of Object.entries(prices)) {
+          const n = Number(v);
+          if (Number.isFinite(n) && n > 0) normalized[k.toUpperCase()] = n;
+        }
+        cryptoUsdPrices = normalized;
       }
       let uah = 0;
       let pln = 0;
       for (const row of data) {
         if (!row || typeof row !== 'object') continue;
         const r = row as Record<string, unknown>;
-        const amt = Number(r.primaryAmount);
-        if (!Number.isFinite(amt)) continue;
-        if (r.primaryCurrency === 'PLN') pln += amt;
-        else uah += amt;
+        const baseAmount = Number(r.primaryAmount);
+        const section = String(r.section ?? '').trim().toLowerCase();
+        const primaryCurrency = r.primaryCurrency === 'PLN' ? 'PLN' : 'UAH';
+        if (!Number.isFinite(baseAmount)) continue;
+        let amount = baseAmount;
+        if (section === 'crypto') {
+          const position = parseCryptoPosition(typeof r.subText === 'string' ? r.subText : null);
+          const marketUsd = position ? (cryptoUsdPrices[position.symbol] ?? 0) * position.amount : 0;
+          if (marketUsd > 0) {
+            amount = convertAmount(marketUsd, 'USD', primaryCurrency);
+          }
+        }
+        if (primaryCurrency === 'PLN') pln += amount;
+        else uah += amount;
       }
       setWorth({ uah, pln });
     } catch {
       setWorth(null);
     }
-  }, []);
+  }, [convertAmount]);
 
   useEffect(() => {
     void loadWorth();
