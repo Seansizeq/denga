@@ -68,6 +68,24 @@ const parseAmount = (value) => {
   const n = Number(value);
   return Number.isFinite(n) ? n : NaN;
 };
+const getAccountSlugFromNote = (note) => {
+  if (typeof note !== 'string' || !note.trim()) return null;
+  const m = note.match(/\bAccount:\s*([a-z0-9_]{1,48})\b/i);
+  if (!m?.[1]) return null;
+  return m[1].toLowerCase();
+};
+const accountDeltaForTx = (tx) => {
+  const amount = Number(tx?.amount);
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  return tx?.type === 'income' ? amount : -amount;
+};
+const applyAccountDelta = async (dbConn, userId, accountKey, delta) => {
+  if (!accountKey || !Number.isFinite(delta) || delta === 0) return;
+  await dbConn.run(
+    'UPDATE account_portfolio SET primary_amount = primary_amount + ?, updatedAt = ? WHERE user_id = ? AND account_key = ?',
+    [delta, new Date().toISOString(), userId, accountKey]
+  );
+};
 const plannerDayKey = (userId, day) => `${userId}:${day}`;
 const plannerDayFromStored = (userId, storedDay) => {
   const prefix = `${userId}:`;
@@ -618,6 +636,7 @@ app.post('/api/transactions', async (req, res) => {
     'INSERT INTO transactions (id, user_id, amount, categoryId, type, date, note) VALUES (?, ?, ?, ?, ?, ?, ?)',
     [transaction.id, transaction.user_id, transaction.amount, transaction.categoryId, transaction.type, transaction.date, transaction.note ?? null]
   );
+  await applyAccountDelta(db, userId, getAccountSlugFromNote(transaction.note), accountDeltaForTx(transaction));
 
   // Notify all users about new web transaction
   try {
@@ -663,6 +682,15 @@ app.patch('/api/transactions/:id', async (req, res) => {
   }
 
   await db.run('UPDATE transactions SET amount = ?, categoryId = ?, type = ?, note = ? WHERE user_id = ? AND id = ?', [amount, categoryId, type, note || null, userId, id]);
+  const prevAccount = getAccountSlugFromNote(current.note);
+  const nextAccount = getAccountSlugFromNote(note || '');
+  if (prevAccount && prevAccount === nextAccount) {
+    const delta = accountDeltaForTx({ amount, type }) - accountDeltaForTx(current);
+    await applyAccountDelta(db, userId, prevAccount, delta);
+  } else {
+    await applyAccountDelta(db, userId, prevAccount, -accountDeltaForTx(current));
+    await applyAccountDelta(db, userId, nextAccount, accountDeltaForTx({ amount, type }));
+  }
 
   res.json({
     ...current,
@@ -676,6 +704,12 @@ app.patch('/api/transactions/:id', async (req, res) => {
 app.delete('/api/transactions/:id', async (req, res) => {
   const userId = req.authUserId;
   const { id } = req.params;
+  const current = await db.get('SELECT * FROM transactions WHERE user_id = ? AND id = ? LIMIT 1', [userId, id]);
+  if (!current) {
+    res.status(404).json({ error: 'Transaction not found' });
+    return;
+  }
+  await applyAccountDelta(db, userId, getAccountSlugFromNote(current.note), -accountDeltaForTx(current));
   await db.run('DELETE FROM transactions WHERE user_id = ? AND id = ?', [userId, id]);
   res.status(204).send();
 });
