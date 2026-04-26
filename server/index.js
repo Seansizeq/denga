@@ -707,8 +707,35 @@ if (bot) {
       [msg.from.id, msg.chat.id]
     );
     if (!msg.text || msg.text.startsWith('/')) return;
+    const text = msg.text.trim().toLowerCase();
+    if (text === 'почати зміну' || text === 'начать смену' || text === 'start shift') {
+      bot.processUpdate({
+        update_id: Date.now(),
+        message: {
+          ...msg,
+          text: '/shift_start',
+        },
+      });
+      return;
+    }
+    if (text === 'завершити зміну' || text === 'закончить смену' || text === 'end shift') {
+      bot.processUpdate({
+        update_id: Date.now() + 1,
+        message: {
+          ...msg,
+          text: '/shift_end',
+        },
+      });
+      return;
+    }
     const amount = Number(msg.text.replace(',', '.').trim());
-    if (!Number.isFinite(amount) || amount <= 0) return;
+    if (!Number.isFinite(amount) || amount <= 0) {
+      bot.sendMessage(
+        msg.chat.id,
+        'Не зрозумів суму. Надішліть число (наприклад, 100) або використайте /shift_start чи /shift_end.'
+      );
+      return;
+    }
     pendingTransactions.set(msg.chat.id, {
       userId: String(msg.from.id),
       amount,
