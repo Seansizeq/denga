@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { formatCurrency } from '../utils/formatters';
 import { useTranslation } from '../i18n/LanguageContext';
@@ -31,7 +31,7 @@ const Subscriptions: React.FC = () => {
   const [listError, setListError] = useState('');
   const [actionError, setActionError] = useState('');
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setListError('');
     setLoading(true);
     try {
@@ -48,11 +48,11 @@ const Subscriptions: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [t]);
 
   useEffect(() => {
     void load();
-  }, []);
+  }, [load]);
 
   const activeItems = useMemo(() => items.filter((s) => s.active), [items]);
   const disabledItems = useMemo(() => items.filter((s) => !s.active), [items]);

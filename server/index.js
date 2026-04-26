@@ -86,6 +86,91 @@ const applyAccountDelta = async (dbConn, userId, accountKey, delta) => {
     [delta, new Date().toISOString(), userId, accountKey]
   );
 };
+const toIsoDate = (d) => {
+  if (!(d instanceof Date) || Number.isNaN(d.getTime())) return '';
+  return d.toISOString().slice(0, 10);
+};
+const parseIsoDate = (value) => {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const d = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(d.getTime())) return null;
+  if (toIsoDate(d) !== value) return null;
+  return d;
+};
+const addMonthsClamped = (date, months) => {
+  const year = date.getUTCFullYear();
+  const month = date.getUTCMonth();
+  const day = date.getUTCDate();
+  const first = new Date(Date.UTC(year, month + months, 1));
+  const lastDay = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)).getUTCDate();
+  first.setUTCDate(Math.min(day, lastDay));
+  return first;
+};
+const addSubscriptionCycle = (date, cycle) => (cycle === 'yearly' ? addMonthsClamped(date, 12) : addMonthsClamped(date, 1));
+const buildSubscriptionChargeNote = (subscription) => {
+  const base = typeof subscription.note === 'string' ? subscription.note.trim() : '';
+  const suffix = `Subscription: ${subscription.name}`;
+  if (!base) return suffix;
+  if (base.toLowerCase().includes('subscription:')) return base;
+  return `${base} • ${suffix}`;
+};
+const runSubscriptionAutopayForUser = async (userId) => {
+  const today = new Date();
+  const todayIso = toIsoDate(today);
+  if (!todayIso) return;
+
+  const dueSubs = await db.all(
+    `SELECT id, name, amount, cycle, nextChargeDate, note
+     FROM subscriptions
+     WHERE user_id = ? AND active = 1 AND nextChargeDate <= ?
+     ORDER BY nextChargeDate ASC`,
+    [userId, todayIso]
+  );
+  if (!Array.isArray(dueSubs) || dueSubs.length === 0) return;
+
+  await db.run('BEGIN IMMEDIATE');
+  try {
+    for (const sub of dueSubs) {
+      const amount = Number(sub.amount);
+      const cycle = sub.cycle === 'yearly' ? 'yearly' : 'monthly';
+      let due = parseIsoDate(String(sub.nextChargeDate ?? ''));
+      if (!due || !Number.isFinite(amount) || amount <= 0) continue;
+
+      let nextDue = due;
+      let safetyCounter = 0;
+      while (toIsoDate(nextDue) <= todayIso) {
+        const txDate = `${toIsoDate(nextDue)}T12:00:00.000Z`;
+        const note = buildSubscriptionChargeNote(sub);
+        const tx = {
+          id: uuidv4(),
+          user_id: userId,
+          amount,
+          categoryId: 'other_expense',
+          type: 'expense',
+          date: txDate,
+          note: note || undefined,
+        };
+        await db.run(
+          'INSERT INTO transactions (id, user_id, amount, categoryId, type, date, note) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          [tx.id, tx.user_id, tx.amount, tx.categoryId, tx.type, tx.date, tx.note ?? null]
+        );
+        await applyAccountDelta(db, userId, getAccountSlugFromNote(tx.note), accountDeltaForTx(tx));
+        nextDue = addSubscriptionCycle(nextDue, cycle);
+        safetyCounter += 1;
+        if (safetyCounter > 120) break;
+      }
+
+      await db.run(
+        'UPDATE subscriptions SET nextChargeDate = ?, updatedAt = ? WHERE user_id = ? AND id = ?',
+        [toIsoDate(nextDue), new Date().toISOString(), userId, sub.id]
+      );
+    }
+    await db.run('COMMIT');
+  } catch (error) {
+    await db.run('ROLLBACK');
+    throw error;
+  }
+};
 const plannerDayKey = (userId, day) => `${userId}:${day}`;
 const plannerDayFromStored = (userId, storedDay) => {
   const prefix = `${userId}:`;
@@ -596,6 +681,7 @@ app.delete('/api/accounts/:key', async (req, res) => {
 
 app.get('/api/transactions', async (req, res) => {
   const userId = req.authUserId;
+  await runSubscriptionAutopayForUser(userId);
   const transactions = await db.all('SELECT * FROM transactions WHERE user_id = ? ORDER BY date DESC', [userId]);
   res.json(transactions);
 });
@@ -904,6 +990,7 @@ app.delete('/api/custom-categories/:id', async (req, res) => {
 
 app.get('/api/subscriptions', async (req, res) => {
   const userId = req.authUserId;
+  await runSubscriptionAutopayForUser(userId);
   const rows = await db.all(
     `SELECT id, name, amount, cycle, nextChargeDate, note, active, createdAt, updatedAt
      FROM subscriptions

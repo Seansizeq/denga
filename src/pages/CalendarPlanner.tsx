@@ -138,7 +138,7 @@ const CalendarPlanner: React.FC = () => {
   const [isFullDay, setIsFullDay] = useState(true);
   const [startTime, setStartTime] = useState('09:00');
   const [endTime, setEndTime] = useState('17:00');
-  const [vvRev, setVvRev] = useState(0);
+  const [, setVvRev] = useState(0);
   const [shiftTemplates, setShiftTemplates] = useState<ShiftTemplate[]>([]);
   const [salaryRateInput, setSalaryRateInput] = useState('');
   const [salaryAmountInput, setSalaryAmountInput] = useState('');
@@ -148,10 +148,7 @@ const CalendarPlanner: React.FC = () => {
 
   const modalAnyOpen = chooserOpen || editorOpened;
 
-  const overlayBox = useMemo(() => {
-    if (!modalAnyOpen) return null;
-    return readVisualOverlayBox();
-  }, [modalAnyOpen, vvRev]);
+  const overlayBox = modalAnyOpen ? readVisualOverlayBox() : null;
 
   useEffect(() => {
     if (!modalAnyOpen) return;
