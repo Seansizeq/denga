@@ -79,15 +79,6 @@ const Stats: React.FC = () => {
   );
   const visibleExpenseTotal = visibleCategoryRows.reduce((sum, row) => sum + row.total, 0);
 
-  const shiftHex = (hex: string, amount: number): string => {
-    const safe = /^#([0-9A-Fa-f]{6})$/.test(hex) ? hex : '#8E8E93';
-    const int = Number.parseInt(safe.slice(1), 16);
-    const r = Math.max(0, Math.min(255, (int >> 16) + amount));
-    const g = Math.max(0, Math.min(255, ((int >> 8) & 0xff) + amount));
-    const b = Math.max(0, Math.min(255, (int & 0xff) + amount));
-    return `#${[r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
-  };
-
   const donutBackground = useMemo(() => {
     if (!visibleExpenseTotal) {
       return 'conic-gradient(var(--bg-card-light) 0deg 360deg)';
@@ -104,11 +95,7 @@ const Stats: React.FC = () => {
         const rawEnd = (acc / visibleExpenseTotal) * 360;
         const start = rawStart + gapDeg / 2;
         const end = Math.max(start, rawEnd - gapDeg / 2);
-        const length = Math.max(0.1, end - start);
-        const c1 = shiftHex(row.color, 32);
-        const c2 = row.color;
-        const c3 = shiftHex(row.color, -18);
-        return `${c1} ${start.toFixed(2)}deg ${(start + length * 0.25).toFixed(2)}deg, ${c2} ${(start + length * 0.25).toFixed(2)}deg ${(start + length * 0.72).toFixed(2)}deg, ${c3} ${(start + length * 0.72).toFixed(2)}deg ${end.toFixed(2)}deg`;
+        return `${row.color} ${start.toFixed(2)}deg ${end.toFixed(2)}deg`;
       })
       .join(', ');
     return `conic-gradient(${segments})`;
