@@ -741,6 +741,17 @@ if (bot) {
       });
       return;
     }
+    if (
+      /(^| )записати транзакції($| )/i.test(normalizedText) ||
+      /(^| )записати транзакцію($| )/i.test(normalizedText) ||
+      /(^| )record transaction(s)?($| )/i.test(normalizedText)
+    ) {
+      bot.sendMessage(
+        msg.chat.id,
+        'Добре. Надішліть суму числом (наприклад, 100), і я збережу транзакцію.'
+      );
+      return;
+    }
     const amount = Number(msg.text.replace(',', '.').trim());
     if (!Number.isFinite(amount) || amount <= 0) {
       bot.sendMessage(
