@@ -165,27 +165,6 @@ export async function initDb() {
     )
   `);
 
-  await db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_transactions_user_date
-    ON transactions(user_id, date DESC)
-  `);
-  await db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_subscriptions_user_active
-    ON subscriptions(user_id, active)
-  `);
-  await db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_planner_days_user_day
-    ON planner_days(user_id, day)
-  `);
-  await db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_planner_shift_templates_user
-    ON planner_shift_templates(user_id, updated_at DESC)
-  `);
-  await db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_accounts_user_sort
-    ON account_portfolio(user_id, sort_index)
-  `);
-
   try {
     await db.exec(`ALTER TABLE transactions ADD COLUMN user_id TEXT NOT NULL DEFAULT ''`);
   } catch {
@@ -216,6 +195,27 @@ export async function initDb() {
   } catch {
     /* already exists */
   }
+
+  await db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_transactions_user_date
+    ON transactions(user_id, date DESC)
+  `);
+  await db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_subscriptions_user_active
+    ON subscriptions(user_id, active)
+  `);
+  await db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_planner_days_user_day
+    ON planner_days(user_id, day)
+  `);
+  await db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_planner_shift_templates_user
+    ON planner_shift_templates(user_id, updated_at DESC)
+  `);
+  await db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_accounts_user_sort
+    ON account_portfolio(user_id, sort_index)
+  `);
 
   return db;
 }
