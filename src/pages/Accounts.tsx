@@ -102,19 +102,10 @@ const formatGroupAmount = (amount: number, currency: string) => {
   return `${sign}${abs} ${suffix}`;
 };
 
-const getCurrencyFromNote = (note?: string): string => {
-  if (!note) return 'UAH';
-  const match = note.match(/Currency:\s*([A-Za-z#0-9_-]+)/i);
-  const raw = match?.[1]?.toUpperCase();
-  if (!raw) return 'UAH';
-  if (raw.startsWith('C#')) return raw.slice(2).toUpperCase();
-  return raw;
-};
-
 const normalizeLabel = (value: string) => value.trim().toLowerCase().replace(/\s+/g, ' ');
 
 const Accounts: React.FC = () => {
-  const { t } = useTranslation();
+  const { t, displayCurrency, convertAmount } = useTranslation();
   const { transactions } = useTransactions();
   const [portfolio, setPortfolio] = useState<readonly PortfolioAccountRow[]>([]);
   const [editing, setEditing] = useState<EditableAccount | null>(null);
@@ -327,7 +318,7 @@ const Accounts: React.FC = () => {
       const meta = accountMeta[key as string];
       if (!meta) return;
       const sign = tx.type === 'income' ? 1 : -1;
-      const currency = getCurrencyFromNote(tx.note);
+      const currency = tx.currency;
       const isFiat = currency === 'UAH' || currency === 'PLN';
       const current = accountTotals.get(String(key)) ?? emptyTotals();
       current.byCurrency.set(currency, (current.byCurrency.get(currency) ?? 0) + sign * tx.amount);
@@ -416,7 +407,9 @@ const Accounts: React.FC = () => {
         .map((r) => {
           const fiat = formatGroupAmount(r.primaryAmount, r.primaryCurrency);
           const amount = r.debtPhrase?.trim() ? `${r.debtPhrase.trim()} ${fiat}` : fiat;
-          const subAmount = r.subText?.trim() ? r.subText.trim() : undefined;
+          const converted = convertAmount(r.primaryAmount, r.primaryCurrency, displayCurrency);
+          const fxSub = r.primaryCurrency === displayCurrency ? '' : formatGroupAmount(converted, displayCurrency);
+          const subAmount = [r.subText?.trim() ?? '', fxSub].filter(Boolean).join(' · ') || undefined;
           const badge = (r.badge ?? '').trim() || r.name.slice(0, 1);
           return {
             id: r.accountKey,
@@ -485,7 +478,7 @@ const Accounts: React.FC = () => {
         rows: debtRows,
       },
     ];
-  }, [portfolio, t]);
+  }, [portfolio, t, convertAmount, displayCurrency]);
 
   const sections = portfolio.length > 0 ? portfolioSnapshotSections : txSections;
 

@@ -3,6 +3,9 @@ import { LANGUAGES, translations, LOCALE_MAP } from './translations';
 import type { Language } from './translations';
 import type { DisplayCurrency } from '../utils/formatters';
 import type { TelegramWindow } from '../types/telegram';
+import type { CurrencyCode, FxRatesPayload } from '../utils/currency';
+import { convertCurrency, fallbackRates } from '../utils/currency';
+import { apiFetch } from '../api/client';
 
 const STORAGE_KEY = 'denga_lang';
 const CURRENCY_STORAGE_KEY = 'denga_currency';
@@ -23,6 +26,10 @@ interface LanguageContextValue {
   setDisplayCurrency: (currency: DisplayCurrency) => void;
   t: TFunction;
   locale: string;
+  fxRates: FxRatesPayload;
+  fxStatus: 'live' | 'cache' | 'fallback';
+  refreshFxRates: () => Promise<void>;
+  convertAmount: (amount: number, from: CurrencyCode, to?: CurrencyCode) => number;
 }
 
 const LanguageContext = createContext<LanguageContextValue | undefined>(undefined);
@@ -66,6 +73,8 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
     return DEFAULT_CURRENCY;
   });
+  const [fxRates, setFxRates] = useState<FxRatesPayload>(fallbackRates);
+  const [fxStatus, setFxStatus] = useState<'live' | 'cache' | 'fallback'>('fallback');
 
   useEffect(() => {
     try {
@@ -84,6 +93,41 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, [displayCurrency]);
 
+  const refreshFxRates = useCallback(async () => {
+    try {
+      const res = await apiFetch('/api/fx-rates');
+      if (!res.ok) {
+        setFxRates(fallbackRates);
+        setFxStatus('fallback');
+        return;
+      }
+      const data = (await res.json()) as Partial<FxRatesPayload>;
+      const payload: FxRatesPayload = {
+        base: 'USD',
+        rates: {
+          USD: Number(data?.rates?.USD ?? fallbackRates.rates.USD),
+          PLN: Number(data?.rates?.PLN ?? fallbackRates.rates.PLN),
+          UAH: Number(data?.rates?.UAH ?? fallbackRates.rates.UAH),
+        },
+        updatedAt: typeof data?.updatedAt === 'string' ? data.updatedAt : new Date().toISOString(),
+        source: data?.source === 'live' || data?.source === 'cache' ? data.source : 'fallback',
+      };
+      setFxRates(payload);
+      setFxStatus(payload.source);
+    } catch {
+      setFxRates(fallbackRates);
+      setFxStatus('fallback');
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshFxRates();
+    const id = window.setInterval(() => {
+      void refreshFxRates();
+    }, 5 * 60 * 1000);
+    return () => window.clearInterval(id);
+  }, [refreshFxRates]);
+
   const setLanguage = useCallback((lang: Language) => {
     setLanguageState(lang);
   }, []);
@@ -91,6 +135,9 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const setDisplayCurrency = useCallback((currency: DisplayCurrency) => {
     setDisplayCurrencyState(currency);
   }, []);
+  const convertAmount = useCallback((amount: number, from: CurrencyCode, to?: CurrencyCode) => {
+    return convertCurrency(amount, from, (to ?? displayCurrency) as CurrencyCode, fxRates);
+  }, [displayCurrency, fxRates]);
 
   const t = useCallback<TFunction>(
     (section, key) => translations[language][section][key],
@@ -98,8 +145,19 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   );
 
   const value = useMemo<LanguageContextValue>(
-    () => ({ language, setLanguage, displayCurrency, setDisplayCurrency, t, locale: LOCALE_MAP[language] }),
-    [language, setLanguage, displayCurrency, setDisplayCurrency, t]
+    () => ({
+      language,
+      setLanguage,
+      displayCurrency,
+      setDisplayCurrency,
+      t,
+      locale: LOCALE_MAP[language],
+      fxRates,
+      fxStatus,
+      refreshFxRates,
+      convertAmount,
+    }),
+    [language, setLanguage, displayCurrency, setDisplayCurrency, t, fxRates, fxStatus, refreshFxRates, convertAmount]
   );
 
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;

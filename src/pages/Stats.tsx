@@ -10,7 +10,7 @@ import styles from './Stats.module.css';
 type StatsRange = 'week' | 'month' | 'year';
 
 const Stats: React.FC = () => {
-  const { t, locale, displayCurrency } = useTranslation();
+  const { t, locale, displayCurrency, convertAmount } = useTranslation();
   const { transactions } = useTransactions();
   const [range, setRange] = useState<StatsRange>('month');
   const [hiddenCategoryIds, setHiddenCategoryIds] = useState<string[]>([]);
@@ -36,11 +36,11 @@ const Stats: React.FC = () => {
 
   const income = filtered
     .filter((tx) => tx.type === 'income')
-    .reduce((sum, tx) => sum + tx.amount, 0);
+    .reduce((sum, tx) => sum + convertAmount(tx.amount, tx.currency), 0);
 
   const expense = filtered
     .filter((tx) => tx.type === 'expense')
-    .reduce((sum, tx) => sum + tx.amount, 0);
+    .reduce((sum, tx) => sum + convertAmount(tx.amount, tx.currency), 0);
 
   const net = income - expense;
 
@@ -49,12 +49,12 @@ const Stats: React.FC = () => {
     for (const tx of filtered) {
       if (tx.type !== 'expense') continue;
       const existing = map.get(tx.categoryId) ?? { id: tx.categoryId, total: 0, count: 0 };
-      existing.total += tx.amount;
+      existing.total += convertAmount(tx.amount, tx.currency);
       existing.count += 1;
       map.set(tx.categoryId, existing);
     }
     return Array.from(map.values()).sort((a, b) => b.total - a.total);
-  }, [filtered]);
+  }, [filtered, convertAmount]);
 
   const rangeOptions: StatsRange[] = ['week', 'month', 'year'];
 

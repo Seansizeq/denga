@@ -3,7 +3,7 @@ import * as LucideIcons from 'lucide-react';
 import { Pencil, Trash2 } from 'lucide-react';
 import type { Transaction } from '../../types';
 import { findCategory, getCustomCategoryData } from '../../constants/categories';
-import { formatCurrency, formatDate, getCurrencyFromNote } from '../../utils/formatters';
+import { formatCurrency, formatDate } from '../../utils/formatters';
 import { useTranslation } from '../../i18n/LanguageContext';
 import type { CategoryKey } from '../../i18n/translations';
 import styles from './TransactionItem.module.css';
@@ -17,7 +17,7 @@ interface TransactionItemProps {
 }
 
 const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onDelete, onEdit }) => {
-  const { t, locale, displayCurrency } = useTranslation();
+  const { t, locale, displayCurrency, convertAmount } = useTranslation();
   const customCategory = getCustomCategoryData(transaction.categoryId);
   const category = customCategory
     ? findCategory(transaction.type === 'income' ? 'other_income' : 'other_expense')
@@ -41,7 +41,9 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onDelete
   const categoryName = customCategory?.name ?? t('categories', category.id as CategoryKey);
   const subtitle = transaction.note?.trim() || formatDate(transaction.date, locale);
   const isIncome = transaction.type === 'income';
-  const txCurrency = getCurrencyFromNote(transaction.note) ?? displayCurrency;
+  const txCurrency = transaction.currency;
+  const displayAmount = convertAmount(transaction.amount, txCurrency);
+  const showEquivalent = txCurrency !== displayCurrency;
 
   return (
     <div
@@ -62,6 +64,11 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onDelete
         >
           {isIncome ? '+' : '−'}
           {formatCurrency(transaction.amount, locale, txCurrency)}
+          {showEquivalent ? (
+            <span className={styles.subtitle}>
+              {` (${formatCurrency(displayAmount, locale, displayCurrency)})`}
+            </span>
+          ) : null}
         </span>
         {(onEdit || onDelete) ? (
           <div className={styles.actions}>

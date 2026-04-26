@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { Transaction, Balance } from '../types';
 import { apiFetch } from '../api/client';
+import { normalizeCurrency } from '../utils/currency';
 
 interface TransactionContextType {
   transactions: Transaction[];
@@ -21,7 +22,13 @@ export const TransactionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       const response = await apiFetch('/api/transactions');
       if (!response.ok) return;
       const data = await response.json();
-      setTransactions(data);
+      const normalized = Array.isArray(data)
+        ? data.map((row) => ({
+            ...row,
+            currency: normalizeCurrency((row as { currency?: string }).currency),
+          }))
+        : [];
+      setTransactions(normalized);
     } catch (error) {
       console.error('Error fetching transactions:', error);
     }
@@ -68,7 +75,13 @@ export const TransactionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       if (!response.ok) return false;
       const newTransaction = await tryParseJson(response);
       if (newTransaction && typeof newTransaction === 'object') {
-        setTransactions((prev) => [newTransaction as Transaction, ...prev]);
+        setTransactions((prev) => [
+          {
+            ...(newTransaction as Transaction),
+            currency: normalizeCurrency((newTransaction as { currency?: string }).currency),
+          },
+          ...prev,
+        ]);
       } else {
         await fetchTransactions();
       }
@@ -103,7 +116,16 @@ export const TransactionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       if (!response.ok) return false;
       const updated = await tryParseJson(response);
       if (updated && typeof updated === 'object') {
-        setTransactions((prev) => prev.map((tx) => (tx.id === id ? (updated as Transaction) : tx)));
+        setTransactions((prev) =>
+          prev.map((tx) =>
+            tx.id === id
+              ? {
+                  ...(updated as Transaction),
+                  currency: normalizeCurrency((updated as { currency?: string }).currency),
+                }
+              : tx
+          )
+        );
       } else {
         await fetchTransactions();
       }

@@ -10,6 +10,7 @@ export interface Category {
 export interface Transaction {
   id: string;
   amount: number;
+  currency: 'UAH' | 'PLN' | 'USD';
   categoryId: string;
   type: TransactionType;
   date: string;

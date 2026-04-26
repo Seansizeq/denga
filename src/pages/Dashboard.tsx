@@ -16,7 +16,7 @@ type PortfolioWorth = { uah: number; pln: number };
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
-  const { t, displayCurrency } = useTranslation();
+  const { t, displayCurrency, convertAmount } = useTranslation();
   const { transactions, deleteTransaction } = useTransactions();
   const [range, setRange] = useState<RangeFilter>('today');
   const [worth, setWorth] = useState<PortfolioWorth | null>(null);
@@ -45,8 +45,9 @@ const Dashboard: React.FC = () => {
   const summary = useMemo(() => {
     const totals = transactions.reduce(
       (acc, tx) => {
-        if (tx.type === 'income') acc.income += tx.amount;
-        else acc.expense += tx.amount;
+        const amountInDisplay = convertAmount(tx.amount, tx.currency);
+        if (tx.type === 'income') acc.income += amountInDisplay;
+        else acc.expense += amountInDisplay;
         return acc;
       },
       { income: 0, expense: 0 },
@@ -57,7 +58,7 @@ const Dashboard: React.FC = () => {
       totalExpense: totals.expense,
       totalNet: totals.income - totals.expense,
     };
-  }, [transactions]);
+  }, [transactions, convertAmount]);
 
   const loadWorth = useCallback(async () => {
     try {
@@ -96,9 +97,9 @@ const Dashboard: React.FC = () => {
   const wealthMode = worth !== null;
   const usePlnMain = displayCurrency === 'PLN';
   const mainNet = wealthMode && worth
-    ? (usePlnMain ? worth.pln : worth.uah)
+    ? convertAmount(worth.uah, 'UAH') + convertAmount(worth.pln, 'PLN')
     : summary.totalNet;
-  const mainAmountCurrency: 'UAH' | 'PLN' = usePlnMain ? 'PLN' : 'UAH';
+  const mainAmountCurrency = displayCurrency;
   const wealthOther =
     worth && wealthMode
       ? (() => {

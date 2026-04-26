@@ -68,11 +68,21 @@ const parseAmount = (value) => {
   const n = Number(value);
   return Number.isFinite(n) ? n : NaN;
 };
+const normalizeCurrency = (value) => {
+  const code = String(value ?? '').toUpperCase();
+  if (code === 'PLN' || code === 'USD' || code === 'UAH') return code;
+  return 'UAH';
+};
 const getAccountSlugFromNote = (note) => {
   if (typeof note !== 'string' || !note.trim()) return null;
   const m = note.match(/\bAccount:\s*([a-z0-9_]{1,48})\b/i);
   if (!m?.[1]) return null;
   return m[1].toLowerCase();
+};
+const getCurrencyFromNote = (note) => {
+  if (typeof note !== 'string') return null;
+  const m = note.match(/\bCurrency:\s*([A-Za-z]{3})\b/i);
+  return m?.[1] ? normalizeCurrency(m[1]) : null;
 };
 const accountDeltaForTx = (tx) => {
   const amount = Number(tx?.amount);
@@ -107,6 +117,45 @@ const addMonthsClamped = (date, months) => {
   return first;
 };
 const addSubscriptionCycle = (date, cycle) => (cycle === 'yearly' ? addMonthsClamped(date, 12) : addMonthsClamped(date, 1));
+const FX_CACHE_TTL_MS = 10 * 60 * 1000;
+const FX_FALLBACK = {
+  base: 'USD',
+  rates: { USD: 1, PLN: 3.95, UAH: 39.0 },
+  updatedAt: new Date(0).toISOString(),
+  source: 'fallback',
+};
+let fxCache = null;
+let fxCacheFetchedAt = 0;
+const fetchFxRates = async () => {
+  const now = Date.now();
+  if (fxCache && now - fxCacheFetchedAt < FX_CACHE_TTL_MS) {
+    return { ...fxCache, source: 'cache' };
+  }
+  try {
+    const res = await fetch('https://open.er-api.com/v6/latest/USD');
+    if (!res.ok) throw new Error(`fx status ${res.status}`);
+    const data = await res.json();
+    const rates = {
+      USD: Number(data?.rates?.USD ?? 1),
+      PLN: Number(data?.rates?.PLN ?? NaN),
+      UAH: Number(data?.rates?.UAH ?? NaN),
+    };
+    if (!Number.isFinite(rates.PLN) || rates.PLN <= 0 || !Number.isFinite(rates.UAH) || rates.UAH <= 0) {
+      throw new Error('invalid fx payload');
+    }
+    fxCache = {
+      base: 'USD',
+      rates,
+      updatedAt: new Date().toISOString(),
+      source: 'live',
+    };
+    fxCacheFetchedAt = now;
+    return fxCache;
+  } catch {
+    if (fxCache) return { ...fxCache, source: 'cache' };
+    return FX_FALLBACK;
+  }
+};
 const buildSubscriptionChargeNote = (subscription) => {
   const base = typeof subscription.note === 'string' ? subscription.note.trim() : '';
   const suffix = `Subscription: ${subscription.name}`;
@@ -145,14 +194,15 @@ const runSubscriptionAutopayForUser = async (userId) => {
           id: uuidv4(),
           user_id: userId,
           amount,
+          currency: 'UAH',
           categoryId: 'other_expense',
           type: 'expense',
           date: txDate,
           note: note || undefined,
         };
         await db.run(
-          'INSERT INTO transactions (id, user_id, amount, categoryId, type, date, note) VALUES (?, ?, ?, ?, ?, ?, ?)',
-          [tx.id, tx.user_id, tx.amount, tx.categoryId, tx.type, tx.date, tx.note ?? null]
+          'INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+          [tx.id, tx.user_id, tx.amount, tx.currency, tx.categoryId, tx.type, tx.date, tx.note ?? null]
         );
         await applyAccountDelta(db, userId, getAccountSlugFromNote(tx.note), accountDeltaForTx(tx));
         nextDue = addSubscriptionCycle(nextDue, cycle);
@@ -213,6 +263,23 @@ app.use((req, res, next) => {
 app.use(express.static(path.join(__dirname, '../dist')));
 
 const db = await initDb();
+const backfillLegacyTransactionCurrency = async () => {
+  const rows = await db.all('SELECT id, note, currency FROM transactions');
+  await db.run('BEGIN');
+  try {
+    for (const row of rows) {
+      const current = normalizeCurrency(row.currency);
+      const fromNote = getCurrencyFromNote(row.note);
+      if (!fromNote || fromNote === current) continue;
+      await db.run('UPDATE transactions SET currency = ? WHERE id = ?', [fromNote, row.id]);
+    }
+    await db.run('COMMIT');
+  } catch (e) {
+    await db.run('ROLLBACK');
+    throw e;
+  }
+};
+await backfillLegacyTransactionCurrency();
 const backupChatRaw = process.env.TELEGRAM_BACKUP_CHAT_ID;
 const backupChatId =
   typeof backupChatRaw === 'string' && backupChatRaw.trim() !== '' ? Number(backupChatRaw.trim()) : NaN;
@@ -433,6 +500,7 @@ if (bot) {
         id: uuidv4(),
         user_id: String(callbackQuery.from.id),
         amount: pending.amount,
+        currency: 'UAH',
         categoryId,
         type,
         date: new Date().toISOString(),
@@ -441,8 +509,8 @@ if (bot) {
       };
 
       await db.run(
-        'INSERT INTO transactions (id, user_id, amount, categoryId, type, date, note, telegram_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        [transaction.id, transaction.user_id, transaction.amount, transaction.categoryId, transaction.type, transaction.date, transaction.note, transaction.telegram_user_id]
+        'INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, note, telegram_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [transaction.id, transaction.user_id, transaction.amount, transaction.currency, transaction.categoryId, transaction.type, transaction.date, transaction.note, transaction.telegram_user_id]
       );
 
       pendingTransactions.delete(chatId);
@@ -456,6 +524,11 @@ if (bot) {
 
 // --- API Logic ---
 app.use('/api', authMiddleware);
+
+app.get('/api/fx-rates', async (_req, res) => {
+  const payload = await fetchFxRates();
+  res.json(payload);
+});
 
 app.get('/api/accounts', async (req, res) => {
   const userId = req.authUserId;
@@ -689,6 +762,7 @@ app.get('/api/transactions', async (req, res) => {
 app.post('/api/transactions', async (req, res) => {
   const userId = req.authUserId;
   const amount = parseAmount(req.body?.amount);
+  const currency = normalizeCurrency(req.body?.currency);
   const categoryId = typeof req.body?.categoryId === 'string' ? req.body.categoryId.trim() : '';
   const type = req.body?.type === 'income' || req.body?.type === 'expense' ? req.body.type : '';
   const note = typeof req.body?.note === 'string' ? req.body.note.trim() : '';
@@ -712,6 +786,7 @@ app.post('/api/transactions', async (req, res) => {
     id: uuidv4(),
     user_id: userId,
     amount,
+    currency,
     categoryId,
     type,
     date: new Date().toISOString(),
@@ -719,8 +794,8 @@ app.post('/api/transactions', async (req, res) => {
   };
 
   await db.run(
-    'INSERT INTO transactions (id, user_id, amount, categoryId, type, date, note) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    [transaction.id, transaction.user_id, transaction.amount, transaction.categoryId, transaction.type, transaction.date, transaction.note ?? null]
+    'INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    [transaction.id, transaction.user_id, transaction.amount, transaction.currency, transaction.categoryId, transaction.type, transaction.date, transaction.note ?? null]
   );
   await applyAccountDelta(db, userId, getAccountSlugFromNote(transaction.note), accountDeltaForTx(transaction));
 
@@ -748,6 +823,7 @@ app.patch('/api/transactions/:id', async (req, res) => {
   }
 
   const amount = req.body?.amount === undefined ? Number(current.amount) : Number(req.body.amount);
+  const currency = req.body?.currency === undefined ? normalizeCurrency(current.currency) : normalizeCurrency(req.body.currency);
   const categoryId = typeof req.body?.categoryId === 'string' ? req.body.categoryId : current.categoryId;
   const type = req.body?.type === 'income' || req.body?.type === 'expense' ? req.body.type : current.type;
   const note = req.body?.note === undefined
@@ -767,7 +843,7 @@ app.patch('/api/transactions/:id', async (req, res) => {
     return;
   }
 
-  await db.run('UPDATE transactions SET amount = ?, categoryId = ?, type = ?, note = ? WHERE user_id = ? AND id = ?', [amount, categoryId, type, note || null, userId, id]);
+  await db.run('UPDATE transactions SET amount = ?, currency = ?, categoryId = ?, type = ?, note = ? WHERE user_id = ? AND id = ?', [amount, currency, categoryId, type, note || null, userId, id]);
   const prevAccount = getAccountSlugFromNote(current.note);
   const nextAccount = getAccountSlugFromNote(note || '');
   if (prevAccount && prevAccount === nextAccount) {
@@ -781,6 +857,7 @@ app.patch('/api/transactions/:id', async (req, res) => {
   res.json({
     ...current,
     amount,
+    currency,
     categoryId,
     type,
     note: note || undefined,

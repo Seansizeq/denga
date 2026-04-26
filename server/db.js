@@ -29,6 +29,7 @@ export async function initDb() {
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL DEFAULT '',
       amount REAL NOT NULL,
+      currency TEXT NOT NULL DEFAULT 'UAH',
       categoryId TEXT NOT NULL,
       type TEXT NOT NULL,
       date TEXT NOT NULL,
@@ -167,6 +168,11 @@ export async function initDb() {
 
   try {
     await db.exec(`ALTER TABLE transactions ADD COLUMN user_id TEXT NOT NULL DEFAULT ''`);
+  } catch {
+    /* already exists */
+  }
+  try {
+    await db.exec(`ALTER TABLE transactions ADD COLUMN currency TEXT NOT NULL DEFAULT 'UAH'`);
   } catch {
     /* already exists */
   }

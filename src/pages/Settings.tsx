@@ -11,7 +11,7 @@ const APP_VERSION = (import.meta.env.VITE_APP_VERSION as string | undefined) ?? 
 const DISPLAY_CURRENCIES: DisplayCurrency[] = ['UAH', 'PLN', 'USD'];
 
 const Settings: React.FC = () => {
-  const { t, language, setLanguage, displayCurrency, setDisplayCurrency } = useTranslation();
+  const { t, language, setLanguage, displayCurrency, setDisplayCurrency, fxRates, fxStatus, refreshFxRates } = useTranslation();
   const { isSupported: fsSupported, isFullscreen, toggle: toggleFullscreen } =
     useTelegramFullscreen();
 
@@ -108,6 +108,25 @@ const Settings: React.FC = () => {
         <p className={styles.sectionDescription}>
           {t('settings', 'currencyDescription')}
         </p>
+      </section>
+
+      <section className={styles.section}>
+        <div className={styles.sectionLabel}>{t('settings', 'fxRates')}</div>
+        <div className={styles.card}>
+          <div className={styles.row}>
+            <span className={styles.rowLabel}>{t('settings', 'fxUpdatedAt')}</span>
+            <span className={styles.rowValue}>{new Date(fxRates.updatedAt).toLocaleString()}</span>
+          </div>
+          <div className={styles.row}>
+            <span className={styles.rowLabel}>{t('settings', 'fxStatus')}</span>
+            <span className={styles.rowValue}>
+              {fxStatus === 'live' ? t('settings', 'fxLive') : fxStatus === 'cache' ? t('settings', 'fxCache') : t('settings', 'fxFallback')}
+            </span>
+          </div>
+          <button type="button" className={styles.row} onClick={() => void refreshFxRates()}>
+            <span className={styles.rowLabel}>{t('settings', 'fxRefresh')}</span>
+          </button>
+        </div>
       </section>
 
       <section className={styles.section}>

@@ -20,6 +20,7 @@ import {
   stripAccountFromNote,
   type AccountNoteKey,
 } from '../utils/transactionAccount';
+import { normalizeCurrency, SUPPORTED_CURRENCIES, type CurrencyCode } from '../utils/currency';
 import { apiFetch } from '../api/client';
 import styles from './AddTransaction.module.css';
 
@@ -49,6 +50,7 @@ const AddTransaction: React.FC = () => {
     editingTransaction?.type ?? (searchParams.get('type') === 'income' ? 'income' : 'expense');
 
   const [amount, setAmount] = useState(() => (editingTransaction ? String(editingTransaction.amount) : ''));
+  const [currency, setCurrency] = useState<CurrencyCode>(() => normalizeCurrency(editingTransaction?.currency));
   const [type, setType] = useState<TransactionType>(initialType);
   const [categoryId, setCategoryId] = useState(() => (
     editingTransaction?.categoryId ?? (initialType === 'income' ? 'salary' : 'food')
@@ -172,6 +174,7 @@ const AddTransaction: React.FC = () => {
     if (!tx) return;
     hydratedEditRef.current = editId;
     setAmount(String(tx.amount));
+    setCurrency(normalizeCurrency(tx.currency));
     setType(tx.type);
     setCategoryId(tx.categoryId);
     setPaymentAccount(getAccountSlugFromNote(tx.note) ?? '');
@@ -191,6 +194,7 @@ const AddTransaction: React.FC = () => {
     const mergedNote = mergeAccountIntoNote(note.trim(), paymentAccount, allowedPaymentKeys);
     const payload = {
       amount: numAmount,
+      currency,
       type,
       categoryId,
       note: mergedNote || undefined,
@@ -265,7 +269,18 @@ const AddTransaction: React.FC = () => {
           className={styles.amountInput}
           autoFocus
         />
-        <span className={styles.currency}>₴</span>
+        <select
+          className={styles.currencySelect}
+          value={currency}
+          onChange={(e) => setCurrency(normalizeCurrency(e.target.value))}
+          aria-label={t('settings', 'currency')}
+        >
+          {SUPPORTED_CURRENCIES.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
       </div>
 
       <section className={styles.paymentSection} aria-label={t('addTx', 'paymentAccount')}>

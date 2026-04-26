@@ -12,7 +12,7 @@ interface HeroBalanceProps {
   /** Сума з рахунків (портфель), а не «усі доходи − витрати» */
   wealthMode?: boolean;
   /** В яких одиницях `net` (для коректних ₴ / zł) */
-  mainAmountCurrency?: 'UAH' | 'PLN';
+  mainAmountCurrency?: DisplayCurrency;
   /** Додатково показати залишок в іншій валюті, якщо > 0 */
   wealthOther?: { amount: number; currency: 'UAH' | 'PLN' };
 }

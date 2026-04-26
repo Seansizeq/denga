@@ -189,6 +189,13 @@ type Dict = {
     openedFrom: string;
     telegram: string;
     browser: string;
+    fxRates: string;
+    fxUpdatedAt: string;
+    fxStatus: string;
+    fxLive: string;
+    fxCache: string;
+    fxFallback: string;
+    fxRefresh: string;
   };
   categories: {
     food: string;
@@ -385,6 +392,13 @@ const uk: Dict = {
     openedFrom: 'Відкрито з',
     telegram: 'Telegram',
     browser: 'Браузера',
+    fxRates: 'Курси валют',
+    fxUpdatedAt: 'Оновлено',
+    fxStatus: 'Джерело',
+    fxLive: 'Онлайн',
+    fxCache: 'Кеш',
+    fxFallback: 'Резервні',
+    fxRefresh: 'Оновити курси',
   },
   categories: {
     food: 'Продукти',
@@ -586,6 +600,13 @@ const ru: Dict = {
     openedFrom: 'Открыто из',
     telegram: 'Telegram',
     browser: 'Браузера',
+    fxRates: 'Курсы валют',
+    fxUpdatedAt: 'Обновлено',
+    fxStatus: 'Источник',
+    fxLive: 'Онлайн',
+    fxCache: 'Кэш',
+    fxFallback: 'Резервные',
+    fxRefresh: 'Обновить курсы',
   },
   categories: {
     food: 'Продукты',
@@ -787,6 +808,13 @@ const en: Dict = {
     openedFrom: 'Opened from',
     telegram: 'Telegram',
     browser: 'Browser',
+    fxRates: 'FX rates',
+    fxUpdatedAt: 'Updated',
+    fxStatus: 'Source',
+    fxLive: 'Live',
+    fxCache: 'Cache',
+    fxFallback: 'Fallback',
+    fxRefresh: 'Refresh rates',
   },
   categories: {
     food: 'Groceries',
