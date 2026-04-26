@@ -46,6 +46,45 @@ export async function initDb() {
   `);
 
   await db.exec(`
+    CREATE TABLE IF NOT EXISTS bot_active_shifts (
+      user_id TEXT PRIMARY KEY,
+      started_at TEXT NOT NULL,
+      started_day TEXT NOT NULL,
+      template_id TEXT,
+      salary_rate REAL NOT NULL DEFAULT 0,
+      salary_amount REAL NOT NULL DEFAULT 0,
+      salary_currency TEXT NOT NULL DEFAULT 'UAH',
+      shift_note TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL
+    )
+  `);
+  try {
+    await db.exec(`ALTER TABLE bot_active_shifts ADD COLUMN template_id TEXT`);
+  } catch {
+    /* already exists */
+  }
+  try {
+    await db.exec(`ALTER TABLE bot_active_shifts ADD COLUMN salary_rate REAL NOT NULL DEFAULT 0`);
+  } catch {
+    /* already exists */
+  }
+  try {
+    await db.exec(`ALTER TABLE bot_active_shifts ADD COLUMN salary_amount REAL NOT NULL DEFAULT 0`);
+  } catch {
+    /* already exists */
+  }
+  try {
+    await db.exec(`ALTER TABLE bot_active_shifts ADD COLUMN salary_currency TEXT NOT NULL DEFAULT 'UAH'`);
+  } catch {
+    /* already exists */
+  }
+  try {
+    await db.exec(`ALTER TABLE bot_active_shifts ADD COLUMN shift_note TEXT NOT NULL DEFAULT ''`);
+  } catch {
+    /* already exists */
+  }
+
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS planner_days (
       day TEXT PRIMARY KEY,
       user_id TEXT NOT NULL DEFAULT '',

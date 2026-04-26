@@ -294,6 +294,75 @@ const plannerDayFromStored = (userId, storedDay) => {
   return String(storedDay).startsWith(prefix) ? String(storedDay).slice(prefix.length) : String(storedDay);
 };
 const scopedTemplateKey = (userId, normalizedKey) => `${userId}::${normalizedKey}`;
+const parseTimeFromIso = (iso) => {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+};
+const buildBotShiftNote = (startIso, endIso) => {
+  const start = parseTimeFromIso(startIso);
+  const end = parseTimeFromIso(endIso);
+  if (start && end) return `Зміна через бота ${start}-${end}`;
+  if (start) return `Зміна через бота ${start}`;
+  return 'Зміна через бота';
+};
+const formatShiftTemplateLabel = (tpl) => {
+  const name = String(tpl?.name ?? '').trim();
+  const symbol = String(tpl?.symbol ?? '').trim();
+  const base = [name, symbol].filter(Boolean).join(' • ') || 'Шаблон';
+  const cur = tpl?.currency === 'PLN' ? 'zł' : '₴';
+  return `${base} (${cur})`;
+};
+const upsertPlannerDay = async (dbConn, userId, day, patch) => {
+  const dayKey = plannerDayKey(userId, day);
+  const current = await dbConn.get(
+    'SELECT hasShift, workedHours, salaryRate, salaryAmount, salary_currency, note FROM planner_days WHERE day = ? LIMIT 1',
+    [dayKey]
+  );
+  const hasShift = patch.hasShift === undefined
+    ? Number(current?.hasShift ? 1 : 0)
+    : (patch.hasShift ? 1 : 0);
+  const workedHours = patch.workedHours === undefined
+    ? Number(current?.workedHours) || 0
+    : Math.max(0, Number(patch.workedHours) || 0);
+  const salaryRate = patch.salaryRate === undefined
+    ? Number(current?.salaryRate) || 0
+    : Math.max(0, Number(patch.salaryRate) || 0);
+  const salaryAmount = patch.salaryAmount === undefined
+    ? Number(current?.salaryAmount) || 0
+    : Math.max(0, Number(patch.salaryAmount) || 0);
+  const salaryCurrency = patch.salaryCurrency === 'PLN'
+    ? 'PLN'
+    : (patch.salaryCurrency === 'UAH' ? 'UAH' : (current?.salary_currency === 'PLN' ? 'PLN' : 'UAH'));
+  const note = typeof patch.note === 'string'
+    ? patch.note.trim()
+    : String(current?.note ?? '').trim();
+  const updatedAt = new Date().toISOString();
+  await dbConn.run(
+    `INSERT INTO planner_days (day, user_id, hasShift, workedHours, salaryRate, salaryAmount, salary_currency, note, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(day) DO UPDATE SET
+      user_id = excluded.user_id,
+      hasShift = excluded.hasShift,
+      workedHours = excluded.workedHours,
+      salaryRate = excluded.salaryRate,
+      salaryAmount = excluded.salaryAmount,
+      salary_currency = excluded.salary_currency,
+      note = excluded.note,
+      updatedAt = excluded.updatedAt`,
+    [dayKey, userId, hasShift, workedHours, salaryRate, salaryAmount, salaryCurrency, note, updatedAt]
+  );
+  return {
+    day,
+    hasShift: Boolean(hasShift),
+    workedHours,
+    salaryRate,
+    salaryAmount,
+    salaryCurrency,
+    note,
+    updatedAt,
+  };
+};
 
 const allowedOrigins = (process.env.CORS_ORIGINS ?? '')
   .split(',')
@@ -505,6 +574,7 @@ const CATEGORIES = [
 ];
 
 const pendingTransactions = new Map();
+const pendingShiftStarts = new Map();
 const CUSTOM_CATEGORY_PREFIX = 'custom:';
 const CUSTOM_CATEGORY_SEPARATOR = '|';
 
@@ -535,54 +605,283 @@ if (bot) {
       'INSERT OR REPLACE INTO users (telegram_id, chat_id) VALUES (?, ?)',
       [msg.from.id, msg.chat.id]
     );
-    bot.sendMessage(msg.chat.id, 'Привіт! Я твій помічник Denga. Надішли мені суму (наприклад, 100), щоб додати транзакцію.');
+    bot.sendMessage(
+      msg.chat.id,
+      'Привіт! Я твій помічник Denga.\nНадішли мені суму (наприклад, 100), щоб додати транзакцію.\nДля змін: /shift_start\nДля завершення: /shift_end'
+    );
+  });
+  bot.onText(/\/shift_start/i, async (msg) => {
+    if (!msg.from?.id || !msg.chat?.id) return;
+    const userId = String(msg.from.id);
+    await db.run(
+      'INSERT OR REPLACE INTO users (telegram_id, chat_id) VALUES (?, ?)',
+      [msg.from.id, msg.chat.id]
+    );
+    const active = await db.get(
+      'SELECT started_at FROM bot_active_shifts WHERE user_id = ? LIMIT 1',
+      [userId]
+    );
+    if (active?.started_at) {
+      bot.sendMessage(msg.chat.id, `⚠️ Зміна вже розпочата о ${parseTimeFromIso(active.started_at)}.`);
+      return;
+    }
+    const templates = await db.all(
+      `SELECT id, name, symbol, salary_rate, salary_amount, currency
+       FROM planner_shift_templates
+       WHERE user_id = ?
+       ORDER BY updated_at DESC
+       LIMIT 20`,
+      [userId]
+    );
+    const startedAt = new Date().toISOString();
+    pendingShiftStarts.set(msg.chat.id, {
+      userId,
+      startedAt,
+      createdAt: Date.now(),
+    });
+    const templateButtons = Array.isArray(templates)
+      ? templates.map((tpl) => [{ text: formatShiftTemplateLabel(tpl).slice(0, 48), callback_data: `shift_tpl_${tpl.id}` }])
+      : [];
+    templateButtons.unshift([{ text: 'Без шаблону', callback_data: 'shift_tpl_none' }]);
+    bot.sendMessage(msg.chat.id, 'Оберіть шаблон зміни:', { reply_markup: { inline_keyboard: templateButtons } });
+  });
+  bot.onText(/\/shift_end/i, async (msg) => {
+    if (!msg.from?.id || !msg.chat?.id) return;
+    const userId = String(msg.from.id);
+    await db.run(
+      'INSERT OR REPLACE INTO users (telegram_id, chat_id) VALUES (?, ?)',
+      [msg.from.id, msg.chat.id]
+    );
+    const active = await db.get(
+      'SELECT started_at, started_day, template_id, salary_rate, salary_amount, salary_currency, shift_note FROM bot_active_shifts WHERE user_id = ? LIMIT 1',
+      [userId]
+    );
+    if (!active?.started_at) {
+      bot.sendMessage(msg.chat.id, '⚠️ Активної зміни немає. Використайте /shift_start.');
+      return;
+    }
+    const now = new Date();
+    const startedAtDate = new Date(active.started_at);
+    if (Number.isNaN(startedAtDate.getTime())) {
+      await db.run('DELETE FROM bot_active_shifts WHERE user_id = ?', [userId]);
+      bot.sendMessage(msg.chat.id, '⚠️ Стан зміни був пошкоджений. Почніть нову через /shift_start.');
+      return;
+    }
+    const diffHours = Math.max(0, (now.getTime() - startedAtDate.getTime()) / (1000 * 60 * 60));
+    const roundedHours = Number(diffHours.toFixed(2));
+    const day = String(active.started_day || active.started_at.slice(0, 10));
+    const dayKey = plannerDayKey(userId, day);
+    const dayCurrent = await db.get(
+      'SELECT workedHours, salaryRate, salaryAmount, salary_currency, note FROM planner_days WHERE day = ? LIMIT 1',
+      [dayKey]
+    );
+    const totalHours = Number(((Number(dayCurrent?.workedHours) || 0) + roundedHours).toFixed(2));
+    const shiftSalaryRate = Number(active.salary_rate) || 0;
+    const shiftSalaryAmount = Number(active.salary_amount) || 0;
+    const shiftSalaryCurrency = active.salary_currency === 'PLN' ? 'PLN' : 'UAH';
+    const baseNote = String(active.shift_note ?? '').trim();
+    let salaryAmount = shiftSalaryAmount > 0 ? shiftSalaryAmount : (Number(dayCurrent?.salaryAmount) || 0);
+    const salaryRate = shiftSalaryRate > 0 ? shiftSalaryRate : (Number(dayCurrent?.salaryRate) || 0);
+    if (salaryAmount <= 0 && salaryRate > 0 && totalHours > 0) {
+      salaryAmount = Number((salaryRate * totalHours).toFixed(2));
+    }
+    await upsertPlannerDay(db, userId, day, {
+      hasShift: true,
+      workedHours: totalHours,
+      salaryRate,
+      salaryAmount,
+      salaryCurrency: shiftSalaryCurrency,
+      note: baseNote || buildBotShiftNote(active.started_at, now.toISOString()),
+    });
+    await db.run('DELETE FROM bot_active_shifts WHERE user_id = ?', [userId]);
+    bot.sendMessage(
+      msg.chat.id,
+      `🔴 Зміну завершено (${parseTimeFromIso(now.toISOString())}). Відпрацьовано: ${roundedHours.toLocaleString('uk-UA', { maximumFractionDigits: 2 })} год.`
+    );
   });
 
   bot.on('message', async (msg) => {
-    if (msg.text && !msg.text.startsWith('/')) {
-      const amount = parseFloat(msg.text);
-      if (!isNaN(amount)) {
-        pendingTransactions.set(msg.chat.id, { amount });
-
-        const keyboard = {
-          inline_keyboard: CATEGORIES.map(c => [{ text: c.name, callback_data: `cat_${c.id}` }])
-        };
-
-        bot.sendMessage(msg.chat.id, `Виберіть категорію для суми ${amount}:`, { reply_markup: keyboard });
-      }
-    }
+    if (!msg.from?.id || !msg.chat?.id) return;
+    await db.run(
+      'INSERT OR REPLACE INTO users (telegram_id, chat_id) VALUES (?, ?)',
+      [msg.from.id, msg.chat.id]
+    );
+    if (!msg.text || msg.text.startsWith('/')) return;
+    const amount = Number(msg.text.replace(',', '.').trim());
+    if (!Number.isFinite(amount) || amount <= 0) return;
+    pendingTransactions.set(msg.chat.id, {
+      userId: String(msg.from.id),
+      amount,
+      createdAt: Date.now(),
+    });
+    const keyboard = {
+      inline_keyboard: CATEGORIES.map((c) => [{ text: c.name, callback_data: `cat_${c.id}` }]),
+    };
+    bot.sendMessage(msg.chat.id, `Виберіть категорію для суми ${amount}:`, { reply_markup: keyboard });
   });
 
   bot.on('callback_query', async (callbackQuery) => {
-    const chatId = callbackQuery.message.chat.id;
+    const chatId = callbackQuery.message?.chat?.id;
+    if (!chatId) {
+      bot.answerCallbackQuery(callbackQuery.id);
+      return;
+    }
+    if (!callbackQuery.data) {
+      bot.answerCallbackQuery(callbackQuery.id);
+      return;
+    }
+
+    if (callbackQuery.data.startsWith('shift_tpl_')) {
+      const pendingShift = pendingShiftStarts.get(chatId);
+      if (!pendingShift) {
+        bot.answerCallbackQuery(callbackQuery.id, { text: 'Запит застарів. Запустіть /shift_start ще раз.' });
+        return;
+      }
+      if (pendingShift.userId !== String(callbackQuery.from.id)) {
+        bot.answerCallbackQuery(callbackQuery.id, { text: 'Ця дія не для цього користувача.' });
+        return;
+      }
+      if (Date.now() - Number(pendingShift.createdAt ?? 0) > 10 * 60 * 1000) {
+        pendingShiftStarts.delete(chatId);
+        bot.answerCallbackQuery(callbackQuery.id, { text: 'Запит застарів. Запустіть /shift_start ще раз.' });
+        return;
+      }
+      const picked = callbackQuery.data.replace('shift_tpl_', '');
+      let salaryRate = 0;
+      let salaryAmount = 0;
+      let salaryCurrency = 'UAH';
+      let shiftNote = '';
+      let templateId = null;
+      if (picked !== 'none') {
+        const tpl = await db.get(
+          `SELECT id, name, symbol, salary_rate, salary_amount, currency
+           FROM planner_shift_templates
+           WHERE user_id = ? AND id = ?
+           LIMIT 1`,
+          [pendingShift.userId, picked]
+        );
+        if (!tpl?.id) {
+          bot.answerCallbackQuery(callbackQuery.id, { text: 'Шаблон не знайдено.' });
+          return;
+        }
+        templateId = String(tpl.id);
+        salaryRate = Math.max(0, Number(tpl.salary_rate) || 0);
+        salaryAmount = Math.max(0, Number(tpl.salary_amount) || 0);
+        salaryCurrency = tpl.currency === 'PLN' ? 'PLN' : 'UAH';
+        shiftNote = [String(tpl.name ?? '').trim(), String(tpl.symbol ?? '').trim()].filter(Boolean).join(' • ');
+      }
+      const day = String(pendingShift.startedAt).slice(0, 10);
+      await db.run(
+        `INSERT INTO bot_active_shifts
+         (user_id, started_at, started_day, template_id, salary_rate, salary_amount, salary_currency, shift_note, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(user_id) DO UPDATE SET
+          started_at = excluded.started_at,
+          started_day = excluded.started_day,
+          template_id = excluded.template_id,
+          salary_rate = excluded.salary_rate,
+          salary_amount = excluded.salary_amount,
+          salary_currency = excluded.salary_currency,
+          shift_note = excluded.shift_note,
+          updated_at = excluded.updated_at`,
+        [
+          pendingShift.userId,
+          pendingShift.startedAt,
+          day,
+          templateId,
+          salaryRate,
+          salaryAmount,
+          salaryCurrency,
+          shiftNote,
+          pendingShift.startedAt,
+        ]
+      );
+      await upsertPlannerDay(db, pendingShift.userId, day, {
+        hasShift: true,
+        salaryRate,
+        salaryAmount,
+        salaryCurrency: salaryCurrency === 'PLN' ? 'PLN' : 'UAH',
+        note: shiftNote,
+      });
+      pendingShiftStarts.delete(chatId);
+      bot.answerCallbackQuery(callbackQuery.id);
+      bot.sendMessage(chatId, `🟢 Зміну розпочато (${parseTimeFromIso(pendingShift.startedAt)}). Синхронізовано з календарем.`);
+      return;
+    }
+
     const pending = pendingTransactions.get(chatId);
+    if (!pending) {
+      bot.answerCallbackQuery(callbackQuery.id, { text: 'Запит застарів. Надішліть суму ще раз.' });
+      return;
+    }
+    if (pending.userId !== String(callbackQuery.from.id)) {
+      bot.answerCallbackQuery(callbackQuery.id, { text: 'Ця дія не для цього користувача.' });
+      return;
+    }
+    if (Date.now() - Number(pending.createdAt ?? 0) > 10 * 60 * 1000) {
+      pendingTransactions.delete(chatId);
+      bot.answerCallbackQuery(callbackQuery.id, { text: 'Запит застарів. Надішліть суму ще раз.' });
+      return;
+    }
 
-    if (pending && callbackQuery.data.startsWith('cat_')) {
+    if (callbackQuery.data.startsWith('cat_')) {
       const categoryId = callbackQuery.data.replace('cat_', '');
-      const category = CATEGORIES.find(c => c.id === categoryId);
+      const category = CATEGORIES.find((c) => c.id === categoryId);
+      if (!category) {
+        bot.answerCallbackQuery(callbackQuery.id, { text: 'Категорію не знайдено.' });
+        return;
+      }
+      const accounts = await db.all(
+        'SELECT account_key AS accountKey, name FROM account_portfolio WHERE user_id = ? ORDER BY sort_index ASC, account_key ASC',
+        [pending.userId]
+      );
+      pending.categoryId = categoryId;
+      pending.type = (categoryId === 'salary' || categoryId === 'other_income') ? 'income' : 'expense';
+      const accountButtons = Array.isArray(accounts)
+        ? accounts.slice(0, 20).map((a) => [{
+            text: String(a.name ?? a.accountKey ?? '').trim().slice(0, 28) || String(a.accountKey),
+            callback_data: `acc_${String(a.accountKey)}`,
+          }])
+        : [];
+      accountButtons.unshift([{ text: 'Без рахунку', callback_data: 'acc_none' }]);
+      bot.answerCallbackQuery(callbackQuery.id);
+      bot.sendMessage(chatId, `Категорія: ${category.name}. Оберіть рахунок:`, {
+        reply_markup: { inline_keyboard: accountButtons },
+      });
+      return;
+    }
 
-      const type = (categoryId === 'salary' || categoryId === 'other_income') ? 'income' : 'expense';
-
+    if (callbackQuery.data.startsWith('acc_')) {
+      if (!pending.categoryId || !pending.type) {
+        pendingTransactions.delete(chatId);
+        bot.answerCallbackQuery(callbackQuery.id, { text: 'Спочатку оберіть категорію.' });
+        return;
+      }
+      const picked = callbackQuery.data.replace('acc_', '');
+      const accountKey = picked === 'none' ? null : String(picked).trim().toLowerCase();
+      const note = accountKey
+        ? mergeAccountIntoNote('Added via Telegram Bot', accountKey)
+        : 'Added via Telegram Bot';
       const transaction = {
         id: uuidv4(),
-        user_id: String(callbackQuery.from.id),
+        user_id: pending.userId,
         amount: pending.amount,
         currency: 'UAH',
-        categoryId,
-        type,
+        categoryId: pending.categoryId,
+        type: pending.type,
         date: new Date().toISOString(),
-        note: 'Added via Telegram Bot',
-        telegram_user_id: callbackQuery.from.id
+        note,
+        telegram_user_id: callbackQuery.from.id,
       };
-
       await db.run(
         'INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, note, telegram_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
         [transaction.id, transaction.user_id, transaction.amount, transaction.currency, transaction.categoryId, transaction.type, transaction.date, transaction.note, transaction.telegram_user_id]
       );
-
+      await applyAccountDelta(db, transaction.user_id, getAccountSlugFromNote(transaction.note), accountDeltaForTx(transaction));
       pendingTransactions.delete(chatId);
       bot.answerCallbackQuery(callbackQuery.id);
-      bot.sendMessage(chatId, `✅ Транзакцію ${pending.amount} (${category.name}) додано!`);
+      const category = CATEGORIES.find((c) => c.id === pending.categoryId);
+      bot.sendMessage(chatId, `✅ Транзакцію ${pending.amount} (${category ? category.name : pending.categoryId}) додано!`);
     }
   });
 } else {
@@ -903,17 +1202,6 @@ app.post('/api/transactions', async (req, res) => {
   );
   await applyAccountDelta(db, userId, getAccountSlugFromNote(transaction.note), accountDeltaForTx(transaction));
 
-  // Notify all users about new web transaction
-  try {
-    const users = bot ? await db.all('SELECT chat_id FROM users WHERE telegram_id = ?', [Number(userId)]) : [];
-    const category = CATEGORIES.find(c => c.id === categoryId);
-    for (const user of users) {
-      bot.sendMessage(user.chat_id, `🌐 Нова транзакція через сайт: ${amount} (${category ? category.name : categoryId})`);
-    }
-  } catch (err) {
-    console.error('Error notifying users:', err);
-  }
-  
   res.status(201).json(transaction);
 });
 
