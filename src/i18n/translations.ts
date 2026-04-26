@@ -407,8 +407,8 @@ const uk: Dict = {
     entertainment: 'Розваги',
     health: "Здоров'я",
     salary: 'Зарплата',
-    other_income: 'Інший дохід',
-    other_expense: 'Інше',
+    other_income: 'Корекція балансу',
+    other_expense: 'Корекція балансу',
   },
   stub: {
     title: 'Тільки через Telegram',
@@ -615,8 +615,8 @@ const ru: Dict = {
     entertainment: 'Развлечения',
     health: 'Здоровье',
     salary: 'Зарплата',
-    other_income: 'Другой доход',
-    other_expense: 'Другое',
+    other_income: 'Корекція балансу',
+    other_expense: 'Корекція балансу',
   },
   stub: {
     title: 'Только через Telegram',
@@ -823,8 +823,8 @@ const en: Dict = {
     entertainment: 'Entertainment',
     health: 'Health',
     salary: 'Salary',
-    other_income: 'Other income',
-    other_expense: 'Other',
+    other_income: 'Корекція балансу',
+    other_expense: 'Корекція балансу',
   },
   stub: {
     title: 'Telegram only',

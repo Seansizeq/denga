@@ -79,6 +79,32 @@ const getAccountSlugFromNote = (note) => {
   if (!m?.[1]) return null;
   return m[1].toLowerCase();
 };
+const mergeAccountIntoNote = (note, accountKey) => {
+  const key = String(accountKey ?? '').trim().toLowerCase();
+  const raw = typeof note === 'string' ? note : '';
+  const withoutAccount = raw
+    .replace(/\bAccount:\s*[a-z0-9_]{1,48}\b/ig, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!key) return withoutAccount;
+  return `${withoutAccount ? `${withoutAccount} ` : ''}Account: ${key}`.trim();
+};
+const resolveBalanceCorrectionCategoryId = async (dbConn, userId, type) => {
+  const normalizedCandidates = [
+    normalizeCategoryName('Balance correction'),
+    normalizeCategoryName('Корекція балансу'),
+  ];
+  const custom = await dbConn.get(
+    `SELECT id
+     FROM custom_categories
+     WHERE user_id = ? AND normalized_name IN (?, ?)
+     ORDER BY updatedAt DESC
+     LIMIT 1`,
+    [userId, normalizedCandidates[0], normalizedCandidates[1]]
+  );
+  if (custom?.id) return custom.id;
+  return type === 'income' ? 'other_income' : 'other_expense';
+};
 const getCurrencyFromNote = (note) => {
   if (typeof note !== 'string') return null;
   const m = note.match(/\bCurrency:\s*([A-Za-z]{3})\b/i);
@@ -474,8 +500,8 @@ const CATEGORIES = [
   { id: 'entertainment', name: 'Розваги' },
   { id: 'health', name: 'Здоров\'я' },
   { id: 'salary', name: 'Зарплата' },
-  { id: 'other_income', name: 'Дохід (інше)' },
-  { id: 'other_expense', name: 'Інше' },
+  { id: 'other_income', name: 'Корекція балансу' },
+  { id: 'other_expense', name: 'Корекція балансу' },
 ];
 
 const pendingTransactions = new Map();
@@ -723,12 +749,20 @@ app.put('/api/accounts/:key', async (req, res) => {
   }
 
   const now = new Date().toISOString();
-  const existing = await db.get('SELECT account_key FROM account_portfolio WHERE user_id = ? AND account_key = ? LIMIT 1', [userId, accountKey]);
+  const existing = await db.get(
+    `SELECT account_key AS accountKey, primary_amount AS primaryAmount, primary_currency AS primaryCurrency
+     FROM account_portfolio
+     WHERE user_id = ? AND account_key = ?
+     LIMIT 1`,
+    [userId, accountKey]
+  );
   if (!existing) {
     res.status(404).json({ error: 'Account not found' });
     return;
   }
 
+  const prevPrimaryAmount = Number(existing.primaryAmount);
+  const prevPrimaryCurrency = existing.primaryCurrency === 'PLN' ? 'PLN' : 'UAH';
   await db.run(
     `UPDATE account_portfolio
      SET section = ?,
@@ -757,6 +791,30 @@ app.put('/api/accounts/:key', async (req, res) => {
       accountKey,
     ]
   );
+
+  const delta = primaryAmount - prevPrimaryAmount;
+  if (Number.isFinite(delta) && Math.abs(delta) > 0.000001) {
+    const txType = delta > 0 ? 'income' : 'expense';
+    const txAmount = Math.abs(delta);
+    const correctionCategoryId = await resolveBalanceCorrectionCategoryId(db, userId, txType);
+    const txCurrency = primaryCurrency || prevPrimaryCurrency;
+    const txNote = mergeAccountIntoNote('Корекція балансу', accountKey);
+    await db.run(
+      `INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, note, telegram_user_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        uuidv4(),
+        userId,
+        txAmount,
+        txCurrency,
+        correctionCategoryId,
+        txType,
+        new Date().toISOString(),
+        txNote,
+        null,
+      ]
+    );
+  }
 
   const row = await db.get(
     `SELECT
