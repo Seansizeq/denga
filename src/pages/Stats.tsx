@@ -87,15 +87,12 @@ const Stats: React.FC = () => {
       return `conic-gradient(${visibleCategoryRows[0].color} 0deg 360deg)`;
     }
     let acc = 0;
-    const gapDeg = 4;
     const segments = visibleCategoryRows
       .map((row) => {
         const rawStart = (acc / visibleExpenseTotal) * 360;
         acc += row.total;
         const rawEnd = (acc / visibleExpenseTotal) * 360;
-        const start = rawStart + gapDeg / 2;
-        const end = Math.max(start, rawEnd - gapDeg / 2);
-        return `${row.color} ${start.toFixed(2)}deg ${end.toFixed(2)}deg`;
+        return `${row.color} ${rawStart.toFixed(2)}deg ${rawEnd.toFixed(2)}deg`;
       })
       .join(', ');
     return `conic-gradient(${segments})`;
