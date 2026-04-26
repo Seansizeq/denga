@@ -3,7 +3,7 @@ import * as LucideIcons from 'lucide-react';
 import { Pencil, Trash2 } from 'lucide-react';
 import type { Transaction } from '../../types';
 import { findCategory, getCustomCategoryData } from '../../constants/categories';
-import { formatCurrency, formatDate } from '../../utils/formatters';
+import { formatCurrency, formatDate, getCurrencyFromNote } from '../../utils/formatters';
 import { useTranslation } from '../../i18n/LanguageContext';
 import type { CategoryKey } from '../../i18n/translations';
 import styles from './TransactionItem.module.css';
@@ -41,6 +41,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onDelete
   const categoryName = customCategory?.name ?? t('categories', category.id as CategoryKey);
   const subtitle = transaction.note?.trim() || formatDate(transaction.date, locale);
   const isIncome = transaction.type === 'income';
+  const txCurrency = getCurrencyFromNote(transaction.note) ?? displayCurrency;
 
   return (
     <div
@@ -60,7 +61,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onDelete
           className={`${styles.amount} ${isIncome ? styles.income : styles.expense}`}
         >
           {isIncome ? '+' : '−'}
-          {formatCurrency(transaction.amount, locale, displayCurrency)}
+          {formatCurrency(transaction.amount, locale, txCurrency)}
         </span>
         {(onEdit || onDelete) ? (
           <div className={styles.actions}>
