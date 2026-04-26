@@ -707,8 +707,17 @@ if (bot) {
       [msg.from.id, msg.chat.id]
     );
     if (!msg.text || msg.text.startsWith('/')) return;
-    const text = msg.text.trim().toLowerCase();
-    if (text === 'почати зміну' || text === 'начать смену' || text === 'start shift') {
+    const text = msg.text.trim();
+    const normalizedText = text
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s/]/gu, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (
+      /(^| )почати зміну($| )/i.test(normalizedText) ||
+      /(^| )начать смену($| )/i.test(normalizedText) ||
+      /(^| )start shift($| )/i.test(normalizedText)
+    ) {
       bot.processUpdate({
         update_id: Date.now(),
         message: {
@@ -718,7 +727,11 @@ if (bot) {
       });
       return;
     }
-    if (text === 'завершити зміну' || text === 'закончить смену' || text === 'end shift') {
+    if (
+      /(^| )завершити зміну($| )/i.test(normalizedText) ||
+      /(^| )закончить смену($| )/i.test(normalizedText) ||
+      /(^| )end shift($| )/i.test(normalizedText)
+    ) {
       bot.processUpdate({
         update_id: Date.now() + 1,
         message: {
