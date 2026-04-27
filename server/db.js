@@ -41,9 +41,15 @@ export async function initDb() {
   await db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       telegram_id INTEGER PRIMARY KEY,
-      chat_id INTEGER NOT NULL
+      chat_id INTEGER NOT NULL,
+      timezone TEXT NOT NULL DEFAULT 'Europe/Warsaw'
     )
   `);
+  try {
+    await db.exec(`ALTER TABLE users ADD COLUMN timezone TEXT NOT NULL DEFAULT 'Europe/Warsaw'`);
+  } catch {
+    /* already exists */
+  }
 
   await db.exec(`
     CREATE TABLE IF NOT EXISTS bot_active_shifts (
@@ -56,6 +62,46 @@ export async function initDb() {
       salary_currency TEXT NOT NULL DEFAULT 'UAH',
       shift_note TEXT NOT NULL DEFAULT '',
       updated_at TEXT NOT NULL
+    )
+  `);
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS bot_report_settings (
+      user_id TEXT PRIMARY KEY,
+      auto_weekly INTEGER NOT NULL DEFAULT 1,
+      auto_monthly INTEGER NOT NULL DEFAULT 1,
+      send_time TEXT NOT NULL DEFAULT '21:00',
+      updated_at TEXT NOT NULL
+    )
+  `);
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS bot_report_deliveries (
+      user_id TEXT NOT NULL,
+      report_type TEXT NOT NULL,
+      slot_key TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, report_type, slot_key)
+    )
+  `);
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS user_reminders (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      title TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      time_hhmm TEXT NOT NULL DEFAULT '21:00',
+      lead_days INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS reminder_deliveries (
+      user_id TEXT NOT NULL,
+      reminder_id TEXT NOT NULL,
+      slot_key TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, reminder_id, slot_key)
     )
   `);
   try {

@@ -87,6 +87,14 @@
   color: var(--text-secondary);
 }
 
+.timeInput {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--bg-card-light);
+  color: var(--text-primary);
+  border-radius: 10px;
+  padding: 6px 8px;
+}
+
 .check {
   color: var(--accent-primary-strong);
   font-size: 18px;

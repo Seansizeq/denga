@@ -15,7 +15,7 @@ import { useTelegramFullscreen } from './hooks/useTelegramFullscreen';
 import type { TelegramWindow } from './types/telegram';
 import './styles/variables.css';
 
-const BOT_URL = 'https://t.me/denga_bot';
+const BOT_URL = 'https://t.me/netdengabot';
 
 const BrowserStub = () => {
   const { t } = useTranslation();
@@ -69,7 +69,7 @@ const BrowserStub = () => {
       >
         {t('stub', 'openButton')}
       </a>
-      <p style={{ color: '#64748b', fontSize: 13, marginTop: 24 }}>@denga_bot</p>
+      <p style={{ color: '#64748b', fontSize: 13, marginTop: 24 }}>@netdengabot</p>
     </div>
   );
 };

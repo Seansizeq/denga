@@ -1,10 +1,19 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from '../i18n/LanguageContext';
 import { LANGUAGES, LANGUAGE_LABELS, LANGUAGE_FLAGS } from '../i18n/translations';
 import type { Language } from '../i18n/translations';
 import type { DisplayCurrency } from '../utils/formatters';
 import { useTelegramFullscreen } from '../hooks/useTelegramFullscreen';
 import type { TelegramWindow } from '../types/telegram';
+import {
+  getReportSettings,
+  updateReportSettings,
+  sendWeeklyReportNow,
+  sendMonthlyReportNow,
+  getReminders,
+  updateReminder,
+  type Reminder,
+} from '../api/client';
 import styles from './Settings.module.css';
 
 const APP_VERSION = (import.meta.env.VITE_APP_VERSION as string | undefined) ?? 'dev';
@@ -18,6 +27,47 @@ const Settings: React.FC = () => {
   const tgWindow = window as Window & TelegramWindow;
   const tg = tgWindow.Telegram?.WebApp;
   const openedFromTelegram = !!(tg?.initData || tg?.initDataUnsafe?.user?.id);
+  const [reports, setReports] = useState({ autoWeekly: true, autoMonthly: true, sendTime: '21:00' });
+  const [reminders, setReminders] = useState<Reminder[]>([]);
+  const [loadingAutomation, setLoadingAutomation] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const [rs, rm] = await Promise.all([getReportSettings(), getReminders()]);
+        if (cancelled) return;
+        setReports(rs);
+        setReminders(rm);
+      } catch {
+        // ignore temporary network issues
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const setReportPatch = async (patch: Partial<typeof reports>) => {
+    setLoadingAutomation(true);
+    try {
+      const next = await updateReportSettings(patch);
+      setReports(next);
+    } finally {
+      setLoadingAutomation(false);
+    }
+  };
+
+  const patchReminder = async (id: string, patch: Partial<Reminder>) => {
+    setLoadingAutomation(true);
+    try {
+      const next = await updateReminder(id, patch);
+      setReminders((prev) => prev.map((r) => (r.id === id ? next : r)));
+    } finally {
+      setLoadingAutomation(false);
+    }
+  };
 
   return (
     <div className={styles.container}>
@@ -126,6 +176,59 @@ const Settings: React.FC = () => {
           <button type="button" className={styles.row} onClick={() => void refreshFxRates()}>
             <span className={styles.rowLabel}>{t('settings', 'fxRefresh')}</span>
           </button>
+        </div>
+      </section>
+
+      <section className={styles.section}>
+        <div className={styles.sectionLabel}>Telegram automation</div>
+        <div className={styles.card}>
+          <label className={styles.row}>
+            <span className={styles.rowLabel}>Weekly auto report</span>
+            <input
+              type="checkbox"
+              checked={reports.autoWeekly}
+              disabled={loadingAutomation}
+              onChange={(e) => void setReportPatch({ autoWeekly: e.target.checked })}
+            />
+          </label>
+          <label className={styles.row}>
+            <span className={styles.rowLabel}>Monthly auto report</span>
+            <input
+              type="checkbox"
+              checked={reports.autoMonthly}
+              disabled={loadingAutomation}
+              onChange={(e) => void setReportPatch({ autoMonthly: e.target.checked })}
+            />
+          </label>
+          <label className={styles.row}>
+            <span className={styles.rowLabel}>Report send time</span>
+            <input
+              className={styles.timeInput}
+              type="time"
+              value={reports.sendTime}
+              disabled={loadingAutomation}
+              onChange={(e) => void setReportPatch({ sendTime: e.target.value })}
+            />
+          </label>
+          <button type="button" className={styles.row} disabled={loadingAutomation} onClick={() => void sendWeeklyReportNow()}>
+            <span className={styles.rowLabel}>Send weekly report now</span>
+          </button>
+          <button type="button" className={styles.row} disabled={loadingAutomation} onClick={() => void sendMonthlyReportNow()}>
+            <span className={styles.rowLabel}>Send monthly report now</span>
+          </button>
+          {reminders.map((reminder) => (
+            <label key={reminder.id} className={styles.row}>
+              <span className={styles.rowLabel}>
+                {reminder.kind === 'daily' ? 'Daily reminder' : 'Subscription reminder'}
+              </span>
+              <input
+                type="checkbox"
+                checked={reminder.enabled}
+                disabled={loadingAutomation}
+                onChange={(e) => void patchReminder(reminder.id, { enabled: e.target.checked })}
+              />
+            </label>
+          ))}
         </div>
       </section>
 

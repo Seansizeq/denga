@@ -23,3 +23,60 @@ export const apiFetch = (path: string, init?: RequestInit): Promise<Response> =>
     ...init,
     headers: buildHeaders(init?.headers),
   });
+
+export type ReportSettings = {
+  autoWeekly: boolean;
+  autoMonthly: boolean;
+  sendTime: string;
+};
+
+export type Reminder = {
+  id: string;
+  kind: 'daily' | 'subscriptions';
+  title: string;
+  enabled: boolean;
+  timeHHMM: string;
+  leadDays: number;
+};
+
+export const getReportSettings = async (): Promise<ReportSettings> => {
+  const res = await apiFetch('/api/reports/settings');
+  if (!res.ok) throw new Error('failed to load report settings');
+  return res.json();
+};
+
+export const updateReportSettings = async (patch: Partial<ReportSettings>): Promise<ReportSettings> => {
+  const res = await apiFetch('/api/reports/settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) throw new Error('failed to update report settings');
+  return res.json();
+};
+
+export const sendWeeklyReportNow = async (): Promise<void> => {
+  const res = await apiFetch('/api/reports/weekly/send-now', { method: 'POST' });
+  if (!res.ok) throw new Error('failed to send weekly report');
+};
+
+export const sendMonthlyReportNow = async (): Promise<void> => {
+  const res = await apiFetch('/api/reports/monthly/send-now', { method: 'POST' });
+  if (!res.ok) throw new Error('failed to send monthly report');
+};
+
+export const getReminders = async (): Promise<Reminder[]> => {
+  const res = await apiFetch('/api/reminders');
+  if (!res.ok) throw new Error('failed to load reminders');
+  return res.json();
+};
+
+export const updateReminder = async (id: string, patch: Partial<Reminder>): Promise<Reminder> => {
+  const res = await apiFetch(`/api/reminders/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) throw new Error('failed to update reminder');
+  return res.json();
+};

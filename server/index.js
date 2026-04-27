@@ -294,17 +294,289 @@ const plannerDayFromStored = (userId, storedDay) => {
   return String(storedDay).startsWith(prefix) ? String(storedDay).slice(prefix.length) : String(storedDay);
 };
 const scopedTemplateKey = (userId, normalizedKey) => `${userId}::${normalizedKey}`;
-const parseTimeFromIso = (iso) => {
+const DEFAULT_BOT_TIMEZONE = (() => {
+  const configured = String(process.env.BOT_DEFAULT_TIMEZONE || '').trim();
+  if (configured) {
+    try {
+      new Intl.DateTimeFormat('en-US', { timeZone: configured }).format(new Date());
+      return configured;
+    } catch {
+      // ignore invalid timezone in env
+    }
+  }
+  return 'Europe/Warsaw';
+})();
+const normalizeTimeZone = (value) => {
+  const raw = String(value || '').trim();
+  if (!raw) return DEFAULT_BOT_TIMEZONE;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: raw }).format(new Date());
+    return raw;
+  } catch {
+    return DEFAULT_BOT_TIMEZONE;
+  }
+};
+const formatLocalWeekday = (iso, timeZone = DEFAULT_BOT_TIMEZONE) => {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  return new Intl.DateTimeFormat('en-US', { timeZone: normalizeTimeZone(timeZone), weekday: 'short' }).format(d).toLowerCase();
 };
-const buildBotShiftNote = (startIso, endIso) => {
-  const start = parseTimeFromIso(startIso);
-  const end = parseTimeFromIso(endIso);
+const shiftIsoDay = (day, deltaDays) => {
+  const d = new Date(`${day}T12:00:00.000Z`);
+  if (Number.isNaN(d.getTime())) return day;
+  d.setUTCDate(d.getUTCDate() + deltaDays);
+  return d.toISOString().slice(0, 10);
+};
+const getWeekDaySet = (todayDay) => {
+  const set = new Set();
+  for (let i = 0; i < 7; i += 1) {
+    set.add(shiftIsoDay(todayDay, -i));
+  }
+  return set;
+};
+const getMonthDaySet = (todayDay) => {
+  const [y, m] = String(todayDay).split('-');
+  if (!y || !m) return new Set([todayDay]);
+  const firstDay = `${y}-${m}-01`;
+  const set = new Set();
+  let cur = firstDay;
+  while (cur <= todayDay) {
+    set.add(cur);
+    cur = shiftIsoDay(cur, 1);
+  }
+  return set;
+};
+const formatDatePartsForZone = (iso, timeZone = DEFAULT_BOT_TIMEZONE) => {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: normalizeTimeZone(timeZone),
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(d);
+  const map = Object.fromEntries(parts.filter((p) => p.type !== 'literal').map((p) => [p.type, p.value]));
+  if (!map.year || !map.month || !map.day || !map.hour || !map.minute) return null;
+  return {
+    day: `${map.year}-${map.month}-${map.day}`,
+    time: `${map.hour}:${map.minute}`,
+  };
+};
+const parseTimeFromIso = (iso, timeZone = DEFAULT_BOT_TIMEZONE) => {
+  const parts = formatDatePartsForZone(iso, timeZone);
+  return parts?.time ?? '';
+};
+const dayFromIsoInZone = (iso, timeZone = DEFAULT_BOT_TIMEZONE) => {
+  const parts = formatDatePartsForZone(iso, timeZone);
+  return parts?.day ?? '';
+};
+const buildBotShiftNote = (startIso, endIso, timeZone = DEFAULT_BOT_TIMEZONE) => {
+  const start = parseTimeFromIso(startIso, timeZone);
+  const end = parseTimeFromIso(endIso, timeZone);
   if (start && end) return `Зміна через бота ${start}-${end}`;
   if (start) return `Зміна через бота ${start}`;
   return 'Зміна через бота';
+};
+const upsertBotUser = async (dbConn, telegramId, chatId) => {
+  await dbConn.run(
+    `INSERT INTO users (telegram_id, chat_id)
+     VALUES (?, ?)
+     ON CONFLICT(telegram_id) DO UPDATE SET
+       chat_id = excluded.chat_id`,
+    [telegramId, chatId]
+  );
+};
+const ensureReportSettings = async (dbConn, userId) => {
+  const now = new Date().toISOString();
+  await dbConn.run(
+    `INSERT INTO bot_report_settings (user_id, auto_weekly, auto_monthly, send_time, updated_at)
+     VALUES (?, 1, 1, '21:00', ?)
+     ON CONFLICT(user_id) DO NOTHING`,
+    [userId, now]
+  );
+};
+const getReportSettings = async (dbConn, userId) => {
+  await ensureReportSettings(dbConn, userId);
+  const row = await dbConn.get(
+    'SELECT auto_weekly, auto_monthly, send_time FROM bot_report_settings WHERE user_id = ? LIMIT 1',
+    [userId]
+  );
+  return {
+    autoWeekly: Boolean(Number(row?.auto_weekly ?? 1)),
+    autoMonthly: Boolean(Number(row?.auto_monthly ?? 1)),
+    sendTime: /^\d{2}:\d{2}$/.test(String(row?.send_time ?? '')) ? String(row.send_time) : '21:00',
+  };
+};
+const parseOnOff = (raw) => {
+  const v = String(raw || '').trim().toLowerCase();
+  if (['on', '1', 'true', 'yes', 'y', 'увімк', 'вкл'].includes(v)) return true;
+  if (['off', '0', 'false', 'no', 'n', 'вимк', 'выкл'].includes(v)) return false;
+  return null;
+};
+const parseSendTime = (raw) => {
+  const m = String(raw || '').trim().match(/^([01]\d|2[0-3]):([0-5]\d)$/);
+  if (!m) return null;
+  return `${m[1]}:${m[2]}`;
+};
+const updateReportSettings = async (dbConn, userId, patch) => {
+  await ensureReportSettings(dbConn, userId);
+  const current = await getReportSettings(dbConn, userId);
+  const autoWeekly = patch.autoWeekly === undefined ? current.autoWeekly : Boolean(patch.autoWeekly);
+  const autoMonthly = patch.autoMonthly === undefined ? current.autoMonthly : Boolean(patch.autoMonthly);
+  const sendTime = patch.sendTime ?? current.sendTime;
+  await dbConn.run(
+    `UPDATE bot_report_settings
+     SET auto_weekly = ?, auto_monthly = ?, send_time = ?, updated_at = ?
+     WHERE user_id = ?`,
+    [autoWeekly ? 1 : 0, autoMonthly ? 1 : 0, sendTime, new Date().toISOString(), userId]
+  );
+  return { autoWeekly, autoMonthly, sendTime };
+};
+const reminderKinds = new Set(['daily', 'subscriptions']);
+const isValidReminderKind = (value) => reminderKinds.has(String(value || ''));
+const ensureDefaultReminders = async (dbConn, userId) => {
+  const now = new Date().toISOString();
+  const rows = await dbConn.all('SELECT kind FROM user_reminders WHERE user_id = ?', [userId]);
+  const kinds = new Set((rows || []).map((r) => String(r.kind)));
+  if (!kinds.has('daily')) {
+    await dbConn.run(
+      `INSERT INTO user_reminders (id, user_id, kind, title, enabled, time_hhmm, lead_days, created_at, updated_at)
+       VALUES (?, ?, 'daily', 'Внести витрати', 1, '21:00', 0, ?, ?)`,
+      [uuidv4(), userId, now, now]
+    );
+  }
+  if (!kinds.has('subscriptions')) {
+    await dbConn.run(
+      `INSERT INTO user_reminders (id, user_id, kind, title, enabled, time_hhmm, lead_days, created_at, updated_at)
+       VALUES (?, ?, 'subscriptions', 'Нагадування про підписки', 1, '10:00', 1, ?, ?)`,
+      [uuidv4(), userId, now, now]
+    );
+  }
+};
+const listReminders = async (dbConn, userId) => {
+  await ensureDefaultReminders(dbConn, userId);
+  const rows = await dbConn.all(
+    `SELECT id, kind, title, enabled, time_hhmm AS timeHHMM, lead_days AS leadDays, created_at AS createdAt, updated_at AS updatedAt
+     FROM user_reminders
+     WHERE user_id = ?
+     ORDER BY created_at ASC`,
+    [userId]
+  );
+  return (rows || []).map((r) => ({
+    ...r,
+    enabled: Boolean(Number(r.enabled)),
+    leadDays: Number(r.leadDays) || 0,
+  }));
+};
+const markReminderDelivery = async (dbConn, userId, reminderId, slotKey) => {
+  try {
+    await dbConn.run(
+      `INSERT INTO reminder_deliveries (user_id, reminder_id, slot_key, created_at)
+       VALUES (?, ?, ?, ?)`,
+      [userId, reminderId, slotKey, new Date().toISOString()]
+    );
+    return true;
+  } catch {
+    return false;
+  }
+};
+const sendReminderMessage = async (dbConn, userId, reminder, timeZone, chatId) => {
+  if (!bot) return;
+  const nowIso = new Date().toISOString();
+  if (reminder.kind === 'daily') {
+    await bot.sendMessage(chatId, `⏰ Нагадування: ${String(reminder.title || 'Внести витрати')}`);
+    return;
+  }
+  const tz = normalizeTimeZone(timeZone);
+  const today = dayFromIsoInZone(nowIso, tz) || nowIso.slice(0, 10);
+  const target = shiftIsoDay(today, Number(reminder.leadDays || 0));
+  const due = await dbConn.all(
+    `SELECT name, amount, nextChargeDate
+     FROM subscriptions
+     WHERE user_id = ? AND active = 1 AND nextChargeDate = ?
+     ORDER BY nextChargeDate ASC`,
+    [userId, target]
+  );
+  if (!Array.isArray(due) || due.length === 0) return;
+  const lines = [`🔔 ${String(reminder.title || 'Нагадування про підписки')} (${target})`];
+  due.slice(0, 10).forEach((sub, idx) => {
+    lines.push(`${idx + 1}. ${sub.name} — ${Number(sub.amount || 0).toLocaleString('uk-UA', { maximumFractionDigits: 2 })}`);
+  });
+  await bot.sendMessage(chatId, lines.join('\n'));
+};
+const shouldSendForSlot = async (dbConn, userId, reportType, slotKey) => {
+  try {
+    await dbConn.run(
+      `INSERT INTO bot_report_deliveries (user_id, report_type, slot_key, created_at)
+       VALUES (?, ?, ?, ?)`,
+      [userId, reportType, slotKey, new Date().toISOString()]
+    );
+    return true;
+  } catch {
+    return false;
+  }
+};
+const summarizeTransactions = (txs) => {
+  let income = 0;
+  let expense = 0;
+  const byCategory = new Map();
+  for (const tx of txs) {
+    const amount = Number(tx.amount) || 0;
+    if (tx.type === 'income') income += amount;
+    else expense += amount;
+    const current = byCategory.get(tx.categoryId) ?? { income: 0, expense: 0 };
+    if (tx.type === 'income') current.income += amount;
+    else current.expense += amount;
+    byCategory.set(tx.categoryId, current);
+  }
+  const topExpenses = Array.from(byCategory.entries())
+    .map(([categoryId, v]) => ({ categoryId, amount: v.expense }))
+    .filter((x) => x.amount > 0)
+    .sort((a, b) => b.amount - a.amount)
+    .slice(0, 3);
+  return { income, expense, net: income - expense, topExpenses };
+};
+const categoryNameById = (id) => {
+  const base = CATEGORIES.find((c) => c.id === id)?.name;
+  return base || String(id);
+};
+const buildReportText = (reportType, periodLabel, txs) => {
+  const summary = summarizeTransactions(txs);
+  const lines = [
+    reportType === 'weekly' ? `📊 Тижневий звіт (${periodLabel})` : `📅 Місячний звіт (${periodLabel})`,
+    `Дохід: +${summary.income.toLocaleString('uk-UA', { maximumFractionDigits: 2 })}`,
+    `Витрати: -${summary.expense.toLocaleString('uk-UA', { maximumFractionDigits: 2 })}`,
+    `Результат: ${summary.net >= 0 ? '+' : '−'}${Math.abs(summary.net).toLocaleString('uk-UA', { maximumFractionDigits: 2 })}`,
+  ];
+  if (summary.topExpenses.length > 0) {
+    lines.push('Топ витрат:');
+    summary.topExpenses.forEach((item, idx) => {
+      lines.push(`${idx + 1}. ${categoryNameById(item.categoryId)} — ${item.amount.toLocaleString('uk-UA', { maximumFractionDigits: 2 })}`);
+    });
+  }
+  return lines.join('\n');
+};
+const sendUserReport = async (dbConn, userId, chatId, reportType, timeZone) => {
+  if (!bot) return;
+  const tz = normalizeTimeZone(timeZone);
+  const nowIso = new Date().toISOString();
+  const today = dayFromIsoInZone(nowIso, tz) || nowIso.slice(0, 10);
+  const rangeSet = reportType === 'weekly' ? getWeekDaySet(today) : getMonthDaySet(today);
+  const txs = await dbConn.all(
+    'SELECT amount, categoryId, type, date FROM transactions WHERE user_id = ? ORDER BY date DESC LIMIT 5000',
+    [userId]
+  );
+  const scoped = (Array.isArray(txs) ? txs : []).filter((tx) => rangeSet.has(dayFromIsoInZone(tx.date, tz)));
+  const periodLabel = `${Array.from(rangeSet).sort()[0]} → ${today}`;
+  const text = buildReportText(reportType, periodLabel, scoped);
+  await bot.sendMessage(chatId, text);
+};
+const getUserTimeZone = async (dbConn, userId) => {
+  const row = await dbConn.get('SELECT timezone FROM users WHERE telegram_id = ? LIMIT 1', [Number(userId)]);
+  return normalizeTimeZone(row?.timezone);
 };
 const formatShiftTemplateLabel = (tpl) => {
   const name = String(tpl?.name ?? '').trim();
@@ -602,28 +874,74 @@ const parseCustomCategoryId = (id) => {
 
 if (bot) {
   bot.onText(/\/start/, async (msg) => {
-    await db.run(
-      'INSERT OR REPLACE INTO users (telegram_id, chat_id) VALUES (?, ?)',
-      [msg.from.id, msg.chat.id]
-    );
+    await upsertBotUser(db, msg.from.id, msg.chat.id);
+    await ensureReportSettings(db, String(msg.from.id));
     bot.sendMessage(
       msg.chat.id,
-      'Привіт! Я твій помічник Denga.\nНадішли мені суму (наприклад, 100), щоб додати транзакцію.\nДля змін: /shift_start\nДля завершення: /shift_end'
+      'Привіт! Я твій помічник Denga.\nНадішли мені суму (наприклад, 100), щоб додати транзакцію.\nДля змін: /shift_start\nДля завершення: /shift_end\nЗвіти: /report_week та /report_month\nАвто-звіти: /report_auto_week on|off, /report_auto_month on|off, /report_time HH:MM'
     );
+  });
+  bot.onText(/\/report_week/i, async (msg) => {
+    if (!msg.from?.id || !msg.chat?.id) return;
+    const userId = String(msg.from.id);
+    await upsertBotUser(db, msg.from.id, msg.chat.id);
+    const tz = await getUserTimeZone(db, userId);
+    await sendUserReport(db, userId, msg.chat.id, 'weekly', tz);
+  });
+  bot.onText(/\/report_month/i, async (msg) => {
+    if (!msg.from?.id || !msg.chat?.id) return;
+    const userId = String(msg.from.id);
+    await upsertBotUser(db, msg.from.id, msg.chat.id);
+    const tz = await getUserTimeZone(db, userId);
+    await sendUserReport(db, userId, msg.chat.id, 'monthly', tz);
+  });
+  bot.onText(/\/report_time(?:\s+(.+))?/i, async (msg, match) => {
+    if (!msg.from?.id || !msg.chat?.id) return;
+    const userId = String(msg.from.id);
+    await upsertBotUser(db, msg.from.id, msg.chat.id);
+    const next = parseSendTime(match?.[1] ?? '');
+    if (!next) {
+      bot.sendMessage(msg.chat.id, 'Формат: /report_time HH:MM (наприклад, /report_time 21:00)');
+      return;
+    }
+    const settings = await updateReportSettings(db, userId, { sendTime: next });
+    bot.sendMessage(msg.chat.id, `✅ Час авто-звітів оновлено: ${settings.sendTime}`);
+  });
+  bot.onText(/\/report_auto_week(?:\s+(.+))?/i, async (msg, match) => {
+    if (!msg.from?.id || !msg.chat?.id) return;
+    const userId = String(msg.from.id);
+    await upsertBotUser(db, msg.from.id, msg.chat.id);
+    const on = parseOnOff(match?.[1] ?? '');
+    if (on === null) {
+      bot.sendMessage(msg.chat.id, 'Формат: /report_auto_week on|off');
+      return;
+    }
+    const settings = await updateReportSettings(db, userId, { autoWeekly: on });
+    bot.sendMessage(msg.chat.id, `✅ Тижневий авто-звіт: ${settings.autoWeekly ? 'ON' : 'OFF'}`);
+  });
+  bot.onText(/\/report_auto_month(?:\s+(.+))?/i, async (msg, match) => {
+    if (!msg.from?.id || !msg.chat?.id) return;
+    const userId = String(msg.from.id);
+    await upsertBotUser(db, msg.from.id, msg.chat.id);
+    const on = parseOnOff(match?.[1] ?? '');
+    if (on === null) {
+      bot.sendMessage(msg.chat.id, 'Формат: /report_auto_month on|off');
+      return;
+    }
+    const settings = await updateReportSettings(db, userId, { autoMonthly: on });
+    bot.sendMessage(msg.chat.id, `✅ Місячний авто-звіт: ${settings.autoMonthly ? 'ON' : 'OFF'}`);
   });
   bot.onText(/\/shift_start/i, async (msg) => {
     if (!msg.from?.id || !msg.chat?.id) return;
     const userId = String(msg.from.id);
-    await db.run(
-      'INSERT OR REPLACE INTO users (telegram_id, chat_id) VALUES (?, ?)',
-      [msg.from.id, msg.chat.id]
-    );
+    await upsertBotUser(db, msg.from.id, msg.chat.id);
+    const userTimeZone = await getUserTimeZone(db, userId);
     const active = await db.get(
       'SELECT started_at FROM bot_active_shifts WHERE user_id = ? LIMIT 1',
       [userId]
     );
     if (active?.started_at) {
-      bot.sendMessage(msg.chat.id, `⚠️ Зміна вже розпочата о ${parseTimeFromIso(active.started_at)}.`);
+      bot.sendMessage(msg.chat.id, `⚠️ Зміна вже розпочата о ${parseTimeFromIso(active.started_at, userTimeZone)}.`);
       return;
     }
     const templates = await db.all(
@@ -635,9 +953,12 @@ if (bot) {
       [userId]
     );
     const startedAt = new Date().toISOString();
+    const startedDay = dayFromIsoInZone(startedAt, userTimeZone) || startedAt.slice(0, 10);
     pendingShiftStarts.set(msg.chat.id, {
       userId,
       startedAt,
+      startedDay,
+      userTimeZone,
       createdAt: Date.now(),
     });
     const templateButtons = Array.isArray(templates)
@@ -649,10 +970,8 @@ if (bot) {
   bot.onText(/\/shift_end/i, async (msg) => {
     if (!msg.from?.id || !msg.chat?.id) return;
     const userId = String(msg.from.id);
-    await db.run(
-      'INSERT OR REPLACE INTO users (telegram_id, chat_id) VALUES (?, ?)',
-      [msg.from.id, msg.chat.id]
-    );
+    await upsertBotUser(db, msg.from.id, msg.chat.id);
+    const userTimeZone = await getUserTimeZone(db, userId);
     const active = await db.get(
       'SELECT started_at, started_day, template_id, salary_rate, salary_amount, salary_currency, shift_note FROM bot_active_shifts WHERE user_id = ? LIMIT 1',
       [userId]
@@ -670,7 +989,7 @@ if (bot) {
     }
     const diffHours = Math.max(0, (now.getTime() - startedAtDate.getTime()) / (1000 * 60 * 60));
     const roundedHours = Number(diffHours.toFixed(2));
-    const day = String(active.started_day || active.started_at.slice(0, 10));
+    const day = String(active.started_day || dayFromIsoInZone(active.started_at, userTimeZone) || active.started_at.slice(0, 10));
     const dayKey = plannerDayKey(userId, day);
     const dayCurrent = await db.get(
       'SELECT workedHours, salaryRate, salaryAmount, salary_currency, note FROM planner_days WHERE day = ? LIMIT 1',
@@ -692,21 +1011,18 @@ if (bot) {
       salaryRate,
       salaryAmount,
       salaryCurrency: shiftSalaryCurrency,
-      note: baseNote || buildBotShiftNote(active.started_at, now.toISOString()),
+      note: baseNote || buildBotShiftNote(active.started_at, now.toISOString(), userTimeZone),
     });
     await db.run('DELETE FROM bot_active_shifts WHERE user_id = ?', [userId]);
     bot.sendMessage(
       msg.chat.id,
-      `🔴 Зміну завершено (${parseTimeFromIso(now.toISOString())}). Відпрацьовано: ${roundedHours.toLocaleString('uk-UA', { maximumFractionDigits: 2 })} год.`
+      `🔴 Зміну завершено (${parseTimeFromIso(now.toISOString(), userTimeZone)}). Відпрацьовано: ${roundedHours.toLocaleString('uk-UA', { maximumFractionDigits: 2 })} год.`
     );
   });
 
   bot.on('message', async (msg) => {
     if (!msg.from?.id || !msg.chat?.id) return;
-    await db.run(
-      'INSERT OR REPLACE INTO users (telegram_id, chat_id) VALUES (?, ?)',
-      [msg.from.id, msg.chat.id]
-    );
+    await upsertBotUser(db, msg.from.id, msg.chat.id);
     if (!msg.text || msg.text.startsWith('/')) return;
     const text = msg.text.trim();
     const normalizedText = text
@@ -751,6 +1067,26 @@ if (bot) {
         msg.chat.id,
         'Добре. Надішліть суму числом (наприклад, 100), і я збережу транзакцію.'
       );
+      return;
+    }
+    if (/(^| )тижнев(ий|ого) звіт($| )/i.test(normalizedText) || /(^| )weekly report($| )/i.test(normalizedText)) {
+      bot.processUpdate({
+        update_id: Date.now() + 2,
+        message: {
+          ...msg,
+          text: '/report_week',
+        },
+      });
+      return;
+    }
+    if (/(^| )місячн(ий|ого) звіт($| )/i.test(normalizedText) || /(^| )monthly report($| )/i.test(normalizedText)) {
+      bot.processUpdate({
+        update_id: Date.now() + 3,
+        message: {
+          ...msg,
+          text: '/report_month',
+        },
+      });
       return;
     }
     const amount = Number(msg.text.replace(',', '.').trim());
@@ -822,7 +1158,8 @@ if (bot) {
         salaryCurrency = tpl.currency === 'PLN' ? 'PLN' : 'UAH';
         shiftNote = [String(tpl.name ?? '').trim(), String(tpl.symbol ?? '').trim()].filter(Boolean).join(' • ');
       }
-      const day = String(pendingShift.startedAt).slice(0, 10);
+      const userTimeZone = normalizeTimeZone(pendingShift.userTimeZone);
+      const day = String(pendingShift.startedDay || dayFromIsoInZone(pendingShift.startedAt, userTimeZone) || String(pendingShift.startedAt).slice(0, 10));
       await db.run(
         `INSERT INTO bot_active_shifts
          (user_id, started_at, started_day, template_id, salary_rate, salary_amount, salary_currency, shift_note, updated_at)
@@ -857,7 +1194,10 @@ if (bot) {
       });
       pendingShiftStarts.delete(chatId);
       bot.answerCallbackQuery(callbackQuery.id);
-      bot.sendMessage(chatId, `🟢 Зміну розпочато (${parseTimeFromIso(pendingShift.startedAt)}). Синхронізовано з календарем.`);
+      bot.sendMessage(
+        chatId,
+        `🟢 Зміну розпочато (${parseTimeFromIso(pendingShift.startedAt, userTimeZone)}). Синхронізовано з календарем.`
+      );
       return;
     }
 
@@ -940,8 +1280,157 @@ if (bot) {
   console.warn('Telegram bot is disabled: TELEGRAM_BOT_TOKEN is missing');
 }
 
+if (bot) {
+  setTimeout(() => {
+    runAutoReportsTick().catch((e) => {
+      console.error('[bot] auto reports initial tick failed', e);
+    });
+  }, 5000);
+  setInterval(() => {
+    runAutoReportsTick().catch((e) => {
+      console.error('[bot] auto reports tick failed', e);
+    });
+  }, 60 * 1000);
+}
+
 // --- API Logic ---
 app.use('/api', authMiddleware);
+
+app.get('/api/reports/settings', async (req, res) => {
+  const userId = String(req.authUserId ?? '');
+  if (!userId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const settings = await getReportSettings(db, userId);
+  res.json(settings);
+});
+
+app.put('/api/reports/settings', async (req, res) => {
+  const userId = String(req.authUserId ?? '');
+  if (!userId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const patch = {};
+  if (req.body?.sendTime !== undefined) {
+    const parsed = parseSendTime(req.body.sendTime);
+    if (!parsed) {
+      res.status(400).json({ error: 'sendTime must be HH:MM' });
+      return;
+    }
+    patch.sendTime = parsed;
+  }
+  if (req.body?.autoWeekly !== undefined) patch.autoWeekly = Boolean(req.body.autoWeekly);
+  if (req.body?.autoMonthly !== undefined) patch.autoMonthly = Boolean(req.body.autoMonthly);
+  const settings = await updateReportSettings(db, userId, patch);
+  res.json(settings);
+});
+
+app.post('/api/reports/weekly/send-now', async (req, res) => {
+  const userId = String(req.authUserId ?? '');
+  if (!userId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const user = await db.get('SELECT chat_id AS chatId, timezone FROM users WHERE telegram_id = ? LIMIT 1', [Number(userId)]);
+  if (!user?.chatId) {
+    res.status(400).json({ error: 'Telegram chat is not linked yet' });
+    return;
+  }
+  await sendUserReport(db, userId, Number(user.chatId), 'weekly', user.timezone);
+  res.json({ ok: true });
+});
+
+app.post('/api/reports/monthly/send-now', async (req, res) => {
+  const userId = String(req.authUserId ?? '');
+  if (!userId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const user = await db.get('SELECT chat_id AS chatId, timezone FROM users WHERE telegram_id = ? LIMIT 1', [Number(userId)]);
+  if (!user?.chatId) {
+    res.status(400).json({ error: 'Telegram chat is not linked yet' });
+    return;
+  }
+  await sendUserReport(db, userId, Number(user.chatId), 'monthly', user.timezone);
+  res.json({ ok: true });
+});
+
+app.get('/api/reminders', async (req, res) => {
+  const userId = String(req.authUserId ?? '');
+  if (!userId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const reminders = await listReminders(db, userId);
+  res.json(reminders);
+});
+
+app.patch('/api/reminders/:id', async (req, res) => {
+  const userId = String(req.authUserId ?? '');
+  const id = String(req.params.id ?? '').trim();
+  if (!userId || !id) {
+    res.status(400).json({ error: 'invalid request' });
+    return;
+  }
+  const current = await db.get('SELECT id, kind FROM user_reminders WHERE user_id = ? AND id = ? LIMIT 1', [userId, id]);
+  if (!current) {
+    res.status(404).json({ error: 'Reminder not found' });
+    return;
+  }
+  const nextKind = req.body?.kind === undefined ? String(current.kind) : String(req.body.kind);
+  if (!isValidReminderKind(nextKind)) {
+    res.status(400).json({ error: 'kind must be daily or subscriptions' });
+    return;
+  }
+  const nextTime = req.body?.timeHHMM === undefined ? undefined : parseSendTime(req.body.timeHHMM);
+  if (req.body?.timeHHMM !== undefined && !nextTime) {
+    res.status(400).json({ error: 'timeHHMM must be HH:MM' });
+    return;
+  }
+  const leadDaysRaw = req.body?.leadDays;
+  const leadDays = leadDaysRaw === undefined ? undefined : Math.max(0, Math.min(31, Number(leadDaysRaw) || 0));
+  await db.run(
+    `UPDATE user_reminders
+     SET kind = ?,
+         title = COALESCE(?, title),
+         enabled = COALESCE(?, enabled),
+         time_hhmm = COALESCE(?, time_hhmm),
+         lead_days = COALESCE(?, lead_days),
+         updated_at = ?
+     WHERE user_id = ? AND id = ?`,
+    [
+      nextKind,
+      req.body?.title === undefined ? null : String(req.body.title).trim(),
+      req.body?.enabled === undefined ? null : (req.body.enabled ? 1 : 0),
+      nextTime ?? null,
+      leadDays ?? null,
+      new Date().toISOString(),
+      userId,
+      id,
+    ]
+  );
+  const reminders = await listReminders(db, userId);
+  res.json(reminders.find((r) => r.id === id) ?? null);
+});
+
+app.put('/api/reminders/timezone', async (req, res) => {
+  const userId = String(req.authUserId ?? '');
+  if (!userId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const tz = normalizeTimeZone(req.body?.timezone);
+  await db.run(
+    `INSERT INTO users (telegram_id, chat_id, timezone)
+     VALUES (?, 0, ?)
+     ON CONFLICT(telegram_id) DO UPDATE SET
+      timezone = excluded.timezone`,
+    [Number(userId), tz]
+  );
+  res.json({ timezone: tz });
+});
 
 app.get('/api/fx-rates', async (_req, res) => {
   const payload = await fetchFxRates();
@@ -1353,6 +1842,44 @@ app.get('/api/custom-categories', async (req, res) => {
       updatedAt: row.lastUsedAt,
     });
   }
+
+const runAutoReportsTick = async () => {
+  if (!bot) return;
+  const users = await db.all('SELECT telegram_id AS telegramId, chat_id AS chatId, timezone FROM users');
+  if (!Array.isArray(users) || users.length === 0) return;
+  const nowIso = new Date().toISOString();
+  for (const u of users) {
+    const userId = String(u.telegramId ?? '');
+    const chatId = Number(u.chatId);
+    if (!userId || !Number.isFinite(chatId)) continue;
+    const tz = normalizeTimeZone(u.timezone);
+    const nowLocal = formatDatePartsForZone(nowIso, tz);
+    if (!nowLocal?.day || !nowLocal?.time) continue;
+    const settings = await getReportSettings(db, userId);
+    if (nowLocal.time !== settings.sendTime) continue;
+    const weekday = formatLocalWeekday(nowIso, tz);
+    if (settings.autoWeekly && weekday === 'mon') {
+      const slot = `${nowLocal.day}:${settings.sendTime}`;
+      if (await shouldSendForSlot(db, userId, 'weekly', slot)) {
+        await sendUserReport(db, userId, chatId, 'weekly', tz);
+      }
+    }
+    if (settings.autoMonthly && nowLocal.day.endsWith('-01')) {
+      const slot = `${nowLocal.day}:${settings.sendTime}`;
+      if (await shouldSendForSlot(db, userId, 'monthly', slot)) {
+        await sendUserReport(db, userId, chatId, 'monthly', tz);
+      }
+    }
+    const reminders = await listReminders(db, userId);
+    for (const reminder of reminders) {
+      if (!reminder.enabled || nowLocal.time !== reminder.timeHHMM) continue;
+      const slot = `${nowLocal.day}:${reminder.timeHHMM}`;
+      if (await markReminderDelivery(db, userId, reminder.id, slot)) {
+        await sendReminderMessage(db, userId, reminder, tz, chatId);
+      }
+    }
+  }
+};
 
   res.json(
     Array.from(byId.values()).sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))
