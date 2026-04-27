@@ -800,41 +800,33 @@ const buildReportText = (reportType, periodLabel, txs, comparison) => {
     title,
     periodLabel,
     '',
-    '┏━━━━━━━━━━━━━━━━━━━━━━━┓',
-    '┃ 💰 ПІДСУМКИ',
-    `┃ Дохід: +${formatAmount(summary.income)} UAH`,
-    `┃ Витрати: -${formatAmount(summary.expense)} UAH`,
-    `┃ Результат: ${formatAmount(summary.net, true)} UAH`,
-    `┃ Операцій: ${summary.incomeCount + summary.expenseCount}`,
-    '┗━━━━━━━━━━━━━━━━━━━━━━━┛',
+    '💰 ПІДСУМКИ',
+    `Дохід: +${formatAmount(summary.income)} UAH`,
+    `Витрати: -${formatAmount(summary.expense)} UAH`,
+    `Результат: ${formatAmount(summary.net, true)} UAH`,
+    `Операцій: ${summary.incomeCount + summary.expenseCount}`,
   ];
   if (comparison) {
     const incomeTrendText = formatComparisonChange(comparison.incomeDelta, { positive: 'більше', negative: 'менше' });
     const expenseTrendText = formatComparisonChange(comparison.expenseDelta, { positive: 'більше', negative: 'менше' });
     lines.push('');
-    lines.push('┏━━━━━━━━━━━━━━━━━━━━━━━┓');
-    lines.push(`┃ 🔁 ДО ${reportType === 'weekly' ? 'МИНУЛОГО ТИЖНЯ' : 'МИНУЛОГО МІСЯЦЯ'}`);
-    lines.push(`┃ Дохід: ${incomeTrendText}`);
-    lines.push(`┃ Витрати: ${expenseTrendText}`);
-    lines.push('┗━━━━━━━━━━━━━━━━━━━━━━━┛');
+    lines.push(`🔁 ДО ${reportType === 'weekly' ? 'МИНУЛОГО ТИЖНЯ' : 'МИНУЛОГО МІСЯЦЯ'}`);
+    lines.push(`Дохід: ${incomeTrendText}`);
+    lines.push(`Витрати: ${expenseTrendText}`);
   }
   if (summary.topExpenses.length > 0) {
     lines.push('');
-    lines.push('┏━━━━━━━━━━━━━━━━━━━━━━━┓');
-    lines.push('┃ 📉 ТОП ВИТРАТ');
+    lines.push('📉 ТОП ВИТРАТ');
     summary.topExpenses.forEach((item, idx) => {
-      lines.push(`┃ ${idx + 1}) ${categoryNameById(item.categoryId)} — ${formatAmount(item.amount)} UAH`);
+      lines.push(`${idx + 1}) ${categoryNameById(item.categoryId)} — ${formatAmount(item.amount)} UAH`);
     });
-    lines.push('┗━━━━━━━━━━━━━━━━━━━━━━━┛');
   }
   if (summary.topIncome.length > 0) {
     lines.push('');
-    lines.push('┏━━━━━━━━━━━━━━━━━━━━━━━┓');
-    lines.push('┃ 📈 ТОП ДОХОДІВ');
+    lines.push('📈 ТОП ДОХОДІВ');
     summary.topIncome.forEach((item, idx) => {
-      lines.push(`┃ ${idx + 1}) ${categoryNameById(item.categoryId)} — ${formatAmount(item.amount)} UAH`);
+      lines.push(`${idx + 1}) ${categoryNameById(item.categoryId)} — ${formatAmount(item.amount)} UAH`);
     });
-    lines.push('┗━━━━━━━━━━━━━━━━━━━━━━━┛');
   }
   if ((txs?.length ?? 0) === 0) {
     lines.push('');
