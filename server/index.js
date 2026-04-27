@@ -1680,11 +1680,13 @@ if (bot) {
 
 if (bot) {
   setTimeout(() => {
+    if (typeof runAutoReportsTick !== 'function') return;
     runAutoReportsTick().catch((e) => {
       console.error('[bot] auto reports initial tick failed', e);
     });
   }, 5000);
   setInterval(() => {
+    if (typeof runAutoReportsTick !== 'function') return;
     runAutoReportsTick().catch((e) => {
       console.error('[bot] auto reports tick failed', e);
     });
@@ -2241,7 +2243,7 @@ app.get('/api/custom-categories', async (req, res) => {
     });
   }
 
-const runAutoReportsTick = async () => {
+async function runAutoReportsTick() {
   if (!bot) return;
   const users = await db.all('SELECT telegram_id AS telegramId, chat_id AS chatId, timezone FROM users');
   if (!Array.isArray(users) || users.length === 0) return;
@@ -2277,7 +2279,7 @@ const runAutoReportsTick = async () => {
       }
     }
   }
-};
+}
 
   res.json(
     Array.from(byId.values()).sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))
