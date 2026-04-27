@@ -2729,6 +2729,105 @@ app.delete('/api/planner/shift-templates/:id', async (req, res) => {
   res.status(204).end();
 });
 
+app.get('/api/planner/active-shift', async (req, res) => {
+  const userId = req.authUserId;
+  const active = await db.get(
+    'SELECT started_at, started_day, template_id, salary_rate, salary_amount, salary_currency, shift_note FROM bot_active_shifts WHERE user_id = ? LIMIT 1',
+    [userId]
+  );
+  if (!active) {
+    res.json(null);
+    return;
+  }
+  res.json({
+    startedAt: active.started_at,
+    startedDay: active.started_day,
+    templateId: active.template_id,
+    salaryRate: active.salary_rate,
+    salaryAmount: active.salary_amount,
+    salaryCurrency: active.salary_currency,
+    shiftNote: active.shift_note
+  });
+});
+
+app.post('/api/planner/active-shift/start', async (req, res) => {
+  const userId = req.authUserId;
+  const active = await db.get('SELECT started_at FROM bot_active_shifts WHERE user_id = ? LIMIT 1', [userId]);
+  if (active) {
+    res.status(400).json({ error: 'Shift already active' });
+    return;
+  }
+  const { templateId, salaryRate, salaryAmount, salaryCurrency, shiftNote, startedAt, startedDay } = req.body;
+  const now = new Date().toISOString();
+  await db.run(
+    `INSERT INTO bot_active_shifts
+     (user_id, started_at, started_day, template_id, salary_rate, salary_amount, salary_currency, shift_note, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      userId,
+      startedAt || now,
+      startedDay || now.slice(0, 10),
+      templateId || null,
+      Number(salaryRate) || 0,
+      Number(salaryAmount) || 0,
+      salaryCurrency === 'PLN' ? 'PLN' : 'UAH',
+      shiftNote || '',
+      now
+    ]
+  );
+  res.json({ success: true });
+});
+
+app.post('/api/planner/active-shift/end', async (req, res) => {
+  const userId = req.authUserId;
+  const active = await db.get(
+    'SELECT started_at, started_day, template_id, salary_rate, salary_amount, salary_currency, shift_note FROM bot_active_shifts WHERE user_id = ? LIMIT 1',
+    [userId]
+  );
+  if (!active) {
+    res.status(400).json({ error: 'No active shift' });
+    return;
+  }
+  
+  const now = new Date();
+  const startedAtDate = new Date(active.started_at);
+  const diffHours = Math.max(0, (now.getTime() - startedAtDate.getTime()) / (1000 * 60 * 60));
+  const roundedHours = Number(diffHours.toFixed(2));
+  
+  const userTimeZone = await getUserTimeZone(db, userId);
+  const day = String(active.started_day || dayFromIsoInZone(active.started_at, userTimeZone) || active.started_at.slice(0, 10));
+  const dayKey = plannerDayKey(userId, day);
+  
+  const dayCurrent = await db.get(
+    'SELECT workedHours, salaryRate, salaryAmount, salary_currency, note FROM planner_days WHERE day = ? LIMIT 1',
+    [dayKey]
+  );
+  
+  const totalHours = Number(((Number(dayCurrent?.workedHours) || 0) + roundedHours).toFixed(2));
+  const shiftSalaryRate = Number(active.salary_rate) || 0;
+  const shiftSalaryAmount = Number(active.salary_amount) || 0;
+  const shiftSalaryCurrency = active.salary_currency === 'PLN' ? 'PLN' : 'UAH';
+  const baseNote = String(active.shift_note ?? '').trim();
+  
+  let salaryAmount = shiftSalaryAmount > 0 ? shiftSalaryAmount : (Number(dayCurrent?.salaryAmount) || 0);
+  const salaryRate = shiftSalaryRate > 0 ? shiftSalaryRate : (Number(dayCurrent?.salaryRate) || 0);
+  if (salaryAmount <= 0 && salaryRate > 0 && totalHours > 0) {
+    salaryAmount = Number((salaryRate * totalHours).toFixed(2));
+  }
+  
+  await upsertPlannerDay(db, userId, day, {
+    hasShift: true,
+    workedHours: totalHours,
+    salaryRate,
+    salaryAmount,
+    salaryCurrency: shiftSalaryCurrency,
+    note: baseNote || buildBotShiftNote(active.started_at, now.toISOString(), userTimeZone),
+  });
+  
+  await db.run('DELETE FROM bot_active_shifts WHERE user_id = ?', [userId]);
+  res.json({ success: true, roundedHours, totalHours, day });
+});
+
 app.use((err, _req, res, next) => {
   if (res.headersSent) {
     next(err);

@@ -718,6 +718,82 @@
   transform: scale(0.98);
 }
 
+.activeShiftCard {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.01) 45%, rgba(0, 0, 0, 0) 100%), var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: 20px;
+  padding: 16px;
+  margin-top: 24px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.activeShiftTitle {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.activeShiftTitleDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-green);
+  box-shadow: 0 0 8px var(--accent-green);
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% { transform: scale(0.95); opacity: 0.5; }
+  50% { transform: scale(1.1); opacity: 1; }
+  100% { transform: scale(0.95); opacity: 0.5; }
+}
+
+.endShiftBtn {
+  width: 100%;
+  border: none;
+  border-radius: 14px;
+  background: rgba(255, 69, 58, 0.15);
+  color: #ff6b63;
+  font-weight: 600;
+  padding: 14px;
+  font-size: 16px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.endShiftBtn:active {
+  transform: scale(0.98);
+  background: rgba(255, 69, 58, 0.2);
+}
+
+.startShiftBtn {
+  width: 100%;
+  border: none;
+  border-radius: 14px;
+  background: rgba(48, 209, 88, 0.15);
+  color: #30d158;
+  font-weight: 600;
+  padding: 14px;
+  font-size: 16px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: transform 0.15s ease;
+  margin-top: 24px;
+}
+
+.startShiftBtn:active {
+  transform: scale(0.98);
+  background: rgba(48, 209, 88, 0.2);
+}
+
 .loading {
   margin: 16px 0 0;
   font-size: 14px;

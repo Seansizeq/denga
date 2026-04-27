@@ -146,11 +146,70 @@ const CalendarPlanner: React.FC = () => {
   const [salaryAmountInput, setSalaryAmountInput] = useState('');
   const [salaryCurrency, setSalaryCurrency] = useState<PlannerCurrency>('UAH');
   const [reportRange, setReportRange] = useState<PlannerReportRange>('month');
+  const [activeShift, setActiveShift] = useState<any>(null);
+  const [activeShiftLoading, setActiveShiftLoading] = useState(false);
   const monthInputRef = useRef<HTMLInputElement | null>(null);
 
   const modalAnyOpen = chooserOpen || editorOpened;
 
   const overlayBox = modalAnyOpen ? readVisualOverlayBox() : null;
+
+  const loadActiveShift = async () => {
+    try {
+      const response = await apiFetch('/api/planner/active-shift');
+      if (response.ok) {
+        const data = await response.json();
+        setActiveShift(data);
+      }
+    } catch (e) {
+      console.error('Failed to load active shift:', e);
+    }
+  };
+
+  useEffect(() => {
+    void loadActiveShift();
+  }, []);
+
+  const handleStartShift = async () => {
+    setActiveShiftLoading(true);
+    try {
+      const response = await apiFetch('/api/planner/active-shift/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      if (response.ok) {
+        await loadActiveShift();
+      }
+    } catch (e) {
+      console.error('Start shift error:', e);
+    } finally {
+      setActiveShiftLoading(false);
+    }
+  };
+
+  const handleEndShift = async () => {
+    if (!window.confirm(t('planner', 'endShiftConfirm') || 'Завершити зміну?')) return;
+    setActiveShiftLoading(true);
+    try {
+      const response = await apiFetch('/api/planner/active-shift/end', {
+        method: 'POST',
+      });
+      if (response.ok) {
+        setActiveShift(null);
+        // Reload current month to reflect the updated shift
+        setMonth((prev) => {
+          // hack to trigger re-fetch
+          return prev;
+        });
+        window.location.reload(); // Quickest way to sync data for now
+      }
+    } catch (e) {
+      console.error('End shift error:', e);
+    } finally {
+      setActiveShiftLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!modalAnyOpen) return;
@@ -489,6 +548,32 @@ const CalendarPlanner: React.FC = () => {
           })}
         </div>
 
+        {activeShift ? (
+          <div className={styles.activeShiftCard}>
+            <h3 className={styles.activeShiftTitle}>
+              <span className={styles.activeShiftTitleDot} />
+              {t('planner', 'shiftTitle')}
+            </h3>
+            <button
+              type="button"
+              className={styles.endShiftBtn}
+              disabled={activeShiftLoading}
+              onClick={handleEndShift}
+            >
+              {activeShiftLoading ? '...' : t('planner', 'endShift')}
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className={styles.startShiftBtn}
+            disabled={activeShiftLoading}
+            onClick={handleStartShift}
+          >
+            {activeShiftLoading ? '...' : t('planner', 'startShift')}
+          </button>
+        )}
+
         <div className={styles.reportCard}>
           <div className={styles.reportHeader}>
             <h3 className={styles.reportCardTitle}>
@@ -499,7 +584,7 @@ const CalendarPlanner: React.FC = () => {
                   : t('planner', 'monthReportTitle')}
             </h3>
             <div className={styles.reportRangeTabs} role="tablist" aria-label={t('planner', 'report')}>
-              {(['day', 'today', 'week', 'month', 'year'] as const).map((opt) => (
+              {(['day', 'week', 'month', 'year'] as const).map((opt) => (
                 <button
                   key={opt}
                   type="button"

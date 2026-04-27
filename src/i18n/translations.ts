@@ -127,6 +127,9 @@ type Dict = {
     deleteShiftConfirm: string;
     deleteTemplate: string;
     deleteTemplateConfirm: string;
+    startShift: string;
+    endShift: string;
+    endShiftConfirm: string;
     monthReportTitle: string;
     dayReportTitle: string;
     yearReportTitle: string;
@@ -331,6 +334,9 @@ const uk: Dict = {
     deleteShiftConfirm: 'Прибрати зміну з цього дня?',
     deleteTemplate: 'Видалити шаблон',
     deleteTemplateConfirm: 'Видалити цей шаблон зі списку?',
+    startShift: 'Почати зміну',
+    endShift: 'Завершити зміну',
+    endShiftConfirm: 'Завершити зміну та зберегти години?',
     monthReportTitle: 'Звіт за місяць',
     dayReportTitle: 'Звіт за день',
     yearReportTitle: 'Звіт за рік',
@@ -540,6 +546,9 @@ const ru: Dict = {
     deleteShiftConfirm: 'Убрать смену с этого дня?',
     deleteTemplate: 'Удалить шаблон',
     deleteTemplateConfirm: 'Удалить этот шаблон из списка?',
+    startShift: 'Начать смену',
+    endShift: 'Закончить смену',
+    endShiftConfirm: 'Закончить смену и сохранить часы?',
     monthReportTitle: 'Отчёт за месяц',
     dayReportTitle: 'Отчёт за день',
     yearReportTitle: 'Отчёт за год',
@@ -749,6 +758,9 @@ const en: Dict = {
     deleteShiftConfirm: 'Remove the shift from this day?',
     deleteTemplate: 'Delete template',
     deleteTemplateConfirm: 'Remove this template from the list?',
+    startShift: 'Start shift',
+    endShift: 'End shift',
+    endShiftConfirm: 'End shift and save worked hours?',
     monthReportTitle: 'Monthly summary',
     dayReportTitle: 'Daily summary',
     yearReportTitle: 'Yearly summary',
