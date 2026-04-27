@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from '../i18n/LanguageContext';
 import { formatPlannerMoney, type PlannerCurrency } from '../utils/formatters';
 import type { RangeFilter } from '../components/ui/RecentTransactions';
@@ -31,6 +31,15 @@ interface ShiftTemplate {
 }
 
 type PlannerReportRange = RangeFilter | 'day';
+interface ActiveShift {
+  startedAt: string;
+  startedDay: string;
+  templateId: string | null;
+  salaryRate: number;
+  salaryAmount: number;
+  salaryCurrency: PlannerCurrency;
+  shiftNote: string;
+}
 
 
 const toIsoLocal = (date: Date): string => {
@@ -146,7 +155,7 @@ const CalendarPlanner: React.FC = () => {
   const [salaryAmountInput, setSalaryAmountInput] = useState('');
   const [salaryCurrency, setSalaryCurrency] = useState<PlannerCurrency>('UAH');
   const [reportRange, setReportRange] = useState<PlannerReportRange>('month');
-  const [activeShift, setActiveShift] = useState<any>(null);
+  const [activeShift, setActiveShift] = useState<ActiveShift | null>(null);
   const [activeShiftLoading, setActiveShiftLoading] = useState(false);
   const monthInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -165,6 +174,35 @@ const CalendarPlanner: React.FC = () => {
       console.error('Failed to load active shift:', e);
     }
   };
+
+  const reloadPlannerData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const yearQ = month.slice(0, 4);
+      const q =
+        reportRange === 'year' ? `year=${encodeURIComponent(yearQ)}` : `month=${encodeURIComponent(month)}`;
+      const response = await apiFetch(`/api/planner?${q}`);
+      if (!response.ok) throw new Error(`Planner load failed: ${response.status}`);
+      const rows = (await response.json()) as Array<DayPlan & { day: string }>;
+      const next: PlannerStore = {};
+      for (const row of rows) {
+        next[row.day] = {
+          hasShift: Boolean(row.hasShift),
+          workedHours: toNumber(row.workedHours),
+          salaryRate: toNumber(row.salaryRate),
+          salaryAmount: toNumber(row.salaryAmount),
+          salaryCurrency: row.salaryCurrency === 'PLN' ? 'PLN' : 'UAH',
+          note: row.note ?? '',
+        };
+      }
+      setStore(next);
+    } catch (error) {
+      console.error('Failed to load planner data:', error);
+      setStore({});
+    } finally {
+      setLoading(false);
+    }
+  }, [month, reportRange]);
 
   useEffect(() => {
     void loadActiveShift();
@@ -197,12 +235,9 @@ const CalendarPlanner: React.FC = () => {
       });
       if (response.ok) {
         setActiveShift(null);
-        // Reload current month to reflect the updated shift
-        setMonth((prev) => {
-          // hack to trigger re-fetch
-          return prev;
-        });
-        window.location.reload(); // Quickest way to sync data for now
+        await reloadPlannerData();
+      } else {
+        console.error('End shift failed with status', response.status);
       }
     } catch (e) {
       console.error('End shift error:', e);
@@ -287,41 +322,8 @@ const CalendarPlanner: React.FC = () => {
   }, [store, month, reportRange, selectedDay]);
 
   useEffect(() => {
-    let cancelled = false;
-    const loadMonth = async () => {
-      setLoading(true);
-      try {
-        const yearQ = month.slice(0, 4);
-        const q =
-          reportRange === 'year' ? `year=${encodeURIComponent(yearQ)}` : `month=${encodeURIComponent(month)}`;
-        const response = await apiFetch(`/api/planner?${q}`);
-        if (!response.ok) throw new Error(`Planner load failed: ${response.status}`);
-        const rows = (await response.json()) as Array<DayPlan & { day: string }>;
-        if (cancelled) return;
-        const next: PlannerStore = {};
-        for (const row of rows) {
-          next[row.day] = {
-            hasShift: Boolean(row.hasShift),
-            workedHours: toNumber(row.workedHours),
-            salaryRate: toNumber(row.salaryRate),
-            salaryAmount: toNumber(row.salaryAmount),
-            salaryCurrency: row.salaryCurrency === 'PLN' ? 'PLN' : 'UAH',
-            note: row.note ?? '',
-          };
-        }
-        setStore(next);
-      } catch (error) {
-        console.error('Failed to load planner data:', error);
-        if (!cancelled) setStore({});
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-    loadMonth();
-    return () => {
-      cancelled = true;
-    };
-  }, [month, reportRange]);
+    void reloadPlannerData();
+  }, [reloadPlannerData]);
 
   const loadShiftTemplates = async () => {
     try {

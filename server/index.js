@@ -2757,7 +2757,8 @@ app.post('/api/planner/active-shift/start', async (req, res) => {
     res.status(400).json({ error: 'Shift already active' });
     return;
   }
-  const { templateId, salaryRate, salaryAmount, salaryCurrency, shiftNote, startedAt, startedDay } = req.body;
+  const body = (req.body && typeof req.body === 'object') ? req.body : {};
+  const { templateId, salaryRate, salaryAmount, salaryCurrency, shiftNote, startedAt, startedDay } = body;
   const now = new Date().toISOString();
   await db.run(
     `INSERT INTO bot_active_shifts
