@@ -566,9 +566,11 @@ const escapeHtml = (value) =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 let reportFontReady = false;
+let reportFontAvailable = false;
 const ensureReportFont = () => {
   if (reportFontReady) return;
   const candidates = [
+    path.resolve(__dirname, '../node_modules/dejavu-fonts-ttf/ttf/DejaVuSans.ttf'),
     '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
     '/usr/share/fonts/dejavu/DejaVuSans.ttf',
     'C:/Windows/Fonts/arial.ttf',
@@ -579,12 +581,14 @@ const ensureReportFont = () => {
       const font = PImage.registerFont(p, 'DengaSans');
       font.loadSync();
       reportFontReady = true;
+      reportFontAvailable = true;
       return;
     } catch {
       // try next
     }
   }
   reportFontReady = true;
+  reportFontAvailable = false;
 };
 const encodePngBuffer = async (img) => {
   const out = new PassThrough();
@@ -595,6 +599,9 @@ const encodePngBuffer = async (img) => {
 };
 const renderReportCardPng = async (reportType, periodLabel, summary) => {
   ensureReportFont();
+  if (!reportFontAvailable) {
+    throw new Error('report font not available');
+  }
   const width = 1080;
   const height = 1350;
   const img = PImage.make(width, height);
