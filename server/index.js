@@ -620,11 +620,17 @@ const renderReportCardPng = async (reportType, periodLabel, summary) => {
   ctx.fillRect(48, 48, width - 96, 14);
 
   const fontName = reportFontReady ? 'DengaSans' : 'sans-serif';
+  const setFont = (size, weight = 500) => {
+    // pureimage has limited CSS font parser support; keep the string simple and stable.
+    const safeWeight = weight >= 700 ? 'bold' : 'normal';
+    ctx.font = `${safeWeight} ${size}pt ${fontName}`;
+  };
+  ctx.textBaseline = 'alphabetic';
   ctx.fillStyle = colors.text;
-  ctx.font = `700 52px "${fontName}"`;
+  setFont(28, 700);
   ctx.fillText(reportType === 'weekly' ? 'Weekly Report' : 'Monthly Report', 88, 140);
   ctx.fillStyle = colors.sub;
-  ctx.font = `400 30px "${fontName}"`;
+  setFont(16, 400);
   ctx.fillText(periodLabel, 88, 186);
 
   const block = (x, y, w, h, title) => {
@@ -633,36 +639,40 @@ const renderReportCardPng = async (reportType, periodLabel, summary) => {
     ctx.strokeStyle = colors.border;
     ctx.strokeRect(x, y, w, h);
     ctx.fillStyle = colors.sub;
-    ctx.font = `600 24px "${fontName}"`;
+    setFont(13, 700);
     ctx.fillText(title, x + 24, y + 42);
   };
 
   block(88, 228, width - 176, 280, 'Summary');
   ctx.fillStyle = colors.text;
-  ctx.font = `500 34px "${fontName}"`;
+  setFont(18, 500);
   ctx.fillText(`Income:`, 120, 302);
   ctx.fillStyle = colors.income;
-  ctx.fillText(`+${Math.abs(summary.income).toLocaleString('uk-UA')} UAH`, 300, 302);
+  ctx.fillText(`+${Math.abs(summary.income).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} UAH`, 300, 302);
   ctx.fillStyle = colors.text;
   ctx.fillText(`Expense:`, 120, 358);
   ctx.fillStyle = colors.expense;
-  ctx.fillText(`-${Math.abs(summary.expense).toLocaleString('uk-UA')} UAH`, 300, 358);
+  ctx.fillText(`-${Math.abs(summary.expense).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} UAH`, 300, 358);
   ctx.fillStyle = colors.text;
   ctx.fillText(`Net:`, 120, 414);
   ctx.fillStyle = summary.net >= 0 ? colors.income : colors.expense;
-  ctx.fillText(`${summary.net >= 0 ? '+' : '-'}${Math.abs(summary.net).toLocaleString('uk-UA')} UAH`, 300, 414);
+  ctx.fillText(
+    `${summary.net >= 0 ? '+' : '-'}${Math.abs(summary.net).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} UAH`,
+    300,
+    414
+  );
   ctx.fillStyle = colors.sub;
-  ctx.font = `500 28px "${fontName}"`;
+  setFont(14, 500);
   ctx.fillText(`Transactions: ${summary.incomeCount + summary.expenseCount}`, 120, 470);
 
   block(88, 546, width - 176, 320, 'Top Expenses');
   ctx.fillStyle = colors.text;
-  ctx.font = `500 30px "${fontName}"`;
+  setFont(15, 500);
   (summary.topExpenses || []).slice(0, 5).forEach((item, idx) => {
     ctx.fillStyle = colors.text;
     ctx.fillText(`${idx + 1}. ${String(categoryNameById(item.categoryId)).slice(0, 22)}`, 120, 610 + idx * 56);
     ctx.fillStyle = colors.expense;
-    ctx.fillText(`${Math.abs(item.amount).toLocaleString('uk-UA')} UAH`, 640, 610 + idx * 56);
+    ctx.fillText(`${Math.abs(item.amount).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} UAH`, 640, 610 + idx * 56);
   });
 
   block(88, 900, width - 176, 300, 'Top Income');
@@ -670,7 +680,7 @@ const renderReportCardPng = async (reportType, periodLabel, summary) => {
     ctx.fillStyle = colors.text;
     ctx.fillText(`${idx + 1}. ${String(categoryNameById(item.categoryId)).slice(0, 22)}`, 120, 964 + idx * 56);
     ctx.fillStyle = colors.income;
-    ctx.fillText(`${Math.abs(item.amount).toLocaleString('uk-UA')} UAH`, 640, 964 + idx * 56);
+    ctx.fillText(`${Math.abs(item.amount).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} UAH`, 640, 964 + idx * 56);
   });
 
   return encodePngBuffer(img);
