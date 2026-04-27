@@ -30,6 +30,8 @@ interface ShiftTemplate {
   salaryCurrency: PlannerCurrency;
 }
 
+type PlannerReportRange = RangeFilter | 'day';
+
 
 const toIsoLocal = (date: Date): string => {
   const y = date.getFullYear();
@@ -143,7 +145,7 @@ const CalendarPlanner: React.FC = () => {
   const [salaryRateInput, setSalaryRateInput] = useState('');
   const [salaryAmountInput, setSalaryAmountInput] = useState('');
   const [salaryCurrency, setSalaryCurrency] = useState<PlannerCurrency>('UAH');
-  const [reportRange, setReportRange] = useState<RangeFilter>('month');
+  const [reportRange, setReportRange] = useState<PlannerReportRange>('month');
   const monthInputRef = useRef<HTMLInputElement | null>(null);
 
   const modalAnyOpen = chooserOpen || editorOpened;
@@ -191,6 +193,8 @@ const CalendarPlanner: React.FC = () => {
     const baseDays =
       reportRange === 'year'
         ? buildDaysForYear(reportYear)
+        : reportRange === 'day'
+          ? [selectedDay]
         : reportRange === 'today'
           ? buildPastDays(1, now)
           : reportRange === 'week'
@@ -199,6 +203,7 @@ const CalendarPlanner: React.FC = () => {
     const days = baseDays.filter((iso) => {
       const d = parseIsoLocal(iso);
       if (reportRange === 'year') return true;
+      if (reportRange === 'day') return iso === selectedDay;
       if (reportRange === 'today') return d.toDateString() === now.toDateString();
       if (reportRange === 'week') {
         return isWithinLastDays(iso, 7, now);
@@ -220,7 +225,7 @@ const CalendarPlanner: React.FC = () => {
       else totalSalaryUah += pay;
     }
     return { totalHours, totalSalaryUah, totalSalaryPln, filledDays };
-  }, [store, month, reportRange]);
+  }, [store, month, reportRange, selectedDay]);
 
   useEffect(() => {
     let cancelled = false;
@@ -473,6 +478,7 @@ const CalendarPlanner: React.FC = () => {
                 aria-current={isToday ? 'date' : undefined}
                 onClick={() => {
                   setSelectedDay(dayIso);
+                  setReportRange('day');
                   setChooserOpen(true);
                 }}
               >
@@ -486,10 +492,14 @@ const CalendarPlanner: React.FC = () => {
         <div className={styles.reportCard}>
           <div className={styles.reportHeader}>
             <h3 className={styles.reportCardTitle}>
-              {reportRange === 'year' ? t('planner', 'yearReportTitle') : t('planner', 'monthReportTitle')}
+              {reportRange === 'day'
+                ? t('planner', 'dayReportTitle')
+                : reportRange === 'year'
+                  ? t('planner', 'yearReportTitle')
+                  : t('planner', 'monthReportTitle')}
             </h3>
             <div className={styles.reportRangeTabs} role="tablist" aria-label={t('planner', 'report')}>
-              {(['today', 'week', 'month', 'year'] as const).map((opt) => (
+              {(['day', 'today', 'week', 'month', 'year'] as const).map((opt) => (
                 <button
                   key={opt}
                   type="button"
