@@ -628,25 +628,45 @@ const renderReportCardPng = async (reportType, periodLabel, summary) => {
   const height = 1700;
   const img = PImage.make(width, height);
   const ctx = img.getContext('2d');
+  
   const colors = {
     bg: '#0f0f12',
     card: '#16141d',
     accent: '#ffb020',
-    income: '#6BE675',
-    expense: '#FF6B6B',
+    income: '#4ADE80',
+    expense: '#F87171',
     text: '#F2F2F5',
     sub: '#A5A5B0',
     border: '#2C2835',
+    blockBg: '#1D1A25'
   };
+  
+  const drawRoundedRect = (x, y, w, h, r, fill, stroke) => {
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, r);
+    if (fill) {
+      ctx.fillStyle = fill;
+      ctx.fill();
+    }
+    if (stroke) {
+      ctx.strokeStyle = stroke;
+      ctx.stroke();
+    }
+  };
+
   ctx.fillStyle = colors.bg;
   ctx.fillRect(0, 0, width, height);
-  ctx.fillStyle = colors.card;
-  ctx.fillRect(48, 48, width - 96, height - 96);
-  ctx.strokeStyle = colors.border;
+
   ctx.lineWidth = 2;
-  ctx.strokeRect(48, 48, width - 96, height - 96);
+  drawRoundedRect(48, 48, width - 96, height - 96, 48, colors.card, colors.border);
+  
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(48, 48, width - 96, height - 96, 48);
+  ctx.clip();
   ctx.fillStyle = colors.accent;
-  ctx.fillRect(48, 48, width - 96, 14);
+  ctx.fillRect(48, 48, width - 96, 16);
+  ctx.restore();
 
   const regularFont = reportFontAvailable ? reportFontRegular : 'sans-serif';
   const boldFont = reportFontAvailable ? reportFontBold : regularFont;
@@ -655,61 +675,66 @@ const renderReportCardPng = async (reportType, periodLabel, summary) => {
     ctx.font = `${size}pt ${family}`;
   };
   ctx.textBaseline = 'alphabetic';
+  
   ctx.fillStyle = colors.text;
-  setFont(40, 700);
-  ctx.fillText(reportType === 'weekly' ? 'Weekly Report' : 'Monthly Report', 88, 160);
+  setFont(64, 700);
+  ctx.fillText(reportType === 'weekly' ? 'Weekly Report' : 'Monthly Report', 100, 180);
+  
   ctx.fillStyle = colors.sub;
-  setFont(22, 400);
-  ctx.fillText(periodLabel, 88, 220);
+  setFont(32, 400);
+  ctx.fillText(periodLabel, 100, 240);
 
   const block = (x, y, w, h, title) => {
-    ctx.fillStyle = '#1D1A25';
-    ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = colors.border;
-    ctx.strokeRect(x, y, w, h);
+    drawRoundedRect(x, y, w, h, 32, colors.blockBg, colors.border);
     ctx.fillStyle = colors.sub;
-    setFont(13, 700);
-    ctx.fillText(title, x + 24, y + 42);
+    setFont(24, 700);
+    ctx.fillText(title.toUpperCase(), x + 40, y + 56);
   };
 
-  block(88, 260, width - 176, 360, 'Summary');
+  block(100, 300, width - 200, 400, 'Summary');
+  
   ctx.fillStyle = colors.text;
-  setFont(26, 500);
-  ctx.fillText(`Income:`, 120, 360);
+  setFont(40, 500);
+  ctx.fillText(`Income:`, 140, 420);
   ctx.fillStyle = colors.income;
-  ctx.fillText(`+${Math.abs(summary.income).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} UAH`, 420, 360);
+  ctx.fillText(`+${Math.abs(summary.income).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} UAH`, 550, 420);
+  
   ctx.fillStyle = colors.text;
-  ctx.fillText(`Expense:`, 120, 430);
+  ctx.fillText(`Expense:`, 140, 500);
   ctx.fillStyle = colors.expense;
-  ctx.fillText(`-${Math.abs(summary.expense).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} UAH`, 420, 430);
+  ctx.fillText(`-${Math.abs(summary.expense).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} UAH`, 550, 500);
+  
   ctx.fillStyle = colors.text;
-  ctx.fillText(`Net:`, 120, 500);
+  ctx.fillText(`Net:`, 140, 580);
   ctx.fillStyle = summary.net >= 0 ? colors.income : colors.expense;
   ctx.fillText(
     `${summary.net >= 0 ? '+' : '-'}${Math.abs(summary.net).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} UAH`,
-    420,
-    500
+    550,
+    580
   );
+  
   ctx.fillStyle = colors.sub;
-  setFont(20, 500);
-  ctx.fillText(`Transactions: ${summary.incomeCount + summary.expenseCount}`, 120, 575);
+  setFont(28, 500);
+  ctx.fillText(`Transactions: ${summary.incomeCount + summary.expenseCount}`, 140, 660);
 
-  block(88, 670, width - 176, 440, 'Top Expenses');
-  ctx.fillStyle = colors.text;
-  setFont(22, 500);
+  block(100, 740, width - 200, 420, 'Top Expenses');
   (summary.topExpenses || []).slice(0, 5).forEach((item, idx) => {
     ctx.fillStyle = colors.text;
-    ctx.fillText(`${idx + 1}. ${String(categoryNameById(item.categoryId)).slice(0, 24)}`, 120, 760 + idx * 72);
+    setFont(36, 500);
+    ctx.fillText(`${idx + 1}. ${String(categoryNameById(item.categoryId)).slice(0, 24)}`, 140, 860 + idx * 64);
+    
     ctx.fillStyle = colors.expense;
-    ctx.fillText(`${Math.abs(item.amount).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} UAH`, 780, 760 + idx * 72);
+    ctx.fillText(`${Math.abs(item.amount).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} UAH`, 850, 860 + idx * 64);
   });
 
-  block(88, 1160, width - 176, 420, 'Top Income');
+  block(100, 1200, width - 200, 420, 'Top Income');
   (summary.topIncome || []).slice(0, 5).forEach((item, idx) => {
     ctx.fillStyle = colors.text;
-    ctx.fillText(`${idx + 1}. ${String(categoryNameById(item.categoryId)).slice(0, 24)}`, 120, 1245 + idx * 72);
+    setFont(36, 500);
+    ctx.fillText(`${idx + 1}. ${String(categoryNameById(item.categoryId)).slice(0, 24)}`, 140, 1320 + idx * 64);
+    
     ctx.fillStyle = colors.income;
-    ctx.fillText(`${Math.abs(item.amount).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} UAH`, 780, 1245 + idx * 72);
+    ctx.fillText(`${Math.abs(item.amount).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} UAH`, 850, 1320 + idx * 64);
   });
 
   return encodePngBuffer(img);
