@@ -567,21 +567,43 @@ const escapeHtml = (value) =>
     .replace(/'/g, '&#39;');
 let reportFontReady = false;
 let reportFontAvailable = false;
+let reportFontRegular = 'sans-serif';
+let reportFontBold = 'sans-serif';
 const ensureReportFont = () => {
   if (reportFontReady) return;
   const candidates = [
-    path.resolve(__dirname, '../node_modules/dejavu-fonts-ttf/ttf/DejaVuSans.ttf'),
-    '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
-    '/usr/share/fonts/dejavu/DejaVuSans.ttf',
-    'C:/Windows/Fonts/arial.ttf',
+    {
+      regular: path.resolve(__dirname, '../node_modules/dejavu-fonts-ttf/ttf/DejaVuSans.ttf'),
+      bold: path.resolve(__dirname, '../node_modules/dejavu-fonts-ttf/ttf/DejaVuSans-Bold.ttf'),
+    },
+    {
+      regular: '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+      bold: '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+    },
+    {
+      regular: '/usr/share/fonts/dejavu/DejaVuSans.ttf',
+      bold: '/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf',
+    },
+    {
+      regular: 'C:/Windows/Fonts/arial.ttf',
+      bold: 'C:/Windows/Fonts/arialbd.ttf',
+    },
   ];
-  for (const p of candidates) {
+  for (const pair of candidates) {
     try {
-      if (!existsSync(p)) continue;
-      const font = PImage.registerFont(p, 'DengaSans');
-      font.loadSync();
+      if (!existsSync(pair.regular)) continue;
+      const regular = PImage.registerFont(pair.regular, 'DengaSansRegular');
+      regular.loadSync();
+      let boldLoaded = false;
+      if (pair.bold && existsSync(pair.bold)) {
+        const bold = PImage.registerFont(pair.bold, 'DengaSansBold');
+        bold.loadSync();
+        boldLoaded = true;
+      }
       reportFontReady = true;
       reportFontAvailable = true;
+      reportFontRegular = 'DengaSansRegular';
+      reportFontBold = boldLoaded ? 'DengaSansBold' : 'DengaSansRegular';
       return;
     } catch {
       // try next
@@ -626,11 +648,11 @@ const renderReportCardPng = async (reportType, periodLabel, summary) => {
   ctx.fillStyle = colors.accent;
   ctx.fillRect(48, 48, width - 96, 14);
 
-  const fontName = reportFontReady ? 'DengaSans' : 'sans-serif';
+  const regularFont = reportFontAvailable ? reportFontRegular : 'sans-serif';
+  const boldFont = reportFontAvailable ? reportFontBold : regularFont;
   const setFont = (size, weight = 500) => {
-    // pureimage has limited CSS font parser support; keep the string simple and stable.
-    const safeWeight = weight >= 700 ? 'bold' : 'normal';
-    ctx.font = `${safeWeight} ${size}pt ${fontName}`;
+    const family = weight >= 700 ? boldFont : regularFont;
+    ctx.font = `${size}pt ${family}`;
   };
   ctx.textBaseline = 'alphabetic';
   ctx.fillStyle = colors.text;
@@ -1036,6 +1058,7 @@ const BOT_CATEGORY_OPTIONS = CATEGORIES.filter((c) => c.id !== 'other_income' &&
 
 const pendingTransactions = new Map();
 const pendingShiftStarts = new Map();
+const invalidAmountNoticeAt = new Map();
 const CUSTOM_CATEGORY_PREFIX = 'custom:';
 const CUSTOM_CATEGORY_SEPARATOR = '|';
 
@@ -1085,12 +1108,23 @@ const sendBotMainMenu = async (chatId, text = 'Оберіть дію:') => {
   if (!bot) return;
   await bot.sendMessage(chatId, text, { reply_markup: botMainMenuKeyboard });
 };
-const sendReportSettingsPanel = async (chatId, userId) => {
+const sendReportSettingsPanel = async (chatId, userId, editMessageId) => {
   if (!bot) return;
   const settings = await getReportSettings(db, userId);
-  await bot.sendMessage(chatId, 'Керуйте звітами кнопками нижче:', {
-    reply_markup: reportSettingsInlineKeyboard(settings),
-  });
+  const text = 'Керуйте звітами кнопками нижче:';
+  if (Number.isFinite(Number(editMessageId))) {
+    try {
+      await bot.editMessageText(text, {
+        chat_id: chatId,
+        message_id: Number(editMessageId),
+        reply_markup: reportSettingsInlineKeyboard(settings),
+      });
+      return;
+    } catch {
+      // fallback: send new message if edit is not possible
+    }
+  }
+  await bot.sendMessage(chatId, text, { reply_markup: reportSettingsInlineKeyboard(settings) });
 };
 
 if (bot) {
@@ -1099,7 +1133,7 @@ if (bot) {
     await ensureReportSettings(db, String(msg.from.id));
     await sendBotMainMenu(
       msg.chat.id,
-      'Привіт! Я твій помічник Denga.\nНадішли мені суму (наприклад, 100), щоб додати транзакцію, або користуйся кнопками меню.'
+      'Привіт 👋 Це Denga.\nКористуйся кнопками нижче для звітів і змін.\nЩоб швидко додати транзакцію — просто надішли суму (наприклад, 100).'
     );
   });
   bot.onText(/\/menu/i, async (msg) => {
@@ -1332,10 +1366,15 @@ if (bot) {
     }
     const amount = Number(msg.text.replace(',', '.').trim());
     if (!Number.isFinite(amount) || amount <= 0) {
-      bot.sendMessage(
-        msg.chat.id,
-        'Не зрозумів суму. Надішліть число (наприклад, 100) або використайте /shift_start чи /shift_end.'
-      );
+      const now = Date.now();
+      const last = invalidAmountNoticeAt.get(msg.chat.id) ?? 0;
+      if (now - last >= 60_000) {
+        invalidAmountNoticeAt.set(msg.chat.id, now);
+        bot.sendMessage(
+          msg.chat.id,
+          'Не зрозумів суму. Надішліть число (наприклад, 100) або використайте /shift_start чи /shift_end.'
+        );
+      }
       return;
     }
     pendingTransactions.set(msg.chat.id, {
@@ -1366,14 +1405,14 @@ if (bot) {
         const settings = await getReportSettings(db, cbUserId);
         await updateReportSettings(db, cbUserId, { autoWeekly: !settings.autoWeekly });
         await bot.answerCallbackQuery(callbackQuery.id, { text: 'Оновлено weekly авто-звіт' });
-        await sendReportSettingsPanel(chatId, cbUserId);
+        await sendReportSettingsPanel(chatId, cbUserId, callbackQuery.message?.message_id);
         return;
       }
       if (callbackQuery.data === 'rep_toggle_monthly') {
         const settings = await getReportSettings(db, cbUserId);
         await updateReportSettings(db, cbUserId, { autoMonthly: !settings.autoMonthly });
         await bot.answerCallbackQuery(callbackQuery.id, { text: 'Оновлено monthly авто-звіт' });
-        await sendReportSettingsPanel(chatId, cbUserId);
+        await sendReportSettingsPanel(chatId, cbUserId, callbackQuery.message?.message_id);
         return;
       }
       if (callbackQuery.data === 'rep_send_weekly') {
@@ -1397,7 +1436,7 @@ if (bot) {
         }
         await updateReportSettings(db, cbUserId, { sendTime: parsed });
         await bot.answerCallbackQuery(callbackQuery.id, { text: `Час змінено на ${parsed}` });
-        await sendReportSettingsPanel(chatId, cbUserId);
+        await sendReportSettingsPanel(chatId, cbUserId, callbackQuery.message?.message_id);
         return;
       }
       if (callbackQuery.data === 'rep_time_info') {
