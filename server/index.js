@@ -522,11 +522,18 @@ const shouldSendForSlot = async (dbConn, userId, reportType, slotKey) => {
 const summarizeTransactions = (txs) => {
   let income = 0;
   let expense = 0;
+  let incomeCount = 0;
+  let expenseCount = 0;
   const byCategory = new Map();
   for (const tx of txs) {
     const amount = Number(tx.amount) || 0;
-    if (tx.type === 'income') income += amount;
-    else expense += amount;
+    if (tx.type === 'income') {
+      income += amount;
+      incomeCount += 1;
+    } else {
+      expense += amount;
+      expenseCount += 1;
+    }
     const current = byCategory.get(tx.categoryId) ?? { income: 0, expense: 0 };
     if (tx.type === 'income') current.income += amount;
     else current.expense += amount;
@@ -537,7 +544,12 @@ const summarizeTransactions = (txs) => {
     .filter((x) => x.amount > 0)
     .sort((a, b) => b.amount - a.amount)
     .slice(0, 3);
-  return { income, expense, net: income - expense, topExpenses };
+  const topIncome = Array.from(byCategory.entries())
+    .map(([categoryId, v]) => ({ categoryId, amount: v.income }))
+    .filter((x) => x.amount > 0)
+    .sort((a, b) => b.amount - a.amount)
+    .slice(0, 3);
+  return { income, expense, net: income - expense, incomeCount, expenseCount, topExpenses, topIncome };
 };
 const categoryNameById = (id) => {
   const base = CATEGORIES.find((c) => c.id === id)?.name;
@@ -545,17 +557,37 @@ const categoryNameById = (id) => {
 };
 const buildReportText = (reportType, periodLabel, txs) => {
   const summary = summarizeTransactions(txs);
+  const formatAmount = (value, withSign = false) => {
+    const sign = withSign ? (value >= 0 ? '+' : '−') : '';
+    return `${sign}${Math.abs(value).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} UAH`;
+  };
   const lines = [
-    reportType === 'weekly' ? `📊 Тижневий звіт (${periodLabel})` : `📅 Місячний звіт (${periodLabel})`,
-    `Дохід: +${summary.income.toLocaleString('uk-UA', { maximumFractionDigits: 2 })}`,
-    `Витрати: -${summary.expense.toLocaleString('uk-UA', { maximumFractionDigits: 2 })}`,
-    `Результат: ${summary.net >= 0 ? '+' : '−'}${Math.abs(summary.net).toLocaleString('uk-UA', { maximumFractionDigits: 2 })}`,
+    reportType === 'weekly' ? '📊 ТИЖНЕВИЙ ЗВІТ' : '📅 МІСЯЧНИЙ ЗВІТ',
+    `Період: ${periodLabel}`,
+    '━━━━━━━━━━━━━━',
+    '💰 ПІДСУМКИ',
+    `• Дохід: ${formatAmount(summary.income)}`,
+    `• Витрати: ${formatAmount(summary.expense)}`,
+    `• Результат: ${formatAmount(summary.net, true)}`,
+    `• Операцій: ${summary.incomeCount + summary.expenseCount} (дохід ${summary.incomeCount} / витрати ${summary.expenseCount})`,
   ];
   if (summary.topExpenses.length > 0) {
-    lines.push('Топ витрат:');
+    lines.push('━━━━━━━━━━━━━━');
+    lines.push('📉 ТОП ВИТРАТ');
     summary.topExpenses.forEach((item, idx) => {
-      lines.push(`${idx + 1}. ${categoryNameById(item.categoryId)} — ${item.amount.toLocaleString('uk-UA', { maximumFractionDigits: 2 })}`);
+      lines.push(`${idx + 1}) ${categoryNameById(item.categoryId)} — ${formatAmount(item.amount)}`);
     });
+  }
+  if (summary.topIncome.length > 0) {
+    lines.push('━━━━━━━━━━━━━━');
+    lines.push('📈 ТОП ДОХОДІВ');
+    summary.topIncome.forEach((item, idx) => {
+      lines.push(`${idx + 1}) ${categoryNameById(item.categoryId)} — ${formatAmount(item.amount)}`);
+    });
+  }
+  if ((txs?.length ?? 0) === 0) {
+    lines.push('━━━━━━━━━━━━━━');
+    lines.push('ℹ️ За обраний період операцій не знайдено.');
   }
   return lines.join('\n');
 };
@@ -871,15 +903,52 @@ const parseCustomCategoryId = (id) => {
     return null;
   }
 };
+const botMainMenuKeyboard = {
+  keyboard: [
+    [{ text: '📊 Тижневий звіт' }, { text: '📅 Місячний звіт' }],
+    [{ text: '⚙️ Налаштування звітів' }, { text: '🟢 Почати зміну' }],
+    [{ text: '🔴 Завершити зміну' }],
+  ],
+  resize_keyboard: true,
+  is_persistent: true,
+};
+const reportSettingsInlineKeyboard = (settings) => ({
+  inline_keyboard: [
+    [{ text: `Тижневий авто: ${settings.autoWeekly ? 'ON' : 'OFF'}`, callback_data: 'rep_toggle_weekly' }],
+    [{ text: `Місячний авто: ${settings.autoMonthly ? 'ON' : 'OFF'}`, callback_data: 'rep_toggle_monthly' }],
+    [{ text: `Час: ${settings.sendTime}`, callback_data: 'rep_time_info' }],
+    [
+      { text: 'Час 09:00', callback_data: 'rep_time_09:00' },
+      { text: 'Час 21:00', callback_data: 'rep_time_21:00' },
+    ],
+    [{ text: 'Надіслати тижневий зараз', callback_data: 'rep_send_weekly' }],
+    [{ text: 'Надіслати місячний зараз', callback_data: 'rep_send_monthly' }],
+  ],
+});
+const sendBotMainMenu = async (chatId, text = 'Оберіть дію:') => {
+  if (!bot) return;
+  await bot.sendMessage(chatId, text, { reply_markup: botMainMenuKeyboard });
+};
+const sendReportSettingsPanel = async (chatId, userId) => {
+  if (!bot) return;
+  const settings = await getReportSettings(db, userId);
+  await bot.sendMessage(chatId, 'Керуйте звітами кнопками нижче:', {
+    reply_markup: reportSettingsInlineKeyboard(settings),
+  });
+};
 
 if (bot) {
   bot.onText(/\/start/, async (msg) => {
     await upsertBotUser(db, msg.from.id, msg.chat.id);
     await ensureReportSettings(db, String(msg.from.id));
-    bot.sendMessage(
+    await sendBotMainMenu(
       msg.chat.id,
-      'Привіт! Я твій помічник Denga.\nНадішли мені суму (наприклад, 100), щоб додати транзакцію.\nДля змін: /shift_start\nДля завершення: /shift_end\nЗвіти: /report_week та /report_month\nАвто-звіти: /report_auto_week on|off, /report_auto_month on|off, /report_time HH:MM'
+      'Привіт! Я твій помічник Denga.\nНадішли мені суму (наприклад, 100), щоб додати транзакцію, або користуйся кнопками меню.'
     );
+  });
+  bot.onText(/\/menu/i, async (msg) => {
+    if (!msg.chat?.id) return;
+    await sendBotMainMenu(msg.chat.id);
   });
   bot.onText(/\/report_week/i, async (msg) => {
     if (!msg.from?.id || !msg.chat?.id) return;
@@ -1033,7 +1102,9 @@ if (bot) {
     if (
       /(^| )почати зміну($| )/i.test(normalizedText) ||
       /(^| )начать смену($| )/i.test(normalizedText) ||
-      /(^| )start shift($| )/i.test(normalizedText)
+      /(^| )start shift($| )/i.test(normalizedText) ||
+      normalizedText === 'почати зміну' ||
+      normalizedText === '🟢 почати зміну'
     ) {
       bot.processUpdate({
         update_id: Date.now(),
@@ -1047,7 +1118,9 @@ if (bot) {
     if (
       /(^| )завершити зміну($| )/i.test(normalizedText) ||
       /(^| )закончить смену($| )/i.test(normalizedText) ||
-      /(^| )end shift($| )/i.test(normalizedText)
+      /(^| )end shift($| )/i.test(normalizedText) ||
+      normalizedText === 'завершити зміну' ||
+      normalizedText === '🔴 завершити зміну'
     ) {
       bot.processUpdate({
         update_id: Date.now() + 1,
@@ -1069,7 +1142,11 @@ if (bot) {
       );
       return;
     }
-    if (/(^| )тижнев(ий|ого) звіт($| )/i.test(normalizedText) || /(^| )weekly report($| )/i.test(normalizedText)) {
+    if (
+      /(^| )тижнев(ий|ого) звіт($| )/i.test(normalizedText) ||
+      /(^| )weekly report($| )/i.test(normalizedText) ||
+      normalizedText === '📊 тижневий звіт'
+    ) {
       bot.processUpdate({
         update_id: Date.now() + 2,
         message: {
@@ -1079,7 +1156,11 @@ if (bot) {
       });
       return;
     }
-    if (/(^| )місячн(ий|ого) звіт($| )/i.test(normalizedText) || /(^| )monthly report($| )/i.test(normalizedText)) {
+    if (
+      /(^| )місячн(ий|ого) звіт($| )/i.test(normalizedText) ||
+      /(^| )monthly report($| )/i.test(normalizedText) ||
+      normalizedText === '📅 місячний звіт'
+    ) {
       bot.processUpdate({
         update_id: Date.now() + 3,
         message: {
@@ -1087,6 +1168,10 @@ if (bot) {
           text: '/report_month',
         },
       });
+      return;
+    }
+    if (normalizedText === '⚙️ налаштування звітів') {
+      await sendReportSettingsPanel(msg.chat.id, String(msg.from.id));
       return;
     }
     const amount = Number(msg.text.replace(',', '.').trim());
@@ -1116,6 +1201,54 @@ if (bot) {
     }
     if (!callbackQuery.data) {
       bot.answerCallbackQuery(callbackQuery.id);
+      return;
+    }
+    const cbUserId = String(callbackQuery.from.id);
+    if (callbackQuery.data.startsWith('rep_')) {
+      await upsertBotUser(db, callbackQuery.from.id, chatId);
+      if (callbackQuery.data === 'rep_toggle_weekly') {
+        const settings = await getReportSettings(db, cbUserId);
+        await updateReportSettings(db, cbUserId, { autoWeekly: !settings.autoWeekly });
+        await bot.answerCallbackQuery(callbackQuery.id, { text: 'Оновлено weekly авто-звіт' });
+        await sendReportSettingsPanel(chatId, cbUserId);
+        return;
+      }
+      if (callbackQuery.data === 'rep_toggle_monthly') {
+        const settings = await getReportSettings(db, cbUserId);
+        await updateReportSettings(db, cbUserId, { autoMonthly: !settings.autoMonthly });
+        await bot.answerCallbackQuery(callbackQuery.id, { text: 'Оновлено monthly авто-звіт' });
+        await sendReportSettingsPanel(chatId, cbUserId);
+        return;
+      }
+      if (callbackQuery.data === 'rep_send_weekly') {
+        const tz = await getUserTimeZone(db, cbUserId);
+        await sendUserReport(db, cbUserId, chatId, 'weekly', tz);
+        await bot.answerCallbackQuery(callbackQuery.id, { text: 'Тижневий звіт надіслано' });
+        return;
+      }
+      if (callbackQuery.data === 'rep_send_monthly') {
+        const tz = await getUserTimeZone(db, cbUserId);
+        await sendUserReport(db, cbUserId, chatId, 'monthly', tz);
+        await bot.answerCallbackQuery(callbackQuery.id, { text: 'Місячний звіт надіслано' });
+        return;
+      }
+      if (callbackQuery.data.startsWith('rep_time_')) {
+        const value = callbackQuery.data.replace('rep_time_', '');
+        const parsed = parseSendTime(value);
+        if (!parsed) {
+          await bot.answerCallbackQuery(callbackQuery.id, { text: 'Невірний формат часу' });
+          return;
+        }
+        await updateReportSettings(db, cbUserId, { sendTime: parsed });
+        await bot.answerCallbackQuery(callbackQuery.id, { text: `Час змінено на ${parsed}` });
+        await sendReportSettingsPanel(chatId, cbUserId);
+        return;
+      }
+      if (callbackQuery.data === 'rep_time_info') {
+        await bot.answerCallbackQuery(callbackQuery.id, { text: 'Оберіть час кнопками 09:00 або 21:00' });
+        return;
+      }
+      await bot.answerCallbackQuery(callbackQuery.id);
       return;
     }
 
