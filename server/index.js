@@ -580,6 +580,12 @@ const buildReportComparison = (currentSummary, previousSummary) => ({
   expenseDelta: Number(currentSummary?.expense || 0) - Number(previousSummary?.expense || 0),
   netDelta: Number(currentSummary?.net || 0) - Number(previousSummary?.net || 0),
 });
+const formatComparisonChange = (delta, { positive, negative, neutral = 'без змін' }) => {
+  const value = Number(delta) || 0;
+  if (value === 0) return neutral;
+  const amount = Math.abs(value).toLocaleString('uk-UA', { maximumFractionDigits: 2 });
+  return value > 0 ? `${positive} на ${amount} UAH` : `${negative} на ${amount} UAH`;
+};
 const categoryNameById = (id) => {
   const base = CATEGORIES.find((c) => c.id === id)?.name;
   return base || String(id);
@@ -702,13 +708,8 @@ const renderReportCardPng = async (reportType, periodLabel, summary, comparison)
   };
   ctx.textBaseline = 'alphabetic';
   
-  const formatSignedAmount = (value) => {
-    const n = Number(value) || 0;
-    const sign = n > 0 ? '+' : (n < 0 ? '−' : '0');
-    const abs = Math.abs(n).toLocaleString('uk-UA', { maximumFractionDigits: 2 });
-    if (sign === '0') return `0 UAH`;
-    return `${sign}${abs} UAH`;
-  };
+  const incomeTrendText = formatComparisonChange(comparison.incomeDelta, { positive: 'більше', negative: 'менше' });
+  const expenseTrendText = formatComparisonChange(comparison.expenseDelta, { positive: 'більше', negative: 'менше' });
   const comparisonLabel = reportType === 'weekly' ? 'Попереднього тижня' : 'Попереднього місяця';
 
   ctx.fillStyle = colors.text;
@@ -760,15 +761,11 @@ const renderReportCardPng = async (reportType, periodLabel, summary, comparison)
   setFont(30, 500);
   ctx.fillText('Дохід', 140, 845);
   ctx.fillStyle = comparison.incomeDelta >= 0 ? colors.income : colors.expense;
-  ctx.fillText(formatSignedAmount(comparison.incomeDelta), 550, 845);
+  ctx.fillText(incomeTrendText, 450, 845);
   ctx.fillStyle = colors.text;
   ctx.fillText('Витрати', 140, 905);
   ctx.fillStyle = comparison.expenseDelta <= 0 ? colors.income : colors.expense;
-  ctx.fillText(formatSignedAmount(comparison.expenseDelta), 550, 905);
-  ctx.fillStyle = colors.text;
-  ctx.fillText('Результат', 140, 965);
-  ctx.fillStyle = comparison.netDelta >= 0 ? colors.income : colors.expense;
-  ctx.fillText(formatSignedAmount(comparison.netDelta), 550, 965);
+  ctx.fillText(expenseTrendText, 450, 905);
 
   block(100, 1030, width - 200, 300, 'Топ витрат');
   (summary.topExpenses || []).slice(0, 5).forEach((item, idx) => {
@@ -795,56 +792,53 @@ const renderReportCardPng = async (reportType, periodLabel, summary, comparison)
 const buildReportText = (reportType, periodLabel, txs, comparison) => {
   const summary = summarizeTransactions(txs);
   const formatAmount = (value, withSign = false) => {
-    const sign = withSign ? (value >= 0 ? '+' : '−') : '';
+    const sign = withSign ? (value >= 0 ? '+' : '-') : '';
     return `${sign}${Math.abs(value).toLocaleString('uk-UA', { maximumFractionDigits: 2 })}`;
   };
   const title = reportType === 'weekly' ? '📊 ТИЖНЕВИЙ ЗВІТ' : '📅 МІСЯЧНИЙ ЗВІТ';
   const lines = [
-    `<b>${escapeHtml(title)}</b>`,
-    `<i>${escapeHtml(periodLabel)}</i>`,
+    title,
+    periodLabel,
     '',
     '┏━━━━━━━━━━━━━━━━━━━━━━━┓',
-    '┃  <b>💰 ПІДСУМКИ</b>          ┃',
-    `┃  Дохід: <b>+${escapeHtml(formatAmount(summary.income))}</b> UAH`,
-    `┃  Витрати: <b>-${escapeHtml(formatAmount(summary.expense))}</b> UAH`,
-    `┃  Результат: <b>${escapeHtml(formatAmount(summary.net, true))}</b> UAH`,
-    `┃  Операцій: <b>${summary.incomeCount + summary.expenseCount}</b>`,
+    '┃ 💰 ПІДСУМКИ',
+    `┃ Дохід: +${formatAmount(summary.income)} UAH`,
+    `┃ Витрати: -${formatAmount(summary.expense)} UAH`,
+    `┃ Результат: ${formatAmount(summary.net, true)} UAH`,
+    `┃ Операцій: ${summary.incomeCount + summary.expenseCount}`,
     '┗━━━━━━━━━━━━━━━━━━━━━━━┛',
   ];
   if (comparison) {
+    const incomeTrendText = formatComparisonChange(comparison.incomeDelta, { positive: 'більше', negative: 'менше' });
+    const expenseTrendText = formatComparisonChange(comparison.expenseDelta, { positive: 'більше', negative: 'менше' });
     lines.push('');
     lines.push('┏━━━━━━━━━━━━━━━━━━━━━━━┓');
-    lines.push(`┃  <b>🔁 ДО ${reportType === 'weekly' ? 'МИНУЛОГО ТИЖНЯ' : 'МИНУЛОГО МІСЯЦЯ'}</b>`);
-    lines.push(`┃  Дохід: <b>${escapeHtml(formatAmount(comparison.incomeDelta, true))}</b> UAH`);
-    lines.push(`┃  Витрати: <b>${escapeHtml(formatAmount(comparison.expenseDelta, true))}</b> UAH`);
-    lines.push(`┃  Результат: <b>${escapeHtml(formatAmount(comparison.netDelta, true))}</b> UAH`);
+    lines.push(`┃ 🔁 ДО ${reportType === 'weekly' ? 'МИНУЛОГО ТИЖНЯ' : 'МИНУЛОГО МІСЯЦЯ'}`);
+    lines.push(`┃ Дохід: ${incomeTrendText}`);
+    lines.push(`┃ Витрати: ${expenseTrendText}`);
     lines.push('┗━━━━━━━━━━━━━━━━━━━━━━━┛');
   }
   if (summary.topExpenses.length > 0) {
     lines.push('');
     lines.push('┏━━━━━━━━━━━━━━━━━━━━━━━┓');
-    lines.push('┃  <b>📉 ТОП ВИТРАТ</b>       ┃');
+    lines.push('┃ 📉 ТОП ВИТРАТ');
     summary.topExpenses.forEach((item, idx) => {
-      lines.push(
-        `┃  ${idx + 1}) ${escapeHtml(categoryNameById(item.categoryId))} — <b>${escapeHtml(formatAmount(item.amount))}</b> UAH`
-      );
+      lines.push(`┃ ${idx + 1}) ${categoryNameById(item.categoryId)} — ${formatAmount(item.amount)} UAH`);
     });
     lines.push('┗━━━━━━━━━━━━━━━━━━━━━━━┛');
   }
   if (summary.topIncome.length > 0) {
     lines.push('');
     lines.push('┏━━━━━━━━━━━━━━━━━━━━━━━┓');
-    lines.push('┃  <b>📈 ТОП ДОХОДІВ</b>      ┃');
+    lines.push('┃ 📈 ТОП ДОХОДІВ');
     summary.topIncome.forEach((item, idx) => {
-      lines.push(
-        `┃  ${idx + 1}) ${escapeHtml(categoryNameById(item.categoryId))} — <b>${escapeHtml(formatAmount(item.amount))}</b> UAH`
-      );
+      lines.push(`┃ ${idx + 1}) ${categoryNameById(item.categoryId)} — ${formatAmount(item.amount)} UAH`);
     });
     lines.push('┗━━━━━━━━━━━━━━━━━━━━━━━┛');
   }
   if ((txs?.length ?? 0) === 0) {
     lines.push('');
-    lines.push('<i>ℹ️ За обраний період операцій не знайдено.</i>');
+    lines.push('ℹ️ За обраний період операцій не знайдено.');
   }
   return lines.join('\n');
 };
@@ -866,14 +860,7 @@ const sendUserReport = async (dbConn, userId, chatId, reportType, timeZone) => {
   const previousSummary = summarizeTransactions(previousScoped);
   const comparison = buildReportComparison(summary, previousSummary);
   const text = buildReportText(reportType, periodLabel, scoped, comparison);
-  try {
-    const png = await renderReportCardPng(reportType, periodLabel, summary, comparison);
-    await bot.sendPhoto(chatId, png, {
-      caption: reportType === 'weekly' ? '📊 Тижневий звіт' : '📅 Місячний звіт',
-    });
-  } catch {
-    await bot.sendMessage(chatId, text, { parse_mode: 'HTML', disable_web_page_preview: true });
-  }
+  await bot.sendMessage(chatId, text, { disable_web_page_preview: true });
 };
 const getUserTimeZone = async (dbConn, userId) => {
   const row = await dbConn.get('SELECT timezone FROM users WHERE telegram_id = ? LIMIT 1', [Number(userId)]);
