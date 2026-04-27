@@ -2760,14 +2760,20 @@ app.post('/api/planner/active-shift/start', async (req, res) => {
   const body = (req.body && typeof req.body === 'object') ? req.body : {};
   const { templateId, salaryRate, salaryAmount, salaryCurrency, shiftNote, startedAt, startedDay } = body;
   const now = new Date().toISOString();
+  const userTimeZone = await getUserTimeZone(db, userId);
+  const startIso = typeof startedAt === 'string' && startedAt.trim() ? startedAt : now;
+  const startDayLocal =
+    (typeof startedDay === 'string' && startedDay.trim()) ||
+    dayFromIsoInZone(startIso, userTimeZone) ||
+    startIso.slice(0, 10);
   await db.run(
     `INSERT INTO bot_active_shifts
      (user_id, started_at, started_day, template_id, salary_rate, salary_amount, salary_currency, shift_note, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       userId,
-      startedAt || now,
-      startedDay || now.slice(0, 10),
+      startIso,
+      startDayLocal,
       templateId || null,
       Number(salaryRate) || 0,
       Number(salaryAmount) || 0,
