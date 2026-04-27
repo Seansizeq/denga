@@ -624,8 +624,8 @@ const renderReportCardPng = async (reportType, periodLabel, summary) => {
   if (!reportFontAvailable) {
     throw new Error('report font not available');
   }
-  const width = 1080;
-  const height = 1350;
+  const width = 1280;
+  const height = 1700;
   const img = PImage.make(width, height);
   const ctx = img.getContext('2d');
   const colors = {
@@ -656,11 +656,11 @@ const renderReportCardPng = async (reportType, periodLabel, summary) => {
   };
   ctx.textBaseline = 'alphabetic';
   ctx.fillStyle = colors.text;
-  setFont(28, 700);
-  ctx.fillText(reportType === 'weekly' ? 'Weekly Report' : 'Monthly Report', 88, 140);
+  setFont(40, 700);
+  ctx.fillText(reportType === 'weekly' ? 'Weekly Report' : 'Monthly Report', 88, 160);
   ctx.fillStyle = colors.sub;
-  setFont(16, 400);
-  ctx.fillText(periodLabel, 88, 186);
+  setFont(22, 400);
+  ctx.fillText(periodLabel, 88, 220);
 
   const block = (x, y, w, h, title) => {
     ctx.fillStyle = '#1D1A25';
@@ -672,44 +672,44 @@ const renderReportCardPng = async (reportType, periodLabel, summary) => {
     ctx.fillText(title, x + 24, y + 42);
   };
 
-  block(88, 228, width - 176, 280, 'Summary');
+  block(88, 260, width - 176, 360, 'Summary');
   ctx.fillStyle = colors.text;
-  setFont(18, 500);
-  ctx.fillText(`Income:`, 120, 302);
+  setFont(26, 500);
+  ctx.fillText(`Income:`, 120, 360);
   ctx.fillStyle = colors.income;
-  ctx.fillText(`+${Math.abs(summary.income).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} UAH`, 300, 302);
+  ctx.fillText(`+${Math.abs(summary.income).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} UAH`, 420, 360);
   ctx.fillStyle = colors.text;
-  ctx.fillText(`Expense:`, 120, 358);
+  ctx.fillText(`Expense:`, 120, 430);
   ctx.fillStyle = colors.expense;
-  ctx.fillText(`-${Math.abs(summary.expense).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} UAH`, 300, 358);
+  ctx.fillText(`-${Math.abs(summary.expense).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} UAH`, 420, 430);
   ctx.fillStyle = colors.text;
-  ctx.fillText(`Net:`, 120, 414);
+  ctx.fillText(`Net:`, 120, 500);
   ctx.fillStyle = summary.net >= 0 ? colors.income : colors.expense;
   ctx.fillText(
     `${summary.net >= 0 ? '+' : '-'}${Math.abs(summary.net).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} UAH`,
-    300,
-    414
+    420,
+    500
   );
   ctx.fillStyle = colors.sub;
-  setFont(14, 500);
-  ctx.fillText(`Transactions: ${summary.incomeCount + summary.expenseCount}`, 120, 470);
+  setFont(20, 500);
+  ctx.fillText(`Transactions: ${summary.incomeCount + summary.expenseCount}`, 120, 575);
 
-  block(88, 546, width - 176, 320, 'Top Expenses');
+  block(88, 670, width - 176, 440, 'Top Expenses');
   ctx.fillStyle = colors.text;
-  setFont(15, 500);
+  setFont(22, 500);
   (summary.topExpenses || []).slice(0, 5).forEach((item, idx) => {
     ctx.fillStyle = colors.text;
-    ctx.fillText(`${idx + 1}. ${String(categoryNameById(item.categoryId)).slice(0, 22)}`, 120, 610 + idx * 56);
+    ctx.fillText(`${idx + 1}. ${String(categoryNameById(item.categoryId)).slice(0, 24)}`, 120, 760 + idx * 72);
     ctx.fillStyle = colors.expense;
-    ctx.fillText(`${Math.abs(item.amount).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} UAH`, 640, 610 + idx * 56);
+    ctx.fillText(`${Math.abs(item.amount).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} UAH`, 780, 760 + idx * 72);
   });
 
-  block(88, 900, width - 176, 300, 'Top Income');
+  block(88, 1160, width - 176, 420, 'Top Income');
   (summary.topIncome || []).slice(0, 5).forEach((item, idx) => {
     ctx.fillStyle = colors.text;
-    ctx.fillText(`${idx + 1}. ${String(categoryNameById(item.categoryId)).slice(0, 22)}`, 120, 964 + idx * 56);
+    ctx.fillText(`${idx + 1}. ${String(categoryNameById(item.categoryId)).slice(0, 24)}`, 120, 1245 + idx * 72);
     ctx.fillStyle = colors.income;
-    ctx.fillText(`${Math.abs(item.amount).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} UAH`, 640, 964 + idx * 56);
+    ctx.fillText(`${Math.abs(item.amount).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} UAH`, 780, 1245 + idx * 72);
   });
 
   return encodePngBuffer(img);
