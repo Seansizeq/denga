@@ -4,9 +4,12 @@ import TelegramBot from 'node-telegram-bot-api';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
+import PImage from 'pureimage';
 import { getDatabasePath, initDb } from './db.js';
 import { startScheduledDatabaseBackups } from './backup.js';
+import { existsSync } from 'fs';
 import path from 'path';
+import { PassThrough } from 'stream';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -555,39 +558,167 @@ const categoryNameById = (id) => {
   const base = CATEGORIES.find((c) => c.id === id)?.name;
   return base || String(id);
 };
+const escapeHtml = (value) =>
+  String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+let reportFontReady = false;
+const ensureReportFont = () => {
+  if (reportFontReady) return;
+  const candidates = [
+    '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+    '/usr/share/fonts/dejavu/DejaVuSans.ttf',
+    'C:/Windows/Fonts/arial.ttf',
+  ];
+  for (const p of candidates) {
+    try {
+      if (!existsSync(p)) continue;
+      const font = PImage.registerFont(p, 'DengaSans');
+      font.loadSync();
+      reportFontReady = true;
+      return;
+    } catch {
+      // try next
+    }
+  }
+  reportFontReady = true;
+};
+const encodePngBuffer = async (img) => {
+  const out = new PassThrough();
+  const chunks = [];
+  out.on('data', (c) => chunks.push(Buffer.from(c)));
+  await PImage.encodePNGToStream(img, out);
+  return Buffer.concat(chunks);
+};
+const renderReportCardPng = async (reportType, periodLabel, summary) => {
+  ensureReportFont();
+  const width = 1080;
+  const height = 1350;
+  const img = PImage.make(width, height);
+  const ctx = img.getContext('2d');
+  const colors = {
+    bg: '#0f0f12',
+    card: '#16141d',
+    accent: '#ffb020',
+    income: '#6BE675',
+    expense: '#FF6B6B',
+    text: '#F2F2F5',
+    sub: '#A5A5B0',
+    border: '#2C2835',
+  };
+  ctx.fillStyle = colors.bg;
+  ctx.fillRect(0, 0, width, height);
+  ctx.fillStyle = colors.card;
+  ctx.fillRect(48, 48, width - 96, height - 96);
+  ctx.strokeStyle = colors.border;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(48, 48, width - 96, height - 96);
+  ctx.fillStyle = colors.accent;
+  ctx.fillRect(48, 48, width - 96, 14);
+
+  const fontName = reportFontReady ? 'DengaSans' : 'sans-serif';
+  ctx.fillStyle = colors.text;
+  ctx.font = `700 52px "${fontName}"`;
+  ctx.fillText(reportType === 'weekly' ? 'Weekly Report' : 'Monthly Report', 88, 140);
+  ctx.fillStyle = colors.sub;
+  ctx.font = `400 30px "${fontName}"`;
+  ctx.fillText(periodLabel, 88, 186);
+
+  const block = (x, y, w, h, title) => {
+    ctx.fillStyle = '#1D1A25';
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = colors.border;
+    ctx.strokeRect(x, y, w, h);
+    ctx.fillStyle = colors.sub;
+    ctx.font = `600 24px "${fontName}"`;
+    ctx.fillText(title, x + 24, y + 42);
+  };
+
+  block(88, 228, width - 176, 280, 'Summary');
+  ctx.fillStyle = colors.text;
+  ctx.font = `500 34px "${fontName}"`;
+  ctx.fillText(`Income:`, 120, 302);
+  ctx.fillStyle = colors.income;
+  ctx.fillText(`+${Math.abs(summary.income).toLocaleString('uk-UA')} UAH`, 300, 302);
+  ctx.fillStyle = colors.text;
+  ctx.fillText(`Expense:`, 120, 358);
+  ctx.fillStyle = colors.expense;
+  ctx.fillText(`-${Math.abs(summary.expense).toLocaleString('uk-UA')} UAH`, 300, 358);
+  ctx.fillStyle = colors.text;
+  ctx.fillText(`Net:`, 120, 414);
+  ctx.fillStyle = summary.net >= 0 ? colors.income : colors.expense;
+  ctx.fillText(`${summary.net >= 0 ? '+' : '-'}${Math.abs(summary.net).toLocaleString('uk-UA')} UAH`, 300, 414);
+  ctx.fillStyle = colors.sub;
+  ctx.font = `500 28px "${fontName}"`;
+  ctx.fillText(`Transactions: ${summary.incomeCount + summary.expenseCount}`, 120, 470);
+
+  block(88, 546, width - 176, 320, 'Top Expenses');
+  ctx.fillStyle = colors.text;
+  ctx.font = `500 30px "${fontName}"`;
+  (summary.topExpenses || []).slice(0, 5).forEach((item, idx) => {
+    ctx.fillStyle = colors.text;
+    ctx.fillText(`${idx + 1}. ${String(categoryNameById(item.categoryId)).slice(0, 22)}`, 120, 610 + idx * 56);
+    ctx.fillStyle = colors.expense;
+    ctx.fillText(`${Math.abs(item.amount).toLocaleString('uk-UA')} UAH`, 640, 610 + idx * 56);
+  });
+
+  block(88, 900, width - 176, 300, 'Top Income');
+  (summary.topIncome || []).slice(0, 5).forEach((item, idx) => {
+    ctx.fillStyle = colors.text;
+    ctx.fillText(`${idx + 1}. ${String(categoryNameById(item.categoryId)).slice(0, 22)}`, 120, 964 + idx * 56);
+    ctx.fillStyle = colors.income;
+    ctx.fillText(`${Math.abs(item.amount).toLocaleString('uk-UA')} UAH`, 640, 964 + idx * 56);
+  });
+
+  return encodePngBuffer(img);
+};
 const buildReportText = (reportType, periodLabel, txs) => {
   const summary = summarizeTransactions(txs);
   const formatAmount = (value, withSign = false) => {
     const sign = withSign ? (value >= 0 ? '+' : '−') : '';
-    return `${sign}${Math.abs(value).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} UAH`;
+    return `${sign}${Math.abs(value).toLocaleString('uk-UA', { maximumFractionDigits: 2 })}`;
   };
+  const title = reportType === 'weekly' ? '📊 ТИЖНЕВИЙ ЗВІТ' : '📅 МІСЯЧНИЙ ЗВІТ';
   const lines = [
-    reportType === 'weekly' ? '📊 ТИЖНЕВИЙ ЗВІТ' : '📅 МІСЯЧНИЙ ЗВІТ',
-    `Період: ${periodLabel}`,
-    '━━━━━━━━━━━━━━',
-    '💰 ПІДСУМКИ',
-    `• Дохід: ${formatAmount(summary.income)}`,
-    `• Витрати: ${formatAmount(summary.expense)}`,
-    `• Результат: ${formatAmount(summary.net, true)}`,
-    `• Операцій: ${summary.incomeCount + summary.expenseCount} (дохід ${summary.incomeCount} / витрати ${summary.expenseCount})`,
+    `<b>${escapeHtml(title)}</b>`,
+    `<i>${escapeHtml(periodLabel)}</i>`,
+    '',
+    '┏━━━━━━━━━━━━━━━━━━━━━━━┓',
+    '┃  <b>💰 ПІДСУМКИ</b>          ┃',
+    `┃  Дохід: <b>+${escapeHtml(formatAmount(summary.income))}</b> UAH`,
+    `┃  Витрати: <b>-${escapeHtml(formatAmount(summary.expense))}</b> UAH`,
+    `┃  Результат: <b>${escapeHtml(formatAmount(summary.net, true))}</b> UAH`,
+    `┃  Операцій: <b>${summary.incomeCount + summary.expenseCount}</b>`,
+    '┗━━━━━━━━━━━━━━━━━━━━━━━┛',
   ];
   if (summary.topExpenses.length > 0) {
-    lines.push('━━━━━━━━━━━━━━');
-    lines.push('📉 ТОП ВИТРАТ');
+    lines.push('');
+    lines.push('┏━━━━━━━━━━━━━━━━━━━━━━━┓');
+    lines.push('┃  <b>📉 ТОП ВИТРАТ</b>       ┃');
     summary.topExpenses.forEach((item, idx) => {
-      lines.push(`${idx + 1}) ${categoryNameById(item.categoryId)} — ${formatAmount(item.amount)}`);
+      lines.push(
+        `┃  ${idx + 1}) ${escapeHtml(categoryNameById(item.categoryId))} — <b>${escapeHtml(formatAmount(item.amount))}</b> UAH`
+      );
     });
+    lines.push('┗━━━━━━━━━━━━━━━━━━━━━━━┛');
   }
   if (summary.topIncome.length > 0) {
-    lines.push('━━━━━━━━━━━━━━');
-    lines.push('📈 ТОП ДОХОДІВ');
+    lines.push('');
+    lines.push('┏━━━━━━━━━━━━━━━━━━━━━━━┓');
+    lines.push('┃  <b>📈 ТОП ДОХОДІВ</b>      ┃');
     summary.topIncome.forEach((item, idx) => {
-      lines.push(`${idx + 1}) ${categoryNameById(item.categoryId)} — ${formatAmount(item.amount)}`);
+      lines.push(
+        `┃  ${idx + 1}) ${escapeHtml(categoryNameById(item.categoryId))} — <b>${escapeHtml(formatAmount(item.amount))}</b> UAH`
+      );
     });
+    lines.push('┗━━━━━━━━━━━━━━━━━━━━━━━┛');
   }
   if ((txs?.length ?? 0) === 0) {
-    lines.push('━━━━━━━━━━━━━━');
-    lines.push('ℹ️ За обраний період операцій не знайдено.');
+    lines.push('');
+    lines.push('<i>ℹ️ За обраний період операцій не знайдено.</i>');
   }
   return lines.join('\n');
 };
@@ -603,8 +734,16 @@ const sendUserReport = async (dbConn, userId, chatId, reportType, timeZone) => {
   );
   const scoped = (Array.isArray(txs) ? txs : []).filter((tx) => rangeSet.has(dayFromIsoInZone(tx.date, tz)));
   const periodLabel = `${Array.from(rangeSet).sort()[0]} → ${today}`;
+  const summary = summarizeTransactions(scoped);
   const text = buildReportText(reportType, periodLabel, scoped);
-  await bot.sendMessage(chatId, text);
+  try {
+    const png = await renderReportCardPng(reportType, periodLabel, summary);
+    await bot.sendPhoto(chatId, png, {
+      caption: reportType === 'weekly' ? '📊 Тижневий звіт' : '📅 Місячний звіт',
+    });
+  } catch {
+    await bot.sendMessage(chatId, text, { parse_mode: 'HTML', disable_web_page_preview: true });
+  }
 };
 const getUserTimeZone = async (dbConn, userId) => {
   const row = await dbConn.get('SELECT timezone FROM users WHERE telegram_id = ? LIMIT 1', [Number(userId)]);
@@ -1170,7 +1309,7 @@ if (bot) {
       });
       return;
     }
-    if (normalizedText === '⚙️ налаштування звітів') {
+    if (normalizedText === 'налаштування звітів' || normalizedText === 'настройки отчетов' || normalizedText === 'report settings') {
       await sendReportSettingsPanel(msg.chat.id, String(msg.from.id));
       return;
     }
