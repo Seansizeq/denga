@@ -130,6 +130,11 @@ type Dict = {
     startShift: string;
     endShift: string;
     endShiftConfirm: string;
+    shiftElapsed: string;
+    hoursShort: string;
+    minutesShort: string;
+    chooseStartTemplate: string;
+    startWithoutTemplate: string;
     monthReportTitle: string;
     dayReportTitle: string;
     yearReportTitle: string;
@@ -337,6 +342,11 @@ const uk: Dict = {
     startShift: 'Почати зміну',
     endShift: 'Завершити зміну',
     endShiftConfirm: 'Завершити зміну та зберегти години?',
+    shiftElapsed: 'Триває',
+    hoursShort: 'г',
+    minutesShort: 'хв',
+    chooseStartTemplate: 'Оберіть шаблон для старту',
+    startWithoutTemplate: 'Почати без шаблону',
     monthReportTitle: 'Звіт за місяць',
     dayReportTitle: 'Звіт за день',
     yearReportTitle: 'Звіт за рік',
@@ -549,6 +559,11 @@ const ru: Dict = {
     startShift: 'Начать смену',
     endShift: 'Закончить смену',
     endShiftConfirm: 'Закончить смену и сохранить часы?',
+    shiftElapsed: 'Длится',
+    hoursShort: 'ч',
+    minutesShort: 'мин',
+    chooseStartTemplate: 'Выберите шаблон для старта',
+    startWithoutTemplate: 'Начать без шаблона',
     monthReportTitle: 'Отчёт за месяц',
     dayReportTitle: 'Отчёт за день',
     yearReportTitle: 'Отчёт за год',
@@ -761,6 +776,11 @@ const en: Dict = {
     startShift: 'Start shift',
     endShift: 'End shift',
     endShiftConfirm: 'End shift and save worked hours?',
+    shiftElapsed: 'Elapsed',
+    hoursShort: 'h',
+    minutesShort: 'm',
+    chooseStartTemplate: 'Choose a template to start',
+    startWithoutTemplate: 'Start without template',
     monthReportTitle: 'Monthly summary',
     dayReportTitle: 'Daily summary',
     yearReportTitle: 'Yearly summary',

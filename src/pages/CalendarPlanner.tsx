@@ -114,6 +114,18 @@ const parseMoneyInput = (raw: string): number => {
   return Number.isFinite(n) ? Math.max(0, n) : 0;
 };
 
+const formatElapsedShiftTime = (
+  startedAt: string,
+  unitLabels: { hours: string; minutes: string }
+): string => {
+  const startedMs = new Date(startedAt).getTime();
+  if (!Number.isFinite(startedMs)) return `0${unitLabels.hours} 0${unitLabels.minutes}`;
+  const diffSec = Math.max(0, Math.floor((Date.now() - startedMs) / 1000));
+  const hours = Math.floor(diffSec / 3600);
+  const minutes = Math.floor((diffSec % 3600) / 60);
+  return `${hours}${unitLabels.hours} ${minutes}${unitLabels.minutes}`;
+};
+
 const expectedPayForDay = (p: DayPlan): number => {
   if (!p.hasShift) return 0;
   if (p.salaryAmount > 0) return p.salaryAmount;
@@ -143,6 +155,7 @@ const CalendarPlanner: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [chooserOpen, setChooserOpen] = useState(false);
+  const [startShiftChooserOpen, setStartShiftChooserOpen] = useState(false);
   const [editorOpened, setEditorOpened] = useState(false);
   const [shiftName, setShiftName] = useState('');
   const [shiftSymbol, setShiftSymbol] = useState('');
@@ -158,8 +171,9 @@ const CalendarPlanner: React.FC = () => {
   const [activeShift, setActiveShift] = useState<ActiveShift | null>(null);
   const [activeShiftLoading, setActiveShiftLoading] = useState(false);
   const monthInputRef = useRef<HTMLInputElement | null>(null);
+  const [shiftElapsedText, setShiftElapsedText] = useState('0г 0хв');
 
-  const modalAnyOpen = chooserOpen || editorOpened;
+  const modalAnyOpen = chooserOpen || editorOpened || startShiftChooserOpen;
 
   const overlayBox = modalAnyOpen ? readVisualOverlayBox() : null;
 
@@ -208,15 +222,44 @@ const CalendarPlanner: React.FC = () => {
     void loadActiveShift();
   }, []);
 
-  const handleStartShift = async () => {
+  useEffect(() => {
+    if (!activeShift?.startedAt) {
+      setShiftElapsedText(`0${t('planner', 'hoursShort')} 0${t('planner', 'minutesShort')}`);
+      return;
+    }
+    const updateElapsed = () => {
+      setShiftElapsedText(
+        formatElapsedShiftTime(activeShift.startedAt, {
+          hours: t('planner', 'hoursShort'),
+          minutes: t('planner', 'minutesShort'),
+        })
+      );
+    };
+    updateElapsed();
+    const intervalId = window.setInterval(updateElapsed, 1000);
+    return () => window.clearInterval(intervalId);
+  }, [activeShift?.startedAt, t]);
+
+  const handleStartShift = async (template: ShiftTemplate | null) => {
     setActiveShiftLoading(true);
     try {
       const response = await apiFetch('/api/planner/active-shift/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
+        body: JSON.stringify(
+          template
+            ? {
+                templateId: template.id,
+                salaryRate: template.salaryRate,
+                salaryAmount: template.salaryAmount,
+                salaryCurrency: template.salaryCurrency,
+                shiftNote: [template.name.trim(), template.symbol.trim()].filter(Boolean).join(' • '),
+              }
+            : {}
+        ),
       });
       if (response.ok) {
+        setStartShiftChooserOpen(false);
         await loadActiveShift();
       }
     } catch (e) {
@@ -556,6 +599,9 @@ const CalendarPlanner: React.FC = () => {
               <span className={styles.activeShiftTitleDot} />
               {t('planner', 'shiftTitle')}
             </h3>
+            <p className={styles.activeShiftTimer}>
+              {t('planner', 'shiftElapsed')}: <strong>{shiftElapsedText}</strong>
+            </p>
             <button
               type="button"
               className={styles.endShiftBtn}
@@ -570,7 +616,7 @@ const CalendarPlanner: React.FC = () => {
             type="button"
             className={styles.startShiftBtn}
             disabled={activeShiftLoading}
-            onClick={handleStartShift}
+            onClick={() => setStartShiftChooserOpen(true)}
           >
             {activeShiftLoading ? '...' : t('planner', 'startShift')}
           </button>
@@ -643,6 +689,52 @@ const CalendarPlanner: React.FC = () => {
 
         {loading && <p className={styles.loading}>{t('planner', 'loading')}</p>}
       </section>
+
+      {startShiftChooserOpen && overlayBox ? (
+        <div
+          className={`${styles.modalOverlay} ${overlayBox.keyboardOpen ? styles.modalOverlayKeyboard : ''}`}
+          style={{ top: overlayBox.top, height: overlayBox.height }}
+          onClick={() => setStartShiftChooserOpen(false)}
+        >
+          <div className={styles.modalSheet} onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              className={styles.addShiftBtn}
+              disabled={activeShiftLoading}
+              onClick={() => void handleStartShift(null)}
+            >
+              {t('planner', 'startWithoutTemplate')}
+            </button>
+            {shiftTemplates.length > 0 ? (
+              <>
+                <p className={styles.templateSectionLabel}>{t('planner', 'chooseStartTemplate')}</p>
+                <ul className={styles.templateList} role="list">
+                  {shiftTemplates.map((tpl) => {
+                    const label =
+                      tpl.name.trim() && tpl.symbol.trim()
+                        ? `${tpl.name.trim()} · ${tpl.symbol.trim()}`
+                        : tpl.name.trim() || tpl.symbol.trim();
+                    const curTag = tpl.salaryCurrency === 'PLN' ? 'zł' : '₴';
+                    return (
+                      <li key={`start-${tpl.id}`} className={styles.templateRow}>
+                        <button
+                          type="button"
+                          className={styles.templateBtn}
+                          disabled={activeShiftLoading}
+                          onClick={() => void handleStartShift(tpl)}
+                        >
+                          {label}
+                          <span className={styles.templateCurrencyTag}>{curTag}</span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       {chooserOpen && overlayBox ? (
         <div
@@ -879,7 +971,9 @@ const CalendarPlanner: React.FC = () => {
                 const ok = await saveDay(selectedDay, payload);
                 if (ok) {
                   setStore((prev) => ({ ...prev, [selectedDay]: payload }));
-                  await persistShiftTemplate();
+                  if (!dayHasShift) {
+                    await persistShiftTemplate();
+                  }
                   setEditorOpened(false);
                 }
               }}

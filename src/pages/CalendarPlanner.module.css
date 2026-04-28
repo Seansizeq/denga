@@ -740,6 +740,17 @@
   gap: 8px;
 }
 
+.activeShiftTimer {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.activeShiftTimer strong {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
 .activeShiftTitleDot {
   width: 8px;
   height: 8px;

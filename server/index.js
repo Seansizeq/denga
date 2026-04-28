@@ -862,7 +862,8 @@ const formatShiftTemplateLabel = (tpl) => {
   const name = String(tpl?.name ?? '').trim();
   const symbol = String(tpl?.symbol ?? '').trim();
   const base = [name, symbol].filter(Boolean).join(' • ') || 'Шаблон';
-  const cur = tpl?.currency === 'PLN' ? 'zł' : '₴';
+  const templateCurrency = normalizeCurrency(tpl?.currency);
+  const cur = templateCurrency === 'PLN' ? 'zł' : '₴';
   return `${base} (${cur})`;
 };
 const upsertPlannerDay = async (dbConn, userId, day, patch) => {
@@ -1553,7 +1554,7 @@ if (bot) {
         templateId = String(tpl.id);
         salaryRate = Math.max(0, Number(tpl.salary_rate) || 0);
         salaryAmount = Math.max(0, Number(tpl.salary_amount) || 0);
-        salaryCurrency = tpl.currency === 'PLN' ? 'PLN' : 'UAH';
+        salaryCurrency = normalizeCurrency(tpl.currency) === 'PLN' ? 'PLN' : 'UAH';
         shiftNote = [String(tpl.name ?? '').trim(), String(tpl.symbol ?? '').trim()].filter(Boolean).join(' • ');
       }
       const userTimeZone = normalizeTimeZone(pendingShift.userTimeZone);
@@ -2656,7 +2657,7 @@ app.get('/api/planner/shift-templates', async (req, res) => {
       workedHours: Number(row.worked_hours) || 0,
       salaryRate: Number(row.salary_rate) || 0,
       salaryAmount: Number(row.salary_amount) || 0,
-      salaryCurrency: row.currency === 'PLN' ? 'PLN' : 'UAH',
+      salaryCurrency: normalizeCurrency(row.currency) === 'PLN' ? 'PLN' : 'UAH',
       updatedAt: row.updated_at,
     }))
   );
@@ -2768,6 +2769,29 @@ app.post('/api/planner/active-shift/start', async (req, res) => {
     (typeof startedDay === 'string' && startedDay.trim()) ||
     dayFromIsoInZone(startIso, userTimeZone) ||
     startIso.slice(0, 10);
+  let resolvedTemplateId = null;
+  let resolvedSalaryRate = Number(salaryRate) || 0;
+  let resolvedSalaryAmount = Number(salaryAmount) || 0;
+  let resolvedSalaryCurrency = normalizeCurrency(salaryCurrency) === 'PLN' ? 'PLN' : 'UAH';
+  let resolvedShiftNote = shiftNote || '';
+  if (typeof templateId === 'string' && templateId.trim()) {
+    const tpl = await db.get(
+      `SELECT id, name, symbol, salary_rate, salary_amount, currency
+       FROM planner_shift_templates
+       WHERE user_id = ? AND id = ?
+       LIMIT 1`,
+      [userId, templateId.trim()]
+    );
+    if (!tpl?.id) {
+      res.status(404).json({ error: 'Template not found' });
+      return;
+    }
+    resolvedTemplateId = String(tpl.id);
+    resolvedSalaryRate = Math.max(0, Number(tpl.salary_rate) || 0);
+    resolvedSalaryAmount = Math.max(0, Number(tpl.salary_amount) || 0);
+    resolvedSalaryCurrency = normalizeCurrency(tpl.currency) === 'PLN' ? 'PLN' : 'UAH';
+    resolvedShiftNote = [String(tpl.name ?? '').trim(), String(tpl.symbol ?? '').trim()].filter(Boolean).join(' • ');
+  }
   await db.run(
     `INSERT INTO bot_active_shifts
      (user_id, started_at, started_day, template_id, salary_rate, salary_amount, salary_currency, shift_note, updated_at)
@@ -2776,11 +2800,11 @@ app.post('/api/planner/active-shift/start', async (req, res) => {
       userId,
       startIso,
       startDayLocal,
-      templateId || null,
-      Number(salaryRate) || 0,
-      Number(salaryAmount) || 0,
-      salaryCurrency === 'PLN' ? 'PLN' : 'UAH',
-      shiftNote || '',
+      resolvedTemplateId,
+      resolvedSalaryRate,
+      resolvedSalaryAmount,
+      resolvedSalaryCurrency,
+      resolvedShiftNote,
       now
     ]
   );
