@@ -642,20 +642,22 @@ const CalendarPlanner: React.FC = () => {
   };
 
   const applyTemplateToDay = async (tpl: ShiftTemplate) => {
-    const note = [tpl.name.trim(), tpl.symbol.trim()].filter(Boolean).join(' • ');
-    const payload: DayPlan = {
-      ...current,
-      hasShift: true,
-      workedHours: tpl.workedHours,
-      salaryRate: tpl.salaryRate ?? 0,
-      salaryAmount: tpl.salaryAmount ?? 0,
-      salaryCurrency: tpl.salaryCurrency === 'PLN' ? 'PLN' : 'UAH',
-      note,
-    };
-    const ok = await saveDay(selectedDay, payload);
-    if (ok) {
-      setStore((prev) => ({ ...prev, [selectedDay]: payload }));
+    setSaving(true);
+    try {
+      const response = await apiFetch(`/api/planner/${encodeURIComponent(selectedDay)}/shifts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ templateId: tpl.id }),
+      });
+      if (!response.ok) throw new Error(`Apply template failed: ${response.status}`);
+      await reloadPlannerData();
+      await loadDayShiftEntries(selectedDay);
+      await loadReportShiftEntries(reportDays);
       setChooserOpen(false);
+    } catch (error) {
+      console.error('Failed to apply template as shift entry:', error);
+    } finally {
+      setSaving(false);
     }
   };
 

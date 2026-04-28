@@ -2734,6 +2734,77 @@ app.get('/api/planner/:day/shifts', async (req, res) => {
   );
 });
 
+app.post('/api/planner/:day/shifts', async (req, res) => {
+  const userId = req.authUserId;
+  const { day } = req.params;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+    res.status(400).json({ error: 'day param must be in YYYY-MM-DD format' });
+    return;
+  }
+  const body = (req.body && typeof req.body === 'object') ? req.body : {};
+  const templateId = typeof body.templateId === 'string' ? body.templateId.trim() : '';
+  let workedHours = Math.max(0, Number(body.workedHours) || 0);
+  let salaryRate = Math.max(0, Number(body.salaryRate) || 0);
+  let salaryAmount = Math.max(0, Number(body.salaryAmount) || 0);
+  let salaryCurrency = normalizeCurrency(body.salaryCurrency) === 'PLN' ? 'PLN' : 'UAH';
+  let note = typeof body.note === 'string' ? body.note.trim() : '';
+  let resolvedTemplateId = null;
+
+  if (templateId) {
+    const tpl = await db.get(
+      `SELECT id, name, symbol, worked_hours, salary_rate, salary_amount, currency
+       FROM planner_shift_templates
+       WHERE user_id = ? AND id = ?
+       LIMIT 1`,
+      [userId, templateId]
+    );
+    if (!tpl?.id) {
+      res.status(404).json({ error: 'Template not found' });
+      return;
+    }
+    resolvedTemplateId = String(tpl.id);
+    workedHours = Math.max(0, Number(tpl.worked_hours) || 0);
+    salaryRate = Math.max(0, Number(tpl.salary_rate) || 0);
+    salaryAmount = Math.max(0, Number(tpl.salary_amount) || 0);
+    salaryCurrency = normalizeCurrency(tpl.currency) === 'PLN' ? 'PLN' : 'UAH';
+    note = [String(tpl.name ?? '').trim(), String(tpl.symbol ?? '').trim()].filter(Boolean).join(' • ');
+  }
+
+  if (salaryAmount <= 0 && salaryRate > 0 && workedHours > 0) {
+    salaryAmount = Number((salaryRate * workedHours).toFixed(2));
+  }
+
+  const nowIso = new Date().toISOString();
+  const startedAt = typeof body.startedAt === 'string' && body.startedAt.trim() ? body.startedAt.trim() : nowIso;
+  const endedAt = typeof body.endedAt === 'string' && body.endedAt.trim() ? body.endedAt.trim() : nowIso;
+  const id = uuidv4();
+
+  await db.run(
+    `INSERT INTO planner_shift_entries
+     (id, user_id, day, started_at, ended_at, worked_hours, salary_rate, salary_amount, salary_currency, note, template_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, userId, day, startedAt, endedAt, workedHours, salaryRate, salaryAmount, salaryCurrency, note, resolvedTemplateId, nowIso, nowIso]
+  );
+
+  await upsertPlannerDay(db, userId, day, {
+    hasShift: true,
+    note: note || '',
+  });
+
+  res.status(201).json({
+    id,
+    day,
+    startedAt,
+    endedAt,
+    workedHours,
+    salaryRate,
+    salaryAmount,
+    salaryCurrency,
+    note,
+    templateId: resolvedTemplateId,
+  });
+});
+
 app.put('/api/planner/:day', async (req, res) => {
   const userId = req.authUserId;
   const { day } = req.params;
