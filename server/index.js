@@ -602,7 +602,6 @@ const CATEGORY_EMOJI = {
   other_income: '💸',
   other_expense: '💊',
 };
-const DEFAULT_MONTHLY_INCOME_PLAN_UAH = 50000;
 const formatDayMonth = (iso) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(iso || ''))) return String(iso || '');
   const [, m, d] = String(iso).split('-');
@@ -910,8 +909,6 @@ const buildReportText = (reportType, periodLabel, txs, comparison, extra = {}) =
     const incomePct = percentChange(summary.income, Number(extra.previousIncome) || 0);
     const expensePct = percentChange(summary.expense, Number(extra.previousExpense) || 0);
     const netPct = percentChange(summary.net, Number(extra.previousNet) || 0);
-    const incomePlan = Math.max(1, Number(extra.incomePlan) || DEFAULT_MONTHLY_INCOME_PLAN_UAH);
-    const incomePlanPct = (Math.max(0, Number(summary.income) || 0) / incomePlan) * 100;
     const savedPct = summary.income > 0 ? (Math.max(0, Number(summary.net) || 0) / summary.income) * 100 : 0;
     const monthHeader = formatMonthHeaderUk(extra.periodEndDay || '');
     const lines = [
@@ -947,7 +944,6 @@ const buildReportText = (reportType, periodLabel, txs, comparison, extra = {}) =
     lines.push(`└ Баланс: \`${netPct >= 0 ? '+' : ''}${netPct.toLocaleString('uk-UA', { maximumFractionDigits: 0 })}%\` ${netPct >= 0 ? '⬆️' : '⬇️'}`);
     lines.push('');
     lines.push('🎯 *ДОСЯГНЕННЯ*');
-    lines.push(`✅ План по доходу виконано на ${incomePlanPct.toLocaleString('uk-UA', { maximumFractionDigits: 0 })}%`);
     lines.push(`✅ Збережено ${savedPct.toLocaleString('uk-UA', { maximumFractionDigits: 0 })}% від доходу`);
     return lines.join('\n');
   }
@@ -1030,7 +1026,6 @@ const sendUserReport = async (dbConn, userId, chatId, reportType, timeZone) => {
     previousIncome: previousSummary.income,
     previousExpense: previousSummary.expense,
     previousNet: previousSummary.net,
-    incomePlan: DEFAULT_MONTHLY_INCOME_PLAN_UAH,
     periodEndDay: today,
   });
   await bot.sendMessage(chatId, text, {
