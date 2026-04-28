@@ -590,6 +590,28 @@ const categoryNameById = (id) => {
   const base = CATEGORIES.find((c) => c.id === id)?.name;
   return base || String(id);
 };
+const CATEGORY_EMOJI = {
+  food: '🍕',
+  transport: '🚗',
+  home: '🏠',
+  entertainment: '🎮',
+  health: '💊',
+  salary: '💼',
+  other_income: '💸',
+  other_expense: '💊',
+};
+const DEFAULT_MONTHLY_GOAL_UAH = 18500;
+const formatDayMonth = (iso) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(iso || ''))) return String(iso || '');
+  const [, m, d] = String(iso).split('-');
+  return `${d}.${m}`;
+};
+const formatWeekdayUk = (iso) => {
+  const d = new Date(`${iso}T12:00:00.000Z`);
+  if (Number.isNaN(d.getTime())) return '—';
+  const raw = new Intl.DateTimeFormat('uk-UA', { weekday: 'long' }).format(d);
+  return raw.charAt(0).toUpperCase() + raw.slice(1);
+};
 const escapeHtml = (value) =>
   String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -789,12 +811,70 @@ const renderReportCardPng = async (reportType, periodLabel, summary, comparison)
 
   return encodePngBuffer(img);
 };
-const buildReportText = (reportType, periodLabel, txs, comparison) => {
+const buildReportText = (reportType, periodLabel, txs, comparison, extra = {}) => {
   const summary = summarizeTransactions(txs);
   const formatAmount = (value, withSign = false) => {
     const sign = withSign ? (value >= 0 ? '+' : '-') : '';
     return `${sign}${Math.abs(value).toLocaleString('uk-UA', { maximumFractionDigits: 2 })}`;
   };
+  if (reportType === 'weekly') {
+    const expenseByCategory = new Map();
+    const dayNet = new Map();
+    let maxExpense = null;
+    for (const tx of txs || []) {
+      const amount = Math.max(0, Number(tx.amount) || 0);
+      const day = dayFromIsoInZone(tx.date, DEFAULT_BOT_TIMEZONE) || String(tx.date || '').slice(0, 10);
+      const curNet = dayNet.get(day) ?? 0;
+      dayNet.set(day, tx.type === 'income' ? curNet + amount : curNet - amount);
+      if (tx.type !== 'expense') continue;
+      expenseByCategory.set(tx.categoryId, (expenseByCategory.get(tx.categoryId) ?? 0) + amount);
+      if (!maxExpense || amount > maxExpense.amount) maxExpense = { categoryId: tx.categoryId, amount };
+    }
+    const topExpenseCategories = Array.from(expenseByCategory.entries())
+      .map(([categoryId, amount]) => ({ categoryId, amount }))
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, 5);
+    const bestDayEntry = Array.from(dayNet.entries()).sort((a, b) => b[1] - a[1])[0] ?? null;
+    const workedHours = Math.max(0, Number(extra.workedHours) || 0);
+    const avgPerDay = Math.max(0, Number(extra.avgPerDay) || 0);
+    const hourlyRate = Math.max(0, Number(extra.hourlyRate) || 0);
+    const monthGoal = Math.max(1, Number(extra.monthGoal) || DEFAULT_MONTHLY_GOAL_UAH);
+    const goalCurrent = Math.max(0, Number(summary.net) || 0);
+    const goalPct = Math.max(0, Math.min(100, (goalCurrent / monthGoal) * 100));
+    const lines = [
+      '📊 *ФІНАНСОВИЙ ЗВІТ*',
+      '━━━━━━━━━━━━━━━━━━━━',
+      `📅 Період: ${periodLabel}`,
+      '',
+      '💰 *ФІНАНСИ*',
+      `├ Дохід: *+${formatAmount(summary.income)} ₴*`,
+      `├ Витрати: *-${formatAmount(summary.expense)} ₴*`,
+      `└ Баланс: \`${formatAmount(summary.net, true)} ₴\``,
+      '',
+      '📈 *Категорії витрат:*',
+    ];
+    if (topExpenseCategories.length > 0) {
+      for (const item of topExpenseCategories) {
+        lines.push(`${CATEGORY_EMOJI[item.categoryId] ?? '•'} ${categoryNameById(item.categoryId)}: ${formatAmount(item.amount)} ₴`);
+      }
+    } else {
+      lines.push('• Немає витрат за період');
+    }
+    lines.push('');
+    lines.push('⏰ *РОБОЧИЙ ЧАС*');
+    lines.push(`├ Відпрацьовано: *${workedHours.toLocaleString('uk-UA', { maximumFractionDigits: 2 })} год*`);
+    lines.push(`├ Середньо/день: ${avgPerDay.toLocaleString('uk-UA', { maximumFractionDigits: 2 })} год`);
+    lines.push(`└ Ставка: ${hourlyRate.toLocaleString('uk-UA', { maximumFractionDigits: 2 })} ₴/год`);
+    lines.push('');
+    lines.push('💡 *Статистика тижня:*');
+    lines.push(`> Найбільша витрата: ${maxExpense ? `${categoryNameById(maxExpense.categoryId)} (${formatAmount(maxExpense.amount)} ₴)` : '—'}`);
+    lines.push(`> Найприбутковіший день: ${bestDayEntry ? formatWeekdayUk(bestDayEntry[0]) : '—'}`);
+    lines.push(`> Економія до цілі: ${goalPct.toLocaleString('uk-UA', { maximumFractionDigits: 0 })}% (${formatAmount(goalCurrent)}/${formatAmount(monthGoal)})`);
+    lines.push('');
+    lines.push(`✅ Ціль місяця: ${formatAmount(monthGoal)} ₴`);
+    lines.push('━━━━━━━━━━━━━━━━━━━━');
+    return lines.join('\n');
+  }
   const title = reportType === 'weekly' ? '📊 ТИЖНЕВИЙ ЗВІТ' : '📅 МІСЯЧНИЙ ЗВІТ';
   const lines = [
     title,
@@ -847,11 +927,32 @@ const sendUserReport = async (dbConn, userId, chatId, reportType, timeZone) => {
   const scoped = (Array.isArray(txs) ? txs : []).filter((tx) => rangeSet.has(dayFromIsoInZone(tx.date, tz)));
   const previousRangeSet = buildPreviousPeriodDaySet(reportType, rangeSet);
   const previousScoped = (Array.isArray(txs) ? txs : []).filter((tx) => previousRangeSet.has(dayFromIsoInZone(tx.date, tz)));
-  const periodLabel = `${Array.from(rangeSet).sort()[0]} → ${today}`;
+  const sortedDays = Array.from(rangeSet).sort();
+  const periodLabel = reportType === 'weekly'
+    ? `${formatDayMonth(sortedDays[0])} — ${formatDayMonth(today)}.${String(today).slice(0, 4)}`
+    : `${sortedDays[0]} → ${today}`;
   const summary = summarizeTransactions(scoped);
   const previousSummary = summarizeTransactions(previousScoped);
   const comparison = buildReportComparison(summary, previousSummary);
-  const text = buildReportText(reportType, periodLabel, scoped, comparison);
+  const shiftRows = await dbConn.all(
+    `SELECT worked_hours, salary_amount, salary_currency
+     FROM planner_shift_entries
+     WHERE user_id = ? AND day >= ? AND day <= ?`,
+    [userId, sortedDays[0], sortedDays[sortedDays.length - 1]]
+  );
+  const workedHours = (shiftRows || []).reduce((acc, row) => acc + (Math.max(0, Number(row.worked_hours) || 0)), 0);
+  const salaryUah = (shiftRows || []).reduce((acc, row) => {
+    if (normalizeCurrency(row.salary_currency) !== 'UAH') return acc;
+    return acc + (Math.max(0, Number(row.salary_amount) || 0));
+  }, 0);
+  const avgPerDay = sortedDays.length > 0 ? workedHours / sortedDays.length : 0;
+  const hourlyRate = workedHours > 0 ? salaryUah / workedHours : 0;
+  const text = buildReportText(reportType, periodLabel, scoped, comparison, {
+    workedHours,
+    avgPerDay,
+    hourlyRate,
+    monthGoal: DEFAULT_MONTHLY_GOAL_UAH,
+  });
   await bot.sendMessage(chatId, text, { disable_web_page_preview: true });
 };
 const getUserTimeZone = async (dbConn, userId) => {
