@@ -129,6 +129,9 @@ const parseMoneyInput = (raw: string): number => {
   return Number.isFinite(n) ? Math.max(0, n) : 0;
 };
 
+const normalizeTemplateKey = (name: string, symbol: string, currency: PlannerCurrency): string =>
+  `${name.trim().toLowerCase()}::${symbol.trim().toLowerCase()}::${currency === 'PLN' ? 'PLN' : 'UAH'}`;
+
 const formatElapsedShiftTime = (
   startedAt: string,
   unitLabels: { hours: string; minutes: string }
@@ -1055,7 +1058,11 @@ const CalendarPlanner: React.FC = () => {
                 const ok = await saveDay(selectedDay, payload);
                 if (ok) {
                   setStore((prev) => ({ ...prev, [selectedDay]: payload }));
-                  if (!dayHasShift) {
+                  const nextTemplateKey = normalizeTemplateKey(shiftName, shiftSymbol, salaryCurrency);
+                  const templateAlreadyExists = shiftTemplates.some(
+                    (tpl) => normalizeTemplateKey(tpl.name, tpl.symbol, tpl.salaryCurrency) === nextTemplateKey
+                  );
+                  if (!templateAlreadyExists && (shiftName.trim() || shiftSymbol.trim())) {
                     await persistShiftTemplate();
                   }
                   setEditorOpened(false);
