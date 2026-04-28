@@ -673,6 +673,56 @@ const CalendarPlanner: React.FC = () => {
     }
   };
 
+  const refreshAfterShiftEntryMutation = useCallback(async (dayIso: string) => {
+    await reloadPlannerData();
+    await loadReportShiftEntries(reportDays);
+    if (chooserOpen && dayIso === selectedDay) {
+      await loadDayShiftEntries(dayIso);
+    }
+  }, [chooserOpen, loadDayShiftEntries, loadReportShiftEntries, reloadPlannerData, reportDays, selectedDay]);
+
+  const handleEditReportShift = async (entry: ShiftEntry) => {
+    if (entry.id.startsWith('day-')) return;
+    const nextHoursRaw = window.prompt(t('planner', 'editShiftHoursPrompt'), String(entry.workedHours));
+    if (nextHoursRaw === null) return;
+    const nextHours = parseMoneyInput(nextHoursRaw);
+    const nextAmountRaw = window.prompt(t('planner', 'editShiftAmountPrompt'), String(entry.salaryAmount));
+    if (nextAmountRaw === null) return;
+    const nextAmount = parseMoneyInput(nextAmountRaw);
+    const nextNoteRaw = window.prompt(t('planner', 'editShiftNotePrompt'), entry.note || '');
+    if (nextNoteRaw === null) return;
+    try {
+      const response = await apiFetch(`/api/planner/shifts/${encodeURIComponent(entry.id)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workedHours: nextHours,
+          salaryAmount: nextAmount,
+          salaryCurrency: entry.salaryCurrency,
+          note: nextNoteRaw.trim(),
+        }),
+      });
+      if (!response.ok) throw new Error(`Edit shift failed: ${response.status}`);
+      await refreshAfterShiftEntryMutation(entry.day);
+    } catch (error) {
+      console.error('Failed to edit report shift:', error);
+    }
+  };
+
+  const handleDeleteReportShift = async (entry: ShiftEntry) => {
+    if (entry.id.startsWith('day-')) return;
+    if (!window.confirm(t('planner', 'deleteShiftEntryConfirm'))) return;
+    try {
+      const response = await apiFetch(`/api/planner/shifts/${encodeURIComponent(entry.id)}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok && response.status !== 204) throw new Error(`Delete shift failed: ${response.status}`);
+      await refreshAfterShiftEntryMutation(entry.day);
+    } catch (error) {
+      console.error('Failed to delete report shift:', error);
+    }
+  };
+
   const todayIsoStr = todayIso();
   const currentMonthLabel = monthLabel(month, locale);
 
@@ -854,6 +904,24 @@ const CalendarPlanner: React.FC = () => {
                       {entry.day} · {entry.workedHours.toLocaleString(locale, { maximumFractionDigits: 2 })}{t('planner', 'hoursShort')} ·{' '}
                       {entry.salaryAmount > 0 ? formatPlannerMoney(entry.salaryAmount, locale, entry.salaryCurrency) : '—'}
                     </span>
+                    {!entry.id.startsWith('day-') ? (
+                      <div className={styles.dayShiftActionsInline}>
+                        <button
+                          type="button"
+                          className={styles.dayShiftEditBtn}
+                          onClick={() => void handleEditReportShift(entry)}
+                        >
+                          {t('planner', 'editShift')}
+                        </button>
+                        <button
+                          type="button"
+                          className={styles.dayShiftDeleteBtn}
+                          onClick={() => void handleDeleteReportShift(entry)}
+                        >
+                          {t('planner', 'deleteShift')}
+                        </button>
+                      </div>
+                    ) : null}
                   </li>
                 ))}
               </ul>

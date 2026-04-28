@@ -516,6 +516,28 @@
   font-size: 12px;
 }
 
+.dayShiftActionsInline {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.dayShiftEditBtn,
+.dayShiftDeleteBtn {
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--text-primary);
+  font-size: 12px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.dayShiftDeleteBtn {
+  color: #ff6b63;
+  border-color: rgba(255, 107, 99, 0.35);
+}
+
 .dayShiftsEmpty {
   margin: 0;
   color: var(--text-tertiary);

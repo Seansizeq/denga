@@ -2805,6 +2805,95 @@ app.post('/api/planner/:day/shifts', async (req, res) => {
   });
 });
 
+app.put('/api/planner/shifts/:id', async (req, res) => {
+  const userId = req.authUserId;
+  const id = typeof req.params.id === 'string' ? req.params.id.trim() : '';
+  if (!id) {
+    res.status(400).json({ error: 'invalid id' });
+    return;
+  }
+  const current = await db.get(
+    `SELECT id, day, started_at, ended_at, worked_hours, salary_rate, salary_amount, salary_currency, note
+     FROM planner_shift_entries
+     WHERE user_id = ? AND id = ?
+     LIMIT 1`,
+    [userId, id]
+  );
+  if (!current?.id) {
+    res.status(404).json({ error: 'not found' });
+    return;
+  }
+  const workedHours = req.body.workedHours === undefined
+    ? Math.max(0, Number(current.worked_hours) || 0)
+    : Math.max(0, Number(req.body.workedHours) || 0);
+  const salaryRate = req.body.salaryRate === undefined
+    ? Math.max(0, Number(current.salary_rate) || 0)
+    : Math.max(0, Number(req.body.salaryRate) || 0);
+  let salaryAmount = req.body.salaryAmount === undefined
+    ? Math.max(0, Number(current.salary_amount) || 0)
+    : Math.max(0, Number(req.body.salaryAmount) || 0);
+  if (salaryAmount <= 0 && salaryRate > 0 && workedHours > 0) {
+    salaryAmount = Number((salaryRate * workedHours).toFixed(2));
+  }
+  const salaryCurrency = normalizeCurrency(req.body.salaryCurrency ?? current.salary_currency) === 'PLN' ? 'PLN' : 'UAH';
+  const note = typeof req.body.note === 'string' ? req.body.note.trim() : String(current.note ?? '');
+  const startedAt = typeof req.body.startedAt === 'string' && req.body.startedAt.trim() ? req.body.startedAt.trim() : String(current.started_at);
+  const endedAt = typeof req.body.endedAt === 'string' && req.body.endedAt.trim() ? req.body.endedAt.trim() : String(current.ended_at);
+  const updatedAt = new Date().toISOString();
+  await db.run(
+    `UPDATE planner_shift_entries
+     SET started_at = ?, ended_at = ?, worked_hours = ?, salary_rate = ?, salary_amount = ?, salary_currency = ?, note = ?, updated_at = ?
+     WHERE user_id = ? AND id = ?`,
+    [startedAt, endedAt, workedHours, salaryRate, salaryAmount, salaryCurrency, note, updatedAt, userId, id]
+  );
+  await upsertPlannerDay(db, userId, String(current.day), { hasShift: true, note });
+  res.json({
+    id,
+    day: String(current.day),
+    startedAt,
+    endedAt,
+    workedHours,
+    salaryRate,
+    salaryAmount,
+    salaryCurrency,
+    note,
+    updatedAt,
+  });
+});
+
+app.delete('/api/planner/shifts/:id', async (req, res) => {
+  const userId = req.authUserId;
+  const id = typeof req.params.id === 'string' ? req.params.id.trim() : '';
+  if (!id) {
+    res.status(400).json({ error: 'invalid id' });
+    return;
+  }
+  const current = await db.get(
+    'SELECT day FROM planner_shift_entries WHERE user_id = ? AND id = ? LIMIT 1',
+    [userId, id]
+  );
+  if (!current?.day) {
+    res.status(404).json({ error: 'not found' });
+    return;
+  }
+  await db.run('DELETE FROM planner_shift_entries WHERE user_id = ? AND id = ?', [userId, id]);
+  const remaining = await db.get(
+    'SELECT COUNT(1) AS cnt FROM planner_shift_entries WHERE user_id = ? AND day = ?',
+    [userId, String(current.day)]
+  );
+  if ((Number(remaining?.cnt) || 0) <= 0) {
+    await upsertPlannerDay(db, userId, String(current.day), {
+      hasShift: false,
+      workedHours: 0,
+      salaryRate: 0,
+      salaryAmount: 0,
+      salaryCurrency: 'UAH',
+      note: '',
+    });
+  }
+  res.status(204).end();
+});
+
 app.put('/api/planner/:day', async (req, res) => {
   const userId = req.authUserId;
   const { day } = req.params;

@@ -139,6 +139,10 @@ type Dict = {
     dayShiftsEmpty: string;
     reportShiftBanners: string;
     reportShiftBannersEmpty: string;
+    deleteShiftEntryConfirm: string;
+    editShiftHoursPrompt: string;
+    editShiftAmountPrompt: string;
+    editShiftNotePrompt: string;
     monthReportTitle: string;
     dayReportTitle: string;
     yearReportTitle: string;
@@ -356,6 +360,10 @@ const uk: Dict = {
     dayShiftsEmpty: 'Ще немає завершених змін за цей день',
     reportShiftBanners: 'Кожна зміна',
     reportShiftBannersEmpty: 'За цей період ще немає завершених змін',
+    deleteShiftEntryConfirm: 'Видалити цю зміну зі звіту?',
+    editShiftHoursPrompt: 'Години для зміни',
+    editShiftAmountPrompt: 'Сума для зміни',
+    editShiftNotePrompt: 'Назва/нотатка зміни',
     monthReportTitle: 'Звіт за місяць',
     dayReportTitle: 'Звіт за день',
     yearReportTitle: 'Звіт за рік',
@@ -578,6 +586,10 @@ const ru: Dict = {
     dayShiftsEmpty: 'За этот день пока нет завершённых смен',
     reportShiftBanners: 'Каждая смена',
     reportShiftBannersEmpty: 'За этот период пока нет завершённых смен',
+    deleteShiftEntryConfirm: 'Удалить эту смену из отчёта?',
+    editShiftHoursPrompt: 'Часы для смены',
+    editShiftAmountPrompt: 'Сумма для смены',
+    editShiftNotePrompt: 'Название/заметка смены',
     monthReportTitle: 'Отчёт за месяц',
     dayReportTitle: 'Отчёт за день',
     yearReportTitle: 'Отчёт за год',
@@ -800,6 +812,10 @@ const en: Dict = {
     dayShiftsEmpty: 'No completed shifts for this day yet',
     reportShiftBanners: 'Each shift',
     reportShiftBannersEmpty: 'No completed shifts in this period yet',
+    deleteShiftEntryConfirm: 'Delete this shift from the report?',
+    editShiftHoursPrompt: 'Hours for this shift',
+    editShiftAmountPrompt: 'Amount for this shift',
+    editShiftNotePrompt: 'Shift name/note',
     monthReportTitle: 'Monthly summary',
     dayReportTitle: 'Daily summary',
     yearReportTitle: 'Yearly summary',
