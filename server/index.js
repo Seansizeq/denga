@@ -1013,9 +1013,34 @@ const sendUserReport = async (dbConn, userId, chatId, reportType, timeZone) => {
      WHERE user_id = ? AND day >= ? AND day <= ?`,
     [userId, sortedDays[0], sortedDays[sortedDays.length - 1]]
   );
+  const plannerDayRows = await dbConn.all(
+    `SELECT day, hasShift, workedHours
+     FROM planner_days
+     WHERE day >= ? AND day <= ?`,
+    [plannerDayKey(userId, sortedDays[0]), plannerDayKey(userId, sortedDays[sortedDays.length - 1])]
+  );
   const reportCurrency = normalizeCurrency(reportSettings.reportCurrency || detectPrimaryCurrency(scoped));
-  const workedHours = (shiftRows || []).reduce((acc, row) => acc + (Math.max(0, Number(row.worked_hours) || 0)), 0);
-  const workedDaySet = new Set((shiftRows || []).map((row) => String(row.day || '')).filter(Boolean));
+  const entryHoursByDay = new Map();
+  for (const row of shiftRows || []) {
+    const day = String(row.day || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
+    entryHoursByDay.set(day, (entryHoursByDay.get(day) ?? 0) + Math.max(0, Number(row.worked_hours) || 0));
+  }
+  const plannerFallbackByDay = new Map();
+  for (const row of plannerDayRows || []) {
+    const dayIso = plannerDayFromStored(userId, String(row.day || ''));
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dayIso)) continue;
+    if (!Boolean(row.hasShift)) continue;
+    if (entryHoursByDay.has(dayIso)) continue;
+    plannerFallbackByDay.set(dayIso, Math.max(0, Number(row.workedHours) || 0));
+  }
+  const workedHours =
+    Array.from(entryHoursByDay.values()).reduce((acc, h) => acc + h, 0) +
+    Array.from(plannerFallbackByDay.values()).reduce((acc, h) => acc + h, 0);
+  const workedDaySet = new Set([
+    ...Array.from(entryHoursByDay.keys()),
+    ...Array.from(plannerFallbackByDay.keys()),
+  ]);
   const workingDays = workedDaySet.size;
   const avgPerDay = workingDays > 0 ? workedHours / workingDays : 0;
   const text = buildReportText(reportType, periodLabel, scoped, comparison, {
