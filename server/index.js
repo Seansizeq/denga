@@ -612,6 +612,20 @@ const formatWeekdayUk = (iso) => {
   const raw = new Intl.DateTimeFormat('uk-UA', { weekday: 'long' }).format(d);
   return raw.charAt(0).toUpperCase() + raw.slice(1);
 };
+const currencySymbol = (code) => {
+  const normalized = normalizeCurrency(code);
+  if (normalized === 'PLN') return 'zł';
+  if (normalized === 'USD') return '$';
+  return '₴';
+};
+const detectPrimaryCurrency = (txs) => {
+  const counters = { UAH: 0, PLN: 0, USD: 0 };
+  for (const tx of txs || []) {
+    const cur = normalizeCurrency(tx?.currency);
+    counters[cur] = (counters[cur] || 0) + 1;
+  }
+  return Object.entries(counters).sort((a, b) => Number(b[1]) - Number(a[1]))[0]?.[0] || 'UAH';
+};
 const escapeHtml = (value) =>
   String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -813,6 +827,8 @@ const renderReportCardPng = async (reportType, periodLabel, summary, comparison)
 };
 const buildReportText = (reportType, periodLabel, txs, comparison, extra = {}) => {
   const summary = summarizeTransactions(txs);
+  const reportCurrencyCode = normalizeCurrency(extra.reportCurrency || 'UAH');
+  const sign = currencySymbol(reportCurrencyCode);
   const formatAmount = (value, withSign = false) => {
     const sign = withSign ? (value >= 0 ? '+' : '-') : '';
     return `${sign}${Math.abs(value).toLocaleString('uk-UA', { maximumFractionDigits: 2 })}`;
@@ -842,15 +858,15 @@ const buildReportText = (reportType, periodLabel, txs, comparison, extra = {}) =
       `📅 Період: ${periodLabel}`,
       '',
       '💰 *ФІНАНСИ*',
-      `├ Дохід: *+${formatAmount(summary.income)} ₴*`,
-      `├ Витрати: *-${formatAmount(summary.expense)} ₴*`,
-      `└ Баланс: \`${formatAmount(summary.net, true)} ₴\``,
+      `├ Дохід: *+${formatAmount(summary.income)} ${sign}*`,
+      `├ Витрати: *-${formatAmount(summary.expense)} ${sign}*`,
+      `└ Баланс: \`${formatAmount(summary.net, true)} ${sign}\``,
       '',
       '📈 *Категорії витрат:*',
     ];
     if (topExpenseCategories.length > 0) {
       for (const item of topExpenseCategories) {
-        lines.push(`${CATEGORY_EMOJI[item.categoryId] ?? '•'} ${categoryNameById(item.categoryId)}: ${formatAmount(item.amount)} ₴`);
+        lines.push(`${CATEGORY_EMOJI[item.categoryId] ?? '•'} ${categoryNameById(item.categoryId)}: ${formatAmount(item.amount)} ${sign}`);
       }
     } else {
       lines.push('• Немає витрат за період');
@@ -861,7 +877,7 @@ const buildReportText = (reportType, periodLabel, txs, comparison, extra = {}) =
     lines.push('└ Деталі — у вебапі');
     lines.push('');
     lines.push('💡 *Статистика тижня:*');
-    lines.push(`> Найбільша витрата: ${maxExpense ? `${categoryNameById(maxExpense.categoryId)} (${formatAmount(maxExpense.amount)} ₴)` : '—'}`);
+    lines.push(`> Найбільша витрата: ${maxExpense ? `${categoryNameById(maxExpense.categoryId)} (${formatAmount(maxExpense.amount)} ${sign})` : '—'}`);
     lines.push(`> Найприбутковіший день: ${bestDayEntry ? formatWeekdayUk(bestDayEntry[0]) : '—'}`);
     lines.push('━━━━━━━━━━━━━━━━━━━━');
     return lines.join('\n');
@@ -912,7 +928,7 @@ const sendUserReport = async (dbConn, userId, chatId, reportType, timeZone) => {
   const today = dayFromIsoInZone(nowIso, tz) || nowIso.slice(0, 10);
   const rangeSet = reportType === 'weekly' ? getWeekDaySet(today) : getMonthDaySet(today);
   const txs = await dbConn.all(
-    'SELECT amount, categoryId, type, date FROM transactions WHERE user_id = ? ORDER BY date DESC LIMIT 5000',
+    'SELECT amount, currency, categoryId, type, date FROM transactions WHERE user_id = ? ORDER BY date DESC LIMIT 5000',
     [userId]
   );
   const scoped = (Array.isArray(txs) ? txs : []).filter((tx) => rangeSet.has(dayFromIsoInZone(tx.date, tz)));
@@ -936,8 +952,12 @@ const sendUserReport = async (dbConn, userId, chatId, reportType, timeZone) => {
     if (normalizeCurrency(row.salary_currency) !== 'UAH') return acc;
     return acc + (Math.max(0, Number(row.salary_amount) || 0));
   }, 0);
-  const text = buildReportText(reportType, periodLabel, scoped, comparison, { workedHours });
-  await bot.sendMessage(chatId, text, { disable_web_page_preview: true });
+  const reportCurrency = detectPrimaryCurrency(scoped);
+  const text = buildReportText(reportType, periodLabel, scoped, comparison, { workedHours, reportCurrency });
+  await bot.sendMessage(chatId, text, {
+    disable_web_page_preview: true,
+    parse_mode: 'Markdown',
+  });
 };
 const getUserTimeZone = async (dbConn, userId) => {
   const row = await dbConn.get('SELECT timezone FROM users WHERE telegram_id = ? LIMIT 1', [Number(userId)]);
