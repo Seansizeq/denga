@@ -398,6 +398,37 @@ const CalendarPlanner: React.FC = () => {
     return { totalHours, totalSalaryUah, totalSalaryPln, filledDays, totalShifts };
   }, [store, reportDays]);
 
+  const reportShiftBanners = useMemo(() => {
+    const existingDays = new Set(reportShiftEntries.map((entry) => entry.day));
+    const merged = [...reportShiftEntries];
+    for (const day of reportDays) {
+      if (existingDays.has(day)) continue;
+      const plan = store[day];
+      if (!plan?.hasShift) continue;
+      const fallbackPay = plan.salaryAmountUah || plan.salaryAmountPln
+        ? (plan.salaryAmountPln && plan.salaryAmountPln > 0 ? plan.salaryAmountPln : plan.salaryAmountUah || 0)
+        : expectedPayForDay(plan);
+      const fallbackCurrency: PlannerCurrency =
+        plan.salaryAmountPln && plan.salaryAmountPln > 0
+          ? 'PLN'
+          : plan.salaryCurrency === 'PLN'
+            ? 'PLN'
+            : 'UAH';
+      merged.push({
+        id: `day-${day}`,
+        day,
+        startedAt: `${day}T00:00:00.000Z`,
+        endedAt: `${day}T00:00:00.000Z`,
+        workedHours: toNumber(plan.workedHours),
+        salaryRate: toNumber(plan.salaryRate),
+        salaryAmount: toNumber(fallbackPay),
+        salaryCurrency: fallbackCurrency,
+        note: plan.note ?? '',
+      });
+    }
+    return merged.sort((a, b) => String(b.endedAt || '').localeCompare(String(a.endedAt || '')));
+  }, [reportShiftEntries, reportDays, store]);
+
   useEffect(() => {
     void reloadPlannerData();
   }, [reloadPlannerData]);
@@ -810,11 +841,11 @@ const CalendarPlanner: React.FC = () => {
             <p className={styles.templateSectionLabel}>{t('planner', 'reportShiftBanners')}</p>
             {reportShiftEntriesLoading ? (
               <p className={styles.dayShiftsEmpty}>{t('planner', 'loading')}</p>
-            ) : reportShiftEntries.length === 0 ? (
+            ) : reportShiftBanners.length === 0 ? (
               <p className={styles.dayShiftsEmpty}>{t('planner', 'reportShiftBannersEmpty')}</p>
             ) : (
               <ul className={styles.dayShiftsList} role="list">
-                {reportShiftEntries.map((entry) => (
+                {reportShiftBanners.map((entry) => (
                   <li key={`report-${entry.id}`} className={styles.dayShiftRow}>
                     <span className={styles.dayShiftMain}>{entry.note || t('planner', 'shiftTitle')}</span>
                     <span className={styles.dayShiftMeta}>
