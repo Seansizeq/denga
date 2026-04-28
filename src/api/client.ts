@@ -27,6 +27,7 @@ export const apiFetch = (path: string, init?: RequestInit): Promise<Response> =>
 export type ReportSettings = {
   autoWeekly: boolean;
   autoMonthly: boolean;
+  reportCurrency: 'UAH' | 'PLN' | 'USD';
   sendTime: string;
 };
 

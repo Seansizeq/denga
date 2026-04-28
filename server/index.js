@@ -395,8 +395,8 @@ const upsertBotUser = async (dbConn, telegramId, chatId) => {
 const ensureReportSettings = async (dbConn, userId) => {
   const now = new Date().toISOString();
   await dbConn.run(
-    `INSERT INTO bot_report_settings (user_id, auto_weekly, auto_monthly, send_time, updated_at)
-     VALUES (?, 1, 1, '21:00', ?)
+    `INSERT INTO bot_report_settings (user_id, auto_weekly, auto_monthly, report_currency, send_time, updated_at)
+     VALUES (?, 1, 1, 'UAH', '21:00', ?)
      ON CONFLICT(user_id) DO NOTHING`,
     [userId, now]
   );
@@ -404,12 +404,13 @@ const ensureReportSettings = async (dbConn, userId) => {
 const getReportSettings = async (dbConn, userId) => {
   await ensureReportSettings(dbConn, userId);
   const row = await dbConn.get(
-    'SELECT auto_weekly, auto_monthly, send_time FROM bot_report_settings WHERE user_id = ? LIMIT 1',
+    'SELECT auto_weekly, auto_monthly, report_currency, send_time FROM bot_report_settings WHERE user_id = ? LIMIT 1',
     [userId]
   );
   return {
     autoWeekly: Boolean(Number(row?.auto_weekly ?? 1)),
     autoMonthly: Boolean(Number(row?.auto_monthly ?? 1)),
+    reportCurrency: normalizeCurrency(row?.report_currency),
     sendTime: /^\d{2}:\d{2}$/.test(String(row?.send_time ?? '')) ? String(row.send_time) : '21:00',
   };
 };
@@ -429,14 +430,15 @@ const updateReportSettings = async (dbConn, userId, patch) => {
   const current = await getReportSettings(dbConn, userId);
   const autoWeekly = patch.autoWeekly === undefined ? current.autoWeekly : Boolean(patch.autoWeekly);
   const autoMonthly = patch.autoMonthly === undefined ? current.autoMonthly : Boolean(patch.autoMonthly);
+  const reportCurrency = patch.reportCurrency === undefined ? current.reportCurrency : normalizeCurrency(patch.reportCurrency);
   const sendTime = patch.sendTime ?? current.sendTime;
   await dbConn.run(
     `UPDATE bot_report_settings
-     SET auto_weekly = ?, auto_monthly = ?, send_time = ?, updated_at = ?
+     SET auto_weekly = ?, auto_monthly = ?, report_currency = ?, send_time = ?, updated_at = ?
      WHERE user_id = ?`,
-    [autoWeekly ? 1 : 0, autoMonthly ? 1 : 0, sendTime, new Date().toISOString(), userId]
+    [autoWeekly ? 1 : 0, autoMonthly ? 1 : 0, reportCurrency, sendTime, new Date().toISOString(), userId]
   );
-  return { autoWeekly, autoMonthly, sendTime };
+  return { autoWeekly, autoMonthly, reportCurrency, sendTime };
 };
 const reminderKinds = new Set(['daily', 'subscriptions']);
 const isValidReminderKind = (value) => reminderKinds.has(String(value || ''));
@@ -600,9 +602,7 @@ const CATEGORY_EMOJI = {
   other_income: '💸',
   other_expense: '💊',
 };
-const DEFAULT_MONTHLY_GOAL_UAH = 18500;
 const DEFAULT_MONTHLY_INCOME_PLAN_UAH = 50000;
-const DEFAULT_MONTHLY_WORK_HOURS_NORM = 156;
 const formatDayMonth = (iso) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(iso || ''))) return String(iso || '');
   const [, m, d] = String(iso).split('-');
@@ -907,14 +907,12 @@ const buildReportText = (reportType, periodLabel, txs, comparison, extra = {}) =
     const workedHours = Math.max(0, Number(extra.workedHours) || 0);
     const workingDays = Math.max(0, Number(extra.workingDays) || 0);
     const avgPerDay = Math.max(0, Number(extra.avgPerDay) || 0);
-    const hourlyRate = Math.max(0, Number(extra.hourlyRate) || 0);
     const incomePct = percentChange(summary.income, Number(extra.previousIncome) || 0);
     const expensePct = percentChange(summary.expense, Number(extra.previousExpense) || 0);
     const netPct = percentChange(summary.net, Number(extra.previousNet) || 0);
     const incomePlan = Math.max(1, Number(extra.incomePlan) || DEFAULT_MONTHLY_INCOME_PLAN_UAH);
     const incomePlanPct = (Math.max(0, Number(summary.income) || 0) / incomePlan) * 100;
     const savedPct = summary.income > 0 ? (Math.max(0, Number(summary.net) || 0) / summary.income) * 100 : 0;
-    const overNorm = workedHours - DEFAULT_MONTHLY_WORK_HOURS_NORM;
     const monthHeader = formatMonthHeaderUk(extra.periodEndDay || '');
     const lines = [
       `📅 *ФІНАНСОВИЙ ЗВІТ — ${monthHeader}*`,
@@ -941,8 +939,7 @@ const buildReportText = (reportType, periodLabel, txs, comparison, extra = {}) =
     lines.push('⏰ *РОБОЧИЙ ЧАС*');
     lines.push(`├ Всього відпрацьовано: *${workedHours.toLocaleString('uk-UA', { maximumFractionDigits: 2 })} год*`);
     lines.push(`├ Робочих днів: ${workingDays}`);
-    lines.push(`├ Середньо/день: ${avgPerDay.toLocaleString('uk-UA', { maximumFractionDigits: 2 })} год`);
-    lines.push(`└ Ставка: ${hourlyRate.toLocaleString('uk-UA', { maximumFractionDigits: 2 })} ${sign}/год`);
+    lines.push(`└ Середньо/день: ${avgPerDay.toLocaleString('uk-UA', { maximumFractionDigits: 2 })} год`);
     lines.push('');
     lines.push('📈 *ПОРІВНЯННЯ З МИНУЛИМ МІСЯЦЕМ*');
     lines.push(`├ Дохід: \`${incomePct >= 0 ? '+' : ''}${incomePct.toLocaleString('uk-UA', { maximumFractionDigits: 0 })}%\` ${incomePct >= 0 ? '⬆️' : '⬇️'}`);
@@ -952,7 +949,6 @@ const buildReportText = (reportType, periodLabel, txs, comparison, extra = {}) =
     lines.push('🎯 *ДОСЯГНЕННЯ*');
     lines.push(`✅ План по доходу виконано на ${incomePlanPct.toLocaleString('uk-UA', { maximumFractionDigits: 0 })}%`);
     lines.push(`✅ Збережено ${savedPct.toLocaleString('uk-UA', { maximumFractionDigits: 0 })}% від доходу`);
-    lines.push(`✅ Відпрацьовано ${overNorm >= 0 ? '+' : ''}${overNorm.toLocaleString('uk-UA', { maximumFractionDigits: 0 })} год понад норму`);
     return lines.join('\n');
   }
   const title = reportType === 'weekly' ? '📊 ТИЖНЕВИЙ ЗВІТ' : '📅 МІСЯЧНИЙ ЗВІТ';
@@ -1007,6 +1003,7 @@ const sendUserReport = async (dbConn, userId, chatId, reportType, timeZone) => {
   const scoped = (Array.isArray(txs) ? txs : []).filter((tx) => rangeSet.has(dayFromIsoInZone(tx.date, tz)));
   const previousRangeSet = buildPreviousPeriodDaySet(reportType, rangeSet);
   const previousScoped = (Array.isArray(txs) ? txs : []).filter((tx) => previousRangeSet.has(dayFromIsoInZone(tx.date, tz)));
+  const reportSettings = await getReportSettings(dbConn, userId);
   const sortedDays = Array.from(rangeSet).sort();
   const periodLabel = reportType === 'weekly'
     ? `${formatDayMonth(sortedDays[0])} — ${formatDayMonth(today)}.${String(today).slice(0, 4)}`
@@ -1020,21 +1017,15 @@ const sendUserReport = async (dbConn, userId, chatId, reportType, timeZone) => {
      WHERE user_id = ? AND day >= ? AND day <= ?`,
     [userId, sortedDays[0], sortedDays[sortedDays.length - 1]]
   );
-  const reportCurrency = detectPrimaryCurrency(scoped);
+  const reportCurrency = normalizeCurrency(reportSettings.reportCurrency || detectPrimaryCurrency(scoped));
   const workedHours = (shiftRows || []).reduce((acc, row) => acc + (Math.max(0, Number(row.worked_hours) || 0)), 0);
-  const salaryInReportCurrency = (shiftRows || []).reduce((acc, row) => {
-    if (normalizeCurrency(row.salary_currency) !== normalizeCurrency(reportCurrency)) return acc;
-    return acc + (Math.max(0, Number(row.salary_amount) || 0));
-  }, 0);
   const workedDaySet = new Set((shiftRows || []).map((row) => String(row.day || '')).filter(Boolean));
   const workingDays = workedDaySet.size;
   const avgPerDay = workingDays > 0 ? workedHours / workingDays : 0;
-  const hourlyRate = workedHours > 0 ? salaryInReportCurrency / workedHours : 0;
   const text = buildReportText(reportType, periodLabel, scoped, comparison, {
     workedHours,
     workingDays,
     avgPerDay,
-    hourlyRate,
     reportCurrency,
     previousIncome: previousSummary.income,
     previousExpense: previousSummary.expense,
@@ -1935,6 +1926,7 @@ app.put('/api/reports/settings', async (req, res) => {
   }
   if (req.body?.autoWeekly !== undefined) patch.autoWeekly = Boolean(req.body.autoWeekly);
   if (req.body?.autoMonthly !== undefined) patch.autoMonthly = Boolean(req.body.autoMonthly);
+  if (req.body?.reportCurrency !== undefined) patch.reportCurrency = normalizeCurrency(req.body.reportCurrency);
   const settings = await updateReportSettings(db, userId, patch);
   res.json(settings);
 });

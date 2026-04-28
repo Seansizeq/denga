@@ -12,6 +12,7 @@ import {
   sendMonthlyReportNow,
   getReminders,
   updateReminder,
+  type ReportSettings,
   type Reminder,
 } from '../api/client';
 import styles from './Settings.module.css';
@@ -27,7 +28,7 @@ const Settings: React.FC = () => {
   const tgWindow = window as Window & TelegramWindow;
   const tg = tgWindow.Telegram?.WebApp;
   const openedFromTelegram = !!(tg?.initData || tg?.initDataUnsafe?.user?.id);
-  const [reports, setReports] = useState({ autoWeekly: true, autoMonthly: true, sendTime: '21:00' });
+  const [reports, setReports] = useState<ReportSettings>({ autoWeekly: true, autoMonthly: true, reportCurrency: 'UAH', sendTime: '21:00' });
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [loadingAutomation, setLoadingAutomation] = useState(false);
 
@@ -48,6 +49,11 @@ const Settings: React.FC = () => {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (reports.reportCurrency === displayCurrency) return;
+    void setReportPatch({ reportCurrency: displayCurrency });
+  }, [displayCurrency, reports.reportCurrency]);
 
   const setReportPatch = async (patch: Partial<typeof reports>) => {
     setLoadingAutomation(true);

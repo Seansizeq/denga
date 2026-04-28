@@ -69,10 +69,16 @@ export async function initDb() {
       user_id TEXT PRIMARY KEY,
       auto_weekly INTEGER NOT NULL DEFAULT 1,
       auto_monthly INTEGER NOT NULL DEFAULT 1,
+      report_currency TEXT NOT NULL DEFAULT 'UAH',
       send_time TEXT NOT NULL DEFAULT '21:00',
       updated_at TEXT NOT NULL
     )
   `);
+  try {
+    await db.exec(`ALTER TABLE bot_report_settings ADD COLUMN report_currency TEXT NOT NULL DEFAULT 'UAH'`);
+  } catch {
+    /* already exists */
+  }
   await db.exec(`
     CREATE TABLE IF NOT EXISTS bot_report_deliveries (
       user_id TEXT NOT NULL,
