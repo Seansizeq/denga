@@ -135,10 +135,13 @@ type Dict = {
     minutesShort: string;
     chooseStartTemplate: string;
     startWithoutTemplate: string;
+    dayShifts: string;
+    dayShiftsEmpty: string;
     monthReportTitle: string;
     dayReportTitle: string;
     yearReportTitle: string;
     reportHoursTotal: string;
+    totalShifts: string;
     salaryForReportHint: string;
     shiftPayment: string;
   };
@@ -347,10 +350,13 @@ const uk: Dict = {
     minutesShort: 'хв',
     chooseStartTemplate: 'Оберіть шаблон для старту',
     startWithoutTemplate: 'Почати без шаблону',
+    dayShifts: 'Зміни за день',
+    dayShiftsEmpty: 'Ще немає завершених змін за цей день',
     monthReportTitle: 'Звіт за місяць',
     dayReportTitle: 'Звіт за день',
     yearReportTitle: 'Звіт за рік',
     reportHoursTotal: 'Відпрацьовано годин',
+    totalShifts: 'Усього змін',
     salaryForReportHint: 'Для звіту вкажіть ставку за годину або фіксовану суму за зміну. Валюта: гривня або злотий.',
     shiftPayment: 'Оплата за зміну',
   },
@@ -564,10 +570,13 @@ const ru: Dict = {
     minutesShort: 'мин',
     chooseStartTemplate: 'Выберите шаблон для старта',
     startWithoutTemplate: 'Начать без шаблона',
+    dayShifts: 'Смены за день',
+    dayShiftsEmpty: 'За этот день пока нет завершённых смен',
     monthReportTitle: 'Отчёт за месяц',
     dayReportTitle: 'Отчёт за день',
     yearReportTitle: 'Отчёт за год',
     reportHoursTotal: 'Отработано часов',
+    totalShifts: 'Всего смен',
     salaryForReportHint: 'Для отчёта укажите ставку за час или фиксированную сумму за смену. Валюта: гривна или злотый.',
     shiftPayment: 'Оплата за смену',
   },
@@ -781,10 +790,13 @@ const en: Dict = {
     minutesShort: 'm',
     chooseStartTemplate: 'Choose a template to start',
     startWithoutTemplate: 'Start without template',
+    dayShifts: 'Shifts for this day',
+    dayShiftsEmpty: 'No completed shifts for this day yet',
     monthReportTitle: 'Monthly summary',
     dayReportTitle: 'Daily summary',
     yearReportTitle: 'Yearly summary',
     reportHoursTotal: 'Hours worked',
+    totalShifts: 'Total shifts',
     salaryForReportHint: 'For the report: hourly rate or fixed amount per shift. Currency: hryvnia or zloty.',
     shiftPayment: 'Pay for this shift',
   },

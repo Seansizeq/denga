@@ -235,6 +235,24 @@ export async function initDb() {
   `);
 
   await db.exec(`
+    CREATE TABLE IF NOT EXISTS planner_shift_entries (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL DEFAULT '',
+      day TEXT NOT NULL,
+      started_at TEXT NOT NULL,
+      ended_at TEXT NOT NULL,
+      worked_hours REAL NOT NULL DEFAULT 0,
+      salary_rate REAL NOT NULL DEFAULT 0,
+      salary_amount REAL NOT NULL DEFAULT 0,
+      salary_currency TEXT NOT NULL DEFAULT 'UAH',
+      note TEXT NOT NULL DEFAULT '',
+      template_id TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS account_portfolio (
       account_key TEXT PRIMARY KEY,
       user_id TEXT NOT NULL DEFAULT '',
@@ -302,6 +320,10 @@ export async function initDb() {
   await db.exec(`
     CREATE INDEX IF NOT EXISTS idx_planner_shift_templates_user
     ON planner_shift_templates(user_id, updated_at DESC)
+  `);
+  await db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_planner_shift_entries_user_day
+    ON planner_shift_entries(user_id, day, ended_at DESC)
   `);
   await db.exec(`
     CREATE INDEX IF NOT EXISTS idx_accounts_user_sort

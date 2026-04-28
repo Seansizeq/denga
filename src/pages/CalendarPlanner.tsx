@@ -8,10 +8,13 @@ import styles from './CalendarPlanner.module.css';
 
 interface DayPlan {
   hasShift: boolean;
+  shiftsCount?: number;
   workedHours: number;
   salaryRate: number;
   salaryAmount: number;
   salaryCurrency: PlannerCurrency;
+  salaryAmountUah?: number;
+  salaryAmountPln?: number;
   note: string;
 }
 
@@ -39,6 +42,18 @@ interface ActiveShift {
   salaryAmount: number;
   salaryCurrency: PlannerCurrency;
   shiftNote: string;
+}
+
+interface ShiftEntry {
+  id: string;
+  day: string;
+  startedAt: string;
+  endedAt: string;
+  workedHours: number;
+  salaryRate: number;
+  salaryAmount: number;
+  salaryCurrency: PlannerCurrency;
+  note: string;
 }
 
 
@@ -170,6 +185,8 @@ const CalendarPlanner: React.FC = () => {
   const [reportRange, setReportRange] = useState<PlannerReportRange>('month');
   const [activeShift, setActiveShift] = useState<ActiveShift | null>(null);
   const [activeShiftLoading, setActiveShiftLoading] = useState(false);
+  const [dayShiftEntries, setDayShiftEntries] = useState<ShiftEntry[]>([]);
+  const [dayShiftEntriesLoading, setDayShiftEntriesLoading] = useState(false);
   const monthInputRef = useRef<HTMLInputElement | null>(null);
   const [shiftElapsedText, setShiftElapsedText] = useState('0г 0хв');
 
@@ -202,10 +219,13 @@ const CalendarPlanner: React.FC = () => {
       for (const row of rows) {
         next[row.day] = {
           hasShift: Boolean(row.hasShift),
+          shiftsCount: toNumber((row as { shiftsCount?: unknown }).shiftsCount),
           workedHours: toNumber(row.workedHours),
           salaryRate: toNumber(row.salaryRate),
           salaryAmount: toNumber(row.salaryAmount),
           salaryCurrency: row.salaryCurrency === 'PLN' ? 'PLN' : 'UAH',
+          salaryAmountUah: toNumber((row as { salaryAmountUah?: unknown }).salaryAmountUah),
+          salaryAmountPln: toNumber((row as { salaryAmountPln?: unknown }).salaryAmountPln),
           note: row.note ?? '',
         };
       }
@@ -279,6 +299,7 @@ const CalendarPlanner: React.FC = () => {
       if (response.ok) {
         setActiveShift(null);
         await reloadPlannerData();
+        await loadDayShiftEntries(selectedDay);
       } else {
         console.error('End shift failed with status', response.status);
       }
@@ -352,16 +373,19 @@ const CalendarPlanner: React.FC = () => {
     let totalSalaryUah = 0;
     let totalSalaryPln = 0;
     let filledDays = 0;
+    let totalShifts = 0;
     for (const day of days) {
       const p = store[day];
       if (!p?.hasShift) continue;
       filledDays += 1;
+      totalShifts += Math.max(1, Math.floor(toNumber(p.shiftsCount)));
       totalHours += p.workedHours || 0;
-      const pay = expectedPayForDay(p);
-      if (p.salaryCurrency === 'PLN') totalSalaryPln += pay;
-      else totalSalaryUah += pay;
+      const payUah = p.salaryAmountUah ?? (p.salaryCurrency === 'UAH' ? expectedPayForDay(p) : 0);
+      const payPln = p.salaryAmountPln ?? (p.salaryCurrency === 'PLN' ? expectedPayForDay(p) : 0);
+      totalSalaryUah += payUah;
+      totalSalaryPln += payPln;
     }
-    return { totalHours, totalSalaryUah, totalSalaryPln, filledDays };
+    return { totalHours, totalSalaryUah, totalSalaryPln, filledDays, totalShifts };
   }, [store, month, reportRange, selectedDay]);
 
   useEffect(() => {
@@ -382,6 +406,44 @@ const CalendarPlanner: React.FC = () => {
   useEffect(() => {
     void loadShiftTemplates();
   }, []);
+
+  const loadDayShiftEntries = useCallback(async (dayIso: string) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dayIso)) {
+      setDayShiftEntries([]);
+      return;
+    }
+    setDayShiftEntriesLoading(true);
+    try {
+      const response = await apiFetch(`/api/planner/${encodeURIComponent(dayIso)}/shifts`);
+      if (!response.ok) {
+        setDayShiftEntries([]);
+        return;
+      }
+      const rows = (await response.json()) as ShiftEntry[];
+      setDayShiftEntries(
+        Array.isArray(rows)
+          ? rows.map((row) => ({
+              ...row,
+              workedHours: toNumber(row.workedHours),
+              salaryRate: toNumber(row.salaryRate),
+              salaryAmount: toNumber(row.salaryAmount),
+              salaryCurrency: row.salaryCurrency === 'PLN' ? 'PLN' : 'UAH',
+              note: row.note ?? '',
+            }))
+          : []
+      );
+    } catch (error) {
+      console.error('Failed to load day shift entries:', error);
+      setDayShiftEntries([]);
+    } finally {
+      setDayShiftEntriesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!chooserOpen) return;
+    void loadDayShiftEntries(selectedDay);
+  }, [chooserOpen, selectedDay, loadDayShiftEntries]);
 
   const hoursFromTimeRange = (start: string, end: string): number => {
     const [sh, sm] = start.split(':').map(Number);
@@ -654,6 +716,10 @@ const CalendarPlanner: React.FC = () => {
               <strong className={styles.reportValue}>{monthReport.filledDays}</strong>
             </div>
             <div className={styles.reportStatItem}>
+              <span className={styles.reportLabel}>{t('planner', 'totalShifts')}</span>
+              <strong className={styles.reportValue}>{monthReport.totalShifts}</strong>
+            </div>
+            <div className={styles.reportStatItem}>
               <span className={styles.reportLabel}>{t('planner', 'reportHoursTotal')}</span>
               <strong className={styles.reportValue}>
                 {monthReport.totalHours.toLocaleString(locale, { maximumFractionDigits: 1, minimumFractionDigits: 0 })}
@@ -732,6 +798,24 @@ const CalendarPlanner: React.FC = () => {
                 </ul>
               </>
             ) : null}
+            <p className={styles.templateSectionLabel}>{t('planner', 'dayShifts')}</p>
+            {dayShiftEntriesLoading ? (
+              <p className={styles.dayShiftsEmpty}>{t('planner', 'loading')}</p>
+            ) : dayShiftEntries.length === 0 ? (
+              <p className={styles.dayShiftsEmpty}>{t('planner', 'dayShiftsEmpty')}</p>
+            ) : (
+              <ul className={styles.dayShiftsList} role="list">
+                {dayShiftEntries.map((entry) => (
+                  <li key={entry.id} className={styles.dayShiftRow}>
+                    <span className={styles.dayShiftMain}>{entry.note || t('planner', 'shiftTitle')}</span>
+                    <span className={styles.dayShiftMeta}>
+                      {entry.workedHours.toLocaleString(locale, { maximumFractionDigits: 2 })}{t('planner', 'hoursShort')} ·{' '}
+                      {entry.salaryAmount > 0 ? formatPlannerMoney(entry.salaryAmount, locale, entry.salaryCurrency) : '—'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
       ) : null}

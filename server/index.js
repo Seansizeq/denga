@@ -1320,28 +1320,39 @@ if (bot) {
     const diffHours = Math.max(0, (now.getTime() - startedAtDate.getTime()) / (1000 * 60 * 60));
     const roundedHours = Number(diffHours.toFixed(2));
     const day = String(active.started_day || dayFromIsoInZone(active.started_at, userTimeZone) || active.started_at.slice(0, 10));
-    const dayKey = plannerDayKey(userId, day);
-    const dayCurrent = await db.get(
-      'SELECT workedHours, salaryRate, salaryAmount, salary_currency, note FROM planner_days WHERE day = ? LIMIT 1',
-      [dayKey]
-    );
-    const totalHours = Number(((Number(dayCurrent?.workedHours) || 0) + roundedHours).toFixed(2));
     const shiftSalaryRate = Number(active.salary_rate) || 0;
     const shiftSalaryAmount = Number(active.salary_amount) || 0;
-    const shiftSalaryCurrency = active.salary_currency === 'PLN' ? 'PLN' : 'UAH';
+    const shiftSalaryCurrency = normalizeCurrency(active.salary_currency) === 'PLN' ? 'PLN' : 'UAH';
     const baseNote = String(active.shift_note ?? '').trim();
-    let salaryAmount = shiftSalaryAmount > 0 ? shiftSalaryAmount : (Number(dayCurrent?.salaryAmount) || 0);
-    const salaryRate = shiftSalaryRate > 0 ? shiftSalaryRate : (Number(dayCurrent?.salaryRate) || 0);
-    if (salaryAmount <= 0 && salaryRate > 0 && totalHours > 0) {
-      salaryAmount = Number((salaryRate * totalHours).toFixed(2));
+    let salaryAmount = shiftSalaryAmount;
+    if (salaryAmount <= 0 && shiftSalaryRate > 0 && roundedHours > 0) {
+      salaryAmount = Number((shiftSalaryRate * roundedHours).toFixed(2));
     }
+    const nowIso = now.toISOString();
+    const entryNote = baseNote || buildBotShiftNote(active.started_at, nowIso, userTimeZone);
+    await db.run(
+      `INSERT INTO planner_shift_entries
+       (id, user_id, day, started_at, ended_at, worked_hours, salary_rate, salary_amount, salary_currency, note, template_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        uuidv4(),
+        userId,
+        day,
+        String(active.started_at),
+        nowIso,
+        roundedHours,
+        Math.max(0, shiftSalaryRate),
+        Math.max(0, salaryAmount),
+        shiftSalaryCurrency,
+        entryNote,
+        active.template_id ? String(active.template_id) : null,
+        nowIso,
+        nowIso,
+      ]
+    );
     await upsertPlannerDay(db, userId, day, {
       hasShift: true,
-      workedHours: totalHours,
-      salaryRate,
-      salaryAmount,
-      salaryCurrency: shiftSalaryCurrency,
-      note: baseNote || buildBotShiftNote(active.started_at, now.toISOString(), userTimeZone),
+      note: entryNote,
     });
     await db.run('DELETE FROM bot_active_shifts WHERE user_id = ?', [userId]);
     bot.sendMessage(
@@ -2574,17 +2585,111 @@ app.get('/api/planner', async (req, res) => {
     'SELECT day, hasShift, workedHours, salaryRate, salaryAmount, salary_currency, note, updatedAt FROM planner_days WHERE day LIKE ? ORDER BY day ASC',
     [plannerDayKey(userId, likePattern)]
   );
+  const entries = await db.all(
+    `SELECT day, worked_hours, salary_amount, salary_currency, note, ended_at
+     FROM planner_shift_entries
+     WHERE user_id = ? AND day LIKE ?
+     ORDER BY ended_at DESC`,
+    [userId, likePattern]
+  );
 
-  res.json(
-    days.map((row) => ({
-      day: plannerDayFromStored(userId, row.day),
-      hasShift: Boolean(row.hasShift),
-      workedHours: Number(row.workedHours) || 0,
+  const entriesByDay = new Map();
+  for (const row of entries) {
+    const key = String(row.day || '');
+    if (!key) continue;
+    const current = entriesByDay.get(key) ?? {
+      workedHours: 0,
+      salaryAmountUah: 0,
+      salaryAmountPln: 0,
+      entriesCount: 0,
+      latestEndedAt: '',
+      latestNote: '',
+    };
+    const hours = Math.max(0, Number(row.worked_hours) || 0);
+    const amount = Math.max(0, Number(row.salary_amount) || 0);
+    const currency = normalizeCurrency(row.salary_currency) === 'PLN' ? 'PLN' : 'UAH';
+    current.workedHours += hours;
+    if (currency === 'PLN') current.salaryAmountPln += amount;
+    else current.salaryAmountUah += amount;
+    current.entriesCount += 1;
+    if (!current.latestEndedAt || String(row.ended_at || '') > current.latestEndedAt) {
+      current.latestEndedAt = String(row.ended_at || '');
+      current.latestNote = String(row.note || '').trim();
+    }
+    entriesByDay.set(key, current);
+  }
+
+  const mergedByDay = new Map();
+  for (const row of days) {
+    const dayIso = plannerDayFromStored(userId, row.day);
+    const entryAgg = entriesByDay.get(dayIso);
+    const basePay = Math.max(0, Number(row.salaryAmount) || 0);
+    const baseCurrency = normalizeCurrency(row.salary_currency) === 'PLN' ? 'PLN' : 'UAH';
+    const salaryAmountUah = (baseCurrency === 'UAH' ? basePay : 0) + (entryAgg?.salaryAmountUah || 0);
+    const salaryAmountPln = (baseCurrency === 'PLN' ? basePay : 0) + (entryAgg?.salaryAmountPln || 0);
+    const merged = {
+      day: dayIso,
+      hasShift: Boolean(row.hasShift) || Boolean(entryAgg),
+      workedHours: (Number(row.workedHours) || 0) + (entryAgg?.workedHours || 0),
       salaryRate: Number(row.salaryRate) || 0,
       salaryAmount: Number(row.salaryAmount) || 0,
-      salaryCurrency: row.salary_currency === 'PLN' ? 'PLN' : 'UAH',
-      note: row.note ?? '',
+      salaryCurrency: baseCurrency,
+      salaryAmountUah,
+      salaryAmountPln,
+      shiftsCount: (entryAgg?.entriesCount || 0) + (Boolean(row.hasShift) && !(entryAgg?.entriesCount > 0) ? 1 : 0),
+      note: String(row.note ?? '').trim() || String(entryAgg?.latestNote ?? '').trim(),
       updatedAt: row.updatedAt,
+    };
+    mergedByDay.set(dayIso, merged);
+  }
+  for (const [dayIso, entryAgg] of entriesByDay.entries()) {
+    if (mergedByDay.has(dayIso)) continue;
+    mergedByDay.set(dayIso, {
+      day: dayIso,
+      hasShift: true,
+      workedHours: entryAgg.workedHours,
+      salaryRate: 0,
+      salaryAmount: 0,
+      salaryCurrency: 'UAH',
+      salaryAmountUah: entryAgg.salaryAmountUah,
+      salaryAmountPln: entryAgg.salaryAmountPln,
+      shiftsCount: entryAgg.entriesCount || 0,
+      note: entryAgg.latestNote,
+      updatedAt: entryAgg.latestEndedAt || new Date().toISOString(),
+    });
+  }
+
+  res.json(
+    Array.from(mergedByDay.values()).sort((a, b) => String(a.day).localeCompare(String(b.day)))
+  );
+});
+
+app.get('/api/planner/:day/shifts', async (req, res) => {
+  const userId = req.authUserId;
+  const { day } = req.params;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+    res.status(400).json({ error: 'day param must be in YYYY-MM-DD format' });
+    return;
+  }
+  const rows = await db.all(
+    `SELECT id, day, started_at, ended_at, worked_hours, salary_rate, salary_amount, salary_currency, note, template_id
+     FROM planner_shift_entries
+     WHERE user_id = ? AND day = ?
+     ORDER BY ended_at DESC`,
+    [userId, day]
+  );
+  res.json(
+    rows.map((row) => ({
+      id: String(row.id),
+      day: String(row.day),
+      startedAt: String(row.started_at),
+      endedAt: String(row.ended_at),
+      workedHours: Math.max(0, Number(row.worked_hours) || 0),
+      salaryRate: Math.max(0, Number(row.salary_rate) || 0),
+      salaryAmount: Math.max(0, Number(row.salary_amount) || 0),
+      salaryCurrency: normalizeCurrency(row.salary_currency) === 'PLN' ? 'PLN' : 'UAH',
+      note: String(row.note ?? ''),
+      templateId: row.template_id ? String(row.template_id) : null,
     }))
   );
 });
@@ -2829,36 +2934,49 @@ app.post('/api/planner/active-shift/end', async (req, res) => {
   
   const userTimeZone = await getUserTimeZone(db, userId);
   const day = String(active.started_day || dayFromIsoInZone(active.started_at, userTimeZone) || active.started_at.slice(0, 10));
-  const dayKey = plannerDayKey(userId, day);
-  
-  const dayCurrent = await db.get(
-    'SELECT workedHours, salaryRate, salaryAmount, salary_currency, note FROM planner_days WHERE day = ? LIMIT 1',
-    [dayKey]
-  );
-  
-  const totalHours = Number(((Number(dayCurrent?.workedHours) || 0) + roundedHours).toFixed(2));
   const shiftSalaryRate = Number(active.salary_rate) || 0;
   const shiftSalaryAmount = Number(active.salary_amount) || 0;
-  const shiftSalaryCurrency = active.salary_currency === 'PLN' ? 'PLN' : 'UAH';
+  const shiftSalaryCurrency = normalizeCurrency(active.salary_currency) === 'PLN' ? 'PLN' : 'UAH';
   const baseNote = String(active.shift_note ?? '').trim();
-  
-  let salaryAmount = shiftSalaryAmount > 0 ? shiftSalaryAmount : (Number(dayCurrent?.salaryAmount) || 0);
-  const salaryRate = shiftSalaryRate > 0 ? shiftSalaryRate : (Number(dayCurrent?.salaryRate) || 0);
-  if (salaryAmount <= 0 && salaryRate > 0 && totalHours > 0) {
-    salaryAmount = Number((salaryRate * totalHours).toFixed(2));
+  let salaryAmount = shiftSalaryAmount;
+  if (salaryAmount <= 0 && shiftSalaryRate > 0 && roundedHours > 0) {
+    salaryAmount = Number((shiftSalaryRate * roundedHours).toFixed(2));
   }
-  
+  const entryNote = baseNote || buildBotShiftNote(active.started_at, now.toISOString(), userTimeZone);
+  const nowIso = now.toISOString();
+  await db.run(
+    `INSERT INTO planner_shift_entries
+     (id, user_id, day, started_at, ended_at, worked_hours, salary_rate, salary_amount, salary_currency, note, template_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      uuidv4(),
+      userId,
+      day,
+      String(active.started_at),
+      nowIso,
+      roundedHours,
+      Math.max(0, shiftSalaryRate),
+      Math.max(0, salaryAmount),
+      shiftSalaryCurrency,
+      entryNote,
+      active.template_id ? String(active.template_id) : null,
+      nowIso,
+      nowIso,
+    ]
+  );
   await upsertPlannerDay(db, userId, day, {
     hasShift: true,
-    workedHours: totalHours,
-    salaryRate,
-    salaryAmount,
-    salaryCurrency: shiftSalaryCurrency,
-    note: baseNote || buildBotShiftNote(active.started_at, now.toISOString(), userTimeZone),
+    note: entryNote,
   });
   
   await db.run('DELETE FROM bot_active_shifts WHERE user_id = ?', [userId]);
-  res.json({ success: true, roundedHours, totalHours, day });
+  const dayTotals = await db.get(
+    `SELECT COALESCE(SUM(worked_hours), 0) AS total_hours
+     FROM planner_shift_entries
+     WHERE user_id = ? AND day = ?`,
+    [userId, day]
+  );
+  res.json({ success: true, roundedHours, totalHours: Number(dayTotals?.total_hours) || roundedHours, day });
 });
 
 app.use((err, _req, res, next) => {

@@ -95,7 +95,7 @@
 
 .reportStatsGrid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 16px;
 }
@@ -478,6 +478,44 @@
 .templateDeleteBtn:active {
   transform: scale(0.95);
   background: rgba(255, 69, 58, 0.2);
+}
+
+.dayShiftsList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: min(32vh, 240px);
+  overflow-y: auto;
+}
+
+.dayShiftRow {
+  border: 1px solid var(--border-light);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.02);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dayShiftMain {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.dayShiftMeta {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.dayShiftsEmpty {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: 13px;
 }
 
 .modalSheetEditor {
