@@ -214,6 +214,14 @@ type Dict = {
     fxCache: string;
     fxFallback: string;
     fxRefresh: string;
+    automationTitle: string;
+    weeklyAutoReport: string;
+    monthlyAutoReport: string;
+    reportSendTime: string;
+    sendWeeklyNow: string;
+    sendMonthlyNow: string;
+    dailyReminder: string;
+    subscriptionsReminder: string;
   };
   categories: {
     food: string;
@@ -435,6 +443,14 @@ const uk: Dict = {
     fxCache: 'Кеш',
     fxFallback: 'Резервні',
     fxRefresh: 'Оновити курси',
+    automationTitle: 'Автоматизація Telegram',
+    weeklyAutoReport: 'Авто тижневий звіт',
+    monthlyAutoReport: 'Авто місячний звіт',
+    reportSendTime: 'Час надсилання звіту',
+    sendWeeklyNow: 'Надіслати тижневий звіт зараз',
+    sendMonthlyNow: 'Надіслати місячний звіт зараз',
+    dailyReminder: 'Щоденне нагадування',
+    subscriptionsReminder: 'Нагадування про підписки',
   },
   categories: {
     food: 'Продукти',
@@ -661,6 +677,14 @@ const ru: Dict = {
     fxCache: 'Кэш',
     fxFallback: 'Резервные',
     fxRefresh: 'Обновить курсы',
+    automationTitle: 'Автоматизация Telegram',
+    weeklyAutoReport: 'Авто недельный отчёт',
+    monthlyAutoReport: 'Авто месячный отчёт',
+    reportSendTime: 'Время отправки отчёта',
+    sendWeeklyNow: 'Отправить недельный отчёт сейчас',
+    sendMonthlyNow: 'Отправить месячный отчёт сейчас',
+    dailyReminder: 'Ежедневное напоминание',
+    subscriptionsReminder: 'Напоминание о подписках',
   },
   categories: {
     food: 'Продукты',
@@ -887,6 +911,14 @@ const en: Dict = {
     fxCache: 'Cache',
     fxFallback: 'Fallback',
     fxRefresh: 'Refresh rates',
+    automationTitle: 'Telegram automation',
+    weeklyAutoReport: 'Weekly auto report',
+    monthlyAutoReport: 'Monthly auto report',
+    reportSendTime: 'Report send time',
+    sendWeeklyNow: 'Send weekly report now',
+    sendMonthlyNow: 'Send monthly report now',
+    dailyReminder: 'Daily reminder',
+    subscriptionsReminder: 'Subscription reminder',
   },
   categories: {
     food: 'Groceries',

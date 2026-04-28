@@ -186,10 +186,10 @@ const Settings: React.FC = () => {
       </section>
 
       <section className={styles.section}>
-        <div className={styles.sectionLabel}>Telegram automation</div>
+        <div className={styles.sectionLabel}>{t('settings', 'automationTitle')}</div>
         <div className={styles.card}>
           <label className={styles.row}>
-            <span className={styles.rowLabel}>Weekly auto report</span>
+            <span className={styles.rowLabel}>{t('settings', 'weeklyAutoReport')}</span>
             <input
               type="checkbox"
               checked={reports.autoWeekly}
@@ -198,7 +198,7 @@ const Settings: React.FC = () => {
             />
           </label>
           <label className={styles.row}>
-            <span className={styles.rowLabel}>Monthly auto report</span>
+            <span className={styles.rowLabel}>{t('settings', 'monthlyAutoReport')}</span>
             <input
               type="checkbox"
               checked={reports.autoMonthly}
@@ -207,7 +207,7 @@ const Settings: React.FC = () => {
             />
           </label>
           <label className={styles.row}>
-            <span className={styles.rowLabel}>Report send time</span>
+            <span className={styles.rowLabel}>{t('settings', 'reportSendTime')}</span>
             <input
               className={styles.timeInput}
               type="time"
@@ -217,15 +217,15 @@ const Settings: React.FC = () => {
             />
           </label>
           <button type="button" className={styles.row} disabled={loadingAutomation} onClick={() => void sendWeeklyReportNow()}>
-            <span className={styles.rowLabel}>Send weekly report now</span>
+            <span className={styles.rowLabel}>{t('settings', 'sendWeeklyNow')}</span>
           </button>
           <button type="button" className={styles.row} disabled={loadingAutomation} onClick={() => void sendMonthlyReportNow()}>
-            <span className={styles.rowLabel}>Send monthly report now</span>
+            <span className={styles.rowLabel}>{t('settings', 'sendMonthlyNow')}</span>
           </button>
           {reminders.map((reminder) => (
             <label key={reminder.id} className={styles.row}>
               <span className={styles.rowLabel}>
-                {reminder.kind === 'daily' ? 'Daily reminder' : 'Subscription reminder'}
+                {reminder.kind === 'daily' ? t('settings', 'dailyReminder') : t('settings', 'subscriptionsReminder')}
               </span>
               <input
                 type="checkbox"
