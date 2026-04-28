@@ -601,6 +601,8 @@ const CATEGORY_EMOJI = {
   other_expense: '💊',
 };
 const DEFAULT_MONTHLY_GOAL_UAH = 18500;
+const DEFAULT_MONTHLY_INCOME_PLAN_UAH = 50000;
+const DEFAULT_MONTHLY_WORK_HOURS_NORM = 156;
 const formatDayMonth = (iso) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(iso || ''))) return String(iso || '');
   const [, m, d] = String(iso).split('-');
@@ -611,6 +613,19 @@ const formatWeekdayUk = (iso) => {
   if (Number.isNaN(d.getTime())) return '—';
   const raw = new Intl.DateTimeFormat('uk-UA', { weekday: 'long' }).format(d);
   return raw.charAt(0).toUpperCase() + raw.slice(1);
+};
+const formatMonthHeaderUk = (isoDay) => {
+  const d = new Date(`${isoDay}T12:00:00.000Z`);
+  if (Number.isNaN(d.getTime())) return 'МІСЯЦЬ';
+  const month = new Intl.DateTimeFormat('uk-UA', { month: 'long' }).format(d).toUpperCase();
+  const year = new Intl.DateTimeFormat('uk-UA', { year: 'numeric' }).format(d);
+  return `${month} ${year}`;
+};
+const percentChange = (current, previous) => {
+  const prev = Number(previous) || 0;
+  const cur = Number(current) || 0;
+  if (prev === 0) return cur === 0 ? 0 : 100;
+  return ((cur - prev) / Math.abs(prev)) * 100;
 };
 const currencySymbol = (code) => {
   const normalized = normalizeCurrency(code);
@@ -875,11 +890,69 @@ const buildReportText = (reportType, periodLabel, txs, comparison, extra = {}) =
     lines.push('⏰ *РОБОЧИЙ ЧАС*');
     lines.push(`├ Відпрацьовано: *${workedHours.toLocaleString('uk-UA', { maximumFractionDigits: 2 })} год*`);
     lines.push('└ Деталі — у вебапі');
+    return lines.join('\n');
+  }
+  if (reportType === 'monthly') {
+    const expenseByCategory = new Map();
+    for (const tx of txs || []) {
+      if (tx.type !== 'expense') continue;
+      const amount = Math.max(0, Number(tx.amount) || 0);
+      expenseByCategory.set(tx.categoryId, (expenseByCategory.get(tx.categoryId) ?? 0) + amount);
+    }
+    const topExpenseCategories = Array.from(expenseByCategory.entries())
+      .map(([categoryId, amount]) => ({ categoryId, amount }))
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, 5);
+    const totalExpense = Math.max(0, Number(summary.expense) || 0);
+    const workedHours = Math.max(0, Number(extra.workedHours) || 0);
+    const workingDays = Math.max(0, Number(extra.workingDays) || 0);
+    const avgPerDay = Math.max(0, Number(extra.avgPerDay) || 0);
+    const hourlyRate = Math.max(0, Number(extra.hourlyRate) || 0);
+    const incomePct = percentChange(summary.income, Number(extra.previousIncome) || 0);
+    const expensePct = percentChange(summary.expense, Number(extra.previousExpense) || 0);
+    const netPct = percentChange(summary.net, Number(extra.previousNet) || 0);
+    const incomePlan = Math.max(1, Number(extra.incomePlan) || DEFAULT_MONTHLY_INCOME_PLAN_UAH);
+    const incomePlanPct = (Math.max(0, Number(summary.income) || 0) / incomePlan) * 100;
+    const savedPct = summary.income > 0 ? (Math.max(0, Number(summary.net) || 0) / summary.income) * 100 : 0;
+    const overNorm = workedHours - DEFAULT_MONTHLY_WORK_HOURS_NORM;
+    const monthHeader = formatMonthHeaderUk(extra.periodEndDay || '');
+    const lines = [
+      `📅 *ФІНАНСОВИЙ ЗВІТ — ${monthHeader}*`,
+      '━━━━━━━━━━━━━━━━━━━━━━━━━━',
+      '',
+      '💰 *ЗАГАЛЬНА СТАТИСТИКА*',
+      `Дохід: *+${formatAmount(summary.income)} ${sign}*`,
+      `Витрати: *-${formatAmount(summary.expense)} ${sign}*`,
+      `Баланс: \`${formatAmount(summary.net, true)} ${sign}\``,
+      '',
+      '📊 *ВИТРАТИ ПО КАТЕГОРІЯХ*',
+    ];
+    if (topExpenseCategories.length > 0) {
+      for (const item of topExpenseCategories) {
+        const pct = totalExpense > 0 ? (item.amount / totalExpense) * 100 : 0;
+        lines.push(
+          `${CATEGORY_EMOJI[item.categoryId] ?? '•'} ${categoryNameById(item.categoryId)}: ${formatAmount(item.amount)} ${sign} (${pct.toLocaleString('uk-UA', { maximumFractionDigits: 0 })}%)`
+        );
+      }
+    } else {
+      lines.push('• Немає витрат за період');
+    }
     lines.push('');
-    lines.push('💡 *Статистика тижня:*');
-    lines.push(`> Найбільша витрата: ${maxExpense ? `${categoryNameById(maxExpense.categoryId)} (${formatAmount(maxExpense.amount)} ${sign})` : '—'}`);
-    lines.push(`> Найприбутковіший день: ${bestDayEntry ? formatWeekdayUk(bestDayEntry[0]) : '—'}`);
-    lines.push('━━━━━━━━━━━━━━━━━━━━');
+    lines.push('⏰ *РОБОЧИЙ ЧАС*');
+    lines.push(`├ Всього відпрацьовано: *${workedHours.toLocaleString('uk-UA', { maximumFractionDigits: 2 })} год*`);
+    lines.push(`├ Робочих днів: ${workingDays}`);
+    lines.push(`├ Середньо/день: ${avgPerDay.toLocaleString('uk-UA', { maximumFractionDigits: 2 })} год`);
+    lines.push(`└ Ставка: ${hourlyRate.toLocaleString('uk-UA', { maximumFractionDigits: 2 })} ${sign}/год`);
+    lines.push('');
+    lines.push('📈 *ПОРІВНЯННЯ З МИНУЛИМ МІСЯЦЕМ*');
+    lines.push(`├ Дохід: \`${incomePct >= 0 ? '+' : ''}${incomePct.toLocaleString('uk-UA', { maximumFractionDigits: 0 })}%\` ${incomePct >= 0 ? '⬆️' : '⬇️'}`);
+    lines.push(`├ Витрати: \`${expensePct >= 0 ? '+' : ''}${expensePct.toLocaleString('uk-UA', { maximumFractionDigits: 0 })}%\` ${expensePct >= 0 ? '⬆️' : '⬇️'}`);
+    lines.push(`└ Баланс: \`${netPct >= 0 ? '+' : ''}${netPct.toLocaleString('uk-UA', { maximumFractionDigits: 0 })}%\` ${netPct >= 0 ? '⬆️' : '⬇️'}`);
+    lines.push('');
+    lines.push('🎯 *ДОСЯГНЕННЯ*');
+    lines.push(`✅ План по доходу виконано на ${incomePlanPct.toLocaleString('uk-UA', { maximumFractionDigits: 0 })}%`);
+    lines.push(`✅ Збережено ${savedPct.toLocaleString('uk-UA', { maximumFractionDigits: 0 })}% від доходу`);
+    lines.push(`✅ Відпрацьовано ${overNorm >= 0 ? '+' : ''}${overNorm.toLocaleString('uk-UA', { maximumFractionDigits: 0 })} год понад норму`);
     return lines.join('\n');
   }
   const title = reportType === 'weekly' ? '📊 ТИЖНЕВИЙ ЗВІТ' : '📅 МІСЯЧНИЙ ЗВІТ';
@@ -947,13 +1020,28 @@ const sendUserReport = async (dbConn, userId, chatId, reportType, timeZone) => {
      WHERE user_id = ? AND day >= ? AND day <= ?`,
     [userId, sortedDays[0], sortedDays[sortedDays.length - 1]]
   );
+  const reportCurrency = detectPrimaryCurrency(scoped);
   const workedHours = (shiftRows || []).reduce((acc, row) => acc + (Math.max(0, Number(row.worked_hours) || 0)), 0);
-  const salaryUah = (shiftRows || []).reduce((acc, row) => {
-    if (normalizeCurrency(row.salary_currency) !== 'UAH') return acc;
+  const salaryInReportCurrency = (shiftRows || []).reduce((acc, row) => {
+    if (normalizeCurrency(row.salary_currency) !== normalizeCurrency(reportCurrency)) return acc;
     return acc + (Math.max(0, Number(row.salary_amount) || 0));
   }, 0);
-  const reportCurrency = detectPrimaryCurrency(scoped);
-  const text = buildReportText(reportType, periodLabel, scoped, comparison, { workedHours, reportCurrency });
+  const workedDaySet = new Set((shiftRows || []).map((row) => String(row.day || '')).filter(Boolean));
+  const workingDays = workedDaySet.size;
+  const avgPerDay = workingDays > 0 ? workedHours / workingDays : 0;
+  const hourlyRate = workedHours > 0 ? salaryInReportCurrency / workedHours : 0;
+  const text = buildReportText(reportType, periodLabel, scoped, comparison, {
+    workedHours,
+    workingDays,
+    avgPerDay,
+    hourlyRate,
+    reportCurrency,
+    previousIncome: previousSummary.income,
+    previousExpense: previousSummary.expense,
+    previousNet: previousSummary.net,
+    incomePlan: DEFAULT_MONTHLY_INCOME_PLAN_UAH,
+    periodEndDay: today,
+  });
   await bot.sendMessage(chatId, text, {
     disable_web_page_preview: true,
     parse_mode: 'Markdown',
