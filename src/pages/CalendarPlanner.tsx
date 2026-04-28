@@ -305,6 +305,7 @@ const CalendarPlanner: React.FC = () => {
         setActiveShift(null);
         await reloadPlannerData();
         await loadDayShiftEntries(selectedDay);
+        await loadReportShiftEntries(reportDays);
       } else {
         console.error('End shift failed with status', response.status);
       }

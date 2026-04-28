@@ -1310,6 +1310,14 @@ if (bot) {
       bot.sendMessage(msg.chat.id, '⚠️ Активної зміни немає. Використайте /shift_start.');
       return;
     }
+    const deleteActive = await db.run(
+      'DELETE FROM bot_active_shifts WHERE user_id = ? AND started_at = ?',
+      [userId, active.started_at]
+    );
+    if (!deleteActive?.changes) {
+      bot.sendMessage(msg.chat.id, '⚠️ Зміну вже завершено. Оновіть календар.');
+      return;
+    }
     const now = new Date();
     const startedAtDate = new Date(active.started_at);
     if (Number.isNaN(startedAtDate.getTime())) {
@@ -1354,7 +1362,6 @@ if (bot) {
       hasShift: true,
       note: entryNote,
     });
-    await db.run('DELETE FROM bot_active_shifts WHERE user_id = ?', [userId]);
     bot.sendMessage(
       msg.chat.id,
       `🔴 Зміну завершено (${parseTimeFromIso(now.toISOString(), userTimeZone)}). Відпрацьовано: ${roundedHours.toLocaleString('uk-UA', { maximumFractionDigits: 2 })} год.`
@@ -2959,6 +2966,14 @@ app.post('/api/planner/active-shift/end', async (req, res) => {
     res.status(400).json({ error: 'No active shift' });
     return;
   }
+  const deleteActive = await db.run(
+    'DELETE FROM bot_active_shifts WHERE user_id = ? AND started_at = ?',
+    [userId, active.started_at]
+  );
+  if (!deleteActive?.changes) {
+    res.status(409).json({ error: 'Shift already ended' });
+    return;
+  }
   
   const now = new Date();
   const startedAtDate = new Date(active.started_at);
@@ -3002,7 +3017,6 @@ app.post('/api/planner/active-shift/end', async (req, res) => {
     note: entryNote,
   });
   
-  await db.run('DELETE FROM bot_active_shifts WHERE user_id = ?', [userId]);
   const dayTotals = await db.get(
     `SELECT COALESCE(SUM(worked_hours), 0) AS total_hours
      FROM planner_shift_entries
