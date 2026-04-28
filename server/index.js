@@ -2625,12 +2625,14 @@ app.get('/api/planner', async (req, res) => {
     const entryAgg = entriesByDay.get(dayIso);
     const basePay = Math.max(0, Number(row.salaryAmount) || 0);
     const baseCurrency = normalizeCurrency(row.salary_currency) === 'PLN' ? 'PLN' : 'UAH';
-    const salaryAmountUah = (baseCurrency === 'UAH' ? basePay : 0) + (entryAgg?.salaryAmountUah || 0);
-    const salaryAmountPln = (baseCurrency === 'PLN' ? basePay : 0) + (entryAgg?.salaryAmountPln || 0);
+    const hasEntries = Boolean((entryAgg?.entriesCount || 0) > 0);
+    const salaryAmountUah = hasEntries ? (entryAgg?.salaryAmountUah || 0) : (baseCurrency === 'UAH' ? basePay : 0);
+    const salaryAmountPln = hasEntries ? (entryAgg?.salaryAmountPln || 0) : (baseCurrency === 'PLN' ? basePay : 0);
+    const workedHours = hasEntries ? (entryAgg?.workedHours || 0) : (Number(row.workedHours) || 0);
     const merged = {
       day: dayIso,
       hasShift: Boolean(row.hasShift) || Boolean(entryAgg),
-      workedHours: (Number(row.workedHours) || 0) + (entryAgg?.workedHours || 0),
+      workedHours,
       salaryRate: Number(row.salaryRate) || 0,
       salaryAmount: Number(row.salaryAmount) || 0,
       salaryCurrency: baseCurrency,
@@ -2661,6 +2663,37 @@ app.get('/api/planner', async (req, res) => {
 
   res.json(
     Array.from(mergedByDay.values()).sort((a, b) => String(a.day).localeCompare(String(b.day)))
+  );
+});
+
+app.get('/api/planner/shift-entries', async (req, res) => {
+  const userId = req.authUserId;
+  const from = String(req.query.from ?? '');
+  const to = String(req.query.to ?? '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) {
+    res.status(400).json({ error: 'Query from/to must be YYYY-MM-DD and from <= to' });
+    return;
+  }
+  const rows = await db.all(
+    `SELECT id, day, started_at, ended_at, worked_hours, salary_rate, salary_amount, salary_currency, note, template_id
+     FROM planner_shift_entries
+     WHERE user_id = ? AND day >= ? AND day <= ?
+     ORDER BY ended_at DESC`,
+    [userId, from, to]
+  );
+  res.json(
+    rows.map((row) => ({
+      id: String(row.id),
+      day: String(row.day),
+      startedAt: String(row.started_at),
+      endedAt: String(row.ended_at),
+      workedHours: Math.max(0, Number(row.worked_hours) || 0),
+      salaryRate: Math.max(0, Number(row.salary_rate) || 0),
+      salaryAmount: Math.max(0, Number(row.salary_amount) || 0),
+      salaryCurrency: normalizeCurrency(row.salary_currency) === 'PLN' ? 'PLN' : 'UAH',
+      note: String(row.note ?? ''),
+      templateId: row.template_id ? String(row.template_id) : null,
+    }))
   );
 });
 

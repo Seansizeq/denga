@@ -190,6 +190,8 @@ const CalendarPlanner: React.FC = () => {
   const [activeShiftLoading, setActiveShiftLoading] = useState(false);
   const [dayShiftEntries, setDayShiftEntries] = useState<ShiftEntry[]>([]);
   const [dayShiftEntriesLoading, setDayShiftEntriesLoading] = useState(false);
+  const [reportShiftEntries, setReportShiftEntries] = useState<ShiftEntry[]>([]);
+  const [reportShiftEntriesLoading, setReportShiftEntriesLoading] = useState(false);
   const monthInputRef = useRef<HTMLInputElement | null>(null);
   const [shiftElapsedText, setShiftElapsedText] = useState('0г 0хв');
 
@@ -348,7 +350,7 @@ const CalendarPlanner: React.FC = () => {
 
   const dayHasShift = Boolean(current.hasShift || current.note.trim());
 
-  const monthReport = useMemo(() => {
+  const reportDays = useMemo(() => {
     const now = new Date();
     const reportYear = Number(month.split('-')[0]);
     const baseDays =
@@ -372,12 +374,16 @@ const CalendarPlanner: React.FC = () => {
       if (reportRange === 'month') return true;
       return false;
     });
+    return days;
+  }, [month, reportRange, selectedDay]);
+
+  const monthReport = useMemo(() => {
     let totalHours = 0;
     let totalSalaryUah = 0;
     let totalSalaryPln = 0;
     let filledDays = 0;
     let totalShifts = 0;
-    for (const day of days) {
+    for (const day of reportDays) {
       const p = store[day];
       if (!p?.hasShift) continue;
       filledDays += 1;
@@ -389,7 +395,7 @@ const CalendarPlanner: React.FC = () => {
       totalSalaryPln += payPln;
     }
     return { totalHours, totalSalaryUah, totalSalaryPln, filledDays, totalShifts };
-  }, [store, month, reportRange, selectedDay]);
+  }, [store, reportDays]);
 
   useEffect(() => {
     void reloadPlannerData();
@@ -443,10 +449,55 @@ const CalendarPlanner: React.FC = () => {
     }
   }, []);
 
+  const loadReportShiftEntries = useCallback(async (days: string[]) => {
+    if (!Array.isArray(days) || days.length === 0) {
+      setReportShiftEntries([]);
+      return;
+    }
+    const sorted = [...days].sort();
+    const from = sorted[0];
+    const to = sorted[sorted.length - 1];
+    if (!from || !to) {
+      setReportShiftEntries([]);
+      return;
+    }
+    setReportShiftEntriesLoading(true);
+    try {
+      const query = `from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
+      const response = await apiFetch(`/api/planner/shift-entries?${query}`);
+      if (!response.ok) {
+        setReportShiftEntries([]);
+        return;
+      }
+      const rows = (await response.json()) as ShiftEntry[];
+      setReportShiftEntries(
+        Array.isArray(rows)
+          ? rows.map((row) => ({
+              ...row,
+              workedHours: toNumber(row.workedHours),
+              salaryRate: toNumber(row.salaryRate),
+              salaryAmount: toNumber(row.salaryAmount),
+              salaryCurrency: row.salaryCurrency === 'PLN' ? 'PLN' : 'UAH',
+              note: row.note ?? '',
+            }))
+          : []
+      );
+    } catch (error) {
+      console.error('Failed to load report shift entries:', error);
+      setReportShiftEntries([]);
+    } finally {
+      setReportShiftEntriesLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!chooserOpen) return;
     void loadDayShiftEntries(selectedDay);
   }, [chooserOpen, selectedDay, loadDayShiftEntries]);
+
+  useEffect(() => {
+    void loadReportShiftEntries(reportDays);
+  }, [reportDays, loadReportShiftEntries]);
 
   const hoursFromTimeRange = (start: string, end: string): number => {
     const [sh, sm] = start.split(':').map(Number);
@@ -753,6 +804,26 @@ const CalendarPlanner: React.FC = () => {
                 <strong className={styles.reportValue}>{formatPlannerMoney(0, locale, 'UAH')}</strong>
               </div>
             ) : null}
+          </div>
+          <div className={styles.reportShiftSection}>
+            <p className={styles.templateSectionLabel}>{t('planner', 'reportShiftBanners')}</p>
+            {reportShiftEntriesLoading ? (
+              <p className={styles.dayShiftsEmpty}>{t('planner', 'loading')}</p>
+            ) : reportShiftEntries.length === 0 ? (
+              <p className={styles.dayShiftsEmpty}>{t('planner', 'reportShiftBannersEmpty')}</p>
+            ) : (
+              <ul className={styles.dayShiftsList} role="list">
+                {reportShiftEntries.map((entry) => (
+                  <li key={`report-${entry.id}`} className={styles.dayShiftRow}>
+                    <span className={styles.dayShiftMain}>{entry.note || t('planner', 'shiftTitle')}</span>
+                    <span className={styles.dayShiftMeta}>
+                      {entry.day} · {entry.workedHours.toLocaleString(locale, { maximumFractionDigits: 2 })}{t('planner', 'hoursShort')} ·{' '}
+                      {entry.salaryAmount > 0 ? formatPlannerMoney(entry.salaryAmount, locale, entry.salaryCurrency) : '—'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
 

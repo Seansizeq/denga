@@ -137,6 +137,8 @@ type Dict = {
     startWithoutTemplate: string;
     dayShifts: string;
     dayShiftsEmpty: string;
+    reportShiftBanners: string;
+    reportShiftBannersEmpty: string;
     monthReportTitle: string;
     dayReportTitle: string;
     yearReportTitle: string;
@@ -352,6 +354,8 @@ const uk: Dict = {
     startWithoutTemplate: 'Почати без шаблону',
     dayShifts: 'Зміни за день',
     dayShiftsEmpty: 'Ще немає завершених змін за цей день',
+    reportShiftBanners: 'Кожна зміна',
+    reportShiftBannersEmpty: 'За цей період ще немає завершених змін',
     monthReportTitle: 'Звіт за місяць',
     dayReportTitle: 'Звіт за день',
     yearReportTitle: 'Звіт за рік',
@@ -572,6 +576,8 @@ const ru: Dict = {
     startWithoutTemplate: 'Начать без шаблона',
     dayShifts: 'Смены за день',
     dayShiftsEmpty: 'За этот день пока нет завершённых смен',
+    reportShiftBanners: 'Каждая смена',
+    reportShiftBannersEmpty: 'За этот период пока нет завершённых смен',
     monthReportTitle: 'Отчёт за месяц',
     dayReportTitle: 'Отчёт за день',
     yearReportTitle: 'Отчёт за год',
@@ -792,6 +798,8 @@ const en: Dict = {
     startWithoutTemplate: 'Start without template',
     dayShifts: 'Shifts for this day',
     dayShiftsEmpty: 'No completed shifts for this day yet',
+    reportShiftBanners: 'Each shift',
+    reportShiftBannersEmpty: 'No completed shifts in this period yet',
     monthReportTitle: 'Monthly summary',
     dayReportTitle: 'Daily summary',
     yearReportTitle: 'Yearly summary',
