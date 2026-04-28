@@ -836,11 +836,6 @@ const buildReportText = (reportType, periodLabel, txs, comparison, extra = {}) =
       .slice(0, 5);
     const bestDayEntry = Array.from(dayNet.entries()).sort((a, b) => b[1] - a[1])[0] ?? null;
     const workedHours = Math.max(0, Number(extra.workedHours) || 0);
-    const avgPerDay = Math.max(0, Number(extra.avgPerDay) || 0);
-    const hourlyRate = Math.max(0, Number(extra.hourlyRate) || 0);
-    const monthGoal = Math.max(1, Number(extra.monthGoal) || DEFAULT_MONTHLY_GOAL_UAH);
-    const goalCurrent = Math.max(0, Number(summary.net) || 0);
-    const goalPct = Math.max(0, Math.min(100, (goalCurrent / monthGoal) * 100));
     const lines = [
       '📊 *ФІНАНСОВИЙ ЗВІТ*',
       '━━━━━━━━━━━━━━━━━━━━',
@@ -863,15 +858,11 @@ const buildReportText = (reportType, periodLabel, txs, comparison, extra = {}) =
     lines.push('');
     lines.push('⏰ *РОБОЧИЙ ЧАС*');
     lines.push(`├ Відпрацьовано: *${workedHours.toLocaleString('uk-UA', { maximumFractionDigits: 2 })} год*`);
-    lines.push(`├ Середньо/день: ${avgPerDay.toLocaleString('uk-UA', { maximumFractionDigits: 2 })} год`);
-    lines.push(`└ Ставка: ${hourlyRate.toLocaleString('uk-UA', { maximumFractionDigits: 2 })} ₴/год`);
+    lines.push('└ Деталі — у вебапі');
     lines.push('');
     lines.push('💡 *Статистика тижня:*');
     lines.push(`> Найбільша витрата: ${maxExpense ? `${categoryNameById(maxExpense.categoryId)} (${formatAmount(maxExpense.amount)} ₴)` : '—'}`);
     lines.push(`> Найприбутковіший день: ${bestDayEntry ? formatWeekdayUk(bestDayEntry[0]) : '—'}`);
-    lines.push(`> Економія до цілі: ${goalPct.toLocaleString('uk-UA', { maximumFractionDigits: 0 })}% (${formatAmount(goalCurrent)}/${formatAmount(monthGoal)})`);
-    lines.push('');
-    lines.push(`✅ Ціль місяця: ${formatAmount(monthGoal)} ₴`);
     lines.push('━━━━━━━━━━━━━━━━━━━━');
     return lines.join('\n');
   }
@@ -935,7 +926,7 @@ const sendUserReport = async (dbConn, userId, chatId, reportType, timeZone) => {
   const previousSummary = summarizeTransactions(previousScoped);
   const comparison = buildReportComparison(summary, previousSummary);
   const shiftRows = await dbConn.all(
-    `SELECT worked_hours, salary_amount, salary_currency
+    `SELECT day, worked_hours, salary_amount, salary_currency
      FROM planner_shift_entries
      WHERE user_id = ? AND day >= ? AND day <= ?`,
     [userId, sortedDays[0], sortedDays[sortedDays.length - 1]]
@@ -945,14 +936,7 @@ const sendUserReport = async (dbConn, userId, chatId, reportType, timeZone) => {
     if (normalizeCurrency(row.salary_currency) !== 'UAH') return acc;
     return acc + (Math.max(0, Number(row.salary_amount) || 0));
   }, 0);
-  const avgPerDay = sortedDays.length > 0 ? workedHours / sortedDays.length : 0;
-  const hourlyRate = workedHours > 0 ? salaryUah / workedHours : 0;
-  const text = buildReportText(reportType, periodLabel, scoped, comparison, {
-    workedHours,
-    avgPerDay,
-    hourlyRate,
-    monthGoal: DEFAULT_MONTHLY_GOAL_UAH,
-  });
+  const text = buildReportText(reportType, periodLabel, scoped, comparison, { workedHours });
   await bot.sendMessage(chatId, text, { disable_web_page_preview: true });
 };
 const getUserTimeZone = async (dbConn, userId) => {
