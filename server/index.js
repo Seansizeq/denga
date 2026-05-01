@@ -783,14 +783,20 @@ const shouldSendForSlot = async (dbConn, userId, reportType, slotKey) => {
     return false;
   }
 };
-const summarizeTransactions = (txs) => {
+const summarizeTransactions = (txs, targetCurrency = 'UAH', fxPayload = FX_FALLBACK) => {
   let income = 0;
   let expense = 0;
   let incomeCount = 0;
   let expenseCount = 0;
   const byCategory = new Map();
+  const reportCurrency = normalizeCurrency(targetCurrency);
   for (const tx of txs) {
-    const amount = Number(tx.amount) || 0;
+    const amount = convertCurrencyServer(
+      Number(tx.amount) || 0,
+      normalizeCurrency(tx.currency),
+      reportCurrency,
+      fxPayload
+    );
     if (tx.type === 'income') {
       income += amount;
       incomeCount += 1;
@@ -896,11 +902,19 @@ const currencySymbol = (code) => {
 };
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 const formatMoney = (value) => Math.abs(Number(value) || 0).toLocaleString('uk-UA', { maximumFractionDigits: 2 });
-const sumExpenseByCategory = (txs) => {
+const sumExpenseByCategory = (txs, targetCurrency = 'UAH', fxPayload = FX_FALLBACK) => {
   const map = new Map();
   for (const tx of txs || []) {
     if (tx?.type !== 'expense') continue;
-    const amount = Math.max(0, Number(tx.amount) || 0);
+    const amount = Math.max(
+      0,
+      convertCurrencyServer(
+        Number(tx.amount) || 0,
+        normalizeCurrency(tx.currency),
+        normalizeCurrency(targetCurrency),
+        fxPayload
+      )
+    );
     if (!(amount > 0)) continue;
     map.set(tx.categoryId, (map.get(tx.categoryId) ?? 0) + amount);
   }
@@ -995,13 +1009,13 @@ const buildRecommendationItems = async ({
   tz,
   reportCurrency,
 }) => {
-  const summary = summarizeTransactions(currentTxs);
-  const prevSummary = summarizeTransactions(previousTxs);
-  const currentExpenseByCategory = sumExpenseByCategory(currentTxs);
-  const previousExpenseByCategory = sumExpenseByCategory(previousTxs);
+  const fx = await fetchFxRates();
+  const summary = summarizeTransactions(currentTxs, reportCurrency, fx);
+  const prevSummary = summarizeTransactions(previousTxs, reportCurrency, fx);
+  const currentExpenseByCategory = sumExpenseByCategory(currentTxs, reportCurrency, fx);
+  const previousExpenseByCategory = sumExpenseByCategory(previousTxs, reportCurrency, fx);
   const totalExpense = Math.max(0, Number(summary.expense) || 0);
   const candidates = [];
-  const fx = await fetchFxRates();
 
   const budgetRisks = await collectBudgetRisks(dbConn, userId, txs, today, tz, fx);
   if (budgetRisks.length > 0) {
@@ -1303,30 +1317,30 @@ const renderReportCardPng = async (reportType, periodLabel, summary, comparison)
   return encodePngBuffer(img);
 };
 const buildReportText = (reportType, periodLabel, txs, comparison, extra = {}) => {
-  const summary = summarizeTransactions(txs);
   const reportCurrencyCode = normalizeCurrency(extra.reportCurrency || 'UAH');
+  const summary = extra.summary ?? summarizeTransactions(txs, reportCurrencyCode, extra.fxPayload ?? FX_FALLBACK);
   const sign = currencySymbol(reportCurrencyCode);
   const formatAmount = (value, withSign = false) => {
     const sign = withSign ? (value >= 0 ? '+' : '-') : '';
     return `${sign}${Math.abs(value).toLocaleString('uk-UA', { maximumFractionDigits: 2 })}`;
   };
   if (reportType === 'weekly') {
-    const expenseByCategory = new Map();
     const dayNet = new Map();
-    let maxExpense = null;
     for (const tx of txs || []) {
-      const amount = Math.max(0, Number(tx.amount) || 0);
+      const amount = Math.max(
+        0,
+        convertCurrencyServer(
+          Number(tx.amount) || 0,
+          normalizeCurrency(tx.currency),
+          reportCurrencyCode,
+          extra.fxPayload ?? FX_FALLBACK
+        )
+      );
       const day = dayFromIsoInZone(tx.date, DEFAULT_BOT_TIMEZONE) || String(tx.date || '').slice(0, 10);
       const curNet = dayNet.get(day) ?? 0;
       dayNet.set(day, tx.type === 'income' ? curNet + amount : curNet - amount);
-      if (tx.type !== 'expense') continue;
-      expenseByCategory.set(tx.categoryId, (expenseByCategory.get(tx.categoryId) ?? 0) + amount);
-      if (!maxExpense || amount > maxExpense.amount) maxExpense = { categoryId: tx.categoryId, amount };
     }
-    const topExpenseCategories = Array.from(expenseByCategory.entries())
-      .map(([categoryId, amount]) => ({ categoryId, amount }))
-      .sort((a, b) => b.amount - a.amount)
-      .slice(0, 5);
+    const topExpenseCategories = (summary.topExpenses || []).slice(0, 5);
     const bestDayEntry = Array.from(dayNet.entries()).sort((a, b) => b[1] - a[1])[0] ?? null;
     const workedHours = Math.max(0, Number(extra.workedHours) || 0);
     const lines = [
@@ -1361,16 +1375,7 @@ const buildReportText = (reportType, periodLabel, txs, comparison, extra = {}) =
     return lines.join('\n');
   }
   if (reportType === 'monthly') {
-    const expenseByCategory = new Map();
-    for (const tx of txs || []) {
-      if (tx.type !== 'expense') continue;
-      const amount = Math.max(0, Number(tx.amount) || 0);
-      expenseByCategory.set(tx.categoryId, (expenseByCategory.get(tx.categoryId) ?? 0) + amount);
-    }
-    const topExpenseCategories = Array.from(expenseByCategory.entries())
-      .map(([categoryId, amount]) => ({ categoryId, amount }))
-      .sort((a, b) => b.amount - a.amount)
-      .slice(0, 5);
+    const topExpenseCategories = (summary.topExpenses || []).slice(0, 5);
     const totalExpense = Math.max(0, Number(summary.expense) || 0);
     const workedHours = Math.max(0, Number(extra.workedHours) || 0);
     const workingDays = Math.max(0, Number(extra.workingDays) || 0);
@@ -1475,13 +1480,15 @@ const sendUserReport = async (dbConn, userId, chatId, reportType, timeZone) => {
   const previousRangeSet = buildPreviousPeriodDaySet(reportType, rangeSet);
   const previousScoped = (Array.isArray(txs) ? txs : []).filter((tx) => previousRangeSet.has(dayFromIsoInZone(tx.date, tz)));
   const reportSettings = await getReportSettings(dbConn, userId);
+  const fx = await fetchFxRates();
+  const reportCurrency = normalizeCurrency(reportSettings.reportCurrency || detectPrimaryCurrency(scoped));
   const sortedDays = Array.from(rangeSet).sort();
   const periodEndDay = sortedDays[sortedDays.length - 1] || today;
   const periodLabel = reportType === 'weekly'
     ? `${formatDayMonth(sortedDays[0])} — ${formatDayMonth(today)}.${String(today).slice(0, 4)}`
     : `${sortedDays[0]} → ${periodEndDay}`;
-  const summary = summarizeTransactions(scoped);
-  const previousSummary = summarizeTransactions(previousScoped);
+  const summary = summarizeTransactions(scoped, reportCurrency, fx);
+  const previousSummary = summarizeTransactions(previousScoped, reportCurrency, fx);
   const comparison = buildReportComparison(summary, previousSummary);
   const shiftRows = await dbConn.all(
     `SELECT day, worked_hours, salary_amount, salary_currency
@@ -1495,7 +1502,6 @@ const sendUserReport = async (dbConn, userId, chatId, reportType, timeZone) => {
      WHERE day >= ? AND day <= ?`,
     [plannerDayKey(userId, sortedDays[0]), plannerDayKey(userId, sortedDays[sortedDays.length - 1])]
   );
-  const reportCurrency = normalizeCurrency(reportSettings.reportCurrency || detectPrimaryCurrency(scoped));
   const periodDays = reportType === 'weekly' ? 7 : Math.max(28, sortedDays.length);
   const recommendationItems = await buildRecommendationItems({
     dbConn,
@@ -1533,10 +1539,12 @@ const sendUserReport = async (dbConn, userId, chatId, reportType, timeZone) => {
   const workingDays = workedDaySet.size;
   const avgPerDay = workingDays > 0 ? workedHours / workingDays : 0;
   const text = buildReportText(reportType, periodLabel, scoped, comparison, {
+    summary,
     workedHours,
     workingDays,
     avgPerDay,
     reportCurrency,
+    fxPayload: fx,
     previousIncome: previousSummary.income,
     previousExpense: previousSummary.expense,
     previousNet: previousSummary.net,
@@ -1565,6 +1573,7 @@ const sendFinancialAdvice = async (dbConn, userId, chatId, periodDaysRaw, timeZo
   const currentTxs = allTxs.filter((tx) => currentSet.has(dayFromIsoInZone(tx.date, tz)));
   const previousTxs = allTxs.filter((tx) => previousSet.has(dayFromIsoInZone(tx.date, tz)));
   const reportCurrency = normalizeCurrency(detectPrimaryCurrency(currentTxs));
+  const fx = await fetchFxRates();
   const items = await buildRecommendationItems({
     dbConn,
     userId,
@@ -1577,7 +1586,7 @@ const sendFinancialAdvice = async (dbConn, userId, chatId, periodDaysRaw, timeZo
     reportCurrency,
   });
   const section = formatRecommendationsSection(items);
-  const summary = summarizeTransactions(currentTxs);
+  const summary = summarizeTransactions(currentTxs, reportCurrency, fx);
   const header = [
     `📌 Поради за останні ${periodDays} днів`,
     `Баланс: ${summary.net >= 0 ? '+' : '-'}${formatMoney(summary.net)} ${currencySymbol(reportCurrency)}`,
