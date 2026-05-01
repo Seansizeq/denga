@@ -390,6 +390,11 @@ const ScanReceipt: React.FC = () => {
             >
               {saving ? t('addTx', 'save') : t('scan', 'confirmAndEdit')}
             </button>
+            {!paymentAccount ? (
+              <p className={styles.requiredHint} role="alert">
+                Оберіть рахунок для списання
+              </p>
+            ) : null}
             <button type="button" className={styles.secondaryBtn} onClick={openEditWithPrefill}>
               {t('history', 'edit')}
             </button>

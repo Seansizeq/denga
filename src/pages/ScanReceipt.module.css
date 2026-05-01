@@ -352,6 +352,13 @@
   margin-top: 8px;
 }
 
+.requiredHint {
+  margin: -2px 2px 2px;
+  color: #ffb4b4;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
 .primaryBtn {
   width: 100%;
   border: none;
