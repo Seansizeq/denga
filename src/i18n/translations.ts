@@ -24,7 +24,15 @@ type Dict = {
     searchPlaceholder: string;
     noResults: string;
   };
-  quickActions: { add: string; income: string; expense: string; history: string; subscriptions: string; scan: string };
+  quickActions: {
+    add: string;
+    income: string;
+    expense: string;
+    history: string;
+    subscriptions: string;
+    scan: string;
+    goals: string;
+  };
   range: { day: string; today: string; week: string; month: string; year: string };
   balance: {
     label: string;
@@ -238,6 +246,38 @@ type Dict = {
     currencyNote: string;
     noBudgetHint: string;
   };
+  goals: {
+    title: string;
+    subtitle: string;
+    empty: string;
+    addGoal: string;
+    name: string;
+    target: string;
+    currency: string;
+    deadline: string;
+    deadlineOptional: string;
+    color: string;
+    save: string;
+    cancel: string;
+    edit: string;
+    delete: string;
+    deleteConfirm: string;
+    contribute: string;
+    contributionAmount: string;
+    contributionDate: string;
+    contributionNote: string;
+    contributionsTitle: string;
+    noContributions: string;
+    deleteContribConfirm: string;
+    completed: string;
+    daysLeft: string;
+    overdue: string;
+    remaining: string;
+    loadError: string;
+    saveError: string;
+    back: string;
+    archived: string;
+  };
   categories: {
     food: string;
     transport: string;
@@ -284,7 +324,15 @@ const uk: Dict = {
     searchPlaceholder: 'Шукати за категорією чи приміткою',
     noResults: 'Нічого не знайдено',
   },
-  quickActions: { add: 'Додати', income: 'Дохід', expense: 'Витрата', history: 'Історія', subscriptions: 'Підписки', scan: 'Сканер чека' },
+  quickActions: {
+    add: 'Додати',
+    income: 'Дохід',
+    expense: 'Витрата',
+    history: 'Історія',
+    subscriptions: 'Підписки',
+    scan: 'Сканер чека',
+    goals: 'Цілі',
+  },
   range: { day: 'День', today: 'Сьогодні', week: 'Тиждень', month: 'Місяць', year: 'Рік' },
   balance: {
     label: 'Баланс цього місяця',
@@ -504,6 +552,38 @@ const uk: Dict = {
     currencyNote: 'Суми в валюті відображення з налаштувань',
     noBudgetHint: '0 або порожньо — без ліміту',
   },
+  goals: {
+    title: 'Фінансові цілі',
+    subtitle: 'Накопичення на відпустку, машину чи подушку безпеки — внесіть суми вручну.',
+    empty: 'Ще немає цілей. Додайте першу — з’явиться шкала прогресу.',
+    addGoal: 'Нова ціль',
+    name: 'Назва',
+    target: 'Цільова сума',
+    currency: 'Валюта цілі',
+    deadline: 'Дедлайн',
+    deadlineOptional: 'Необов’язково',
+    color: 'Колір',
+    save: 'Зберегти',
+    cancel: 'Скасувати',
+    edit: 'Редагувати',
+    delete: 'Видалити',
+    deleteConfirm: 'Видалити цю ціль і всі внески?',
+    contribute: 'Додати внесок',
+    contributionAmount: 'Сума',
+    contributionDate: 'Дата',
+    contributionNote: 'Примітка',
+    contributionsTitle: 'Внески',
+    noContributions: 'Поки немає внесків',
+    deleteContribConfirm: 'Видалити цей внесок?',
+    completed: 'Готово',
+    daysLeft: 'Залишилось {n} дн.',
+    overdue: 'Прострочено',
+    remaining: 'Залишилось',
+    loadError: 'Не вдалося завантажити',
+    saveError: 'Не вдалося зберегти',
+    back: 'Назад',
+    archived: 'Архів',
+  },
   categories: {
     food: 'Продукти',
     transport: 'Транспорт',
@@ -555,7 +635,15 @@ const ru: Dict = {
     searchPlaceholder: 'Искать по категории или заметке',
     noResults: 'Ничего не найдено',
   },
-  quickActions: { add: 'Добавить', income: 'Доход', expense: 'Расход', history: 'История', subscriptions: 'Подписки', scan: 'Сканер чека' /* uk-only */ },
+  quickActions: {
+    add: 'Добавить',
+    income: 'Доход',
+    expense: 'Расход',
+    history: 'История',
+    subscriptions: 'Подписки',
+    scan: 'Сканер чека',
+    goals: 'Цели',
+  },
   range: { day: 'День', today: 'Сегодня', week: 'Неделя', month: 'Месяц', year: 'Год' },
   balance: {
     label: 'Баланс за этот месяц',
@@ -775,6 +863,38 @@ const ru: Dict = {
     currencyNote: 'Суммы в валюте отображения из настроек',
     noBudgetHint: '0 — без лимита',
   },
+  goals: {
+    title: 'Финансовые цели',
+    subtitle: 'Накопления на отпуск, машину или подушку безопасности — вносы вручную.',
+    empty: 'Пока нет целей. Добавьте первую — появится шкала прогресса.',
+    addGoal: 'Новая цель',
+    name: 'Название',
+    target: 'Целевая сумма',
+    currency: 'Валюта цели',
+    deadline: 'Дедлайн',
+    deadlineOptional: 'Необязательно',
+    color: 'Цвет',
+    save: 'Сохранить',
+    cancel: 'Отмена',
+    edit: 'Изменить',
+    delete: 'Удалить',
+    deleteConfirm: 'Удалить эту цель и все взносы?',
+    contribute: 'Добавить взнос',
+    contributionAmount: 'Сумма',
+    contributionDate: 'Дата',
+    contributionNote: 'Заметка',
+    contributionsTitle: 'Взносы',
+    noContributions: 'Пока нет взносов',
+    deleteContribConfirm: 'Удалить этот взнос?',
+    completed: 'Готово',
+    daysLeft: 'Осталось {n} дн.',
+    overdue: 'Просрочено',
+    remaining: 'Осталось',
+    loadError: 'Не удалось загрузить',
+    saveError: 'Не удалось сохранить',
+    back: 'Назад',
+    archived: 'Архив',
+  },
   categories: {
     food: 'Продукты',
     transport: 'Транспорт',
@@ -826,7 +946,15 @@ const en: Dict = {
     searchPlaceholder: 'Search by category or note',
     noResults: 'Nothing found',
   },
-  quickActions: { add: 'Add', income: 'Income', expense: 'Expense', history: 'History', subscriptions: 'Subscriptions', scan: 'Сканер чека' /* uk-only */ },
+  quickActions: {
+    add: 'Add',
+    income: 'Income',
+    expense: 'Expense',
+    history: 'History',
+    subscriptions: 'Subscriptions',
+    scan: 'Receipt scan',
+    goals: 'Goals',
+  },
   range: { day: 'Day', today: 'Today', week: 'Week', month: 'Month', year: 'Year' },
   balance: {
     label: 'This month',
@@ -1045,6 +1173,38 @@ const en: Dict = {
     monthlyLimit: 'Limit / month',
     currencyNote: 'Amounts in your display currency from settings',
     noBudgetHint: '0 — no limit',
+  },
+  goals: {
+    title: 'Financial goals',
+    subtitle: 'Save for vacation, a car, or an emergency fund — log contributions manually.',
+    empty: 'No goals yet. Add one to see a progress bar.',
+    addGoal: 'New goal',
+    name: 'Name',
+    target: 'Target amount',
+    currency: 'Goal currency',
+    deadline: 'Deadline',
+    deadlineOptional: 'Optional',
+    color: 'Color',
+    save: 'Save',
+    cancel: 'Cancel',
+    edit: 'Edit',
+    delete: 'Delete',
+    deleteConfirm: 'Delete this goal and all contributions?',
+    contribute: 'Add contribution',
+    contributionAmount: 'Amount',
+    contributionDate: 'Date',
+    contributionNote: 'Note',
+    contributionsTitle: 'Contributions',
+    noContributions: 'No contributions yet',
+    deleteContribConfirm: 'Delete this contribution?',
+    completed: 'Done',
+    daysLeft: '{n} days left',
+    overdue: 'Overdue',
+    remaining: 'Remaining',
+    loadError: 'Failed to load',
+    saveError: 'Failed to save',
+    back: 'Back',
+    archived: 'Archived',
   },
   categories: {
     food: 'Groceries',

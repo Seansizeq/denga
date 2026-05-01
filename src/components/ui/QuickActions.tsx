@@ -1,11 +1,11 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { History, CreditCard, ScanLine } from 'lucide-react';
+import { History, CreditCard, ScanLine, Target } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useTranslation } from '../../i18n/LanguageContext';
 import styles from './QuickActions.module.css';
 
-type Tone = 'history' | 'subscriptions' | 'scan';
+type Tone = 'history' | 'subscriptions' | 'scan' | 'goals';
 
 interface ActionItem {
   id: string;
@@ -40,6 +40,13 @@ const QuickActions: React.FC = () => {
       labelKey: t('quickActions', 'subscriptions'),
       tone: 'subscriptions',
       onPress: () => navigate('/subscriptions'),
+    },
+    {
+      id: 'goals',
+      icon: Target,
+      labelKey: t('quickActions', 'goals'),
+      tone: 'goals',
+      onPress: () => navigate('/goals'),
     },
   ];
 

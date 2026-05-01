@@ -2383,6 +2383,295 @@ app.delete('/api/budgets/:categoryId', async (req, res) => {
   res.status(204).end();
 });
 
+const GOAL_COLOR_RE = /^#[0-9A-Fa-f]{6}$/;
+const mapGoalRow = (row, saved, contributionsCount) => ({
+  id: row.id,
+  name: row.name,
+  targetAmount: Number(row.target_amount) || 0,
+  saved: Number(saved) || 0,
+  contributionsCount: Number(contributionsCount) || 0,
+  currency: normalizeCurrency(row.currency),
+  deadline: row.deadline || null,
+  icon: typeof row.icon === 'string' && row.icon.trim() ? row.icon.trim() : 'target',
+  color: typeof row.color === 'string' && GOAL_COLOR_RE.test(row.color) ? row.color : '#7C5CFF',
+  archived: Boolean(row.archived),
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
+app.get('/api/goals', async (req, res) => {
+  const userId = String(req.authUserId ?? '').trim();
+  if (!userId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const rows = await db.all(
+    `SELECT g.id, g.user_id, g.name, g.target_amount, g.currency, g.deadline, g.icon, g.color, g.archived, g.created_at, g.updated_at,
+            COALESCE((SELECT SUM(amount) FROM goal_contributions WHERE goal_id = g.id), 0) AS saved,
+            COALESCE((SELECT COUNT(*) FROM goal_contributions WHERE goal_id = g.id), 0) AS contributions_count
+     FROM goals g
+     WHERE g.user_id = ?
+     ORDER BY g.archived ASC, g.updated_at DESC`,
+    [userId]
+  );
+  res.json(
+    (rows || []).map((r) =>
+      mapGoalRow(r, r.saved, r.contributions_count)
+    )
+  );
+});
+
+app.post('/api/goals', async (req, res) => {
+  const userId = String(req.authUserId ?? '').trim();
+  if (!userId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const name = typeof req.body?.name === 'string' ? req.body.name.trim().replace(/\s+/g, ' ') : '';
+  const targetAmount = Number(req.body?.targetAmount);
+  const currency = normalizeCurrency(req.body?.currency);
+  const deadlineRaw = req.body?.deadline;
+  const deadline =
+    deadlineRaw === null || deadlineRaw === undefined || deadlineRaw === ''
+      ? null
+      : typeof deadlineRaw === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(deadlineRaw)
+        ? deadlineRaw
+        : undefined;
+  if (deadline === undefined && deadlineRaw !== null && deadlineRaw !== undefined && deadlineRaw !== '') {
+    res.status(400).json({ error: 'deadline must be YYYY-MM-DD or empty' });
+    return;
+  }
+  const icon = typeof req.body?.icon === 'string' && req.body.icon.trim() ? req.body.icon.trim().slice(0, 48) : 'target';
+  const colorRaw = typeof req.body?.color === 'string' ? req.body.color.trim() : '';
+  const color = GOAL_COLOR_RE.test(colorRaw) ? colorRaw : '#7C5CFF';
+
+  if (!name) {
+    res.status(400).json({ error: 'name is required' });
+    return;
+  }
+  if (!Number.isFinite(targetAmount) || targetAmount <= 0) {
+    res.status(400).json({ error: 'targetAmount must be > 0' });
+    return;
+  }
+
+  const id = uuidv4();
+  const now = new Date().toISOString();
+  await db.run(
+    `INSERT INTO goals (id, user_id, name, target_amount, currency, deadline, icon, color, archived, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+    [id, userId, name, targetAmount, currency, deadline, icon, color, now, now]
+  );
+  const row = await db.get(
+    `SELECT g.id, g.user_id, g.name, g.target_amount, g.currency, g.deadline, g.icon, g.color, g.archived, g.created_at, g.updated_at,
+            0 AS saved, 0 AS contributions_count
+     FROM goals g WHERE g.id = ? AND g.user_id = ?`,
+    [id, userId]
+  );
+  res.status(201).json(mapGoalRow(row, 0, 0));
+});
+
+app.patch('/api/goals/:id', async (req, res) => {
+  const userId = String(req.authUserId ?? '').trim();
+  const id = String(req.params.id ?? '').trim();
+  if (!userId || !id) {
+    res.status(400).json({ error: 'invalid id' });
+    return;
+  }
+  const current = await db.get('SELECT * FROM goals WHERE user_id = ? AND id = ? LIMIT 1', [userId, id]);
+  if (!current) {
+    res.status(404).json({ error: 'Goal not found' });
+    return;
+  }
+
+  const name =
+    typeof req.body?.name === 'string'
+      ? req.body.name.trim().replace(/\s+/g, ' ')
+      : current.name;
+  const targetAmount =
+    req.body?.targetAmount === undefined ? Number(current.target_amount) : Number(req.body.targetAmount);
+  const currency = req.body?.currency === undefined ? normalizeCurrency(current.currency) : normalizeCurrency(req.body.currency);
+  let deadline = current.deadline;
+  if (req.body?.deadline !== undefined) {
+    const d = req.body.deadline;
+    if (d === null || d === '') deadline = null;
+    else if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) deadline = d;
+    else {
+      res.status(400).json({ error: 'deadline must be YYYY-MM-DD or null' });
+      return;
+    }
+  }
+  const icon =
+    typeof req.body?.icon === 'string' && req.body.icon.trim()
+      ? req.body.icon.trim().slice(0, 48)
+      : current.icon;
+  const colorRaw = req.body?.color === undefined ? current.color : String(req.body.color ?? '').trim();
+  const color = GOAL_COLOR_RE.test(colorRaw) ? colorRaw : current.color;
+  const archived = req.body?.archived === undefined ? Boolean(current.archived) : Boolean(req.body.archived);
+
+  if (!name) {
+    res.status(400).json({ error: 'name is required' });
+    return;
+  }
+  if (!Number.isFinite(targetAmount) || targetAmount <= 0) {
+    res.status(400).json({ error: 'targetAmount must be > 0' });
+    return;
+  }
+
+  const now = new Date().toISOString();
+  await db.run(
+    `UPDATE goals SET name = ?, target_amount = ?, currency = ?, deadline = ?, icon = ?, color = ?, archived = ?, updated_at = ?
+     WHERE id = ? AND user_id = ?`,
+    [name, targetAmount, currency, deadline, icon, color, archived ? 1 : 0, now, id, userId]
+  );
+
+  const agg = await db.get(
+    `SELECT COALESCE(SUM(amount), 0) AS saved, COUNT(*) AS cnt FROM goal_contributions WHERE goal_id = ?`,
+    [id]
+  );
+  const row = await db.get(
+    `SELECT g.id, g.user_id, g.name, g.target_amount, g.currency, g.deadline, g.icon, g.color, g.archived, g.created_at, g.updated_at
+     FROM goals g WHERE g.id = ? AND g.user_id = ?`,
+    [id, userId]
+  );
+  res.json(mapGoalRow(row, agg?.saved, agg?.cnt));
+});
+
+app.delete('/api/goals/:id', async (req, res) => {
+  const userId = String(req.authUserId ?? '').trim();
+  const id = String(req.params.id ?? '').trim();
+  if (!userId || !id) {
+    res.status(400).json({ error: 'invalid id' });
+    return;
+  }
+  const cur = await db.get('SELECT id FROM goals WHERE user_id = ? AND id = ?', [userId, id]);
+  if (!cur) {
+    res.status(404).json({ error: 'Goal not found' });
+    return;
+  }
+  await db.run('DELETE FROM goal_contributions WHERE goal_id = ? AND user_id = ?', [id, userId]);
+  await db.run('DELETE FROM goals WHERE id = ? AND user_id = ?', [id, userId]);
+  res.status(204).end();
+});
+
+app.get('/api/goals/:id', async (req, res) => {
+  const userId = String(req.authUserId ?? '').trim();
+  const id = String(req.params.id ?? '').trim();
+  if (!userId || !id) {
+    res.status(400).json({ error: 'invalid id' });
+    return;
+  }
+  const row = await db.get(
+    `SELECT g.id, g.user_id, g.name, g.target_amount, g.currency, g.deadline, g.icon, g.color, g.archived, g.created_at, g.updated_at,
+            COALESCE((SELECT SUM(amount) FROM goal_contributions WHERE goal_id = g.id), 0) AS saved,
+            COALESCE((SELECT COUNT(*) FROM goal_contributions WHERE goal_id = g.id), 0) AS contributions_count
+     FROM goals g
+     WHERE g.user_id = ? AND g.id = ?`,
+    [userId, id]
+  );
+  if (!row) {
+    res.status(404).json({ error: 'Goal not found' });
+    return;
+  }
+  res.json(mapGoalRow(row, row.saved, row.contributions_count));
+});
+
+app.get('/api/goals/:id/contributions', async (req, res) => {
+  const userId = String(req.authUserId ?? '').trim();
+  const goalId = String(req.params.id ?? '').trim();
+  if (!userId || !goalId) {
+    res.status(400).json({ error: 'invalid id' });
+    return;
+  }
+  const goal = await db.get('SELECT id FROM goals WHERE user_id = ? AND id = ?', [userId, goalId]);
+  if (!goal) {
+    res.status(404).json({ error: 'Goal not found' });
+    return;
+  }
+  const rows = await db.all(
+    `SELECT id, goal_id AS goalId, amount, date, note, created_at AS createdAt
+     FROM goal_contributions
+     WHERE goal_id = ? AND user_id = ?
+     ORDER BY date DESC, created_at DESC`,
+    [goalId, userId]
+  );
+  res.json(
+    (rows || []).map((r) => ({
+      id: r.id,
+      goalId: r.goalId,
+      amount: Number(r.amount) || 0,
+      date: r.date,
+      note: r.note ?? '',
+      createdAt: r.createdAt,
+    }))
+  );
+});
+
+app.post('/api/goals/:id/contributions', async (req, res) => {
+  const userId = String(req.authUserId ?? '').trim();
+  const goalId = String(req.params.id ?? '').trim();
+  if (!userId || !goalId) {
+    res.status(400).json({ error: 'invalid id' });
+    return;
+  }
+  const goal = await db.get('SELECT id FROM goals WHERE user_id = ? AND id = ?', [userId, goalId]);
+  if (!goal) {
+    res.status(404).json({ error: 'Goal not found' });
+    return;
+  }
+  const amount = Number(req.body?.amount);
+  const date = typeof req.body?.date === 'string' ? req.body.date : '';
+  const note = typeof req.body?.note === 'string' ? req.body.note.trim().slice(0, 500) : '';
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    res.status(400).json({ error: 'amount must be > 0' });
+    return;
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    res.status(400).json({ error: 'date must be YYYY-MM-DD' });
+    return;
+  }
+
+  const cid = uuidv4();
+  const now = new Date().toISOString();
+  await db.run(
+    `INSERT INTO goal_contributions (id, goal_id, user_id, amount, date, note, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [cid, goalId, userId, amount, date, note || null, now]
+  );
+  await db.run('UPDATE goals SET updated_at = ? WHERE id = ? AND user_id = ?', [now, goalId, userId]);
+
+  res.status(201).json({
+    id: cid,
+    goalId,
+    amount,
+    date,
+    note,
+    createdAt: now,
+  });
+});
+
+app.delete('/api/goals/:id/contributions/:contribId', async (req, res) => {
+  const userId = String(req.authUserId ?? '').trim();
+  const goalId = String(req.params.id ?? '').trim();
+  const contribId = String(req.params.contribId ?? '').trim();
+  if (!userId || !goalId || !contribId) {
+    res.status(400).json({ error: 'invalid id' });
+    return;
+  }
+  const row = await db.get(
+    'SELECT id FROM goal_contributions WHERE id = ? AND goal_id = ? AND user_id = ?',
+    [contribId, goalId, userId]
+  );
+  if (!row) {
+    res.status(404).json({ error: 'Contribution not found' });
+    return;
+  }
+  await db.run('DELETE FROM goal_contributions WHERE id = ? AND goal_id = ? AND user_id = ?', [contribId, goalId, userId]);
+  const now = new Date().toISOString();
+  await db.run('UPDATE goals SET updated_at = ? WHERE id = ? AND user_id = ?', [now, goalId, userId]);
+  res.status(204).end();
+});
+
 app.put('/api/reminders/timezone', async (req, res) => {
   const userId = String(req.authUserId ?? '');
   if (!userId) {

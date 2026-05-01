@@ -120,3 +120,111 @@ export const deleteBudget = async (categoryId: string): Promise<void> => {
   const res = await apiFetch(`/api/budgets/${encodeURIComponent(categoryId)}`, { method: 'DELETE' });
   if (!res.ok) throw new Error('failed to delete budget');
 };
+
+export type GoalCurrency = 'UAH' | 'PLN' | 'USD';
+
+export type Goal = {
+  id: string;
+  name: string;
+  targetAmount: number;
+  saved: number;
+  contributionsCount: number;
+  currency: GoalCurrency;
+  deadline: string | null;
+  icon: string;
+  color: string;
+  archived: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type GoalContribution = {
+  id: string;
+  goalId: string;
+  amount: number;
+  date: string;
+  note: string;
+  createdAt: string;
+};
+
+export const getGoals = async (): Promise<Goal[]> => {
+  const res = await apiFetch('/api/goals');
+  if (!res.ok) throw new Error('failed to load goals');
+  return res.json();
+};
+
+export const getGoal = async (id: string): Promise<Goal> => {
+  const res = await apiFetch(`/api/goals/${encodeURIComponent(id)}`);
+  if (!res.ok) throw new Error('failed to load goal');
+  return res.json();
+};
+
+export const createGoal = async (body: {
+  name: string;
+  targetAmount: number;
+  currency: GoalCurrency;
+  deadline?: string | null;
+  icon?: string;
+  color?: string;
+}): Promise<Goal> => {
+  const res = await apiFetch('/api/goals', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error('failed to create goal');
+  return res.json();
+};
+
+export const updateGoal = async (
+  id: string,
+  patch: Partial<{
+    name: string;
+    targetAmount: number;
+    currency: GoalCurrency;
+    deadline: string | null;
+    icon: string;
+    color: string;
+    archived: boolean;
+  }>
+): Promise<Goal> => {
+  const res = await apiFetch(`/api/goals/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) throw new Error('failed to update goal');
+  return res.json();
+};
+
+export const deleteGoal = async (id: string): Promise<void> => {
+  const res = await apiFetch(`/api/goals/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('failed to delete goal');
+};
+
+export const getContributions = async (goalId: string): Promise<GoalContribution[]> => {
+  const res = await apiFetch(`/api/goals/${encodeURIComponent(goalId)}/contributions`);
+  if (!res.ok) throw new Error('failed to load contributions');
+  return res.json();
+};
+
+export const addContribution = async (
+  goalId: string,
+  body: { amount: number; date: string; note?: string }
+): Promise<GoalContribution> => {
+  const res = await apiFetch(`/api/goals/${encodeURIComponent(goalId)}/contributions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error('failed to add contribution');
+  return res.json();
+};
+
+export const deleteContribution = async (goalId: string, contribId: string): Promise<void> => {
+  const res = await apiFetch(
+    `/api/goals/${encodeURIComponent(goalId)}/contributions/${encodeURIComponent(contribId)}`,
+    { method: 'DELETE' }
+  );
+  if (!res.ok) throw new Error('failed to delete contribution');
+};

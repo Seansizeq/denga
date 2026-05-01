@@ -129,6 +129,8 @@ const Stats: React.FC = () => {
             </button>
           ))}
         </div>
+      </div>
+      <div className={styles.actionsRow}>
         <button type="button" className={styles.budgetsBtn} onClick={() => navigate('/budgets')}>
           Бюджет
         </button>

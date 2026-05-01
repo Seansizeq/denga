@@ -32,9 +32,14 @@
 .rangeRow {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  justify-content: flex-start;
   margin-bottom: 10px;
+}
+
+.actionsRow {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
 }
 
 .rangeTabs {

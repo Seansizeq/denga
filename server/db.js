@@ -338,6 +338,36 @@ export async function initDb() {
   `);
 
   await db.exec(`
+    CREATE TABLE IF NOT EXISTS goals (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      target_amount REAL NOT NULL,
+      currency TEXT NOT NULL DEFAULT 'UAH',
+      deadline TEXT,
+      icon TEXT NOT NULL DEFAULT 'target',
+      color TEXT NOT NULL DEFAULT '#7C5CFF',
+      archived INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS goal_contributions (
+      id TEXT PRIMARY KEY,
+      goal_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      amount REAL NOT NULL,
+      date TEXT NOT NULL,
+      note TEXT,
+      created_at TEXT NOT NULL
+    )
+  `);
+  await db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_goal_contrib_goal ON goal_contributions(goal_id)
+  `);
+
+  await db.exec(`
     CREATE INDEX IF NOT EXISTS idx_transactions_user_date
     ON transactions(user_id, date DESC)
   `);
