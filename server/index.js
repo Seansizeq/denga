@@ -2143,8 +2143,7 @@ const parseCustomCategoryId = (id) => {
 const botMainMenuKeyboard = {
   keyboard: [
     [{ text: '📊 Тижневий звіт' }, { text: '📅 Місячний звіт' }],
-    [{ text: '💡 Рекомендації' }],
-    [{ text: '⚙️ Налаштування звітів' }, { text: '🟢 Почати зміну' }],
+    [{ text: '🟢 Почати зміну' }],
     [{ text: '🔴 Завершити зміну' }],
   ],
   resize_keyboard: true,
