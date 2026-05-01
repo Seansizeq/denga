@@ -40,6 +40,17 @@ describe('receipts parser', () => {
       expect(extractTotal('')).toBeNull();
       expect(extractTotal(null)).toBeNull();
     });
+
+    it('prefers SUMA PLN over PTU/VAT subtotal lines', () => {
+      const text = [
+        'CARREFOUR POLSKA',
+        'Kwota PTU A 23,00% 2,94',
+        'Kwota PTU C 05,00% 1,39',
+        'SUMA PTU 4,33',
+        'SUMA PLN 44,99',
+      ].join('\n');
+      expect(extractTotal(text)).toBeCloseTo(44.99, 2);
+    });
   });
 
   describe('extractCurrency', () => {
@@ -199,6 +210,28 @@ describe('receipts parser', () => {
       expect(r.date).toBeNull();
       expect(r.categoryId).toBe('other_expense');
       expect(r.items).toEqual([]);
+    });
+
+    it('parses Carrefour-like Polish receipt and ignores header/address rows', () => {
+      const text = [
+        'CARREFOUR POLSKA SP Z O.O.',
+        '03-734 Warszawa ul. Targowa 72',
+        'Nr res. BDO: 000009699',
+        'NIP 9370008168',
+        'PARAGON FISKALNY',
+        'C_CHIPSY LYUKS 125G *13,89= 13,89 C',
+        'A_CZEKOLADA MILKA 8 *8,49= 8,49 A',
+        'A_NAPOJ MOGU MOGU 0 *4,99= 4,99 A',
+        'SUMA PTU 4,33',
+        'SUMA PLN 44,99',
+        'Płatność Gotówka 50,00',
+      ].join('\n');
+      const r = parseReceipt(text);
+      expect(r.shop).toMatch(/CARREFOUR/i);
+      expect(r.currency).toBe('PLN');
+      expect(r.total).toBeCloseTo(44.99, 2);
+      expect(r.items.some((x) => /Warszawa|NIP|BDO/i.test(x.name))).toBe(false);
+      expect(r.items.some((x) => /CHIPSY/i.test(x.name))).toBe(true);
     });
   });
 });

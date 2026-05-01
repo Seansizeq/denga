@@ -257,6 +257,8 @@ const parseNumber = (raw) => {
 };
 
 const NUMBER_RE = /-?\d{1,3}(?:[\s\u00A0]?\d{3})*(?:[.,]\d{1,2})?|-?\d+(?:[.,]\d{1,2})?/g;
+const TOTAL_EXCLUDE_RE = /\b(ptu|vat|tax|подат|ндс|пдв)\b/i;
+const CURRENCY_HINT_RE = /\b(pln|uah|usd)\b|zł|₴|\$/i;
 
 const findNumbersInLine = (line) => {
   const matches = String(line ?? '').match(NUMBER_RE);
@@ -272,31 +274,80 @@ export const extractTotal = (text) => {
 
   const folded = lines.map((l) => foldText(l));
   const keywords = TOTAL_KEYWORDS.map((k) => foldText(k)).sort((a, b) => b.length - a.length);
+  const candidates = [];
 
-  // First pass: keyword on the same line, take last number on that line.
+  // First pass: collect scored candidates around total-like keywords.
   for (let i = 0; i < lines.length; i++) {
     const line = folded[i];
     if (!line) continue;
     const matched = keywords.find((k) => line.includes(k));
     if (!matched) continue;
-    // Skip lines that look like "sub-total" / "до сплати без знижки" — but only when the number is missing
+
+    const hasTaxWord = TOTAL_EXCLUDE_RE.test(lines[i]);
+    const hasCurrencyHint = CURRENCY_HINT_RE.test(lines[i]);
+    const inBottomHalf = i >= Math.floor(lines.length / 2);
+
     const numbers = findNumbersInLine(lines[i]);
     if (numbers.length > 0) {
-      return numbers[numbers.length - 1];
+      const n = numbers[numbers.length - 1];
+      if (n > 0) {
+        let score = 0;
+        if (matched.includes('suma') || matched.includes('разом') || matched.includes('total')) score += 4;
+        if (hasCurrencyHint) score += 3;
+        if (inBottomHalf) score += 2;
+        if (hasTaxWord) score -= 5;
+        candidates.push({ value: n, score, line: i });
+      }
     }
     // Sometimes keyword and number are on adjacent lines.
     for (let j = i + 1; j < Math.min(i + 3, lines.length); j++) {
       const next = findNumbersInLine(lines[j]);
-      if (next.length > 0) return next[next.length - 1];
+      if (next.length > 0) {
+        const n = next[next.length - 1];
+        if (n > 0) {
+          let score = 0;
+          if (matched.includes('suma') || matched.includes('разом') || matched.includes('total')) score += 3;
+          if (hasCurrencyHint || CURRENCY_HINT_RE.test(lines[j])) score += 2;
+          if (j >= Math.floor(lines.length / 2)) score += 2;
+          if (hasTaxWord || TOTAL_EXCLUDE_RE.test(lines[j])) score -= 5;
+          candidates.push({ value: n, score, line: j });
+        }
+      }
     }
   }
 
-  // Fallback: largest number in the bottom 40% of the receipt that has a decimal part.
+  if (candidates.length > 0) {
+    candidates.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      if (b.value !== a.value) return b.value - a.value;
+      return b.line - a.line;
+    });
+    const top = candidates[0];
+    if (top && top.value > 0) return top.value;
+  }
+
+  // Fallback 1: sum-like lines in lower half, ignore tax/VAT lines, pick max.
+  const lowerHalf = lines.slice(Math.floor(lines.length / 2));
+  let bestSumLike = null;
+  for (const line of lowerHalf) {
+    const f = foldText(line);
+    if (!/(suma|razem|total|до сплати|к оплате|усього|всього|итого|разом)/i.test(f)) continue;
+    if (TOTAL_EXCLUDE_RE.test(line)) continue;
+    const nums = findNumbersInLine(line).filter((n) => n > 0);
+    if (nums.length === 0) continue;
+    const n = nums[nums.length - 1];
+    if (bestSumLike == null || n > bestSumLike) bestSumLike = n;
+  }
+  if (bestSumLike != null) return bestSumLike;
+
+  // Fallback 2: largest decimal number in the bottom 40% of the receipt.
   const tail = lines.slice(Math.floor(lines.length * 0.6));
   let best = null;
   for (const line of tail) {
-    for (const n of findNumbersInLine(line)) {
-      if (n <= 0) continue;
+    for (const m of String(line).match(NUMBER_RE) ?? []) {
+      if (!/[.,]\d{1,2}$/.test(m)) continue;
+      const n = parseNumber(m);
+      if (!Number.isFinite(n) || n <= 0) continue;
       if (best == null || n > best) best = n;
     }
   }
@@ -363,6 +414,7 @@ const prettifyShopName = (raw) => {
 };
 
 const TRAILING_AMOUNT_RE = /^(.+?)\s+(\d+(?:[.,]\d{1,2})?)\s*(?:[А-Яа-яA-Za-zₐ-ₜ.]*?)?\s*$/u;
+const ITEM_EXCLUDE_RE = /\b(nip|regon|bdo|paragon|fiskaln|fiskalny|ul\.|ulica|warszawa|sprzed|kwota ptu|ptu|vat|reszta|platnosc|płatno|gotowka|gotówka|rozliczenie|wydr|nr)\b/i;
 
 export const extractItems = (text) => {
   const lines = splitLines(text);
@@ -372,6 +424,8 @@ export const extractItems = (text) => {
     if (!folded) continue;
     // Skip lines containing total keywords — those are not items.
     if (TOTAL_KEYWORDS.some((k) => folded.includes(foldText(k)))) continue;
+    if (ITEM_EXCLUDE_RE.test(line)) continue;
+    if (/\b\d{2}-\d{3}\b/.test(line)) continue; // postal code / address block
     // Item-line heuristic: must end with a number, must contain at least 3 letters.
     const m = line.match(TRAILING_AMOUNT_RE);
     if (!m) continue;
@@ -425,7 +479,9 @@ export const parseReceipt = (text) => {
   const total = extractTotal(safeText);
   const currency = extractCurrency(safeText);
   const date = extractDate(safeText);
-  const items = extractItems(safeText);
+  const rawItems = extractItems(safeText);
+  const maxItemAmount = Number.isFinite(total) && total > 0 ? total * 1.05 : Infinity;
+  const items = rawItems.filter((i) => i.amount > 0 && i.amount <= maxItemAmount);
   const categoryId = pickCategoryId(shop, items);
   return {
     shop,
