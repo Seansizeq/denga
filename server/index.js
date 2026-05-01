@@ -1097,6 +1097,224 @@ const buildRecommendationItems = async ({
     .sort((a, b) => b.priority - a.priority)
     .slice(0, 5);
 };
+const getBudgetCompliance = async (dbConn, userId, txs, today, tz, fxPayload) => {
+  const rows = await dbConn.all(
+    `SELECT category_id AS categoryId, monthly_limit AS monthlyLimit, currency
+     FROM category_budgets
+     WHERE user_id = ?`,
+    [userId]
+  );
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return { items: [], allUnderLimit: false };
+  }
+  const ym = String(today || '').slice(0, 7);
+  const items = [];
+  for (const row of rows) {
+    const limit = Number(row?.monthlyLimit);
+    if (!(limit > 0)) continue;
+    const budgetCurrency = normalizeCurrency(row?.currency);
+    let spent = 0;
+    for (const tx of txs || []) {
+      if (tx?.type !== 'expense' || tx.categoryId !== row.categoryId) continue;
+      const txDay = dayFromIsoInZone(String(tx.date), tz);
+      if (!String(txDay).startsWith(ym)) continue;
+      spent += convertCurrencyServer(
+        Number(tx.amount) || 0,
+        normalizeCurrency(tx.currency),
+        budgetCurrency,
+        fxPayload
+      );
+    }
+    const ratio = spent / limit;
+    items.push({
+      categoryId: row.categoryId,
+      spent,
+      limit,
+      budgetCurrency,
+      ratio,
+    });
+  }
+  const allUnderLimit = items.length > 0 && items.every((i) => i.ratio < 1);
+  return { items, allUnderLimit };
+};
+const getActiveGoalsWithSaved = async (dbConn, userId, rangeSet, tz) => {
+  const sortedDays = Array.from(rangeSet).sort();
+  if (sortedDays.length === 0) return [];
+  const rangeStart = sortedDays[0];
+  const rangeEnd = sortedDays[sortedDays.length - 1];
+  const goals = await dbConn.all(
+    `SELECT id, name, target_amount AS targetAmount, currency FROM goals WHERE user_id = ? AND archived = 0`,
+    [userId]
+  );
+  const contribs = await dbConn.all(
+    `SELECT goal_id AS goalId, amount, date FROM goal_contributions WHERE user_id = ?`,
+    [userId]
+  );
+  const byGoal = new Map();
+  for (const g of goals || []) {
+    const id = String(g.id);
+    byGoal.set(id, {
+      id,
+      name: String(g.name || 'Ціль'),
+      targetAmount: Math.max(0, Number(g.targetAmount) || 0),
+      currency: normalizeCurrency(g.currency),
+      savedBefore: 0,
+      savedInPeriod: 0,
+      savedThroughEnd: 0,
+    });
+  }
+  for (const c of contribs || []) {
+    const gid = String(c.goalId);
+    const row = byGoal.get(gid);
+    if (!row) continue;
+    const day = dayFromIsoInZone(String(c.date), tz);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
+    const amt = Math.max(0, Number(c.amount) || 0);
+    if (day <= rangeEnd) row.savedThroughEnd += amt;
+    if (day < rangeStart) row.savedBefore += amt;
+    if (day >= rangeStart && day <= rangeEnd) row.savedInPeriod += amt;
+  }
+  return Array.from(byGoal.values())
+    .filter((g) => g.targetAmount > 0)
+    .map((g) => ({
+      ...g,
+      progressStart: g.savedBefore / g.targetAmount,
+      progressEnd: g.savedThroughEnd / g.targetAmount,
+    }));
+};
+const buildAchievementLines = async ({
+  reportType,
+  summary,
+  prevSummary,
+  currentExpenseByCategory,
+  previousExpenseByCategory,
+  dbConn,
+  userId,
+  txs,
+  today,
+  tz,
+  fxPayload,
+  workedHours,
+  workingDays,
+  rangeSet,
+}) => {
+  const candidates = [];
+  const income = Math.max(0, Number(summary.income) || 0);
+  const net = Number(summary.net) || 0;
+  const savedPct = income > 0 ? (Math.max(0, net) / income) * 100 : 0;
+  if (savedPct >= 50) {
+    candidates.push({
+      priority: 90,
+      line: `🏆 Видатний рівень збережень: ${savedPct.toLocaleString('uk-UA', { maximumFractionDigits: 0 })}%`,
+    });
+  } else if (savedPct >= 30) {
+    candidates.push({
+      priority: 90,
+      line: `💎 Високий рівень збережень: ${savedPct.toLocaleString('uk-UA', { maximumFractionDigits: 0 })}%`,
+    });
+  } else if (savedPct >= 10) {
+    candidates.push({
+      priority: 90,
+      line: `✅ Збережено ${savedPct.toLocaleString('uk-UA', { maximumFractionDigits: 0 })}% доходу`,
+    });
+  }
+  const prevNet = Number(prevSummary?.net) || 0;
+  const netBetterPct = percentChange(net, prevNet);
+  let addedNetComparison = false;
+  if (net > prevNet && prevNet !== 0) {
+    candidates.push({
+      priority: 70,
+      line: `📈 Баланс кращий на ${Math.abs(Math.round(netBetterPct))}% за минулий період`,
+    });
+    addedNetComparison = true;
+  }
+  if (net > 0 && !addedNetComparison) {
+    candidates.push({ priority: 60, line: '✅ Період закрито у плюс' });
+  }
+  const { items: budgetItems, allUnderLimit } = await getBudgetCompliance(
+    dbConn,
+    userId,
+    txs,
+    today,
+    tz,
+    fxPayload
+  );
+  if (budgetItems.length >= 1 && allUnderLimit) {
+    candidates.push({ priority: 80, line: '🛡️ Усі бюджети в межах ліміту' });
+  } else {
+    const goodOnes = budgetItems
+      .filter((i) => i.ratio <= 0.7)
+      .sort((a, b) => a.ratio - b.ratio)
+      .slice(0, 2);
+    for (const b of goodOnes) {
+      candidates.push({
+        priority: 80,
+        line: `✅ Бюджет «${categoryNameById(b.categoryId)}»: лише ${Math.round(b.ratio * 100)}% використано`,
+      });
+    }
+  }
+  const goalRows = await getActiveGoalsWithSaved(dbConn, userId, rangeSet, tz);
+  for (const g of goalRows) {
+    if (g.progressEnd >= 1 && g.progressStart < 1) {
+      candidates.push({ priority: 100, line: `🏆 Ціль «${g.name}» виконана!` });
+      continue;
+    }
+    if (g.savedInPeriod <= 0) continue;
+    const thresholds = [
+      { t: 0.75, label: '75%' },
+      { t: 0.5, label: '50%' },
+      { t: 0.25, label: '25%' },
+    ];
+    for (const { t, label } of thresholds) {
+      if (g.progressStart < t && g.progressEnd >= t) {
+        candidates.push({
+          priority: 95,
+          line: `🎯 Ціль «${g.name}»: досягнуто ${label}`,
+        });
+        break;
+      }
+    }
+  }
+  const topCats = Array.from(currentExpenseByCategory.entries())
+    .filter(([, amt]) => amt > 0)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3);
+  let bestReduction = null;
+  for (const [categoryId, cur] of topCats) {
+    const prevAmt = previousExpenseByCategory.get(categoryId) ?? 0;
+    if (!(cur > 0) || !(prevAmt > 0)) continue;
+    const reduction = (prevAmt - cur) / prevAmt;
+    if (reduction >= 0.15) {
+      if (!bestReduction || reduction > bestReduction.reduction) {
+        bestReduction = { categoryId, reduction };
+      }
+    }
+  }
+  if (bestReduction) {
+    candidates.push({
+      priority: 75,
+      line: `📉 «${categoryNameById(bestReduction.categoryId)}»: витрати −${Math.round(bestReduction.reduction * 100)}%`,
+    });
+  }
+  const wh = Math.max(0, Number(workedHours) || 0);
+  const wd = Math.max(0, Number(workingDays) || 0);
+  if (reportType === 'weekly' && wh >= 40) {
+    candidates.push({
+      priority: 50,
+      line: `⏱️ Відпрацьовано ${wh.toLocaleString('uk-UA', { maximumFractionDigits: 2 })} год / ${wd} днів`,
+    });
+  }
+  if (reportType === 'monthly' && wh >= 160) {
+    candidates.push({
+      priority: 50,
+      line: `⏱️ Відпрацьовано ${wh.toLocaleString('uk-UA', { maximumFractionDigits: 2 })} год / ${wd} днів`,
+    });
+  }
+  return candidates
+    .sort((a, b) => b.priority - a.priority)
+    .slice(0, 6)
+    .map((c) => c.line);
+};
 const formatRecommendationsSection = (items, title = '💡 РЕКОМЕНДАЦІЇ') => {
   const lines = [title];
   if (!Array.isArray(items) || items.length === 0) {
@@ -1366,6 +1584,12 @@ const buildReportText = (reportType, periodLabel, txs, comparison, extra = {}) =
     lines.push('⏰ *РОБОЧИЙ ЧАС*');
     lines.push(`├ Відпрацьовано: *${workedHours.toLocaleString('uk-UA', { maximumFractionDigits: 2 })} год*`);
     lines.push('└ Деталі — у вебапі');
+    const achievementLines = Array.isArray(extra.achievementLines) ? extra.achievementLines : [];
+    if (achievementLines.length > 0) {
+      lines.push('');
+      lines.push('🎯 *ДОСЯГНЕННЯ*');
+      achievementLines.forEach((line) => lines.push(line));
+    }
     const recommendationLines = Array.isArray(extra.recommendationLines) ? extra.recommendationLines : [];
     if (recommendationLines.length > 0) {
       lines.push('');
@@ -1383,7 +1607,6 @@ const buildReportText = (reportType, periodLabel, txs, comparison, extra = {}) =
     const incomePct = percentChange(summary.income, Number(extra.previousIncome) || 0);
     const expensePct = percentChange(summary.expense, Number(extra.previousExpense) || 0);
     const netPct = percentChange(summary.net, Number(extra.previousNet) || 0);
-    const savedPct = summary.income > 0 ? (Math.max(0, Number(summary.net) || 0) / summary.income) * 100 : 0;
     const monthHeader = formatMonthHeaderUk(extra.periodEndDay || '');
     const lines = [
       `📅 *ФІНАНСОВИЙ ЗВІТ — ${monthHeader}*`,
@@ -1416,9 +1639,12 @@ const buildReportText = (reportType, periodLabel, txs, comparison, extra = {}) =
     lines.push(`├ Дохід: \`${incomePct >= 0 ? '+' : ''}${incomePct.toLocaleString('uk-UA', { maximumFractionDigits: 0 })}%\` ${incomePct >= 0 ? '⬆️' : '⬇️'}`);
     lines.push(`├ Витрати: \`${expensePct >= 0 ? '+' : ''}${expensePct.toLocaleString('uk-UA', { maximumFractionDigits: 0 })}%\` ${expensePct >= 0 ? '⬆️' : '⬇️'}`);
     lines.push(`└ Баланс: \`${netPct >= 0 ? '+' : ''}${netPct.toLocaleString('uk-UA', { maximumFractionDigits: 0 })}%\` ${netPct >= 0 ? '⬆️' : '⬇️'}`);
-    lines.push('');
-    lines.push('🎯 *ДОСЯГНЕННЯ*');
-    lines.push(`✅ Збережено ${savedPct.toLocaleString('uk-UA', { maximumFractionDigits: 0 })}% від доходу`);
+    const achievementLines = Array.isArray(extra.achievementLines) ? extra.achievementLines : [];
+    if (achievementLines.length > 0) {
+      lines.push('');
+      lines.push('🎯 *ДОСЯГНЕННЯ*');
+      achievementLines.forEach((line) => lines.push(line));
+    }
     const recommendationLines = Array.isArray(extra.recommendationLines) ? extra.recommendationLines : [];
     if (recommendationLines.length > 0) {
       lines.push('');
@@ -1538,6 +1764,24 @@ const sendUserReport = async (dbConn, userId, chatId, reportType, timeZone) => {
   ]);
   const workingDays = workedDaySet.size;
   const avgPerDay = workingDays > 0 ? workedHours / workingDays : 0;
+  const currentExpenseByCategory = sumExpenseByCategory(scoped, reportCurrency, fx);
+  const previousExpenseByCategory = sumExpenseByCategory(previousScoped, reportCurrency, fx);
+  const achievementLines = await buildAchievementLines({
+    reportType,
+    summary,
+    prevSummary: previousSummary,
+    currentExpenseByCategory,
+    previousExpenseByCategory,
+    dbConn,
+    userId,
+    txs: Array.isArray(txs) ? txs : [],
+    today,
+    tz,
+    fxPayload: fx,
+    workedHours,
+    workingDays,
+    rangeSet,
+  });
   const text = buildReportText(reportType, periodLabel, scoped, comparison, {
     summary,
     workedHours,
@@ -1550,6 +1794,7 @@ const sendUserReport = async (dbConn, userId, chatId, reportType, timeZone) => {
     previousNet: previousSummary.net,
     periodEndDay,
     recommendationLines,
+    achievementLines,
   });
   await bot.sendMessage(chatId, text, {
     disable_web_page_preview: true,
