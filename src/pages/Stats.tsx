@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Eye, EyeOff } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Eye, EyeOff } from 'lucide-react';
 import { useTransactions } from '../context/TransactionContext';
 import { useTranslation } from '../i18n/LanguageContext';
 import { formatCurrency, isSameMonth } from '../utils/formatters';
@@ -13,6 +13,7 @@ const Stats: React.FC = () => {
   const { t, locale, displayCurrency, convertAmount } = useTranslation();
   const { transactions } = useTransactions();
   const [range, setRange] = useState<StatsRange>('month');
+  const [selectedMonth, setSelectedMonth] = useState(() => new Date());
   const [hiddenCategoryIds, setHiddenCategoryIds] = useState<string[]>([]);
 
   const inRange = useMemo(() => {
@@ -23,11 +24,11 @@ const Stats: React.FC = () => {
         const diff = (now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24);
         return diff >= 0 && diff <= 7;
       }
-      if (range === 'month') return isSameMonth(iso);
+      if (range === 'month') return isSameMonth(iso, selectedMonth);
       if (range === 'year') return d.getFullYear() === now.getFullYear();
       return true;
     };
-  }, [range]);
+  }, [range, selectedMonth]);
 
   const filtered = useMemo(
     () => transactions.filter((tx) => inRange(tx.date)),
@@ -57,6 +58,14 @@ const Stats: React.FC = () => {
   }, [filtered, convertAmount]);
 
   const rangeOptions: StatsRange[] = ['week', 'month', 'year'];
+  const monthLabel = useMemo(
+    () => selectedMonth.toLocaleDateString(locale, { month: 'long', year: 'numeric' }),
+    [selectedMonth, locale]
+  );
+
+  const shiftSelectedMonth = (delta: number) => {
+    setSelectedMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + delta, 1));
+  };
 
   const categoryRows = useMemo(
     () =>
@@ -119,6 +128,27 @@ const Stats: React.FC = () => {
           ))}
         </div>
       </div>
+      {range === 'month' && (
+        <div className={styles.monthNav}>
+          <button
+            type="button"
+            className={styles.monthNavBtn}
+            onClick={() => shiftSelectedMonth(-1)}
+            aria-label={t('planner', 'prevMonth')}
+          >
+            <ChevronLeft size={16} />
+          </button>
+          <span className={styles.monthNavLabel}>{monthLabel}</span>
+          <button
+            type="button"
+            className={styles.monthNavBtn}
+            onClick={() => shiftSelectedMonth(1)}
+            aria-label={t('planner', 'nextMonth')}
+          >
+            <ChevronRight size={16} />
+          </button>
+        </div>
+      )}
 
       <div className={styles.summaryGrid}>
         <div className={styles.summaryCard}>
