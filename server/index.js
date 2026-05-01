@@ -1902,6 +1902,44 @@ if (bot) {
   console.warn('Telegram bot is disabled: TELEGRAM_BOT_TOKEN is missing');
 }
 
+async function runAutoReportsTick() {
+  if (!bot) return;
+  const users = await db.all('SELECT telegram_id AS telegramId, chat_id AS chatId, timezone FROM users');
+  if (!Array.isArray(users) || users.length === 0) return;
+  const nowIso = new Date().toISOString();
+  for (const u of users) {
+    const userId = String(u.telegramId ?? '');
+    const chatId = Number(u.chatId);
+    if (!userId || !Number.isFinite(chatId)) continue;
+    const tz = normalizeTimeZone(u.timezone);
+    const nowLocal = formatDatePartsForZone(nowIso, tz);
+    if (!nowLocal?.day || !nowLocal?.time) continue;
+    const settings = await getReportSettings(db, userId);
+    if (nowLocal.time !== settings.sendTime) continue;
+    const weekday = formatLocalWeekday(nowIso, tz);
+    if (settings.autoWeekly && weekday === 'mon') {
+      const slot = `${nowLocal.day}:${settings.sendTime}`;
+      if (await shouldSendForSlot(db, userId, 'weekly', slot)) {
+        await sendUserReport(db, userId, chatId, 'weekly', tz);
+      }
+    }
+    if (settings.autoMonthly && nowLocal.day.endsWith('-01')) {
+      const slot = `${nowLocal.day}:${settings.sendTime}`;
+      if (await shouldSendForSlot(db, userId, 'monthly', slot)) {
+        await sendUserReport(db, userId, chatId, 'monthly', tz);
+      }
+    }
+    const reminders = await listReminders(db, userId);
+    for (const reminder of reminders) {
+      if (!reminder.enabled || nowLocal.time !== reminder.timeHHMM) continue;
+      const slot = `${nowLocal.day}:${reminder.timeHHMM}`;
+      if (await markReminderDelivery(db, userId, reminder.id, slot)) {
+        await sendReminderMessage(db, userId, reminder, tz, chatId);
+      }
+    }
+  }
+}
+
 if (bot) {
   setTimeout(() => {
     if (typeof runAutoReportsTick !== 'function') return;
@@ -2580,44 +2618,6 @@ app.get('/api/custom-categories', async (req, res) => {
       updatedAt: row.lastUsedAt,
     });
   }
-
-async function runAutoReportsTick() {
-  if (!bot) return;
-  const users = await db.all('SELECT telegram_id AS telegramId, chat_id AS chatId, timezone FROM users');
-  if (!Array.isArray(users) || users.length === 0) return;
-  const nowIso = new Date().toISOString();
-  for (const u of users) {
-    const userId = String(u.telegramId ?? '');
-    const chatId = Number(u.chatId);
-    if (!userId || !Number.isFinite(chatId)) continue;
-    const tz = normalizeTimeZone(u.timezone);
-    const nowLocal = formatDatePartsForZone(nowIso, tz);
-    if (!nowLocal?.day || !nowLocal?.time) continue;
-    const settings = await getReportSettings(db, userId);
-    if (nowLocal.time !== settings.sendTime) continue;
-    const weekday = formatLocalWeekday(nowIso, tz);
-    if (settings.autoWeekly && weekday === 'mon') {
-      const slot = `${nowLocal.day}:${settings.sendTime}`;
-      if (await shouldSendForSlot(db, userId, 'weekly', slot)) {
-        await sendUserReport(db, userId, chatId, 'weekly', tz);
-      }
-    }
-    if (settings.autoMonthly && nowLocal.day.endsWith('-01')) {
-      const slot = `${nowLocal.day}:${settings.sendTime}`;
-      if (await shouldSendForSlot(db, userId, 'monthly', slot)) {
-        await sendUserReport(db, userId, chatId, 'monthly', tz);
-      }
-    }
-    const reminders = await listReminders(db, userId);
-    for (const reminder of reminders) {
-      if (!reminder.enabled || nowLocal.time !== reminder.timeHHMM) continue;
-      const slot = `${nowLocal.day}:${reminder.timeHHMM}`;
-      if (await markReminderDelivery(db, userId, reminder.id, slot)) {
-        await sendReminderMessage(db, userId, reminder, tz, chatId);
-      }
-    }
-  }
-}
 
   res.json(
     Array.from(byId.values()).sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))
