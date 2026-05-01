@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from '../i18n/LanguageContext';
 import { LANGUAGES, LANGUAGE_LABELS, LANGUAGE_FLAGS } from '../i18n/translations';
 import type { Language } from '../i18n/translations';
@@ -50,12 +50,7 @@ const Settings: React.FC = () => {
     };
   }, []);
 
-  useEffect(() => {
-    if (reports.reportCurrency === displayCurrency) return;
-    void setReportPatch({ reportCurrency: displayCurrency });
-  }, [displayCurrency, reports.reportCurrency]);
-
-  const setReportPatch = async (patch: Partial<typeof reports>) => {
+  const setReportPatch = useCallback(async (patch: Partial<typeof reports>) => {
     setLoadingAutomation(true);
     try {
       const next = await updateReportSettings(patch);
@@ -63,7 +58,12 @@ const Settings: React.FC = () => {
     } finally {
       setLoadingAutomation(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (reports.reportCurrency === displayCurrency) return;
+    void setReportPatch({ reportCurrency: displayCurrency });
+  }, [displayCurrency, reports.reportCurrency, setReportPatch]);
 
   const patchReminder = async (id: string, patch: Partial<Reminder>) => {
     setLoadingAutomation(true);

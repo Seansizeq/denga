@@ -351,7 +351,7 @@ const CalendarPlanner: React.FC = () => {
 
   const dayHasShift = Boolean(current.hasShift || current.note.trim());
 
-  const reportDays = useMemo(() => {
+  const reportDaysKey = useMemo(() => {
     const now = new Date();
     const reportYear = Number(month.split('-')[0]);
     const baseDays =
@@ -375,16 +375,18 @@ const CalendarPlanner: React.FC = () => {
       if (reportRange === 'month') return true;
       return false;
     });
-    return days;
+    return days.join('|');
   }, [month, reportRange, selectedDay]);
+  const reportDays = reportDaysKey ? reportDaysKey.split('|') : [];
 
   const monthReport = useMemo(() => {
+    const days = reportDaysKey ? reportDaysKey.split('|') : [];
     let totalHours = 0;
     let totalSalaryUah = 0;
     let totalSalaryPln = 0;
     let filledDays = 0;
     let totalShifts = 0;
-    for (const day of reportDays) {
+    for (const day of days) {
       const p = store[day];
       if (!p?.hasShift) continue;
       filledDays += 1;
@@ -396,12 +398,13 @@ const CalendarPlanner: React.FC = () => {
       totalSalaryPln += payPln;
     }
     return { totalHours, totalSalaryUah, totalSalaryPln, filledDays, totalShifts };
-  }, [store, reportDays]);
+  }, [store, reportDaysKey]);
 
   const reportShiftBanners = useMemo(() => {
+    const days = reportDaysKey ? reportDaysKey.split('|') : [];
     const existingDays = new Set(reportShiftEntries.map((entry) => entry.day));
     const merged = [...reportShiftEntries];
-    for (const day of reportDays) {
+    for (const day of days) {
       if (existingDays.has(day)) continue;
       const plan = store[day];
       if (!plan?.hasShift) continue;
@@ -427,7 +430,7 @@ const CalendarPlanner: React.FC = () => {
       });
     }
     return merged.sort((a, b) => String(b.endedAt || '').localeCompare(String(a.endedAt || '')));
-  }, [reportShiftEntries, reportDays, store]);
+  }, [reportShiftEntries, reportDaysKey, store]);
 
   useEffect(() => {
     void reloadPlannerData();
@@ -481,7 +484,7 @@ const CalendarPlanner: React.FC = () => {
     }
   }, []);
 
-  const loadReportShiftEntries = useCallback(async (days: string[]) => {
+  const loadReportShiftEntries = useCallback(async (days: readonly string[]) => {
     if (!Array.isArray(days) || days.length === 0) {
       setReportShiftEntries([]);
       return;
@@ -528,8 +531,9 @@ const CalendarPlanner: React.FC = () => {
   }, [chooserOpen, selectedDay, loadDayShiftEntries]);
 
   useEffect(() => {
-    void loadReportShiftEntries(reportDays);
-  }, [reportDays, loadReportShiftEntries]);
+    const days = reportDaysKey ? reportDaysKey.split('|') : [];
+    void loadReportShiftEntries(days);
+  }, [reportDaysKey, loadReportShiftEntries]);
 
   const hoursFromTimeRange = (start: string, end: string): number => {
     const [sh, sm] = start.split(':').map(Number);
@@ -673,13 +677,14 @@ const CalendarPlanner: React.FC = () => {
     }
   };
 
-  const refreshAfterShiftEntryMutation = useCallback(async (dayIso: string) => {
+  const refreshAfterShiftEntryMutation = async (dayIso: string) => {
+    const days = reportDaysKey ? reportDaysKey.split('|') : [];
     await reloadPlannerData();
-    await loadReportShiftEntries(reportDays);
+    await loadReportShiftEntries(days);
     if (chooserOpen && dayIso === selectedDay) {
       await loadDayShiftEntries(dayIso);
     }
-  }, [chooserOpen, loadDayShiftEntries, loadReportShiftEntries, reloadPlannerData, reportDays, selectedDay]);
+  };
 
   const handleEditReportShift = async (entry: ShiftEntry) => {
     if (entry.id.startsWith('day-')) return;
