@@ -2478,6 +2478,7 @@ const RECEIPT_SCAN_RATE_LIMIT_MS = 3000;
 const lastReceiptScanByUser = new Map();
 const RECEIPT_IMAGE_BYTES_LIMIT = 1024 * 1024; // OCR.space free tier: 1 MB image
 const OCR_SPACE_ENDPOINT = 'https://api.ocr.space/parse/image';
+const OCR_SPACE_TIMEOUT_MS = 12000;
 // Public test key from OCR.space — works out of the box but is heavily rate-limited.
 // Replace by registering a free API key at https://ocr.space/ocrapi (25k req/month).
 const OCR_SPACE_PUBLIC_FALLBACK_KEY = 'helloworld';
@@ -2540,15 +2541,21 @@ app.post('/api/receipts/scan', express.json({ limit: '12mb' }), async (req, res)
     if (language) form.append('language', language);
     form.append('OCREngine', '2');
     form.append('isOverlayRequired', 'false');
-    form.append('detectOrientation', 'true');
-    form.append('scale', 'true');
-    form.append('isTable', 'true');
+    // Fast mode: disable extra OCR passes that improve edge cases but slow down scans.
+    form.append('detectOrientation', 'false');
+    form.append('scale', 'false');
+    form.append('isTable', 'false');
     form.append('file', fileBlob, fileName);
 
+    const abort = new AbortController();
+    const timeoutId = setTimeout(() => abort.abort(), OCR_SPACE_TIMEOUT_MS);
     const ocrRes = await fetch(OCR_SPACE_ENDPOINT, {
       method: 'POST',
       headers: { apikey: apiKey },
       body: form,
+      signal: abort.signal,
+    }).finally(() => {
+      clearTimeout(timeoutId);
     });
     if (!ocrRes.ok) {
       const errBody = await ocrRes.text().catch(() => '');
@@ -2576,59 +2583,23 @@ app.post('/api/receipts/scan', express.json({ limit: '12mb' }), async (req, res)
   let ocrJson;
   let text = '';
   try {
-    // 1) Try auto-language first (most stable across OCR.space plans).
+    // Fast path: single OCR request for responsiveness.
     ocrJson = await callOcrSpace('');
-    const polError = checkForError(ocrJson);
-    if (polError) {
-      console.error('[receipts] OCR.space (pol) error', polError.msg, polError.details);
-    } else {
-      text = extractText(ocrJson);
+    const providerError = checkForError(ocrJson);
+    if (providerError) {
+      console.error('[receipts] OCR.space error', providerError.msg, providerError.details);
+      res.status(502).json({
+        error: providerError.msg,
+        code: 'OCR_PROVIDER_ERROR',
+        details: providerError.details,
+      });
+      return;
     }
-
-    // 2) If no text in auto mode, try Polish explicitly.
-    if (!text) {
-      try {
-        const ocrJsonPol = await callOcrSpace('pol');
-        const polError = checkForError(ocrJsonPol);
-        if (!polError) {
-          ocrJson = ocrJsonPol;
-          text = extractText(ocrJsonPol);
-        }
-      } catch (err) {
-        console.warn('[receipts] OCR.space (pol) fallback failed', err);
-      }
-    }
-
-    // 3) If still no text, try Russian as a Cyrillic fallback (often works for UA receipts).
-    if (!text) {
-      try {
-        const ocrJsonRu = await callOcrSpace('rus');
-        const ruError = checkForError(ocrJsonRu);
-        if (ruError) {
-          console.error('[receipts] OCR.space (rus) error', ruError.msg, ruError.details);
-          res.status(502).json({
-            error: ruError.msg,
-            code: 'OCR_PROVIDER_ERROR',
-            details: ruError.details,
-          });
-          return;
-        }
-        ocrJson = ocrJsonRu;
-        text = extractText(ocrJsonRu);
-      } catch (err) {
-        console.error('[receipts] OCR.space (rus) call failed', err);
-        res.status(502).json({
-          error: 'OCR provider unreachable',
-          code: 'OCR_UNREACHABLE',
-          details: err instanceof Error ? err.message : String(err),
-        });
-        return;
-      }
-    }
+    text = extractText(ocrJson);
   } catch (err) {
-    console.error('[receipts] OCR.space (pol) call failed', err);
+    console.error('[receipts] OCR.space call failed', err);
     res.status(502).json({
-      error: 'OCR provider unreachable',
+      error: 'OCR provider unreachable or timed out',
       code: 'OCR_UNREACHABLE',
       details: err instanceof Error ? err.message : String(err),
     });
