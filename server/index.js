@@ -378,6 +378,27 @@ const getMonthDaySet = (todayDay) => {
   }
   return set;
 };
+const getPreviousFullMonthDaySet = (todayDay) => {
+  const [yRaw, mRaw] = String(todayDay).split('-');
+  const y = Number(yRaw);
+  const m = Number(mRaw);
+  if (!Number.isFinite(y) || !Number.isFinite(m)) return getMonthDaySet(todayDay);
+  const pad = (n) => String(n).padStart(2, '0');
+  const currentMonthFirst = `${y}-${pad(m)}-01`;
+  const previousMonthLast = shiftIsoDay(currentMonthFirst, -1);
+  const [pyRaw, pmRaw] = previousMonthLast.split('-');
+  const py = Number(pyRaw);
+  const pm = Number(pmRaw);
+  if (!Number.isFinite(py) || !Number.isFinite(pm)) return getMonthDaySet(todayDay);
+  const previousMonthFirst = `${py}-${pad(pm)}-01`;
+  const set = new Set();
+  let cur = previousMonthFirst;
+  while (cur <= previousMonthLast) {
+    set.add(cur);
+    cur = shiftIsoDay(cur, 1);
+  }
+  return set;
+};
 const formatDatePartsForZone = (iso, timeZone = DEFAULT_BOT_TIMEZONE) => {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
@@ -828,7 +849,10 @@ const formatComparisonChange = (delta, { positive, negative, neutral = 'без �
 };
 const categoryNameById = (id) => {
   const base = CATEGORIES.find((c) => c.id === id)?.name;
-  return base || String(id);
+  if (base) return base;
+  const custom = parseCustomCategoryId(String(id ?? ''));
+  if (custom?.name) return custom.name;
+  return String(id);
 };
 const CATEGORY_EMOJI = {
   food: '🍕',
@@ -1229,7 +1253,7 @@ const sendUserReport = async (dbConn, userId, chatId, reportType, timeZone) => {
   const tz = normalizeTimeZone(timeZone);
   const nowIso = new Date().toISOString();
   const today = dayFromIsoInZone(nowIso, tz) || nowIso.slice(0, 10);
-  const rangeSet = reportType === 'weekly' ? getWeekDaySet(today) : getMonthDaySet(today);
+  const rangeSet = reportType === 'weekly' ? getWeekDaySet(today) : getPreviousFullMonthDaySet(today);
   const txs = await dbConn.all(
     'SELECT amount, currency, categoryId, type, date FROM transactions WHERE user_id = ? ORDER BY date DESC LIMIT 5000',
     [userId]
@@ -1239,9 +1263,10 @@ const sendUserReport = async (dbConn, userId, chatId, reportType, timeZone) => {
   const previousScoped = (Array.isArray(txs) ? txs : []).filter((tx) => previousRangeSet.has(dayFromIsoInZone(tx.date, tz)));
   const reportSettings = await getReportSettings(dbConn, userId);
   const sortedDays = Array.from(rangeSet).sort();
+  const periodEndDay = sortedDays[sortedDays.length - 1] || today;
   const periodLabel = reportType === 'weekly'
     ? `${formatDayMonth(sortedDays[0])} — ${formatDayMonth(today)}.${String(today).slice(0, 4)}`
-    : `${sortedDays[0]} → ${today}`;
+    : `${sortedDays[0]} → ${periodEndDay}`;
   const summary = summarizeTransactions(scoped);
   const previousSummary = summarizeTransactions(previousScoped);
   const comparison = buildReportComparison(summary, previousSummary);
@@ -1289,7 +1314,7 @@ const sendUserReport = async (dbConn, userId, chatId, reportType, timeZone) => {
     previousIncome: previousSummary.income,
     previousExpense: previousSummary.expense,
     previousNet: previousSummary.net,
-    periodEndDay: today,
+    periodEndDay,
   });
   await bot.sendMessage(chatId, text, {
     disable_web_page_preview: true,
