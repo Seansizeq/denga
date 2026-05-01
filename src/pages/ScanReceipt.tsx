@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import * as LucideIcons from 'lucide-react';
 import { Camera, ScanLine, X } from 'lucide-react';
 import { useTranslation } from '../i18n/LanguageContext';
+import { useTransactions } from '../context/TransactionContext';
 import { findCategory, getCustomCategoryData } from '../constants/categories';
 import type { CategoryKey } from '../i18n/translations';
 import { compressImage } from '../utils/imageCompress';
@@ -20,11 +21,13 @@ type ViewState = 'idle' | 'loading' | 'result' | 'error';
 const ScanReceipt: React.FC = () => {
   const navigate = useNavigate();
   const { t, locale } = useTranslation();
+  const { addTransaction } = useTransactions();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [view, setView] = useState<ViewState>('idle');
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<ScannedReceipt | null>(null);
   const [error, setError] = useState<ScanReceiptError | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const triggerCamera = () => {
     setError(null);
@@ -60,25 +63,47 @@ const ScanReceipt: React.FC = () => {
     void handleFile(file);
   };
 
-  const goToAddTransaction = () => {
-    if (!receipt) return;
-    const params = new URLSearchParams();
-    params.set('type', 'expense');
-    if (receipt.total != null && receipt.total > 0) {
-      params.set('amount', String(receipt.total));
-    }
-    if (receipt.currency) params.set('currency', receipt.currency);
-    if (receipt.categoryId) params.set('categoryId', receipt.categoryId);
+  const buildScannedNote = (r: ScannedReceipt): string => {
     const noteParts: string[] = [];
-    if (receipt.shop) noteParts.push(receipt.shop);
-    if (receipt.items.length > 0) {
-      const itemsBrief = receipt.items
+    if (r.shop) noteParts.push(r.shop);
+    if (r.items.length > 0) {
+      const itemsBrief = r.items
         .slice(0, 3)
         .map((i) => i.name)
         .join(', ');
       if (itemsBrief) noteParts.push(itemsBrief);
     }
-    const note = noteParts.join(' • ').slice(0, 120);
+    return noteParts.join(' • ').slice(0, 120);
+  };
+
+  const saveScannedTransaction = async () => {
+    if (!receipt || receipt.total == null || receipt.total <= 0 || saving) return;
+    setSaving(true);
+    const note = buildScannedNote(receipt);
+    const ok = await addTransaction({
+      amount: receipt.total,
+      currency: receipt.currency,
+      type: 'expense',
+      categoryId: receipt.categoryId || 'other_expense',
+      note: note || undefined,
+    });
+    setSaving(false);
+    if (!ok) {
+      setError({ kind: 'unknown', details: 'Failed to save transaction' });
+      setView('error');
+      return;
+    }
+    navigate('/');
+  };
+
+  const openEditWithPrefill = () => {
+    if (!receipt) return;
+    const params = new URLSearchParams();
+    params.set('type', 'expense');
+    if (receipt.total != null && receipt.total > 0) params.set('amount', String(receipt.total));
+    if (receipt.currency) params.set('currency', receipt.currency);
+    if (receipt.categoryId) params.set('categoryId', receipt.categoryId);
+    const note = buildScannedNote(receipt);
     if (note) params.set('note', note);
     navigate(`/add?${params.toString()}`);
   };
@@ -251,10 +276,13 @@ const ScanReceipt: React.FC = () => {
             <button
               type="button"
               className={styles.primaryBtn}
-              onClick={goToAddTransaction}
-              disabled={receipt.total == null || receipt.total <= 0}
+              onClick={() => void saveScannedTransaction()}
+              disabled={saving || receipt.total == null || receipt.total <= 0}
             >
-              {t('scan', 'confirmAndEdit')}
+              {saving ? t('addTx', 'save') : t('scan', 'confirmAndEdit')}
+            </button>
+            <button type="button" className={styles.secondaryBtn} onClick={openEditWithPrefill}>
+              {t('history', 'edit')}
             </button>
             <button type="button" className={styles.secondaryBtn} onClick={triggerCamera}>
               {t('scan', 'retake')}
