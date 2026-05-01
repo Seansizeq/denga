@@ -1143,7 +1143,7 @@ app.use(
     allowedHeaders: ['Content-Type', AUTH_HEADER_NAME],
   })
 );
-app.use(express.json());
+app.use(express.json({ limit: '15mb' }));
 // Prevent caching of index.html so updates are visible immediately
 app.use((req, res, next) => {
   if (req.path === '/' || req.path === '/index.html') {
