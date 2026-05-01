@@ -222,6 +222,21 @@ type Dict = {
     sendMonthlyNow: string;
     dailyReminder: string;
     subscriptionsReminder: string;
+    reminderInactivity: string;
+    reminderShiftEveningBefore: string;
+    reminderShiftUnclosed: string;
+    reminderFxChange: string;
+    reminderTimeLabel: string;
+    leadDaysLabel: string;
+    fxThresholdLabel: string;
+    budgetsLink: string;
+  };
+  budgets: {
+    title: string;
+    subtitle: string;
+    monthlyLimit: string;
+    currencyNote: string;
+    noBudgetHint: string;
   };
   categories: {
     food: string;
@@ -473,6 +488,21 @@ const uk: Dict = {
     sendMonthlyNow: 'Надіслати місячний звіт зараз',
     dailyReminder: 'Щоденне нагадування',
     subscriptionsReminder: 'Нагадування про підписки',
+    reminderInactivity: 'Немає витрат N днів',
+    reminderShiftEveningBefore: 'Зміна завтра (планер)',
+    reminderShiftUnclosed: 'Відкрита зміна >8 год',
+    reminderFxChange: 'Зміна курсу валют (%)',
+    reminderTimeLabel: 'Час у Telegram',
+    leadDaysLabel: 'Днів / параметр',
+    fxThresholdLabel: 'Поріг, % (для курсу)',
+    budgetsLink: 'Бюджети по категоріях',
+  },
+  budgets: {
+    title: 'Бюджети',
+    subtitle: 'Ліміт витрат на місяць по категорії (сповіщення в Telegram при 80% і 100%)',
+    monthlyLimit: 'Ліміт / місяць',
+    currencyNote: 'Суми в валюті відображення з налаштувань',
+    noBudgetHint: '0 або порожньо — без ліміту',
   },
   categories: {
     food: 'Продукти',
@@ -729,6 +759,21 @@ const ru: Dict = {
     sendMonthlyNow: 'Отправить месячный отчёт сейчас',
     dailyReminder: 'Ежедневное напоминание',
     subscriptionsReminder: 'Напоминание о подписках',
+    reminderInactivity: 'Нет расходов N дней',
+    reminderShiftEveningBefore: 'Смена завтра (планер)',
+    reminderShiftUnclosed: 'Смена открыта >8 ч',
+    reminderFxChange: 'Изменение курса (%)',
+    reminderTimeLabel: 'Время в Telegram',
+    leadDaysLabel: 'Дней / параметр',
+    fxThresholdLabel: 'Порог, %',
+    budgetsLink: 'Бюджеты по категориям',
+  },
+  budgets: {
+    title: 'Бюджеты',
+    subtitle: 'Лимит расходов в месяц по категории (уведомления в Telegram при 80% и 100%)',
+    monthlyLimit: 'Лимит / месяц',
+    currencyNote: 'Суммы в валюте отображения из настроек',
+    noBudgetHint: '0 — без лимита',
   },
   categories: {
     food: 'Продукты',
@@ -985,6 +1030,21 @@ const en: Dict = {
     sendMonthlyNow: 'Send monthly report now',
     dailyReminder: 'Daily reminder',
     subscriptionsReminder: 'Subscription reminder',
+    reminderInactivity: 'No expenses for N days',
+    reminderShiftEveningBefore: 'Shift tomorrow (planner)',
+    reminderShiftUnclosed: 'Open shift >8h',
+    reminderFxChange: 'FX rate change (%)',
+    reminderTimeLabel: 'Telegram time',
+    leadDaysLabel: 'Days / parameter',
+    fxThresholdLabel: 'Threshold, %',
+    budgetsLink: 'Category budgets',
+  },
+  budgets: {
+    title: 'Budgets',
+    subtitle: 'Monthly spending limit per category (Telegram alerts at 80% and 100%)',
+    monthlyLimit: 'Limit / month',
+    currencyNote: 'Amounts in your display currency from settings',
+    noBudgetHint: '0 — no limit',
   },
   categories: {
     food: 'Groceries',

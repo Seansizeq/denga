@@ -142,3 +142,55 @@
   opacity: 0.4;
 }
 
+.reminderCard {
+  padding: 14px 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.reminderCard:last-child {
+  border-bottom: none;
+}
+
+.reminderHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.reminderTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.reminderSwitch input {
+  width: 18px;
+  height: 18px;
+}
+
+.reminderRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.reminderMeta {
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+
+.reminderNumber {
+  width: 88px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--bg-card-light);
+  color: var(--text-primary);
+  border-radius: 10px;
+  padding: 6px 8px;
+  font-size: 14px;
+}
+

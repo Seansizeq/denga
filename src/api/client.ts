@@ -31,13 +31,27 @@ export type ReportSettings = {
   sendTime: string;
 };
 
+export type ReminderKind =
+  | 'daily'
+  | 'subscriptions'
+  | 'inactivity'
+  | 'shift_evening_before'
+  | 'shift_unclosed'
+  | 'fx_change';
+
 export type Reminder = {
   id: string;
-  kind: 'daily' | 'subscriptions';
+  kind: ReminderKind;
   title: string;
   enabled: boolean;
   timeHHMM: string;
   leadDays: number;
+};
+
+export type CategoryBudget = {
+  categoryId: string;
+  monthlyLimit: number;
+  currency: 'UAH' | 'PLN' | 'USD';
 };
 
 export const getReportSettings = async (): Promise<ReportSettings> => {
@@ -80,4 +94,29 @@ export const updateReminder = async (id: string, patch: Partial<Reminder>): Prom
   });
   if (!res.ok) throw new Error('failed to update reminder');
   return res.json();
+};
+
+export const getBudgets = async (): Promise<CategoryBudget[]> => {
+  const res = await apiFetch('/api/budgets');
+  if (!res.ok) throw new Error('failed to load budgets');
+  return res.json();
+};
+
+export const setBudget = async (
+  categoryId: string,
+  monthlyLimit: number,
+  currency: CategoryBudget['currency']
+): Promise<CategoryBudget> => {
+  const res = await apiFetch(`/api/budgets/${encodeURIComponent(categoryId)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ monthlyLimit, currency }),
+  });
+  if (!res.ok) throw new Error('failed to save budget');
+  return res.json();
+};
+
+export const deleteBudget = async (categoryId: string): Promise<void> => {
+  const res = await apiFetch(`/api/budgets/${encodeURIComponent(categoryId)}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('failed to delete budget');
 };

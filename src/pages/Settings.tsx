@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useTranslation } from '../i18n/LanguageContext';
 import { LANGUAGES, LANGUAGE_LABELS, LANGUAGE_FLAGS } from '../i18n/translations';
 import type { Language } from '../i18n/translations';
@@ -14,13 +15,37 @@ import {
   updateReminder,
   type ReportSettings,
   type Reminder,
+  type ReminderKind,
 } from '../api/client';
 import styles from './Settings.module.css';
 
 const APP_VERSION = (import.meta.env.VITE_APP_VERSION as string | undefined) ?? 'dev';
 const DISPLAY_CURRENCIES: DisplayCurrency[] = ['UAH', 'PLN', 'USD'];
 
+const reminderTitleKey = (kind: ReminderKind) => {
+  switch (kind) {
+    case 'daily':
+      return 'dailyReminder' as const;
+    case 'subscriptions':
+      return 'subscriptionsReminder' as const;
+    case 'inactivity':
+      return 'reminderInactivity' as const;
+    case 'shift_evening_before':
+      return 'reminderShiftEveningBefore' as const;
+    case 'shift_unclosed':
+      return 'reminderShiftUnclosed' as const;
+    case 'fx_change':
+      return 'reminderFxChange' as const;
+    default:
+      return 'dailyReminder' as const;
+  }
+};
+
+const showsNumericParam = (kind: ReminderKind) =>
+  kind === 'subscriptions' || kind === 'inactivity' || kind === 'shift_evening_before' || kind === 'fx_change';
+
 const Settings: React.FC = () => {
+  const navigate = useNavigate();
   const { t, language, setLanguage, displayCurrency, setDisplayCurrency, fxRates, fxStatus, refreshFxRates } = useTranslation();
   const { isSupported: fsSupported, isFullscreen, toggle: toggleFullscreen } =
     useTelegramFullscreen();
@@ -222,18 +247,53 @@ const Settings: React.FC = () => {
           <button type="button" className={styles.row} disabled={loadingAutomation} onClick={() => void sendMonthlyReportNow()}>
             <span className={styles.rowLabel}>{t('settings', 'sendMonthlyNow')}</span>
           </button>
+          <button type="button" className={styles.row} onClick={() => navigate('/budgets')}>
+            <span className={styles.rowLabel}>{t('settings', 'budgetsLink')}</span>
+            <span className={styles.rowValue}>→</span>
+          </button>
           {reminders.map((reminder) => (
-            <label key={reminder.id} className={styles.row}>
-              <span className={styles.rowLabel}>
-                {reminder.kind === 'daily' ? t('settings', 'dailyReminder') : t('settings', 'subscriptionsReminder')}
-              </span>
-              <input
-                type="checkbox"
-                checked={reminder.enabled}
-                disabled={loadingAutomation}
-                onChange={(e) => void patchReminder(reminder.id, { enabled: e.target.checked })}
-              />
-            </label>
+            <div key={reminder.id} className={styles.reminderCard}>
+              <div className={styles.reminderHeader}>
+                <span className={styles.reminderTitle}>{t('settings', reminderTitleKey(reminder.kind))}</span>
+                <label className={styles.reminderSwitch}>
+                  <input
+                    type="checkbox"
+                    checked={reminder.enabled}
+                    disabled={loadingAutomation}
+                    onChange={(e) => void patchReminder(reminder.id, { enabled: e.target.checked })}
+                  />
+                </label>
+              </div>
+              <div className={styles.reminderRow}>
+                <span className={styles.reminderMeta}>{t('settings', 'reminderTimeLabel')}</span>
+                <input
+                  className={styles.timeInput}
+                  type="time"
+                  value={reminder.timeHHMM}
+                  disabled={loadingAutomation}
+                  onChange={(e) => void patchReminder(reminder.id, { timeHHMM: e.target.value })}
+                />
+              </div>
+              {showsNumericParam(reminder.kind) ? (
+                <div className={styles.reminderRow}>
+                  <span className={styles.reminderMeta}>
+                    {reminder.kind === 'fx_change' ? t('settings', 'fxThresholdLabel') : t('settings', 'leadDaysLabel')}
+                  </span>
+                  <input
+                    className={styles.reminderNumber}
+                    type="number"
+                    min={reminder.kind === 'fx_change' ? 1 : 0}
+                    max={reminder.kind === 'fx_change' ? 100 : reminder.kind === 'inactivity' ? 90 : 31}
+                    step={1}
+                    value={reminder.leadDays}
+                    disabled={loadingAutomation}
+                    onChange={(e) =>
+                      void patchReminder(reminder.id, { leadDays: Math.trunc(Number(e.target.value) || 0) })
+                    }
+                  />
+                </div>
+              ) : null}
+            </div>
           ))}
         </div>
       </section>

@@ -159,6 +159,19 @@ let fxCacheFetchedAt = 0;
 const CRYPTO_CACHE_TTL_MS = 2 * 60 * 1000;
 let cryptoCache = null;
 let cryptoCacheFetchedAt = 0;
+/** Same math as src/utils/currency.ts — for server-side budget / FX logic */
+const convertCurrencyServer = (amount, from, to, fxPayload) => {
+  const fromC = normalizeCurrency(from);
+  const toC = normalizeCurrency(to);
+  if (!Number.isFinite(amount)) return 0;
+  if (fromC === toC) return amount;
+  const rates = fxPayload?.rates ?? FX_FALLBACK.rates;
+  const fromRate = rates[fromC] ?? FX_FALLBACK.rates[fromC];
+  const toRate = rates[toC] ?? FX_FALLBACK.rates[toC];
+  if (!Number.isFinite(fromRate) || fromRate <= 0 || !Number.isFinite(toRate) || toRate <= 0) return amount;
+  return (amount / fromRate) * toRate;
+};
+
 const fetchFxRates = async () => {
   const now = Date.now();
   if (fxCache && now - fxCacheFetchedAt < FX_CACHE_TTL_MS) {
@@ -276,6 +289,21 @@ const runSubscriptionAutopayForUser = async (userId) => {
           [tx.id, tx.user_id, tx.amount, tx.currency, tx.categoryId, tx.type, tx.date, tx.note ?? null]
         );
         await applyAccountDelta(db, userId, getAccountSlugFromNote(tx.note), accountDeltaForTx(tx));
+        if (bot) {
+          const chatRow = await db.get('SELECT chat_id AS chatId FROM users WHERE telegram_id = ? LIMIT 1', [Number(userId)]);
+          const cid = Number(chatRow?.chatId);
+          if (Number.isFinite(cid) && cid > 0) {
+            try {
+              await bot.sendMessage(
+                cid,
+                `💳 Списано підписку: ${sub.name} — ${Number(amount).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} ${tx.currency}`
+              );
+            } catch (e) {
+              console.error('[subscriptions] autopay telegram notify failed', e);
+            }
+          }
+        }
+        await checkBudgetThresholdsAfterExpense(userId, tx.categoryId);
         nextDue = addSubscriptionCycle(nextDue, cycle);
         safetyCounter += 1;
         if (safetyCounter > 120) break;
@@ -441,7 +469,14 @@ const updateReportSettings = async (dbConn, userId, patch) => {
   );
   return { autoWeekly, autoMonthly, reportCurrency, sendTime };
 };
-const reminderKinds = new Set(['daily', 'subscriptions']);
+const reminderKinds = new Set([
+  'daily',
+  'subscriptions',
+  'inactivity',
+  'shift_evening_before',
+  'shift_unclosed',
+  'fx_change',
+]);
 const isValidReminderKind = (value) => reminderKinds.has(String(value || ''));
 const ensureDefaultReminders = async (dbConn, userId) => {
   const now = new Date().toISOString();
@@ -461,6 +496,34 @@ const ensureDefaultReminders = async (dbConn, userId) => {
       [uuidv4(), userId, now, now]
     );
   }
+  if (!kinds.has('inactivity')) {
+    await dbConn.run(
+      `INSERT INTO user_reminders (id, user_id, kind, title, enabled, time_hhmm, lead_days, created_at, updated_at)
+       VALUES (?, ?, 'inactivity', 'Нагадування про відсутність витрат', 0, '20:00', 3, ?, ?)`,
+      [uuidv4(), userId, now, now]
+    );
+  }
+  if (!kinds.has('shift_evening_before')) {
+    await dbConn.run(
+      `INSERT INTO user_reminders (id, user_id, kind, title, enabled, time_hhmm, lead_days, created_at, updated_at)
+       VALUES (?, ?, 'shift_evening_before', 'Нагадування: зміна завтра', 0, '21:00', 1, ?, ?)`,
+      [uuidv4(), userId, now, now]
+    );
+  }
+  if (!kinds.has('shift_unclosed')) {
+    await dbConn.run(
+      `INSERT INTO user_reminders (id, user_id, kind, title, enabled, time_hhmm, lead_days, created_at, updated_at)
+       VALUES (?, ?, 'shift_unclosed', 'Нагадування: закрити зміну', 0, '23:00', 0, ?, ?)`,
+      [uuidv4(), userId, now, now]
+    );
+  }
+  if (!kinds.has('fx_change')) {
+    await dbConn.run(
+      `INSERT INTO user_reminders (id, user_id, kind, title, enabled, time_hhmm, lead_days, created_at, updated_at)
+       VALUES (?, ?, 'fx_change', 'Нагадування: зміна курсу валют', 0, '09:00', 5, ?, ?)`,
+      [uuidv4(), userId, now, now]
+    );
+  }
 };
 const listReminders = async (dbConn, userId) => {
   await ensureDefaultReminders(dbConn, userId);
@@ -468,7 +531,7 @@ const listReminders = async (dbConn, userId) => {
     `SELECT id, kind, title, enabled, time_hhmm AS timeHHMM, lead_days AS leadDays, created_at AS createdAt, updated_at AS updatedAt
      FROM user_reminders
      WHERE user_id = ?
-     ORDER BY created_at ASC`,
+     ORDER BY kind ASC, created_at ASC`,
     [userId]
   );
   return (rows || []).map((r) => ({
@@ -489,30 +552,204 @@ const markReminderDelivery = async (dbConn, userId, reminderId, slotKey) => {
     return false;
   }
 };
-const sendReminderMessage = async (dbConn, userId, reminder, timeZone, chatId) => {
+
+const calendarDaysBetween = (fromDay, toDay) => {
+  const a = new Date(`${String(fromDay).slice(0, 10)}T12:00:00.000Z`);
+  const b = new Date(`${String(toDay).slice(0, 10)}T12:00:00.000Z`);
+  if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return 0;
+  return Math.round((b.getTime() - a.getTime()) / (86400 * 1000));
+};
+
+const dispatchReminder = async (dbConn, userId, reminder, timeZone, chatId) => {
   if (!bot) return;
   const nowIso = new Date().toISOString();
-  if (reminder.kind === 'daily') {
+  const tz = normalizeTimeZone(timeZone);
+  const today = dayFromIsoInZone(nowIso, tz) || nowIso.slice(0, 10);
+  const kind = String(reminder.kind || '');
+
+  if (kind === 'daily') {
     await bot.sendMessage(chatId, `⏰ Нагадування: ${String(reminder.title || 'Внести витрати')}`);
     return;
   }
-  const tz = normalizeTimeZone(timeZone);
-  const today = dayFromIsoInZone(nowIso, tz) || nowIso.slice(0, 10);
-  const target = shiftIsoDay(today, Number(reminder.leadDays || 0));
-  const due = await dbConn.all(
-    `SELECT name, amount, nextChargeDate
-     FROM subscriptions
-     WHERE user_id = ? AND active = 1 AND nextChargeDate = ?
-     ORDER BY nextChargeDate ASC`,
-    [userId, target]
-  );
-  if (!Array.isArray(due) || due.length === 0) return;
-  const lines = [`🔔 ${String(reminder.title || 'Нагадування про підписки')} (${target})`];
-  due.slice(0, 10).forEach((sub, idx) => {
-    lines.push(`${idx + 1}. ${sub.name} — ${Number(sub.amount || 0).toLocaleString('uk-UA', { maximumFractionDigits: 2 })}`);
-  });
-  await bot.sendMessage(chatId, lines.join('\n'));
+
+  if (kind === 'subscriptions') {
+    const target = shiftIsoDay(today, Number(reminder.leadDays || 0));
+    const due = await dbConn.all(
+      `SELECT name, amount, nextChargeDate
+       FROM subscriptions
+       WHERE user_id = ? AND active = 1 AND nextChargeDate = ?
+       ORDER BY nextChargeDate ASC`,
+      [userId, target]
+    );
+    if (!Array.isArray(due) || due.length === 0) return;
+    const lines = [`🔔 ${String(reminder.title || 'Нагадування про підписки')} (${target})`];
+    due.slice(0, 10).forEach((sub, idx) => {
+      lines.push(`${idx + 1}. ${sub.name} — ${Number(sub.amount || 0).toLocaleString('uk-UA', { maximumFractionDigits: 2 })}`);
+    });
+    await bot.sendMessage(chatId, lines.join('\n'));
+    return;
+  }
+
+  if (kind === 'inactivity') {
+    const n = Math.max(1, Math.min(90, Number(reminder.leadDays) || 3));
+    const row = await dbConn.get(
+      `SELECT MAX(date) AS d FROM transactions WHERE user_id = ? AND type = 'expense'`,
+      [userId]
+    );
+    let daysSince = 9999;
+    if (row?.d) {
+      const lastDay = dayFromIsoInZone(String(row.d), tz) || String(row.d).slice(0, 10);
+      daysSince = calendarDaysBetween(lastDay, today);
+    }
+    if (daysSince < n) return;
+    await bot.sendMessage(
+      chatId,
+      `📭 ${String(reminder.title || 'Витрати')}: за останні ${n} д. немає записів витрат. Додай операцію в Denga.`
+    );
+    return;
+  }
+
+  if (kind === 'shift_evening_before') {
+    const offset = Math.max(1, Math.min(14, Number(reminder.leadDays) || 1));
+    const targetDay = shiftIsoDay(today, offset);
+    const hit = await dbConn.get(
+      `SELECT 1 AS ok FROM planner_days WHERE user_id = ? AND day = ? AND has_shift = 1 LIMIT 1`,
+      [userId, targetDay]
+    );
+    if (!hit?.ok) return;
+    await bot.sendMessage(
+      chatId,
+      `📅 ${String(reminder.title || 'Зміна')}: ${offset === 1 ? 'завтра' : `через ${offset} д.`} (${targetDay}) запланована зміна.`
+    );
+    return;
+  }
+
+  if (kind === 'shift_unclosed') {
+    const active = await dbConn.get(
+      `SELECT started_at AS startedAt FROM bot_active_shifts WHERE user_id = ? LIMIT 1`,
+      [userId]
+    );
+    if (!active?.startedAt) return;
+    const started = new Date(String(active.startedAt));
+    if (Number.isNaN(started.getTime())) return;
+    const hoursOpen = (Date.now() - started.getTime()) / (3600 * 1000);
+    if (hoursOpen < 8) return;
+    await bot.sendMessage(
+      chatId,
+      `⏱ ${String(reminder.title || 'Зміна')}: зміна відкрита вже понад 8 год. Не забудь закрити її в Denga або ботом.`
+    );
+    return;
+  }
+
+  if (kind === 'fx_change') {
+    const thresholdPct = Math.max(1, Math.min(100, Number(reminder.leadDays) || 5));
+    const fx = await fetchFxRates();
+    const rates = fx?.rates ?? FX_FALLBACK.rates;
+    const uRow = await dbConn.get('SELECT fx_baseline_json AS fxBaseline FROM users WHERE telegram_id = ? LIMIT 1', [
+      Number(userId),
+    ]);
+    let baseline = {};
+    try {
+      baseline = JSON.parse(String(uRow?.fxBaseline || '{}'));
+    } catch {
+      baseline = {};
+    }
+    if (!Number.isFinite(baseline.PLN) || !Number.isFinite(baseline.UAH)) {
+      await dbConn.run(`UPDATE users SET fx_baseline_json = ? WHERE telegram_id = ?`, [
+        JSON.stringify({ PLN: rates.PLN, UAH: rates.UAH }),
+        Number(userId),
+      ]);
+      return;
+    }
+    const lines = [];
+    for (const code of ['PLN', 'UAH']) {
+      const cur = Number(rates[code]);
+      const base = Number(baseline[code]);
+      if (!Number.isFinite(cur) || cur <= 0 || !Number.isFinite(base) || base <= 0) continue;
+      const pct = Math.abs((cur - base) / base) * 100;
+      if (pct >= thresholdPct) {
+        lines.push(`• ${code}/USD: ~${pct.toFixed(1)}% (було ${base.toFixed(4)} → ${cur.toFixed(4)})`);
+      }
+    }
+    if (lines.length === 0) return;
+    await bot.sendMessage(
+      chatId,
+      `💱 ${String(reminder.title || 'Курс')}\n${lines.join('\n')}\nДжерело: ${fx?.source ?? 'n/a'}`
+    );
+    await dbConn.run(`UPDATE users SET fx_baseline_json = ? WHERE telegram_id = ?`, [
+      JSON.stringify({ PLN: rates.PLN, UAH: rates.UAH }),
+      Number(userId),
+    ]);
+  }
 };
+
+const sendTelegramIfLinked = async (tgUserId, text) => {
+  if (!bot) return;
+  const u = await db.get('SELECT chat_id AS chatId FROM users WHERE telegram_id = ? LIMIT 1', [Number(tgUserId)]);
+  const cid = Number(u?.chatId);
+  if (!Number.isFinite(cid) || cid <= 0) return;
+  try {
+    await bot.sendMessage(cid, text);
+  } catch (e) {
+    console.error('[telegram] send failed', e);
+  }
+};
+
+const checkBudgetThresholdsAfterExpense = async (userId, categoryId) => {
+  if (!categoryId || !userId) return;
+  const budget = await db.get(
+    `SELECT monthly_limit AS monthlyLimit, currency FROM category_budgets WHERE user_id = ? AND category_id = ? LIMIT 1`,
+    [userId, categoryId]
+  );
+  if (!budget || !(Number(budget.monthlyLimit) > 0)) return;
+  const userRow = await db.get('SELECT timezone FROM users WHERE telegram_id = ? LIMIT 1', [Number(userId)]);
+  const tz = normalizeTimeZone(userRow?.timezone);
+  const nowIso = new Date().toISOString();
+  const today = dayFromIsoInZone(nowIso, tz) || nowIso.slice(0, 10);
+  const ym = today.slice(0, 7);
+  const fx = await fetchFxRates();
+  const budgetCur = normalizeCurrency(budget.currency);
+  const txs = await db.all(
+    `SELECT amount, currency, date FROM transactions WHERE user_id = ? AND type = 'expense' AND categoryId = ?`,
+    [userId, categoryId]
+  );
+  let sum = 0;
+  for (const tx of txs) {
+    const d = dayFromIsoInZone(String(tx.date), tz);
+    if (!String(d).startsWith(ym)) continue;
+    sum += convertCurrencyServer(Number(tx.amount), normalizeCurrency(tx.currency), budgetCur, fx);
+  }
+  const limit = Number(budget.monthlyLimit);
+  if (!(limit > 0)) return;
+  const ratio = sum / limit;
+  const tryInsertAlert = async (level) => {
+    try {
+      await db.run(
+        `INSERT INTO budget_alerts (user_id, category_id, year_month, level, created_at) VALUES (?, ?, ?, ?, ?)`,
+        [userId, categoryId, ym, level, new Date().toISOString()]
+      );
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  if (ratio >= 1) {
+    if (await tryInsertAlert('100')) {
+      await sendTelegramIfLinked(
+        userId,
+        `📛 Бюджет «${categoryId}»: витрачено 100%+ ліміту за ${ym} (${sum.toFixed(0)} / ${limit.toFixed(0)} ${budgetCur}).`
+      );
+    }
+  } else if (ratio >= 0.8) {
+    if (await tryInsertAlert('80')) {
+      await sendTelegramIfLinked(
+        userId,
+        `⚠️ Бюджет «${categoryId}»: ~${Math.min(99, Math.round(ratio * 100))}% ліміту за ${ym}.`
+      );
+    }
+  }
+};
+
 const shouldSendForSlot = async (dbConn, userId, reportType, slotKey) => {
   try {
     await dbConn.run(
@@ -1915,18 +2152,19 @@ async function runAutoReportsTick() {
     const nowLocal = formatDatePartsForZone(nowIso, tz);
     if (!nowLocal?.day || !nowLocal?.time) continue;
     const settings = await getReportSettings(db, userId);
-    if (nowLocal.time !== settings.sendTime) continue;
-    const weekday = formatLocalWeekday(nowIso, tz);
-    if (settings.autoWeekly && weekday === 'mon') {
-      const slot = `${nowLocal.day}:${settings.sendTime}`;
-      if (await shouldSendForSlot(db, userId, 'weekly', slot)) {
-        await sendUserReport(db, userId, chatId, 'weekly', tz);
+    if (nowLocal.time === settings.sendTime) {
+      const weekday = formatLocalWeekday(nowIso, tz);
+      if (settings.autoWeekly && weekday === 'mon') {
+        const slot = `${nowLocal.day}:${settings.sendTime}`;
+        if (await shouldSendForSlot(db, userId, 'weekly', slot)) {
+          await sendUserReport(db, userId, chatId, 'weekly', tz);
+        }
       }
-    }
-    if (settings.autoMonthly && nowLocal.day.endsWith('-01')) {
-      const slot = `${nowLocal.day}:${settings.sendTime}`;
-      if (await shouldSendForSlot(db, userId, 'monthly', slot)) {
-        await sendUserReport(db, userId, chatId, 'monthly', tz);
+      if (settings.autoMonthly && nowLocal.day.endsWith('-01')) {
+        const slot = `${nowLocal.day}:${settings.sendTime}`;
+        if (await shouldSendForSlot(db, userId, 'monthly', slot)) {
+          await sendUserReport(db, userId, chatId, 'monthly', tz);
+        }
       }
     }
     const reminders = await listReminders(db, userId);
@@ -1934,7 +2172,7 @@ async function runAutoReportsTick() {
       if (!reminder.enabled || nowLocal.time !== reminder.timeHHMM) continue;
       const slot = `${nowLocal.day}:${reminder.timeHHMM}`;
       if (await markReminderDelivery(db, userId, reminder.id, slot)) {
-        await sendReminderMessage(db, userId, reminder, tz, chatId);
+        await dispatchReminder(db, userId, reminder, tz, chatId);
       }
     }
   }
@@ -2042,9 +2280,13 @@ app.patch('/api/reminders/:id', async (req, res) => {
     res.status(404).json({ error: 'Reminder not found' });
     return;
   }
-  const nextKind = req.body?.kind === undefined ? String(current.kind) : String(req.body.kind);
-  if (!isValidReminderKind(nextKind)) {
-    res.status(400).json({ error: 'kind must be daily or subscriptions' });
+  const kind = String(current.kind);
+  if (req.body?.kind !== undefined && String(req.body.kind) !== kind) {
+    res.status(400).json({ error: 'kind cannot be changed' });
+    return;
+  }
+  if (!isValidReminderKind(kind)) {
+    res.status(400).json({ error: 'invalid reminder kind' });
     return;
   }
   const nextTime = req.body?.timeHHMM === undefined ? undefined : parseSendTime(req.body.timeHHMM);
@@ -2053,22 +2295,30 @@ app.patch('/api/reminders/:id', async (req, res) => {
     return;
   }
   const leadDaysRaw = req.body?.leadDays;
-  const leadDays = leadDaysRaw === undefined ? undefined : Math.max(0, Math.min(31, Number(leadDaysRaw) || 0));
+  let leadDays;
+  if (leadDaysRaw !== undefined) {
+    const n = Number(leadDaysRaw);
+    const raw = Number.isFinite(n) ? Math.trunc(n) : 0;
+    if (kind === 'fx_change') leadDays = Math.min(100, Math.max(1, raw));
+    else if (kind === 'inactivity') leadDays = Math.min(90, Math.max(1, raw));
+    else if (kind === 'shift_evening_before') leadDays = Math.min(30, Math.max(1, raw));
+    else if (kind === 'shift_unclosed') leadDays = 0;
+    else if (kind === 'subscriptions') leadDays = Math.min(31, Math.max(0, raw));
+    else leadDays = 0;
+  }
   await db.run(
     `UPDATE user_reminders
-     SET kind = ?,
-         title = COALESCE(?, title),
+     SET title = COALESCE(?, title),
          enabled = COALESCE(?, enabled),
          time_hhmm = COALESCE(?, time_hhmm),
          lead_days = COALESCE(?, lead_days),
          updated_at = ?
      WHERE user_id = ? AND id = ?`,
     [
-      nextKind,
       req.body?.title === undefined ? null : String(req.body.title).trim(),
       req.body?.enabled === undefined ? null : (req.body.enabled ? 1 : 0),
       nextTime ?? null,
-      leadDays ?? null,
+      leadDays === undefined ? null : leadDays,
       new Date().toISOString(),
       userId,
       id,
@@ -2076,6 +2326,61 @@ app.patch('/api/reminders/:id', async (req, res) => {
   );
   const reminders = await listReminders(db, userId);
   res.json(reminders.find((r) => r.id === id) ?? null);
+});
+
+app.get('/api/budgets', async (req, res) => {
+  const userId = String(req.authUserId ?? '').trim();
+  if (!userId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const rows = await db.all(
+    `SELECT category_id AS categoryId, monthly_limit AS monthlyLimit, currency FROM category_budgets WHERE user_id = ? ORDER BY category_id ASC`,
+    [userId]
+  );
+  res.json(rows || []);
+});
+
+app.put('/api/budgets/:categoryId', async (req, res) => {
+  const userId = String(req.authUserId ?? '').trim();
+  const categoryId = String(req.params.categoryId ?? '').trim();
+  if (!userId || !categoryId) {
+    res.status(400).json({ error: 'invalid categoryId' });
+    return;
+  }
+  const limit = Number(req.body?.monthlyLimit);
+  if (!Number.isFinite(limit) || limit < 0) {
+    res.status(400).json({ error: 'monthlyLimit must be a number >= 0' });
+    return;
+  }
+  const currency = normalizeCurrency(req.body?.currency);
+  const now = new Date().toISOString();
+  if (limit === 0) {
+    await db.run('DELETE FROM category_budgets WHERE user_id = ? AND category_id = ?', [userId, categoryId]);
+    res.json({ categoryId, monthlyLimit: 0, currency });
+    return;
+  }
+  await db.run(
+    `INSERT INTO category_budgets (user_id, category_id, monthly_limit, currency, updated_at)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(user_id, category_id) DO UPDATE SET
+       monthly_limit = excluded.monthly_limit,
+       currency = excluded.currency,
+       updated_at = excluded.updated_at`,
+    [userId, categoryId, limit, currency, now]
+  );
+  res.json({ categoryId, monthlyLimit: limit, currency });
+});
+
+app.delete('/api/budgets/:categoryId', async (req, res) => {
+  const userId = String(req.authUserId ?? '').trim();
+  const categoryId = String(req.params.categoryId ?? '').trim();
+  if (!userId || !categoryId) {
+    res.status(400).json({ error: 'invalid categoryId' });
+    return;
+  }
+  await db.run('DELETE FROM category_budgets WHERE user_id = ? AND category_id = ?', [userId, categoryId]);
+  res.status(204).end();
 });
 
 app.put('/api/reminders/timezone', async (req, res) => {
@@ -2405,6 +2710,9 @@ app.post('/api/transactions', async (req, res) => {
     [transaction.id, transaction.user_id, transaction.amount, transaction.currency, transaction.categoryId, transaction.type, transaction.date, transaction.note ?? null]
   );
   await applyAccountDelta(db, userId, getAccountSlugFromNote(transaction.note), accountDeltaForTx(transaction));
+  if (type === 'expense') {
+    await checkBudgetThresholdsAfterExpense(userId, categoryId);
+  }
 
   res.status(201).json(transaction);
 });

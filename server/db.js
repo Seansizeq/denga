@@ -310,6 +310,32 @@ export async function initDb() {
   } catch {
     /* already exists */
   }
+  try {
+    await db.exec(`ALTER TABLE users ADD COLUMN fx_baseline_json TEXT`);
+  } catch {
+    /* already exists */
+  }
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS category_budgets (
+      user_id TEXT NOT NULL,
+      category_id TEXT NOT NULL,
+      monthly_limit REAL NOT NULL,
+      currency TEXT NOT NULL DEFAULT 'UAH',
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, category_id)
+    )
+  `);
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS budget_alerts (
+      user_id TEXT NOT NULL,
+      category_id TEXT NOT NULL,
+      year_month TEXT NOT NULL,
+      level TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, category_id, year_month, level)
+    )
+  `);
 
   await db.exec(`
     CREATE INDEX IF NOT EXISTS idx_transactions_user_date

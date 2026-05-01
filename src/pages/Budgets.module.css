@@ -1,0 +1,83 @@
+.container {
+  min-height: 100vh;
+  padding: 20px 18px calc(var(--bottom-nav-height) + 40px);
+  padding-top: calc(20px + var(--safe-area-inset-top));
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.header {
+  margin-bottom: 16px;
+}
+
+.back {
+  background: none;
+  border: none;
+  color: var(--accent-primary-strong);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0 0 8px;
+}
+
+.title {
+  font-size: 26px;
+  font-weight: 700;
+  margin: 0 0 8px;
+}
+
+.subtitle {
+  font-size: 13px;
+  color: var(--text-tertiary);
+  margin: 0 0 16px;
+  line-height: 1.45;
+}
+
+.card {
+  background-color: var(--bg-card);
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  overflow: hidden;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.row:last-child {
+  border-bottom: none;
+}
+
+.name {
+  font-size: 15px;
+  font-weight: 500;
+  min-width: 0;
+  flex: 1;
+}
+
+.inputWrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.input {
+  width: 100px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--bg-card-light);
+  color: var(--text-primary);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 15px;
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  padding: 10px 16px 14px;
+}
