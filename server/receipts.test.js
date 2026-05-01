@@ -142,6 +142,16 @@ describe('receipts parser', () => {
       const items = extractItems(text);
       expect(items).toEqual([{ name: 'CHIPSY', amount: 13.89 }]);
     });
+
+    it('skips OCR-garbage service lines like SP.OP and PLN 1', () => {
+      const text = [
+        'SP.OP.A: 1 159,00 PTU 23%',
+        'PLN 1 159,00',
+        'SLUCHAWKI TRUE # APPLE AIRPODS 159,00',
+      ].join('\n');
+      const items = extractItems(text);
+      expect(items).toEqual([{ name: 'SLUCHAWKI TRUE # APPLE AIRPODS', amount: 159 }]);
+    });
   });
 
   describe('pickCategoryId', () => {

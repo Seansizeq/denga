@@ -430,7 +430,7 @@ const prettifyShopName = (raw) => {
 };
 
 const TRAILING_AMOUNT_RE = /^(.+?)\s+(\d+(?:[.,]\d{1,2})?)\s*(?:[А-Яа-яA-Za-zₐ-ₜ.]*?)?\s*$/u;
-const ITEM_EXCLUDE_RE = /\b(nip|regon|bdo|paragon|fiskaln|fiskalny|ul\.|ulica|warszawa|sprzed|kwota ptu|ptu|vat|reszta|platnosc|płatno|gotowka|gotówka|rozliczenie|wydr|nr)\b/i;
+const ITEM_EXCLUDE_RE = /\b(nip|regon|bdo|paragon|fiskaln|fiskalny|ul\.|ulica|warszawa|sprzed|kwota ptu|suma ptu|ptu|vat|reszta|platnosc|płatno|gotowka|gotówka|rozliczenie|wydr|nr|sp\.?\s*op)\b/i;
 
 export const extractItems = (text) => {
   const lines = splitLines(text);
@@ -448,8 +448,16 @@ export const extractItems = (text) => {
     const namePart = m[1].trim();
     const amount = parseNumber(m[2]);
     if (!Number.isFinite(amount) || amount <= 0) continue;
+    if (/^pln\s*\d*$/i.test(namePart)) continue;
+    if (/^sp\.?\s*op\.?/i.test(namePart)) continue;
     const letters = (namePart.match(/\p{L}/gu) ?? []).length;
     if (letters < 3) continue;
+    const words = namePart
+      .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+      .split(/\s+/)
+      .filter(Boolean);
+    // Drop very short, non-product rows like "PLN 1", "SP OP A 1", etc.
+    if (words.length <= 2 && words.every((w) => w.length <= 2 || /^\d+$/.test(w))) continue;
     if (namePart.length > 60) continue;
     out.push({ name: namePart.replace(/\s{2,}/g, ' ').slice(0, 60), amount });
     if (out.length >= 30) break;
