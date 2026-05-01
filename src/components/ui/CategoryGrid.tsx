@@ -1,6 +1,6 @@
 import React from 'react';
 import * as LucideIcons from 'lucide-react';
-import { CATEGORIES, inferCustomCategoryIcon } from '../../constants/categories';
+import { CATEGORIES, inferCustomCategoryColor, inferCustomCategoryIcon } from '../../constants/categories';
 import { useTranslation } from '../../i18n/LanguageContext';
 import type { CategoryKey } from '../../i18n/translations';
 import styles from './CategoryGrid.module.css';
@@ -77,6 +77,7 @@ const CategoryGrid: React.FC<CategoryGridProps> = ({
         if (seenCustomNames.has(normalized)) return null;
         seenCustomNames.add(normalized);
         const resolvedIcon = inferCustomCategoryIcon(category.name, category.icon);
+        const resolvedColor = inferCustomCategoryColor(category.name, category.color);
         const IconComponent = iconRegistry[resolvedIcon] ?? LucideIcons.Tag;
         const selected = selectedId === category.id;
         return (
@@ -86,11 +87,11 @@ const CategoryGrid: React.FC<CategoryGridProps> = ({
             className={`${styles.categoryBtn} ${selected ? styles.selected : ''}`}
             onClick={() => {
               onSelect(category.id);
-              onManageCategory?.({ ...category, icon: resolvedIcon, isCustom: true });
+              onManageCategory?.({ ...category, icon: resolvedIcon, color: resolvedColor, isCustom: true });
             }}
           >
             <div className={styles.iconBox}>
-              <IconComponent size={24} color={category.color} strokeWidth={1.5} />
+              <IconComponent size={24} color={resolvedColor} strokeWidth={1.5} />
             </div>
             <span className={styles.name}>{category.name}</span>
           </button>

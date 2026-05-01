@@ -89,6 +89,15 @@ const CUSTOM_CATEGORY_ICON_RULES: Array<{ icon: CustomCategoryIcon; keywords: st
   { icon: 'Laptop', keywords: ['digital', 'software', 'app', 'online'] },
 ];
 
+const CUSTOM_CATEGORY_COLOR_RULES: Array<{ color: string; keywords: string[] }> = [
+  { color: '#FF9F0A', keywords: ['cloth', 'одяг', 'одеж', 'wear', 'shop', 'store', 'покуп', 'маркет'] },
+  { color: '#5E5CE6', keywords: ['spotify', 'music', 'муз', 'icloud', 'cloud', 'хмар'] },
+  { color: '#AF52DE', keywords: ['game', 'ігри', 'игр', 'digital', 'software', 'app', 'online'] },
+  { color: '#FFD53B', keywords: ['gift', 'подар', 'present', 'charity', 'donat', 'благод', 'help'] },
+  { color: '#0A84FF', keywords: ['google one', 'internet', 'wifi', 'інтернет', 'mobile', 'phone', 'телефон'] },
+  { color: '#32D74B', keywords: ['education', 'освіт', 'образ', 'balance', 'корекц', 'correction', 'adjust'] },
+];
+
 const normalizeCategoryName = (value: string): string =>
   value
     .trim()
@@ -128,9 +137,17 @@ export const getCustomCategoryData = (id: string): CustomCategoryData | null => 
       : 'Tag';
     const decodedColor = colorRaw ? decodeURIComponent(colorRaw) : '#8E8E93';
     const color = /^#([0-9A-Fa-f]{6})$/.test(decodedColor) ? decodedColor : '#8E8E93';
-    return { name: decodedName, icon, color };
+    return {
+      name: decodedName,
+      icon: inferCustomCategoryIcon(decodedName, icon),
+      color: inferCustomCategoryColor(decodedName, color),
+    };
   } catch {
-    return { name: encoded, icon: 'Tag', color: '#8E8E93' };
+    return {
+      name: encoded,
+      icon: inferCustomCategoryIcon(encoded, 'Tag'),
+      color: inferCustomCategoryColor(encoded, '#8E8E93'),
+    };
   }
 };
 
@@ -150,6 +167,36 @@ export const inferCustomCategoryIcon = (name: string, currentIcon?: string): Cus
     }
   }
   return 'Tag';
+};
+
+const isHexColor = (value: string): boolean => /^#([0-9A-Fa-f]{6})$/.test(value);
+
+const isDefaultGray = (value: string): boolean => value.toLocaleLowerCase() === '#8e8e93';
+
+const NON_GRAY_CUSTOM_COLORS = CUSTOM_CATEGORY_COLORS.filter((color) => !isDefaultGray(color));
+
+const pickColorByNameHash = (name: string): string => {
+  const normalized = normalizeCategoryName(name);
+  if (!normalized || NON_GRAY_CUSTOM_COLORS.length === 0) return '#5E5CE6';
+  let hash = 0;
+  for (let i = 0; i < normalized.length; i += 1) {
+    hash = (hash * 31 + normalized.charCodeAt(i)) >>> 0;
+  }
+  return NON_GRAY_CUSTOM_COLORS[hash % NON_GRAY_CUSTOM_COLORS.length];
+};
+
+export const inferCustomCategoryColor = (name: string, currentColor?: string): string => {
+  if (currentColor && isHexColor(currentColor) && !isDefaultGray(currentColor)) {
+    return currentColor;
+  }
+  const normalized = normalizeCategoryName(name);
+  if (!normalized) return pickColorByNameHash(name);
+  for (const rule of CUSTOM_CATEGORY_COLOR_RULES) {
+    if (rule.keywords.some((keyword) => normalized.includes(keyword))) {
+      return rule.color;
+    }
+  }
+  return pickColorByNameHash(name);
 };
 
 export const findCategory = (id: string): CategoryDef => {

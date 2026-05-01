@@ -8,6 +8,7 @@ import {
   createCustomCategoryId,
   CUSTOM_CATEGORY_COLORS,
   CUSTOM_CATEGORY_ICONS,
+  inferCustomCategoryColor,
   inferCustomCategoryIcon,
   type CustomCategoryIcon,
 } from '../constants/categories';
@@ -164,6 +165,7 @@ const AddTransaction: React.FC = () => {
             data.map((category) => ({
               ...category,
               icon: inferCustomCategoryIcon(String(category.name ?? ''), String(category.icon ?? '')),
+              color: inferCustomCategoryColor(String(category.name ?? ''), String(category.color ?? '')),
             }))
           );
         }
