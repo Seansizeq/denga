@@ -2528,7 +2528,8 @@ app.post('/api/receipts/scan', express.json({ limit: '12mb' }), async (req, res)
   }
 
   // OCR.space: multipart/form-data with file is the most reliable way for big payloads.
-  // OCREngine=3 — newer engine, supports Ukrainian via language=ukr / Polish via language=pol.
+  // We intentionally avoid forcing "language" because OCR.space may reject
+  // some codes on certain plans/engines with E201 (invalid language).
   const fileMime = mime === 'jpg' ? 'jpeg' : mime;
   const fileBuffer = Buffer.from(base64, 'base64');
   const fileName = `receipt.${fileMime === 'jpeg' ? 'jpg' : fileMime}`;
@@ -2536,8 +2537,8 @@ app.post('/api/receipts/scan', express.json({ limit: '12mb' }), async (req, res)
   const callOcrSpace = async (language) => {
     const fileBlob = new Blob([fileBuffer], { type: `image/${fileMime}` });
     const form = new FormData();
-    form.append('language', language);
-    form.append('OCREngine', '3');
+    if (language) form.append('language', language);
+    form.append('OCREngine', '2');
     form.append('isOverlayRequired', 'false');
     form.append('detectOrientation', 'true');
     form.append('scale', 'true');
@@ -2575,8 +2576,8 @@ app.post('/api/receipts/scan', express.json({ limit: '12mb' }), async (req, res)
   let ocrJson;
   let text = '';
   try {
-    // 1) Try Polish first.
-    ocrJson = await callOcrSpace('pol');
+    // 1) Try auto-language first (most stable across OCR.space plans).
+    ocrJson = await callOcrSpace('');
     const polError = checkForError(ocrJson);
     if (polError) {
       console.error('[receipts] OCR.space (pol) error', polError.msg, polError.details);
@@ -2584,38 +2585,38 @@ app.post('/api/receipts/scan', express.json({ limit: '12mb' }), async (req, res)
       text = extractText(ocrJson);
     }
 
-    // 2) If Cyrillic detected → re-run with Ukrainian.
-    if (text && /[\u0400-\u04FF]/.test(text)) {
+    // 2) If no text in auto mode, try Polish explicitly.
+    if (!text) {
       try {
-        const ocrJsonUkr = await callOcrSpace('ukr');
-        const ukrError = checkForError(ocrJsonUkr);
-        if (!ukrError) {
-          ocrJson = ocrJsonUkr;
-          text = extractText(ocrJsonUkr);
+        const ocrJsonPol = await callOcrSpace('pol');
+        const polError = checkForError(ocrJsonPol);
+        if (!polError) {
+          ocrJson = ocrJsonPol;
+          text = extractText(ocrJsonPol);
         }
       } catch (err) {
-        console.warn('[receipts] OCR.space (ukr) fallback failed, keeping pol result', err);
+        console.warn('[receipts] OCR.space (pol) fallback failed', err);
       }
     }
 
-    // 3) If pol attempt failed entirely AND no text → still try ukr as last resort.
+    // 3) If still no text, try Russian as a Cyrillic fallback (often works for UA receipts).
     if (!text) {
       try {
-        const ocrJsonUkr = await callOcrSpace('ukr');
-        const ukrError = checkForError(ocrJsonUkr);
-        if (ukrError) {
-          console.error('[receipts] OCR.space (ukr) error', ukrError.msg, ukrError.details);
+        const ocrJsonRu = await callOcrSpace('rus');
+        const ruError = checkForError(ocrJsonRu);
+        if (ruError) {
+          console.error('[receipts] OCR.space (rus) error', ruError.msg, ruError.details);
           res.status(502).json({
-            error: ukrError.msg,
+            error: ruError.msg,
             code: 'OCR_PROVIDER_ERROR',
-            details: ukrError.details,
+            details: ruError.details,
           });
           return;
         }
-        ocrJson = ocrJsonUkr;
-        text = extractText(ocrJsonUkr);
+        ocrJson = ocrJsonRu;
+        text = extractText(ocrJsonRu);
       } catch (err) {
-        console.error('[receipts] OCR.space (ukr) call failed', err);
+        console.error('[receipts] OCR.space (rus) call failed', err);
         res.status(502).json({
           error: 'OCR provider unreachable',
           code: 'OCR_UNREACHABLE',
