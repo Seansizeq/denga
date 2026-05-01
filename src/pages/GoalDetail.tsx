@@ -78,7 +78,7 @@ const GoalDetail: React.FC = () => {
 
   const ensureFieldVisible = (el: HTMLElement) => {
     window.setTimeout(() => {
-      el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
     }, 120);
   };
 

@@ -194,14 +194,15 @@
   padding: 16px;
   padding-bottom: calc(var(--bottom-nav-height) + 16px + var(--safe-area-inset-bottom));
   overflow-y: auto;
+  overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
 }
 
 .sheet {
-  width: 100%;
-  max-width: 480px;
+  width: min(100%, 480px);
   max-height: calc(100dvh - var(--bottom-nav-height) - 24px - var(--safe-area-inset-top) - var(--safe-area-inset-bottom));
   overflow-y: auto;
+  overflow-x: hidden;
   background: var(--bg-card);
   border-radius: 20px 20px 16px 16px;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -217,6 +218,7 @@
 
 .field {
   margin-bottom: 12px;
+  min-width: 0;
 }
 
 .label {
@@ -229,6 +231,7 @@
 .input {
   width: 100%;
   box-sizing: border-box;
+  min-width: 0;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: var(--bg-card-light);
   color: var(--text-primary);
@@ -240,6 +243,7 @@
 .dateInput {
   min-height: 46px;
   padding-right: 42px;
+  font-size: 14px;
 }
 
 .dateInput::-webkit-calendar-picker-indicator {
@@ -251,6 +255,10 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
+}
+
+.row2 > * {
+  min-width: 0;
 }
 
 .swatches {
