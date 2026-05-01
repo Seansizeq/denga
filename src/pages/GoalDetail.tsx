@@ -64,7 +64,6 @@ const GoalDetail: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [contribAmount, setContribAmount] = useState('');
-  const [contribDate, setContribDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [contribNote, setContribNote] = useState('');
   const [actionError, setActionError] = useState('');
   const [editOpen, setEditOpen] = useState(false);
@@ -159,9 +158,10 @@ const GoalDetail: React.FC = () => {
     if (!id) return;
     setActionError('');
     const n = parseFloat(String(contribAmount).replace(',', '.'));
-    if (!Number.isFinite(n) || n <= 0 || !contribDate) return;
+    if (!Number.isFinite(n) || n <= 0) return;
+    const todayIso = new Date().toISOString().slice(0, 10);
     try {
-      await addContribution(id, { amount: n, date: contribDate, note: contribNote.trim() });
+      await addContribution(id, { amount: n, date: todayIso, note: contribNote.trim() });
       setContribAmount('');
       setContribNote('');
       await load();
@@ -283,34 +283,19 @@ const GoalDetail: React.FC = () => {
 
       <div className={styles.formCard}>
         <h2 className={styles.sectionTitle}>{t('goals', 'contribute')}</h2>
-        <div className={styles.row2}>
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="c-amt">
-              {t('goals', 'contributionAmount')}
-            </label>
-            <input
-              id="c-amt"
-              className={styles.input}
-              inputMode="decimal"
-              value={contribAmount}
-              onChange={(e) => setContribAmount(e.target.value)}
-              onFocus={(e) => ensureFieldVisible(e.currentTarget)}
-              placeholder="0"
-            />
-          </div>
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="c-date">
-              {t('goals', 'contributionDate')}
-            </label>
-            <input
-              id="c-date"
-              className={`${styles.input} ${styles.dateInput} ${styles.contribDateInput}`}
-              type="date"
-              value={contribDate}
-              onChange={(e) => setContribDate(e.target.value)}
-              onFocus={(e) => ensureFieldVisible(e.currentTarget)}
-            />
-          </div>
+        <div className={styles.field}>
+          <label className={styles.label} htmlFor="c-amt">
+            {t('goals', 'contributionAmount')}
+          </label>
+          <input
+            id="c-amt"
+            className={styles.input}
+            inputMode="decimal"
+            value={contribAmount}
+            onChange={(e) => setContribAmount(e.target.value)}
+            onFocus={(e) => ensureFieldVisible(e.currentTarget)}
+            placeholder="0"
+          />
         </div>
         <div className={styles.field}>
           <label className={styles.label} htmlFor="c-note">
