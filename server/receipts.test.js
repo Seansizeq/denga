@@ -233,5 +233,22 @@ describe('receipts parser', () => {
       expect(r.items.some((x) => /Warszawa|NIP|BDO/i.test(x.name))).toBe(false);
       expect(r.items.some((x) => /CHIPSY/i.test(x.name))).toBe(true);
     });
+
+    it('does not confuse time with total on X-KOM-like receipt', () => {
+      const text = [
+        'X-KOM',
+        '02-01-2026 14:49',
+        'PARAGON FISKALNY',
+        'SLUCHAWKI TRUE W APPLE AIRPODS PRO 3 A A 1*1 159,00 1 159,00 A',
+        'Suma PTU: 216,72',
+        'Suma: PLN 1 159,00',
+        'Gotówka: 1 159,00',
+      ].join('\n');
+      const r = parseReceipt(text);
+      expect(r.shop).toMatch(/X-KOM/i);
+      expect(r.currency).toBe('PLN');
+      expect(r.total).toBeCloseTo(1159, 2);
+      expect(r.total).not.toBeCloseTo(49, 2);
+    });
   });
 });

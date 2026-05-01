@@ -259,6 +259,7 @@ const parseNumber = (raw) => {
 const NUMBER_RE = /-?\d{1,3}(?:[\s\u00A0]?\d{3})*(?:[.,]\d{1,2})?|-?\d+(?:[.,]\d{1,2})?/g;
 const TOTAL_EXCLUDE_RE = /\b(ptu|vat|tax|подат|ндс|пдв)\b/i;
 const CURRENCY_HINT_RE = /\b(pln|uah|usd)\b|zł|₴|\$/i;
+const MONEY_LIKE_RE = /(?:\d[\s\u00A0]\d{3}(?:[.,]\d{1,2})?|\d+[.,]\d{2})$/;
 
 const findNumbersInLine = (line) => {
   const matches = String(line ?? '').match(NUMBER_RE);
@@ -266,6 +267,21 @@ const findNumbersInLine = (line) => {
   return matches
     .map((m) => parseNumber(m))
     .filter((n) => Number.isFinite(n));
+};
+
+const findMoneyNumbersInLine = (line) => {
+  const matches = String(line ?? '').match(NUMBER_RE);
+  if (!matches) return [];
+  return matches
+    .filter((raw) => {
+      const v = String(raw).trim();
+      // Keep values that look like money: decimals ("44,99") or grouped thousands ("1 159").
+      if (MONEY_LIKE_RE.test(v)) return true;
+      // Avoid catching time parts from "14:49" as "49".
+      return false;
+    })
+    .map((m) => parseNumber(m))
+    .filter((n) => Number.isFinite(n) && n > 0);
 };
 
 export const extractTotal = (text) => {
@@ -287,7 +303,7 @@ export const extractTotal = (text) => {
     const hasCurrencyHint = CURRENCY_HINT_RE.test(lines[i]);
     const inBottomHalf = i >= Math.floor(lines.length / 2);
 
-    const numbers = findNumbersInLine(lines[i]);
+    const numbers = findMoneyNumbersInLine(lines[i]);
     if (numbers.length > 0) {
       const n = numbers[numbers.length - 1];
       if (n > 0) {
@@ -301,7 +317,7 @@ export const extractTotal = (text) => {
     }
     // Sometimes keyword and number are on adjacent lines.
     for (let j = i + 1; j < Math.min(i + 3, lines.length); j++) {
-      const next = findNumbersInLine(lines[j]);
+      const next = findMoneyNumbersInLine(lines[j]);
       if (next.length > 0) {
         const n = next[next.length - 1];
         if (n > 0) {
@@ -333,7 +349,7 @@ export const extractTotal = (text) => {
     const f = foldText(line);
     if (!/(suma|razem|total|до сплати|к оплате|усього|всього|итого|разом)/i.test(f)) continue;
     if (TOTAL_EXCLUDE_RE.test(line)) continue;
-    const nums = findNumbersInLine(line).filter((n) => n > 0);
+    const nums = findMoneyNumbersInLine(line).filter((n) => n > 0);
     if (nums.length === 0) continue;
     const n = nums[nums.length - 1];
     if (bestSumLike == null || n > bestSumLike) bestSumLike = n;
