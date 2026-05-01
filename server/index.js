@@ -2528,21 +2528,22 @@ app.post('/api/receipts/scan', express.json({ limit: '12mb' }), async (req, res)
   }
 
   // OCR.space: multipart/form-data with file is the most reliable way for big payloads.
-  // OCREngine=3 — newer engine, supports Ukrainian via language=ukr.
+  // OCREngine=3 — newer engine, supports Ukrainian via language=ukr / Polish via language=pol.
   const fileMime = mime === 'jpg' ? 'jpeg' : mime;
   const fileBuffer = Buffer.from(base64, 'base64');
-  const fileBlob = new Blob([fileBuffer], { type: `image/${fileMime}` });
-  const form = new FormData();
-  form.append('language', 'ukr');
-  form.append('OCREngine', '3');
-  form.append('isOverlayRequired', 'false');
-  form.append('detectOrientation', 'true');
-  form.append('scale', 'true');
-  form.append('isTable', 'true');
-  form.append('file', fileBlob, `receipt.${fileMime === 'jpeg' ? 'jpg' : fileMime}`);
+  const fileName = `receipt.${fileMime === 'jpeg' ? 'jpg' : fileMime}`;
 
-  let ocrJson;
-  try {
+  const callOcrSpace = async (language) => {
+    const fileBlob = new Blob([fileBuffer], { type: `image/${fileMime}` });
+    const form = new FormData();
+    form.append('language', language);
+    form.append('OCREngine', '3');
+    form.append('isOverlayRequired', 'false');
+    form.append('detectOrientation', 'true');
+    form.append('scale', 'true');
+    form.append('isTable', 'true');
+    form.append('file', fileBlob, fileName);
+
     const ocrRes = await fetch(OCR_SPACE_ENDPOINT, {
       method: 'POST',
       headers: { apikey: apiKey },
@@ -2550,17 +2551,81 @@ app.post('/api/receipts/scan', express.json({ limit: '12mb' }), async (req, res)
     });
     if (!ocrRes.ok) {
       const errBody = await ocrRes.text().catch(() => '');
-      console.error('[receipts] OCR.space HTTP error', ocrRes.status, errBody.slice(0, 500));
-      res.status(502).json({
-        error: `OCR provider HTTP ${ocrRes.status}`,
-        code: 'OCR_PROVIDER_ERROR',
-        details: errBody.slice(0, 240),
+      throw Object.assign(new Error(`HTTP ${ocrRes.status}`), {
+        httpStatus: ocrRes.status,
+        body: errBody,
       });
-      return;
     }
-    ocrJson = await ocrRes.json();
+    return ocrRes.json();
+  };
+
+  const extractText = (json) =>
+    Array.isArray(json?.ParsedResults)
+      ? json.ParsedResults.map((r) => String(r?.ParsedText ?? '')).join('\n').trim()
+      : '';
+
+  const checkForError = (json) => {
+    if (!json?.IsErroredOnProcessing) return null;
+    const msg = Array.isArray(json.ErrorMessage)
+      ? json.ErrorMessage.join('; ')
+      : String(json.ErrorMessage ?? 'unknown OCR error');
+    return { msg, details: String(json.ErrorDetails ?? '').slice(0, 240) };
+  };
+
+  let ocrJson;
+  let text = '';
+  try {
+    // 1) Try Polish first.
+    ocrJson = await callOcrSpace('pol');
+    const polError = checkForError(ocrJson);
+    if (polError) {
+      console.error('[receipts] OCR.space (pol) error', polError.msg, polError.details);
+    } else {
+      text = extractText(ocrJson);
+    }
+
+    // 2) If Cyrillic detected → re-run with Ukrainian.
+    if (text && /[\u0400-\u04FF]/.test(text)) {
+      try {
+        const ocrJsonUkr = await callOcrSpace('ukr');
+        const ukrError = checkForError(ocrJsonUkr);
+        if (!ukrError) {
+          ocrJson = ocrJsonUkr;
+          text = extractText(ocrJsonUkr);
+        }
+      } catch (err) {
+        console.warn('[receipts] OCR.space (ukr) fallback failed, keeping pol result', err);
+      }
+    }
+
+    // 3) If pol attempt failed entirely AND no text → still try ukr as last resort.
+    if (!text) {
+      try {
+        const ocrJsonUkr = await callOcrSpace('ukr');
+        const ukrError = checkForError(ocrJsonUkr);
+        if (ukrError) {
+          console.error('[receipts] OCR.space (ukr) error', ukrError.msg, ukrError.details);
+          res.status(502).json({
+            error: ukrError.msg,
+            code: 'OCR_PROVIDER_ERROR',
+            details: ukrError.details,
+          });
+          return;
+        }
+        ocrJson = ocrJsonUkr;
+        text = extractText(ocrJsonUkr);
+      } catch (err) {
+        console.error('[receipts] OCR.space (ukr) call failed', err);
+        res.status(502).json({
+          error: 'OCR provider unreachable',
+          code: 'OCR_UNREACHABLE',
+          details: err instanceof Error ? err.message : String(err),
+        });
+        return;
+      }
+    }
   } catch (err) {
-    console.error('[receipts] OCR.space call failed', err);
+    console.error('[receipts] OCR.space (pol) call failed', err);
     res.status(502).json({
       error: 'OCR provider unreachable',
       code: 'OCR_UNREACHABLE',
@@ -2568,23 +2633,6 @@ app.post('/api/receipts/scan', express.json({ limit: '12mb' }), async (req, res)
     });
     return;
   }
-
-  if (ocrJson?.IsErroredOnProcessing) {
-    const msg = Array.isArray(ocrJson.ErrorMessage)
-      ? ocrJson.ErrorMessage.join('; ')
-      : String(ocrJson.ErrorMessage ?? 'unknown OCR error');
-    console.error('[receipts] OCR.space processing error', msg, ocrJson.ErrorDetails);
-    res.status(502).json({
-      error: msg,
-      code: 'OCR_PROVIDER_ERROR',
-      details: String(ocrJson.ErrorDetails ?? '').slice(0, 240),
-    });
-    return;
-  }
-
-  const text = Array.isArray(ocrJson?.ParsedResults)
-    ? ocrJson.ParsedResults.map((r) => String(r?.ParsedText ?? '')).join('\n').trim()
-    : '';
 
   if (!text) {
     res.status(200).json({
