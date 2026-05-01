@@ -2539,12 +2539,12 @@ app.post('/api/receipts/scan', express.json({ limit: '12mb' }), async (req, res)
     const fileBlob = new Blob([fileBuffer], { type: `image/${fileMime}` });
     const form = new FormData();
     if (language) form.append('language', language);
-    form.append('OCREngine', '1');
+    form.append('OCREngine', '2');
     form.append('isOverlayRequired', 'false');
-    // Fast mode: disable extra OCR passes that improve edge cases but slow down scans.
-    form.append('detectOrientation', 'false');
-    form.append('scale', 'false');
-    form.append('isTable', 'false');
+    // Accuracy mode: enable OCR helpers for better recognition on real receipt photos.
+    form.append('detectOrientation', 'true');
+    form.append('scale', 'true');
+    form.append('isTable', 'true');
     form.append('file', fileBlob, fileName);
 
     const abort = new AbortController();

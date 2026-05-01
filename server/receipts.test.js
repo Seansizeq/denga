@@ -94,6 +94,11 @@ describe('receipts parser', () => {
     it('returns null when missing', () => {
       expect(extractDate('no date')).toBeNull();
     });
+
+    it('returns null for impossible calendar dates', () => {
+      expect(extractDate('Date 2026-01-62')).toBeNull();
+      expect(extractDate('Дата 31.02.2026')).toBeNull();
+    });
   });
 
   describe('extractShop', () => {
@@ -280,6 +285,21 @@ describe('receipts parser', () => {
       expect(r.currency).toBe('PLN');
       expect(r.total).toBeCloseTo(1159, 2);
       expect(r.total).not.toBeCloseTo(49, 2);
+    });
+
+    it('prefers payment amount when OCR inflates total line', () => {
+      const text = [
+        'X-KOM',
+        'PARAGON FISKALNY',
+        'SLUCHAWKI TRUE W APPLE AIRPODS PRO 3 A A 1*1 159,60',
+        'Suma: 3 159,60',
+        'Gotówka: 1 159,00',
+        '02-01-2026 14:49',
+      ].join('\n');
+      const r = parseReceipt(text);
+      expect(r.total).toBeCloseTo(1159, 2);
+      expect(r.total).not.toBeCloseTo(3159.6, 2);
+      expect(r.date).toBe('2026-01-02');
     });
   });
 });

@@ -260,6 +260,7 @@ const NUMBER_RE = /-?\d{1,3}(?:[\s\u00A0]?\d{3})*(?:[.,]\d{1,2})?|-?\d+(?:[.,]\d
 const TOTAL_EXCLUDE_RE = /\b(ptu|vat|tax|подат|ндс|пдв)\b/i;
 const CURRENCY_HINT_RE = /\b(pln|uah|usd)\b|zł|₴|\$/i;
 const MONEY_LIKE_RE = /(?:\d[\s\u00A0]\d{3}(?:[.,]\d{1,2})?|\d+[.,]\d{2})$/;
+const PAYMENT_LINE_RE = /\b(gotowka|gotówka|platnosc|płatność|zapłacono|card|karta|payment)\b/i;
 
 const findNumbersInLine = (line) => {
   const matches = String(line ?? '').match(NUMBER_RE);
@@ -381,15 +382,28 @@ export const extractCurrency = (text) => {
 
 export const extractDate = (text) => {
   const t = String(text ?? '');
+  const isValidYmd = (y, m, d) => {
+    const yy = Number(y);
+    const mm = Number(m);
+    const dd = Number(d);
+    if (!Number.isInteger(yy) || !Number.isInteger(mm) || !Number.isInteger(dd)) return false;
+    if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return false;
+    const dt = new Date(Date.UTC(yy, mm - 1, dd));
+    return dt.getUTCFullYear() === yy && dt.getUTCMonth() === mm - 1 && dt.getUTCDate() === dd;
+  };
   // DD.MM.YYYY or DD/MM/YYYY or DD-MM-YYYY
   const m1 = t.match(/\b(\d{2})[.\-/](\d{2})[.\-/](\d{4})\b/);
   if (m1) {
     const [, d, mo, y] = m1;
+    if (!isValidYmd(y, mo, d)) return null;
     return `${y}-${mo}-${d}`;
   }
   // YYYY-MM-DD
   const m2 = t.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
-  if (m2) return `${m2[1]}-${m2[2]}-${m2[3]}`;
+  if (m2) {
+    if (!isValidYmd(m2[1], m2[2], m2[3])) return null;
+    return `${m2[1]}-${m2[2]}-${m2[3]}`;
+  }
   return null;
 };
 
@@ -500,12 +514,28 @@ export const pickCategoryId = (shop, items) => {
 export const parseReceipt = (text) => {
   const safeText = typeof text === 'string' ? text : '';
   const shop = extractShop(safeText);
-  const total = extractTotal(safeText);
+  let total = extractTotal(safeText);
   const currency = extractCurrency(safeText);
   const date = extractDate(safeText);
   const rawItems = extractItems(safeText);
-  const maxItemAmount = Number.isFinite(total) && total > 0 ? total * 1.05 : Infinity;
-  const items = rawItems.filter((i) => i.amount > 0 && i.amount <= maxItemAmount);
+  // Payment lines are often more reliable than noisy OCR around item rows.
+  const paymentCandidates = splitLines(safeText)
+    .filter((line) => PAYMENT_LINE_RE.test(line))
+    .flatMap((line) => findMoneyNumbersInLine(line))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  const paymentAmount = paymentCandidates.length > 0 ? Math.max(...paymentCandidates) : null;
+
+  // If extracted total is clearly inconsistent but payment amount exists, prefer payment.
+  if (Number.isFinite(total) && total > 0 && Number.isFinite(paymentAmount) && paymentAmount > 0) {
+    if (total > paymentAmount * 1.5 || total < paymentAmount * 0.5) {
+      total = paymentAmount;
+    }
+  } else if ((!Number.isFinite(total) || total <= 0) && Number.isFinite(paymentAmount) && paymentAmount > 0) {
+    total = paymentAmount;
+  }
+
+  const totalCap = Number.isFinite(total) && total > 0 ? total * 1.05 : Infinity;
+  const items = rawItems.filter((i) => i.amount > 0 && i.amount <= totalCap);
   const categoryId = pickCategoryId(shop, items);
   return {
     shop,
