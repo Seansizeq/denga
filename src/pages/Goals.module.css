@@ -244,11 +244,27 @@
   min-height: 46px;
   padding-right: 42px;
   font-size: 14px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .dateInput::-webkit-calendar-picker-indicator {
   opacity: 0.92;
   cursor: pointer;
+}
+
+.dateInput::-webkit-date-and-time-value {
+  text-align: left;
+}
+
+.dateInput::-webkit-datetime-edit {
+  padding: 0;
+}
+
+.dateInput::-webkit-datetime-edit-fields-wrapper {
+  min-width: 0;
 }
 
 .row2 {
@@ -259,6 +275,12 @@
 
 .row2 > * {
   min-width: 0;
+}
+
+@media (max-width: 520px) {
+  .row2 {
+    grid-template-columns: 1fr;
+  }
 }
 
 .swatches {
