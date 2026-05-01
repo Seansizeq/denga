@@ -240,6 +240,59 @@
   align-self: flex-start;
 }
 
+.paymentSection {
+  margin-top: 2px;
+}
+
+.sectionTitle {
+  font-size: 12px;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin: 0 0 10px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+}
+
+.paymentHint {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.paymentChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.paymentChip {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-family: inherit;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.12s ease;
+}
+
+.paymentChip:active {
+  transform: scale(0.97);
+}
+
+.paymentChipActive {
+  background: rgba(124, 92, 255, 0.28);
+  border-color: rgba(124, 92, 255, 0.45);
+  color: var(--text-primary);
+}
+
 .itemsCard {
   background: var(--bg-card);
   border: 1px solid var(--border-light);
