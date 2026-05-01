@@ -2527,27 +2527,26 @@ app.post('/api/receipts/scan', express.json({ limit: '12mb' }), async (req, res)
     return;
   }
 
-  // OCR.space requires the prefixed data URI in the base64Image field.
-  const dataUri = `data:image/${mime === 'jpg' ? 'jpeg' : mime};base64,${base64}`;
-  // OCREngine: 1 — поддерживает кириллицу (укр/рус); 3 — newer LSTM, но ограниченные языки.
-  const form = new URLSearchParams();
-  form.set('base64Image', dataUri);
-  form.set('language', 'ukr');
-  form.set('OCREngine', '1');
-  form.set('isOverlayRequired', 'false');
-  form.set('detectOrientation', 'true');
-  form.set('scale', 'true');
-  form.set('isTable', 'true');
+  // OCR.space: multipart/form-data with file is the most reliable way for big payloads.
+  // OCREngine=3 — newer engine, supports Ukrainian via language=ukr.
+  const fileMime = mime === 'jpg' ? 'jpeg' : mime;
+  const fileBuffer = Buffer.from(base64, 'base64');
+  const fileBlob = new Blob([fileBuffer], { type: `image/${fileMime}` });
+  const form = new FormData();
+  form.append('language', 'ukr');
+  form.append('OCREngine', '3');
+  form.append('isOverlayRequired', 'false');
+  form.append('detectOrientation', 'true');
+  form.append('scale', 'true');
+  form.append('isTable', 'true');
+  form.append('file', fileBlob, `receipt.${fileMime === 'jpeg' ? 'jpg' : fileMime}`);
 
   let ocrJson;
   try {
     const ocrRes = await fetch(OCR_SPACE_ENDPOINT, {
       method: 'POST',
-      headers: {
-        apikey: apiKey,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: form.toString(),
+      headers: { apikey: apiKey },
+      body: form,
     });
     if (!ocrRes.ok) {
       const errBody = await ocrRes.text().catch(() => '');
