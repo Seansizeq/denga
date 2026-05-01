@@ -1,6 +1,6 @@
 import React from 'react';
 import * as LucideIcons from 'lucide-react';
-import { CATEGORIES } from '../../constants/categories';
+import { CATEGORIES, inferCustomCategoryIcon } from '../../constants/categories';
 import { useTranslation } from '../../i18n/LanguageContext';
 import type { CategoryKey } from '../../i18n/translations';
 import styles from './CategoryGrid.module.css';
@@ -76,7 +76,8 @@ const CategoryGrid: React.FC<CategoryGridProps> = ({
         if (builtInNameSet.has(normalized)) return null;
         if (seenCustomNames.has(normalized)) return null;
         seenCustomNames.add(normalized);
-        const IconComponent = iconRegistry[category.icon] ?? LucideIcons.Tag;
+        const resolvedIcon = inferCustomCategoryIcon(category.name, category.icon);
+        const IconComponent = iconRegistry[resolvedIcon] ?? LucideIcons.Tag;
         const selected = selectedId === category.id;
         return (
           <button
@@ -85,7 +86,7 @@ const CategoryGrid: React.FC<CategoryGridProps> = ({
             className={`${styles.categoryBtn} ${selected ? styles.selected : ''}`}
             onClick={() => {
               onSelect(category.id);
-              onManageCategory?.({ ...category, isCustom: true });
+              onManageCategory?.({ ...category, icon: resolvedIcon, isCustom: true });
             }}
           >
             <div className={styles.iconBox}>

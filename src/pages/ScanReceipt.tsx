@@ -4,7 +4,7 @@ import * as LucideIcons from 'lucide-react';
 import { Camera, ScanLine, X } from 'lucide-react';
 import { useTranslation } from '../i18n/LanguageContext';
 import { useTransactions } from '../context/TransactionContext';
-import { CATEGORIES, findCategory, getCustomCategoryData } from '../constants/categories';
+import { CATEGORIES, findCategory, getCustomCategoryData, inferCustomCategoryIcon } from '../constants/categories';
 import type { CategoryKey, Language } from '../i18n/translations';
 import { compressImage } from '../utils/imageCompress';
 import { scanReceipt, type ScanReceiptError, type ScannedReceipt } from '../api/receipts';
@@ -200,7 +200,8 @@ const ScanReceipt: React.FC = () => {
   const renderCategoryChip = (categoryId: string) => {
     const customData = getCustomCategoryData(categoryId);
     if (customData) {
-      const IconComponent = iconRegistry[customData.icon] ?? LucideIcons.Tag;
+      const customIcon = inferCustomCategoryIcon(customData.name, customData.icon);
+      const IconComponent = iconRegistry[customIcon] ?? LucideIcons.Tag;
       return (
         <span className={styles.categoryChip}>
           <IconComponent size={16} color={customData.color} strokeWidth={2} />

@@ -8,6 +8,7 @@ import {
   createCustomCategoryId,
   CUSTOM_CATEGORY_COLORS,
   CUSTOM_CATEGORY_ICONS,
+  inferCustomCategoryIcon,
   type CustomCategoryIcon,
 } from '../constants/categories';
 import { useTranslation } from '../i18n/LanguageContext';
@@ -159,7 +160,12 @@ const AddTransaction: React.FC = () => {
         if (!response.ok) return;
         const data = await response.json();
         if (!cancelled && Array.isArray(data)) {
-          setCustomCategories(data);
+          setCustomCategories(
+            data.map((category) => ({
+              ...category,
+              icon: inferCustomCategoryIcon(String(category.name ?? ''), String(category.icon ?? '')),
+            }))
+          );
         }
       } catch (error) {
         console.error('Error fetching custom categories:', error);
@@ -376,7 +382,7 @@ const AddTransaction: React.FC = () => {
                   setIsCreatingCustom(true);
                   setEditingCustomId(managingCustom.isCustom ? managingCustom.id : null);
                   setNewCategoryName(managingCustom.name);
-                  setNewCategoryIcon((managingCustom.icon as CustomCategoryIcon) || 'Tag');
+                  setNewCategoryIcon(inferCustomCategoryIcon(managingCustom.name, managingCustom.icon));
                   setNewCategoryColor(managingCustom.color || '#8E8E93');
                 }}
               >

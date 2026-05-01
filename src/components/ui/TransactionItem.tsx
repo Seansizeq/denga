@@ -2,7 +2,7 @@ import React from 'react';
 import * as LucideIcons from 'lucide-react';
 import { Pencil, Trash2 } from 'lucide-react';
 import type { Transaction } from '../../types';
-import { findCategory, getCustomCategoryData } from '../../constants/categories';
+import { findCategory, getCustomCategoryData, inferCustomCategoryIcon } from '../../constants/categories';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { useTranslation } from '../../i18n/LanguageContext';
 import type { CategoryKey } from '../../i18n/translations';
@@ -23,8 +23,9 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onDelete
   const category = customCategory
     ? findCategory(transaction.type === 'income' ? 'other_income' : 'other_expense')
     : findCategory(transaction.categoryId);
+  const resolvedCustomIcon = customCategory ? inferCustomCategoryIcon(customCategory.name, customCategory.icon) : null;
   const IconComponent = customCategory
-    ? (iconRegistry[customCategory.icon] ?? LucideIcons.Tag)
+    ? (iconRegistry[resolvedCustomIcon ?? 'Tag'] ?? LucideIcons.Tag)
     : (iconRegistry[category.icon] ?? LucideIcons.Circle);
 
   const handleDelete = () => {

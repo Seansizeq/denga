@@ -73,6 +73,28 @@ export interface CustomCategoryData {
   color: string;
 }
 
+const CUSTOM_CATEGORY_ICON_RULES: Array<{ icon: CustomCategoryIcon; keywords: string[] }> = [
+  { icon: 'Shirt', keywords: ['cloth', 'одяг', 'одеж', 'wear'] },
+  { icon: 'Receipt', keywords: ['balance', 'корекц', 'correction', 'adjust'] },
+  { icon: 'Gift', keywords: ['gift', 'подар', 'present'] },
+  { icon: 'ShoppingBag', keywords: ['shop', 'store', 'покуп', 'маркет'] },
+  { icon: 'Gamepad2', keywords: ['game', 'ігри', 'игр'] },
+  { icon: 'Tag', keywords: ['uncategor', 'без катег', 'проч'] },
+  { icon: 'Wifi', keywords: ['icloud', 'cloud', 'хмар'] },
+  { icon: 'Music2', keywords: ['spotify', 'music', 'муз'] },
+  { icon: 'GraduationCap', keywords: ['education', 'освіт', 'образ'] },
+  { icon: 'Wifi', keywords: ['google one', 'internet', 'wifi', 'інтернет'] },
+  { icon: 'Smartphone', keywords: ['mobile', 'phone', 'телефон'] },
+  { icon: 'HandCoins', keywords: ['charity', 'donat', 'благод', 'help'] },
+  { icon: 'Laptop', keywords: ['digital', 'software', 'app', 'online'] },
+];
+
+const normalizeCategoryName = (value: string): string =>
+  value
+    .trim()
+    .toLocaleLowerCase()
+    .replace(/\s+/g, ' ');
+
 export const CUSTOM_CATEGORY_COLORS = [
   '#FF9F0A',
   '#0A84FF',
@@ -114,6 +136,20 @@ export const getCustomCategoryData = (id: string): CustomCategoryData | null => 
 
 export const getCustomCategoryName = (id: string): string | null => {
   return getCustomCategoryData(id)?.name ?? null;
+};
+
+export const inferCustomCategoryIcon = (name: string, currentIcon?: string): CustomCategoryIcon => {
+  if (currentIcon && CUSTOM_CATEGORY_ICONS.includes(currentIcon as CustomCategoryIcon) && currentIcon !== 'Tag') {
+    return currentIcon as CustomCategoryIcon;
+  }
+  const normalized = normalizeCategoryName(name);
+  if (!normalized) return 'Tag';
+  for (const rule of CUSTOM_CATEGORY_ICON_RULES) {
+    if (rule.keywords.some((keyword) => normalized.includes(keyword))) {
+      return rule.icon;
+    }
+  }
+  return 'Tag';
 };
 
 export const findCategory = (id: string): CategoryDef => {
