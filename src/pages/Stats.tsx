@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Eye, EyeOff } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useTransactions } from '../context/TransactionContext';
 import { useTranslation } from '../i18n/LanguageContext';
 import { formatCurrency, isSameMonth } from '../utils/formatters';
@@ -10,6 +11,7 @@ import styles from './Stats.module.css';
 type StatsRange = 'week' | 'month' | 'year';
 
 const Stats: React.FC = () => {
+  const navigate = useNavigate();
   const { t, locale, displayCurrency, convertAmount } = useTranslation();
   const { transactions } = useTransactions();
   const [range, setRange] = useState<StatsRange>('month');
@@ -111,6 +113,9 @@ const Stats: React.FC = () => {
     <div className={styles.container}>
       <header className={styles.header}>
         <h1 className={styles.title}>{t('stats', 'title')}</h1>
+        <button type="button" className={styles.budgetsBtn} onClick={() => navigate('/budgets')}>
+          {t('settings', 'budgetsLink')} →
+        </button>
       </header>
       <div className={styles.rangeRow}>
         <div className={styles.rangeTabs} role="tablist" aria-label="Stats range">

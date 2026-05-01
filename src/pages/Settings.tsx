@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useTranslation } from '../i18n/LanguageContext';
 import { LANGUAGES, LANGUAGE_LABELS, LANGUAGE_FLAGS } from '../i18n/translations';
 import type { Language } from '../i18n/translations';
@@ -45,7 +44,6 @@ const showsNumericParam = (kind: ReminderKind) =>
   kind === 'subscriptions' || kind === 'inactivity' || kind === 'shift_evening_before' || kind === 'fx_change';
 
 const Settings: React.FC = () => {
-  const navigate = useNavigate();
   const { t, language, setLanguage, displayCurrency, setDisplayCurrency, fxRates, fxStatus, refreshFxRates } = useTranslation();
   const { isSupported: fsSupported, isFullscreen, toggle: toggleFullscreen } =
     useTelegramFullscreen();
@@ -246,10 +244,6 @@ const Settings: React.FC = () => {
           </button>
           <button type="button" className={styles.row} disabled={loadingAutomation} onClick={() => void sendMonthlyReportNow()}>
             <span className={styles.rowLabel}>{t('settings', 'sendMonthlyNow')}</span>
-          </button>
-          <button type="button" className={styles.row} onClick={() => navigate('/budgets')}>
-            <span className={styles.rowLabel}>{t('settings', 'budgetsLink')}</span>
-            <span className={styles.rowValue}>→</span>
           </button>
           {reminders.map((reminder) => (
             <div key={reminder.id} className={styles.reminderCard}>
