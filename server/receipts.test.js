@@ -51,6 +51,15 @@ describe('receipts parser', () => {
       ].join('\n');
       expect(extractTotal(text)).toBeCloseTo(44.99, 2);
     });
+
+    it('does not treat time parts like 14:49 as total', () => {
+      const text = [
+        'X-KOM',
+        '02-01-2026 14:49',
+        'Suma: PLN 1 159,00',
+      ].join('\n');
+      expect(extractTotal(text)).toBeCloseTo(1159, 2);
+    });
   });
 
   describe('extractCurrency', () => {
@@ -120,6 +129,18 @@ describe('receipts parser', () => {
 
     it('returns empty when no item-like lines', () => {
       expect(extractItems('Just text')).toEqual([]);
+    });
+
+    it('skips address and tax metadata lines in Polish receipts', () => {
+      const text = [
+        '03-734 Warszawa ul. Targowa 72',
+        'Nr res. BDO: 000009699',
+        'NIP 9370008168',
+        'Kwota PTU 23,00% 2,94',
+        'CHIPSY 13,89',
+      ].join('\n');
+      const items = extractItems(text);
+      expect(items).toEqual([{ name: 'CHIPSY', amount: 13.89 }]);
     });
   });
 

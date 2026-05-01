@@ -482,7 +482,7 @@ const uk: Dict = {
     health: "Здоров'я",
     salary: 'Зарплата',
     other_income: 'Корекція балансу',
-    other_expense: 'Корекція балансу',
+    other_expense: 'Інше',
   },
   scan: {
     title: 'Сканер чека',
@@ -738,7 +738,7 @@ const ru: Dict = {
     health: 'Здоровье',
     salary: 'Зарплата',
     other_income: 'Корекція балансу',
-    other_expense: 'Корекція балансу',
+    other_expense: 'Другое',
   },
   scan: {
     title: 'Сканер чека',
@@ -994,7 +994,7 @@ const en: Dict = {
     health: 'Health',
     salary: 'Salary',
     other_income: 'Корекція балансу',
-    other_expense: 'Корекція балансу',
+    other_expense: 'Other',
   },
   scan: {
     title: 'Сканер чека',
