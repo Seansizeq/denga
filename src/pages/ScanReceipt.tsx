@@ -1,21 +1,14 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as LucideIcons from 'lucide-react';
 import { Camera, ScanLine, X } from 'lucide-react';
 import { useTranslation } from '../i18n/LanguageContext';
 import { useTransactions } from '../context/TransactionContext';
-import { findCategory, getCustomCategoryData } from '../constants/categories';
+import { CATEGORIES, findCategory, getCustomCategoryData } from '../constants/categories';
 import type { CategoryKey } from '../i18n/translations';
 import { compressImage } from '../utils/imageCompress';
 import { scanReceipt, type ScanReceiptError, type ScannedReceipt } from '../api/receipts';
 import { formatCurrency } from '../utils/formatters';
-import { apiFetch } from '../api/client';
-import {
-  ACCOUNT_NOTE_KEYS,
-  mergeAccountIntoNote,
-  type AccountNoteKey,
-} from '../utils/transactionAccount';
-import type { Language } from '../i18n/translations';
 import styles from './ScanReceipt.module.css';
 
 const iconRegistry = LucideIcons as unknown as Record<
@@ -25,20 +18,9 @@ const iconRegistry = LucideIcons as unknown as Record<
 
 type ViewState = 'idle' | 'loading' | 'result' | 'error';
 
-const ACCOUNT_CHIP_LABELS: Record<AccountNoteKey, Record<Language, string>> = {
-  pumb: { uk: 'PUMB', ru: 'PUMB', en: 'PUMB' },
-  privat24: { uk: 'Privat24', ru: 'Privat24', en: 'Privat24' },
-  wallet: { uk: 'Готівка', ru: 'Наличные', en: 'Cash' },
-  crypto: { uk: 'Crypto', ru: 'Крипто', en: 'Crypto' },
-  sol: { uk: 'SOL', ru: 'SOL', en: 'SOL' },
-  ton: { uk: 'TON', ru: 'TON', en: 'TON' },
-  usdt: { uk: 'USDT', ru: 'USDT', en: 'USDT' },
-  misha: { uk: 'Борг', ru: 'Долг', en: 'Debt' },
-};
-
 const ScanReceipt: React.FC = () => {
   const navigate = useNavigate();
-  const { t, locale, language } = useTranslation();
+  const { t, locale } = useTranslation();
   const { addTransaction } = useTransactions();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [view, setView] = useState<ViewState>('idle');
@@ -46,63 +28,7 @@ const ScanReceipt: React.FC = () => {
   const [receipt, setReceipt] = useState<ScannedReceipt | null>(null);
   const [error, setError] = useState<ScanReceiptError | null>(null);
   const [saving, setSaving] = useState(false);
-  const [portfolioAccounts, setPortfolioAccounts] = useState<Array<{ key: string; name: string }>>([]);
-  const [paymentAccount, setPaymentAccount] = useState('wallet');
-
-  const allowedPaymentKeys = useMemo(() => {
-    const s = new Set<string>([...ACCOUNT_NOTE_KEYS]);
-    portfolioAccounts.forEach((r) => s.add(r.key));
-    return s;
-  }, [portfolioAccounts]);
-
-  const paymentChipOptions = useMemo(() => {
-    const seen = new Set<string>();
-    const out: { key: string; label: string }[] = [];
-    for (const r of portfolioAccounts) {
-      if (!r.key || seen.has(r.key)) continue;
-      seen.add(r.key);
-      out.push({ key: r.key, label: r.name });
-    }
-    for (const k of ACCOUNT_NOTE_KEYS) {
-      if (seen.has(k)) continue;
-      seen.add(k);
-      out.push({ key: k, label: ACCOUNT_CHIP_LABELS[k][language] });
-    }
-    return out;
-  }, [portfolioAccounts, language]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const loadPortfolio = async () => {
-      try {
-        const res = await apiFetch('/api/accounts');
-        if (!res.ok || cancelled) return;
-        const data: unknown = await res.json();
-        if (!Array.isArray(data) || cancelled) return;
-        const list: Array<{ key: string; name: string }> = [];
-        for (const row of data) {
-          if (!row || typeof row !== 'object') continue;
-          const r = row as Record<string, unknown>;
-          const key = String(r.accountKey ?? '')
-            .trim()
-            .toLowerCase();
-          if (!key) continue;
-          const name = String(r.name ?? r.accountKey ?? '')
-            .trim()
-            .slice(0, 40);
-          list.push({ key, name: name || key });
-        }
-        list.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
-        if (!cancelled) setPortfolioAccounts(list);
-      } catch {
-        if (!cancelled) setPortfolioAccounts([]);
-      }
-    };
-    void loadPortfolio();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const [selectedCategoryId, setSelectedCategoryId] = useState('');
 
   const triggerCamera = () => {
     setError(null);
@@ -123,6 +49,7 @@ const ScanReceipt: React.FC = () => {
         return;
       }
       setReceipt(res.receipt);
+      setSelectedCategoryId('');
       setView('result');
     } catch (err) {
       console.error('[scan] failed to process image', err);
@@ -154,12 +81,13 @@ const ScanReceipt: React.FC = () => {
   const saveScannedTransaction = async () => {
     if (!receipt || receipt.total == null || receipt.total <= 0 || saving) return;
     setSaving(true);
-    const note = mergeAccountIntoNote(buildScannedNote(receipt), paymentAccount, allowedPaymentKeys);
+    if (!selectedCategoryId) return;
+    const note = buildScannedNote(receipt);
     const ok = await addTransaction({
       amount: receipt.total,
       currency: receipt.currency,
       type: 'expense',
-      categoryId: receipt.categoryId || 'other_expense',
+      categoryId: selectedCategoryId,
       note: note || undefined,
     });
     setSaving(false);
@@ -177,8 +105,9 @@ const ScanReceipt: React.FC = () => {
     params.set('type', 'expense');
     if (receipt.total != null && receipt.total > 0) params.set('amount', String(receipt.total));
     if (receipt.currency) params.set('currency', receipt.currency);
-    if (receipt.categoryId) params.set('categoryId', receipt.categoryId);
-    const note = mergeAccountIntoNote(buildScannedNote(receipt), paymentAccount, allowedPaymentKeys);
+    if (selectedCategoryId) params.set('categoryId', selectedCategoryId);
+    else if (receipt.categoryId) params.set('categoryId', receipt.categoryId);
+    const note = buildScannedNote(receipt);
     if (note) params.set('note', note);
     navigate(`/add?${params.toString()}`);
   };
@@ -326,20 +255,22 @@ const ScanReceipt: React.FC = () => {
             <span className={styles.currencyChip}>{receipt.currency}</span>
           </div>
 
-          {renderCategoryChip(receipt.categoryId)}
-
-          <section className={styles.paymentSection} aria-label={t('addTx', 'paymentAccount')}>
-            <h3 className={styles.sectionTitle}>{t('addTx', 'paymentAccount')}</h3>
-            <p className={styles.paymentHint}>{t('addTx', 'paymentAccountHint')}</p>
+          <section className={styles.paymentSection} aria-label={t('addTx', 'category')}>
+            <h3 className={styles.sectionTitle}>{t('addTx', 'category')}</h3>
+            <p className={styles.paymentHint}>
+              {selectedCategoryId
+                ? renderCategoryChip(selectedCategoryId)
+                : `${t('scan', 'confirmAndEdit')} — ${t('addTx', 'category')}`}
+            </p>
             <div className={styles.paymentChips}>
-              {paymentChipOptions.map(({ key, label }) => (
+              {CATEGORIES.filter((c) => c.type === 'expense').map((c) => (
                 <button
-                  key={key}
+                  key={c.id}
                   type="button"
-                  className={`${styles.paymentChip} ${paymentAccount === key ? styles.paymentChipActive : ''}`}
-                  onClick={() => setPaymentAccount(key)}
+                  className={`${styles.paymentChip} ${selectedCategoryId === c.id ? styles.paymentChipActive : ''}`}
+                  onClick={() => setSelectedCategoryId(c.id)}
                 >
-                  {label}
+                  {t('categories', c.id as CategoryKey)}
                 </button>
               ))}
             </div>
@@ -369,7 +300,7 @@ const ScanReceipt: React.FC = () => {
               type="button"
               className={styles.primaryBtn}
               onClick={() => void saveScannedTransaction()}
-              disabled={saving || receipt.total == null || receipt.total <= 0}
+              disabled={saving || !selectedCategoryId || receipt.total == null || receipt.total <= 0}
             >
               {saving ? t('addTx', 'save') : t('scan', 'confirmAndEdit')}
             </button>
