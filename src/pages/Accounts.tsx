@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Check, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import Header from '../components/ui/Header';
 import AccountsSnapshot from '../components/ui/AccountsSnapshot';
 import AccountEditSheet, { type EditableAccount } from '../components/ui/AccountEditSheet';
@@ -7,7 +7,15 @@ import { useTransactions } from '../context/TransactionContext';
 import { getCustomCategoryName } from '../constants/categories';
 import { getAccountSlugFromNote } from '../utils/transactionAccount';
 import { useTranslation } from '../i18n/LanguageContext';
-import { apiFetch } from '../api/client';
+import {
+  apiFetch,
+  createDebt,
+  deleteDebt,
+  getDebts,
+  updateDebt,
+  type DebtDirection,
+  type DebtRecord,
+} from '../api/client';
 import styles from './Accounts.module.css';
 
 type PortfolioSection = 'bank' | 'cash' | 'crypto' | 'debt';
@@ -116,12 +124,41 @@ const parseCryptoPosition = (subText?: string | null): { symbol: 'BTC' | 'ETH' |
   return null;
 };
 
+const debtDueMeta = (
+  dueDate: string | null,
+  t: ReturnType<typeof useTranslation>['t']
+): { label: string; overdue: boolean } => {
+  if (!dueDate || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+    return { label: t('debt', 'noDueDate'), overdue: false };
+  }
+  const [y, m, d] = dueDate.split('-').map(Number);
+  const due = new Date(y, m - 1, d);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  due.setHours(0, 0, 0, 0);
+  const diffDays = Math.round((due.getTime() - today.getTime()) / 86400000);
+  if (diffDays < 0) return { label: t('debt', 'overdue'), overdue: true };
+  if (diffDays === 0) return { label: t('debt', 'dueToday'), overdue: false };
+  return { label: t('debt', 'dueInDays').replace('{n}', String(diffDays)), overdue: false };
+};
+
 const Accounts: React.FC = () => {
   const { t, displayCurrency, convertAmount } = useTranslation();
   const { transactions } = useTransactions();
   const [portfolio, setPortfolio] = useState<readonly PortfolioAccountRow[]>([]);
   const [editing, setEditing] = useState<EditableAccount | null>(null);
   const [cryptoUsdPrices, setCryptoUsdPrices] = useState<Record<string, number>>({});
+  const [debts, setDebts] = useState<DebtRecord[]>([]);
+  const [debtError, setDebtError] = useState('');
+  const [debtFormOpen, setDebtFormOpen] = useState(false);
+  const [debtSaving, setDebtSaving] = useState(false);
+  const [showClosedDebts, setShowClosedDebts] = useState(false);
+  const [debtDirection, setDebtDirection] = useState<DebtDirection>('owed_to_me');
+  const [debtPerson, setDebtPerson] = useState('');
+  const [debtAmount, setDebtAmount] = useState('');
+  const [debtCurrency, setDebtCurrency] = useState<'UAH' | 'PLN' | 'USD'>('PLN');
+  const [debtDueDate, setDebtDueDate] = useState('');
+  const [debtNote, setDebtNote] = useState('');
 
   const loadPortfolio = useCallback(async () => {
     try {
@@ -136,12 +173,29 @@ const Accounts: React.FC = () => {
     }
   }, []);
 
+  const loadDebts = useCallback(async () => {
+    setDebtError('');
+    try {
+      const data = await getDebts('all');
+      setDebts(Array.isArray(data) ? data : []);
+    } catch {
+      setDebtError(t('debt', 'loadError'));
+    }
+  }, [t]);
+
   useEffect(() => {
     const t = window.setTimeout(() => {
       void loadPortfolio();
     }, 0);
     return () => window.clearTimeout(t);
   }, [loadPortfolio]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void loadDebts();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadDebts]);
 
   useEffect(() => {
     let cancelled = false;
@@ -575,6 +629,70 @@ const Accounts: React.FC = () => {
     [loadPortfolio]
   );
 
+  const openDebts = useMemo(() => debts.filter((d) => d.status === 'open'), [debts]);
+  const closedDebts = useMemo(() => debts.filter((d) => d.status === 'closed'), [debts]);
+  const owedToMe = useMemo(() => openDebts.filter((d) => d.direction === 'owed_to_me'), [openDebts]);
+  const iOwe = useMemo(() => openDebts.filter((d) => d.direction === 'i_owe'), [openDebts]);
+
+  const debtTotal = useCallback(
+    (items: DebtRecord[]) =>
+      items.reduce((sum, item) => sum + convertAmount(item.amount, item.currency, displayCurrency), 0),
+    [convertAmount, displayCurrency]
+  );
+
+  const resetDebtForm = () => {
+    setDebtDirection('owed_to_me');
+    setDebtPerson('');
+    setDebtAmount('');
+    setDebtCurrency('PLN');
+    setDebtDueDate('');
+    setDebtNote('');
+  };
+
+  const handleCreateDebt = async () => {
+    if (debtSaving) return;
+    const amountNum = Number(String(debtAmount).replace(',', '.'));
+    if (!debtPerson.trim() || !Number.isFinite(amountNum) || amountNum <= 0) return;
+    setDebtSaving(true);
+    setDebtError('');
+    try {
+      await createDebt({
+        direction: debtDirection,
+        personName: debtPerson.trim(),
+        amount: amountNum,
+        currency: debtCurrency,
+        dueDate: debtDueDate.trim() || null,
+        note: debtNote.trim(),
+      });
+      await loadDebts();
+      resetDebtForm();
+      setDebtFormOpen(false);
+    } catch {
+      setDebtError(t('debt', 'saveError'));
+    } finally {
+      setDebtSaving(false);
+    }
+  };
+
+  const handleToggleDebtStatus = async (record: DebtRecord, status: 'open' | 'closed') => {
+    try {
+      await updateDebt(record.id, { status });
+      await loadDebts();
+    } catch {
+      setDebtError(t('debt', 'saveError'));
+    }
+  };
+
+  const handleDeleteDebt = async (record: DebtRecord) => {
+    if (!window.confirm(t('debt', 'deleteConfirm'))) return;
+    try {
+      await deleteDebt(record.id);
+      await loadDebts();
+    } catch {
+      setDebtError(t('debt', 'saveError'));
+    }
+  };
+
   return (
     <div className={styles.container}>
       <div className={styles.content}>
@@ -590,6 +708,181 @@ const Accounts: React.FC = () => {
             <span>Додати рахунок</span>
           </button>
         ) : null}
+        <section className={styles.debtSection}>
+          <div className={styles.debtHeader}>
+            <div>
+              <h3 className={styles.debtTitle}>{t('debt', 'title')}</h3>
+              <p className={styles.debtSubTitle}>
+                {t('debt', 'owedToMe')}: {formatGroupAmount(debtTotal(owedToMe), displayCurrency)} · {t('debt', 'iOwe')}:{' '}
+                {formatGroupAmount(debtTotal(iOwe), displayCurrency)}
+              </p>
+            </div>
+            <button
+              type="button"
+              className={styles.debtAddBtn}
+              onClick={() => {
+                setDebtFormOpen((prev) => !prev);
+                setDebtError('');
+              }}
+            >
+              <Plus size={16} />
+              {t('debt', 'add')}
+            </button>
+          </div>
+
+          {debtError ? (
+            <p className={styles.debtError} role="alert">
+              {debtError}
+            </p>
+          ) : null}
+
+          {debtFormOpen ? (
+            <div className={styles.debtForm}>
+              <div className={styles.debtFormRow}>
+                <select className={styles.debtInput} value={debtDirection} onChange={(e) => setDebtDirection(e.target.value as DebtDirection)}>
+                  <option value="owed_to_me">{t('debt', 'owedToMe')}</option>
+                  <option value="i_owe">{t('debt', 'iOwe')}</option>
+                </select>
+                <input
+                  className={styles.debtInput}
+                  value={debtPerson}
+                  onChange={(e) => setDebtPerson(e.target.value)}
+                  placeholder={t('debt', 'personPlaceholder')}
+                  maxLength={40}
+                />
+              </div>
+              <div className={styles.debtFormRow}>
+                <input
+                  className={styles.debtInput}
+                  value={debtAmount}
+                  onChange={(e) => setDebtAmount(e.target.value.replace(/[^0-9.,]/g, ''))}
+                  placeholder={t('debt', 'amountPlaceholder')}
+                  inputMode="decimal"
+                />
+                <select
+                  className={styles.debtInput}
+                  value={debtCurrency}
+                  onChange={(e) => setDebtCurrency((e.target.value as 'UAH' | 'PLN' | 'USD') || 'UAH')}
+                >
+                  <option value="UAH">UAH</option>
+                  <option value="PLN">PLN</option>
+                  <option value="USD">USD</option>
+                </select>
+              </div>
+              <div className={styles.debtFormRow}>
+                <input
+                  type="date"
+                  className={styles.debtInput}
+                  value={debtDueDate}
+                  onChange={(e) => setDebtDueDate(e.target.value)}
+                  aria-label={t('debt', 'dueDate')}
+                />
+                <input
+                  className={styles.debtInput}
+                  value={debtNote}
+                  onChange={(e) => setDebtNote(e.target.value)}
+                  placeholder={t('debt', 'notePlaceholder')}
+                  maxLength={140}
+                />
+              </div>
+              <div className={styles.debtFormActions}>
+                <button type="button" className={styles.debtGhostBtn} onClick={() => setDebtFormOpen(false)}>
+                  {t('addTx', 'cancel')}
+                </button>
+                <button type="button" className={styles.debtPrimaryBtn} disabled={debtSaving} onClick={() => void handleCreateDebt()}>
+                  {t('debt', 'save')}
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          <div className={styles.debtColumns}>
+            {[{ key: 'owed_to_me', title: t('debt', 'owedToMe'), rows: owedToMe }, { key: 'i_owe', title: t('debt', 'iOwe'), rows: iOwe }].map((group) => (
+              <div key={group.key} className={styles.debtCard}>
+                <h4 className={styles.debtCardTitle}>{group.title}</h4>
+                {group.rows.length === 0 ? (
+                  <p className={styles.debtEmpty}>
+                    {group.key === 'owed_to_me' ? t('debt', 'emptyOwedToMe') : t('debt', 'emptyIOwe')}
+                  </p>
+                ) : (
+                  <div className={styles.debtList}>
+                    {group.rows.map((record) => {
+                      const dueMeta = debtDueMeta(record.dueDate, t);
+                      return (
+                        <div key={record.id} className={styles.debtRow}>
+                          <div className={styles.debtRowTop}>
+                            <span className={styles.debtPerson}>{record.personName}</span>
+                            <span className={styles.debtAmount}>{formatGroupAmount(record.amount, record.currency)}</span>
+                          </div>
+                          <div className={styles.debtRowBottom}>
+                            <span className={`${styles.debtDue} ${dueMeta.overdue ? styles.debtDueOverdue : ''}`}>
+                              {t('debt', 'dueDate')}: {record.dueDate ?? t('debt', 'noDueDate')} · {dueMeta.label}
+                            </span>
+                            {record.note ? <span className={styles.debtNote}>{record.note}</span> : null}
+                          </div>
+                          <div className={styles.debtRowActions}>
+                            <button
+                              type="button"
+                              className={styles.debtActionBtn}
+                              onClick={() => void handleToggleDebtStatus(record, 'closed')}
+                            >
+                              <Check size={14} />
+                              {record.direction === 'owed_to_me' ? t('debt', 'closeOwedToMe') : t('debt', 'closeIOwe')}
+                            </button>
+                            <button type="button" className={styles.debtDangerBtn} onClick={() => void handleDeleteDebt(record)}>
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <div className={styles.closedHeader}>
+            <button type="button" className={styles.debtGhostBtn} onClick={() => setShowClosedDebts((prev) => !prev)}>
+              {showClosedDebts ? t('debt', 'hideClosed') : t('debt', 'showClosed')}
+            </button>
+          </div>
+
+          {showClosedDebts ? (
+            <div className={styles.debtCard}>
+              <h4 className={styles.debtCardTitle}>{t('debt', 'closedTitle')}</h4>
+              {closedDebts.length === 0 ? (
+                <p className={styles.debtEmpty}>{t('debt', 'emptyClosed')}</p>
+              ) : (
+                <div className={styles.debtList}>
+                  {closedDebts.map((record) => (
+                    <div key={record.id} className={styles.debtRow}>
+                      <div className={styles.debtRowTop}>
+                        <span className={styles.debtPerson}>{record.personName}</span>
+                        <span className={styles.debtAmount}>{formatGroupAmount(record.amount, record.currency)}</span>
+                      </div>
+                      <div className={styles.debtRowBottom}>
+                        <span className={styles.debtDue}>
+                          {t('debt', 'closedAt')}: {record.closedAt ? new Date(record.closedAt).toLocaleDateString() : '—'}
+                        </span>
+                      </div>
+                      <div className={styles.debtRowActions}>
+                        <button
+                          type="button"
+                          className={styles.debtActionBtn}
+                          onClick={() => void handleToggleDebtStatus(record, 'open')}
+                        >
+                          <RotateCcw size={14} />
+                          {t('debt', 'reopen')}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : null}
+        </section>
         <AccountsSnapshot sections={sections} onRowPress={portfolio.length > 0 ? handleRowPress : undefined} />
         <div className={styles.spacer} />
       </div>

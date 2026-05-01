@@ -275,6 +275,23 @@ export async function initDb() {
     )
   `);
 
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS debt_records (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL DEFAULT '',
+      direction TEXT NOT NULL,
+      person_name TEXT NOT NULL,
+      amount REAL NOT NULL,
+      currency TEXT NOT NULL DEFAULT 'UAH',
+      due_date TEXT,
+      note TEXT,
+      status TEXT NOT NULL DEFAULT 'open',
+      closed_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
   try {
     await db.exec(`ALTER TABLE transactions ADD COLUMN user_id TEXT NOT NULL DEFAULT ''`);
   } catch {
@@ -390,6 +407,10 @@ export async function initDb() {
   await db.exec(`
     CREATE INDEX IF NOT EXISTS idx_accounts_user_sort
     ON account_portfolio(user_id, sort_index)
+  `);
+  await db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_debts_user_status_due
+    ON debt_records(user_id, status, due_date)
   `);
 
   return db;
