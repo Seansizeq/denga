@@ -304,7 +304,7 @@ const GoalDetail: React.FC = () => {
             </label>
             <input
               id="c-date"
-              className={`${styles.input} ${styles.dateInput}`}
+              className={`${styles.input} ${styles.dateInput} ${styles.contribDateInput}`}
               type="date"
               value={contribDate}
               onChange={(e) => setContribDate(e.target.value)}

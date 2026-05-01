@@ -250,7 +250,7 @@
   min-height: 46px;
   width: 100%;
   min-width: 0;
-  padding-right: 42px;
+  padding-right: 30px;
   font-size: 14px;
   max-width: 100%;
   overflow: hidden;
@@ -288,6 +288,17 @@
   padding: 0;
 }
 
+.contribDateInput {
+  font-size: 13px;
+}
+
+.contribDateInput::-webkit-datetime-edit-year-field,
+.contribDateInput::-webkit-datetime-edit-month-field,
+.contribDateInput::-webkit-datetime-edit-day-field,
+.contribDateInput::-webkit-datetime-edit-text {
+  font-size: 13px;
+}
+
 .row2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -299,7 +310,7 @@
 }
 
 @media (max-width: 520px) {
-  .row2 {
+  .sheet .row2 {
     grid-template-columns: 1fr;
   }
 }
