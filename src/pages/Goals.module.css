@@ -251,8 +251,8 @@
   height: 46px;
   width: 100%;
   min-width: 0;
-  padding-top: 0;
-  padding-bottom: 0;
+  padding-top: 10px;
+  padding-bottom: 10px;
   padding-right: 30px;
   font-size: 14px;
   max-width: 100%;
@@ -272,7 +272,7 @@
 
 .dateInput::-webkit-datetime-edit {
   padding: 0;
-  line-height: 46px;
+  line-height: normal;
   overflow: hidden;
   white-space: nowrap;
 }
