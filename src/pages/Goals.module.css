@@ -192,7 +192,7 @@
   align-items: flex-end;
   justify-content: center;
   padding: 16px;
-  padding-bottom: calc(16px + var(--safe-area-inset-bottom));
+  padding-bottom: calc(var(--bottom-nav-height) + 16px + var(--safe-area-inset-bottom));
 }
 
 .sheet {
