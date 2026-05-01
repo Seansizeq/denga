@@ -57,16 +57,24 @@ const ScanReceipt: React.FC = () => {
 
   const paymentChipOptions = useMemo(() => {
     const seen = new Set<string>();
+    const seenLabels = new Set<string>();
     const out: { key: string; label: string }[] = [];
     for (const r of portfolioAccounts) {
-      if (!r.key || seen.has(r.key)) continue;
-      seen.add(r.key);
-      out.push({ key: r.key, label: r.name });
+      const key = String(r.key ?? '').trim().toLowerCase();
+      const label = String(r.name ?? '').trim();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      if (label) seenLabels.add(label.toLowerCase());
+      out.push({ key, label: label || key });
     }
     for (const k of ACCOUNT_NOTE_KEYS) {
-      if (seen.has(k)) continue;
-      seen.add(k);
-      out.push({ key: k, label: ACCOUNT_CHIP_LABELS[k][language] });
+      const key = String(k).trim().toLowerCase();
+      const label = ACCOUNT_CHIP_LABELS[k][language];
+      // Don't add fallback chip if a portfolio chip with same key or same label is already present.
+      if (seen.has(key) || seenLabels.has(label.toLowerCase())) continue;
+      seen.add(key);
+      seenLabels.add(label.toLowerCase());
+      out.push({ key, label });
     }
     return out;
   }, [portfolioAccounts, language]);
