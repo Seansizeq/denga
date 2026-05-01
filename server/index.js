@@ -2478,7 +2478,7 @@ const RECEIPT_SCAN_RATE_LIMIT_MS = 3000;
 const lastReceiptScanByUser = new Map();
 const RECEIPT_IMAGE_BYTES_LIMIT = 1024 * 1024; // OCR.space free tier: 1 MB image
 const OCR_SPACE_ENDPOINT = 'https://api.ocr.space/parse/image';
-const OCR_SPACE_TIMEOUT_MS = 12000;
+const OCR_SPACE_TIMEOUT_MS = 22000;
 // Public test key from OCR.space — works out of the box but is heavily rate-limited.
 // Replace by registering a free API key at https://ocr.space/ocrapi (25k req/month).
 const OCR_SPACE_PUBLIC_FALLBACK_KEY = 'helloworld';
@@ -2539,7 +2539,7 @@ app.post('/api/receipts/scan', express.json({ limit: '12mb' }), async (req, res)
     const fileBlob = new Blob([fileBuffer], { type: `image/${fileMime}` });
     const form = new FormData();
     if (language) form.append('language', language);
-    form.append('OCREngine', '2');
+    form.append('OCREngine', '1');
     form.append('isOverlayRequired', 'false');
     // Fast mode: disable extra OCR passes that improve edge cases but slow down scans.
     form.append('detectOrientation', 'false');
@@ -2580,6 +2580,14 @@ app.post('/api/receipts/scan', express.json({ limit: '12mb' }), async (req, res)
     return { msg, details: String(json.ErrorDetails ?? '').slice(0, 240) };
   };
 
+  const cleanProviderDetails = (raw) => {
+    const txt = String(raw ?? '').trim();
+    if (!txt) return '';
+    // If provider returned an HTML error page, don't pass raw markup to client.
+    if (txt.startsWith('<!DOCTYPE') || txt.startsWith('<html')) return 'Provider temporary HTML error page';
+    return txt.slice(0, 240);
+  };
+
   let ocrJson;
   let text = '';
   try {
@@ -2588,20 +2596,22 @@ app.post('/api/receipts/scan', express.json({ limit: '12mb' }), async (req, res)
     const providerError = checkForError(ocrJson);
     if (providerError) {
       console.error('[receipts] OCR.space error', providerError.msg, providerError.details);
+      const timedOut = /timed out/i.test(providerError.msg) || /\bE101\b/i.test(providerError.msg);
       res.status(502).json({
-        error: providerError.msg,
-        code: 'OCR_PROVIDER_ERROR',
-        details: providerError.details,
+        error: timedOut ? 'OCR provider timeout' : providerError.msg,
+        code: timedOut ? 'OCR_TIMEOUT' : 'OCR_PROVIDER_ERROR',
+        details: cleanProviderDetails(providerError.details),
       });
       return;
     }
     text = extractText(ocrJson);
   } catch (err) {
     console.error('[receipts] OCR.space call failed', err);
-    res.status(502).json({
-      error: 'OCR provider unreachable or timed out',
-      code: 'OCR_UNREACHABLE',
-      details: err instanceof Error ? err.message : String(err),
+    const isAbort = err && typeof err === 'object' && 'name' in err && err.name === 'AbortError';
+    res.status(isAbort ? 504 : 502).json({
+      error: isAbort ? 'OCR provider timeout' : 'OCR provider unreachable',
+      code: isAbort ? 'OCR_TIMEOUT' : 'OCR_UNREACHABLE',
+      details: err instanceof Error ? cleanProviderDetails(err.message) : cleanProviderDetails(String(err)),
     });
     return;
   }

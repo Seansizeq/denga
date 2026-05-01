@@ -96,6 +96,10 @@ export const scanReceipt = async (
     const details = await readBodySnippet(response);
     return { ok: false, error: { kind: 'provider', status, details } };
   }
+  if (status === 504) {
+    const details = await readBodySnippet(response);
+    return { ok: false, error: { kind: 'provider', status, details } };
+  }
   if (!response.ok) {
     const details = await readBodySnippet(response);
     return { ok: false, error: { kind: 'unknown', status, details } };
