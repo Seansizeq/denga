@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from 'uuid';
 import PImage from 'pureimage';
 import { getDatabasePath, initDb } from './db.js';
 import { startScheduledDatabaseBackups } from './backup.js';
+import { parseReceipt } from './receipts.js';
 import { existsSync } from 'fs';
 import path from 'path';
 import { PassThrough } from 'stream';
@@ -2432,6 +2433,119 @@ app.delete('/api/transactions/:id', async (req, res) => {
   await applyAccountDelta(db, userId, getAccountSlugFromNote(current.note), -accountDeltaForTx(current));
   await db.run('DELETE FROM transactions WHERE user_id = ? AND id = ?', [userId, id]);
   res.status(204).send();
+});
+
+// --- Receipt OCR scan ---
+const RECEIPT_SCAN_RATE_LIMIT_MS = 3000;
+const lastReceiptScanByUser = new Map();
+const RECEIPT_IMAGE_BYTES_LIMIT = 10 * 1024 * 1024;
+const VISION_ENDPOINT = 'https://vision.googleapis.com/v1/images:annotate';
+
+const stripBase64Prefix = (raw) => {
+  if (typeof raw !== 'string') return '';
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+  const match = trimmed.match(/^data:image\/(jpeg|jpg|png|webp|heic|heif);base64,([\s\S]+)$/i);
+  if (match) return match[2].replace(/\s+/g, '');
+  return trimmed.replace(/\s+/g, '');
+};
+
+app.post('/api/receipts/scan', express.json({ limit: '12mb' }), async (req, res) => {
+  const userId = String(req.authUserId ?? '');
+  if (!userId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const apiKey = process.env.GOOGLE_CLOUD_VISION_API_KEY;
+  if (!apiKey) {
+    res.status(503).json({
+      error: 'Receipt scanning is not configured on the server',
+      code: 'OCR_NOT_CONFIGURED',
+    });
+    return;
+  }
+
+  const now = Date.now();
+  const last = lastReceiptScanByUser.get(userId) ?? 0;
+  if (now - last < RECEIPT_SCAN_RATE_LIMIT_MS) {
+    res.status(429).json({
+      error: 'Too many scan requests, slow down',
+      code: 'RATE_LIMITED',
+      retryAfterMs: RECEIPT_SCAN_RATE_LIMIT_MS - (now - last),
+    });
+    return;
+  }
+  lastReceiptScanByUser.set(userId, now);
+
+  const base64 = stripBase64Prefix(req.body?.image);
+  if (!base64 || base64.length < 100) {
+    res.status(400).json({ error: 'image is required (base64)', code: 'INVALID_IMAGE' });
+    return;
+  }
+  const approxBytes = Math.floor((base64.length * 3) / 4);
+  if (approxBytes > RECEIPT_IMAGE_BYTES_LIMIT) {
+    res.status(413).json({ error: 'image too large', code: 'IMAGE_TOO_LARGE' });
+    return;
+  }
+
+  let visionJson;
+  try {
+    const visionRes = await fetch(`${VISION_ENDPOINT}?key=${encodeURIComponent(apiKey)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        requests: [
+          {
+            image: { content: base64 },
+            features: [{ type: 'DOCUMENT_TEXT_DETECTION' }],
+            imageContext: { languageHints: ['uk', 'ru', 'pl', 'en'] },
+          },
+        ],
+      }),
+    });
+    if (!visionRes.ok) {
+      const errBody = await visionRes.text().catch(() => '');
+      console.error('[receipts] Vision API error', visionRes.status, errBody.slice(0, 500));
+      res.status(502).json({ error: 'OCR provider error', code: 'OCR_PROVIDER_ERROR' });
+      return;
+    }
+    visionJson = await visionRes.json();
+  } catch (err) {
+    console.error('[receipts] Vision API call failed', err);
+    res.status(502).json({ error: 'OCR provider unreachable', code: 'OCR_UNREACHABLE' });
+    return;
+  }
+
+  const responses = Array.isArray(visionJson?.responses) ? visionJson.responses : [];
+  const response = responses[0] ?? {};
+  if (response.error) {
+    console.error('[receipts] Vision API per-image error', response.error);
+    res.status(502).json({
+      error: response.error.message ?? 'OCR provider error',
+      code: 'OCR_PROVIDER_ERROR',
+    });
+    return;
+  }
+  const text =
+    response.fullTextAnnotation?.text ??
+    response.textAnnotations?.[0]?.description ??
+    '';
+  if (!text || !text.trim()) {
+    res.status(200).json({
+      shop: null,
+      total: null,
+      currency: 'UAH',
+      date: null,
+      categoryId: 'other_expense',
+      items: [],
+      rawText: '',
+      code: 'NO_TEXT_DETECTED',
+    });
+    return;
+  }
+
+  const parsed = parseReceipt(text);
+  res.status(200).json({ ...parsed, rawText: text });
 });
 
 app.get('/api/custom-categories', async (req, res) => {

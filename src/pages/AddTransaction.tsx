@@ -49,17 +49,39 @@ const AddTransaction: React.FC = () => {
   const initialType: TransactionType =
     editingTransaction?.type ?? (searchParams.get('type') === 'income' ? 'income' : 'expense');
 
-  const [amount, setAmount] = useState(() => (editingTransaction ? String(editingTransaction.amount) : ''));
-  const [currency, setCurrency] = useState<CurrencyCode>(() => normalizeCurrency(editingTransaction?.currency));
+  const prefillAmountRaw = !isEditing ? searchParams.get('amount')?.trim() ?? '' : '';
+  const prefillCurrencyRaw = !isEditing ? searchParams.get('currency') ?? '' : '';
+  const prefillCategoryRaw = !isEditing ? searchParams.get('categoryId')?.trim() ?? '' : '';
+  const prefillNoteRaw = !isEditing ? (searchParams.get('note') ?? '').slice(0, 120) : '';
+
+  const [amount, setAmount] = useState(() => {
+    if (editingTransaction) return String(editingTransaction.amount);
+    if (prefillAmountRaw) {
+      const parsed = Number(prefillAmountRaw.replace(',', '.'));
+      if (Number.isFinite(parsed) && parsed > 0) return String(parsed);
+    }
+    return '';
+  });
+  const [currency, setCurrency] = useState<CurrencyCode>(() => {
+    if (editingTransaction) return normalizeCurrency(editingTransaction.currency);
+    if (prefillCurrencyRaw) return normalizeCurrency(prefillCurrencyRaw);
+    return normalizeCurrency(undefined);
+  });
   const [type, setType] = useState<TransactionType>(initialType);
-  const [categoryId, setCategoryId] = useState(() => (
-    editingTransaction?.categoryId ?? (initialType === 'income' ? 'salary' : 'food')
-  ));
+  const [categoryId, setCategoryId] = useState(() => {
+    if (editingTransaction) return editingTransaction.categoryId;
+    if (prefillCategoryRaw) return prefillCategoryRaw;
+    return initialType === 'income' ? 'salary' : 'food';
+  });
   const [isCreatingCustom, setIsCreatingCustom] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryIcon, setNewCategoryIcon] = useState<CustomCategoryIcon>('Tag');
   const [newCategoryColor, setNewCategoryColor] = useState('#8E8E93');
-  const [note, setNote] = useState(() => stripAccountFromNote(editingTransaction?.note ?? ''));
+  const [note, setNote] = useState(() => {
+    if (editingTransaction) return stripAccountFromNote(editingTransaction.note ?? '');
+    if (prefillNoteRaw) return stripAccountFromNote(prefillNoteRaw);
+    return '';
+  });
   const [paymentAccount, setPaymentAccount] = useState<string>(() => getAccountSlugFromNote(editingTransaction?.note) ?? '');
   const [saveError, setSaveError] = useState('');
   const hydratedEditRef = useRef<string>('');

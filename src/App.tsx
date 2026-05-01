@@ -10,6 +10,7 @@ import CalendarPlanner from './pages/CalendarPlanner';
 import Subscriptions from './pages/Subscriptions';
 import Settings from './pages/Settings';
 import Stats from './pages/Stats';
+import ScanReceipt from './pages/ScanReceipt';
 import { useTranslation } from './i18n/LanguageContext';
 import { useTelegramFullscreen } from './hooks/useTelegramFullscreen';
 import type { TelegramWindow } from './types/telegram';
@@ -98,6 +99,7 @@ const TelegramApp: React.FC = () => {
             <Route path="/calendar" element={<CalendarPlanner />} />
             <Route path="/subscriptions" element={<Subscriptions />} />
             <Route path="/add" element={<AddTransaction />} />
+            <Route path="/scan" element={<ScanReceipt />} />
             <Route path="/stats" element={<Stats />} />
             <Route path="/settings" element={<Settings />} />
           </Routes>

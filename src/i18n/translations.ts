@@ -24,7 +24,7 @@ type Dict = {
     searchPlaceholder: string;
     noResults: string;
   };
-  quickActions: { add: string; income: string; expense: string; history: string; subscriptions: string };
+  quickActions: { add: string; income: string; expense: string; history: string; subscriptions: string; scan: string };
   range: { day: string; today: string; week: string; month: string; year: string };
   balance: {
     label: string;
@@ -233,6 +233,28 @@ type Dict = {
     other_income: string;
     other_expense: string;
   };
+  scan: {
+    title: string;
+    close: string;
+    idleHint: string;
+    takePhoto: string;
+    processing: string;
+    retake: string;
+    confirmAndEdit: string;
+    totalLabel: string;
+    noTotalFound: string;
+    unknownShop: string;
+    noDate: string;
+    itemsTitle: string;
+    itemsMore: string;
+    errorNotConfigured: string;
+    errorRateLimited: string;
+    errorTooLarge: string;
+    errorInvalid: string;
+    errorProvider: string;
+    errorNetwork: string;
+    errorUnknown: string;
+  };
   stub: { title: string; description: string; openButton: string };
 };
 
@@ -247,7 +269,7 @@ const uk: Dict = {
     searchPlaceholder: 'Шукати за категорією чи приміткою',
     noResults: 'Нічого не знайдено',
   },
-  quickActions: { add: 'Додати', income: 'Дохід', expense: 'Витрата', history: 'Історія', subscriptions: 'Підписки' },
+  quickActions: { add: 'Додати', income: 'Дохід', expense: 'Витрата', history: 'Історія', subscriptions: 'Підписки', scan: 'Сканер чека' },
   range: { day: 'День', today: 'Сьогодні', week: 'Тиждень', month: 'Місяць', year: 'Рік' },
   balance: {
     label: 'Баланс цього місяця',
@@ -462,6 +484,28 @@ const uk: Dict = {
     other_income: 'Корекція балансу',
     other_expense: 'Корекція балансу',
   },
+  scan: {
+    title: 'Сканер чека',
+    close: 'Закрити',
+    idleHint: 'Сфотографуйте паперовий чек — ми розпізнаємо магазин, суму і автоматично підкажемо категорію.',
+    takePhoto: 'Сфотографувати чек',
+    processing: 'Розпізнаємо чек…',
+    retake: 'Зробити ще одне фото',
+    confirmAndEdit: 'Перевірити та зберегти',
+    totalLabel: 'Сума чека',
+    noTotalFound: 'Сума не знайдена',
+    unknownShop: 'Магазин не визначено',
+    noDate: 'Дата не визначена',
+    itemsTitle: 'Позиції чека',
+    itemsMore: '+ ще {n} позицій',
+    errorNotConfigured: 'Сканування чеків поки не налаштоване на сервері. Додайте GOOGLE_CLOUD_VISION_API_KEY у .env.',
+    errorRateLimited: 'Занадто часто. Зачекайте кілька секунд і спробуйте ще раз.',
+    errorTooLarge: 'Файл занадто великий. Зробіть фото з меншою якістю.',
+    errorInvalid: 'Не вдалося прочитати фото. Сфотографуйте ще раз при кращому освітленні.',
+    errorProvider: 'Сервіс розпізнавання тимчасово недоступний. Спробуйте пізніше.',
+    errorNetwork: 'Немає з’єднання з сервером. Перевірте інтернет.',
+    errorUnknown: 'Щось пішло не так. Спробуйте ще раз.',
+  },
   stub: {
     title: 'Тільки через Telegram',
     description:
@@ -481,7 +525,7 @@ const ru: Dict = {
     searchPlaceholder: 'Искать по категории или заметке',
     noResults: 'Ничего не найдено',
   },
-  quickActions: { add: 'Добавить', income: 'Доход', expense: 'Расход', history: 'История', subscriptions: 'Подписки' },
+  quickActions: { add: 'Добавить', income: 'Доход', expense: 'Расход', history: 'История', subscriptions: 'Подписки', scan: 'Сканер чека' /* uk-only */ },
   range: { day: 'День', today: 'Сегодня', week: 'Неделя', month: 'Месяц', year: 'Год' },
   balance: {
     label: 'Баланс за этот месяц',
@@ -696,6 +740,28 @@ const ru: Dict = {
     other_income: 'Корекція балансу',
     other_expense: 'Корекція балансу',
   },
+  scan: {
+    title: 'Сканер чека',
+    close: 'Закрити',
+    idleHint: 'Сфотографуйте паперовий чек — ми розпізнаємо магазин, суму і автоматично підкажемо категорію.',
+    takePhoto: 'Сфотографувати чек',
+    processing: 'Розпізнаємо чек…',
+    retake: 'Зробити ще одне фото',
+    confirmAndEdit: 'Перевірити та зберегти',
+    totalLabel: 'Сума чека',
+    noTotalFound: 'Сума не знайдена',
+    unknownShop: 'Магазин не визначено',
+    noDate: 'Дата не визначена',
+    itemsTitle: 'Позиції чека',
+    itemsMore: '+ ще {n} позицій',
+    errorNotConfigured: 'Сканування чеків поки не налаштоване на сервері. Додайте GOOGLE_CLOUD_VISION_API_KEY у .env.',
+    errorRateLimited: 'Занадто часто. Зачекайте кілька секунд і спробуйте ще раз.',
+    errorTooLarge: 'Файл занадто великий. Зробіть фото з меншою якістю.',
+    errorInvalid: 'Не вдалося прочитати фото. Сфотографуйте ще раз при кращому освітленні.',
+    errorProvider: 'Сервіс розпізнавання тимчасово недоступний. Спробуйте пізніше.',
+    errorNetwork: 'Немає з’єднання з сервером. Перевірте інтернет.',
+    errorUnknown: 'Щось пішло не так. Спробуйте ще раз.',
+  },
   stub: {
     title: 'Только через Telegram',
     description:
@@ -715,7 +781,7 @@ const en: Dict = {
     searchPlaceholder: 'Search by category or note',
     noResults: 'Nothing found',
   },
-  quickActions: { add: 'Add', income: 'Income', expense: 'Expense', history: 'History', subscriptions: 'Subscriptions' },
+  quickActions: { add: 'Add', income: 'Income', expense: 'Expense', history: 'History', subscriptions: 'Subscriptions', scan: 'Сканер чека' /* uk-only */ },
   range: { day: 'Day', today: 'Today', week: 'Week', month: 'Month', year: 'Year' },
   balance: {
     label: 'This month',
@@ -929,6 +995,28 @@ const en: Dict = {
     salary: 'Salary',
     other_income: 'Корекція балансу',
     other_expense: 'Корекція балансу',
+  },
+  scan: {
+    title: 'Сканер чека',
+    close: 'Закрити',
+    idleHint: 'Сфотографуйте паперовий чек — ми розпізнаємо магазин, суму і автоматично підкажемо категорію.',
+    takePhoto: 'Сфотографувати чек',
+    processing: 'Розпізнаємо чек…',
+    retake: 'Зробити ще одне фото',
+    confirmAndEdit: 'Перевірити та зберегти',
+    totalLabel: 'Сума чека',
+    noTotalFound: 'Сума не знайдена',
+    unknownShop: 'Магазин не визначено',
+    noDate: 'Дата не визначена',
+    itemsTitle: 'Позиції чека',
+    itemsMore: '+ ще {n} позицій',
+    errorNotConfigured: 'Сканування чеків поки не налаштоване на сервері. Додайте GOOGLE_CLOUD_VISION_API_KEY у .env.',
+    errorRateLimited: 'Занадто часто. Зачекайте кілька секунд і спробуйте ще раз.',
+    errorTooLarge: 'Файл занадто великий. Зробіть фото з меншою якістю.',
+    errorInvalid: 'Не вдалося прочитати фото. Сфотографуйте ще раз при кращому освітленні.',
+    errorProvider: 'Сервіс розпізнавання тимчасово недоступний. Спробуйте пізніше.',
+    errorNetwork: 'Немає з’єднання з сервером. Перевірте інтернет.',
+    errorUnknown: 'Щось пішло не так. Спробуйте ще раз.',
   },
   stub: {
     title: 'Telegram only',
