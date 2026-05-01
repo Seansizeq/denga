@@ -288,16 +288,6 @@
   padding: 0;
 }
 
-.contribDateInput {
-  font-size: 13px;
-}
-
-.contribDateInput::-webkit-datetime-edit-year-field,
-.contribDateInput::-webkit-datetime-edit-month-field,
-.contribDateInput::-webkit-datetime-edit-day-field,
-.contribDateInput::-webkit-datetime-edit-text {
-  font-size: 13px;
-}
 
 .row2 {
   display: grid;
