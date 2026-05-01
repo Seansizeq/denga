@@ -174,7 +174,23 @@ const ScanReceipt: React.FC = () => {
       {view === 'error' && error ? (
         <section>
           <div className={styles.errorCard} role="alert">
-            {errorMessage(error)}
+            <div>{errorMessage(error)}</div>
+            {error.status || error.details ? (
+              <pre
+                style={{
+                  marginTop: 10,
+                  fontSize: 11,
+                  lineHeight: 1.4,
+                  color: 'rgba(255,180,180,0.85)',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                }}
+              >
+                {error.status ? `HTTP ${error.status}` : null}
+                {error.status && error.details ? '\n' : ''}
+                {error.details ?? ''}
+              </pre>
+            ) : null}
           </div>
           <div className={styles.actions}>
             <button type="button" className={styles.primaryBtn} onClick={triggerCamera}>

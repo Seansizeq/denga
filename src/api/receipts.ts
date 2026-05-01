@@ -18,13 +18,13 @@ export interface ScannedReceipt {
 }
 
 export type ScanReceiptError =
-  | { kind: 'not_configured' }
-  | { kind: 'rate_limited'; retryAfterMs: number }
-  | { kind: 'invalid' }
-  | { kind: 'too_large' }
-  | { kind: 'provider' }
-  | { kind: 'network' }
-  | { kind: 'unknown' };
+  | { kind: 'not_configured'; status?: number; details?: string }
+  | { kind: 'rate_limited'; retryAfterMs: number; status?: number; details?: string }
+  | { kind: 'invalid'; status?: number; details?: string }
+  | { kind: 'too_large'; status?: number; details?: string }
+  | { kind: 'provider'; status?: number; details?: string }
+  | { kind: 'network'; status?: number; details?: string }
+  | { kind: 'unknown'; status?: number; details?: string };
 
 export interface ScanReceiptResult {
   ok: true;
@@ -36,6 +36,15 @@ export interface ScanReceiptFailure {
   error: ScanReceiptError;
 }
 
+const readBodySnippet = async (response: Response): Promise<string> => {
+  try {
+    const text = await response.text();
+    return text.length > 240 ? `${text.slice(0, 240)}…` : text;
+  } catch {
+    return '';
+  }
+};
+
 export const scanReceipt = async (
   imageBase64: string
 ): Promise<ScanReceiptResult | ScanReceiptFailure> => {
@@ -46,30 +55,63 @@ export const scanReceipt = async (
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ image: imageBase64 }),
     });
-  } catch {
-    return { ok: false, error: { kind: 'network' } };
+  } catch (err) {
+    return {
+      ok: false,
+      error: {
+        kind: 'network',
+        details: err instanceof Error ? err.message : String(err),
+      },
+    };
   }
 
-  if (response.status === 503) return { ok: false, error: { kind: 'not_configured' } };
-  if (response.status === 413) return { ok: false, error: { kind: 'too_large' } };
-  if (response.status === 400) return { ok: false, error: { kind: 'invalid' } };
-  if (response.status === 429) {
+  const status = response.status;
+
+  if (status === 503) {
+    const details = await readBodySnippet(response);
+    return { ok: false, error: { kind: 'not_configured', status, details } };
+  }
+  if (status === 413) {
+    const details = await readBodySnippet(response);
+    return { ok: false, error: { kind: 'too_large', status, details } };
+  }
+  if (status === 400) {
+    const details = await readBodySnippet(response);
+    return { ok: false, error: { kind: 'invalid', status, details } };
+  }
+  if (status === 429) {
     let retryAfterMs = 3000;
+    let details = '';
     try {
-      const data = (await response.json()) as { retryAfterMs?: number };
+      const text = await response.text();
+      details = text.slice(0, 240);
+      const data = JSON.parse(text) as { retryAfterMs?: number };
       if (typeof data.retryAfterMs === 'number') retryAfterMs = data.retryAfterMs;
     } catch {
       /* ignore */
     }
-    return { ok: false, error: { kind: 'rate_limited', retryAfterMs } };
+    return { ok: false, error: { kind: 'rate_limited', retryAfterMs, status, details } };
   }
-  if (response.status === 502) return { ok: false, error: { kind: 'provider' } };
-  if (!response.ok) return { ok: false, error: { kind: 'unknown' } };
+  if (status === 502) {
+    const details = await readBodySnippet(response);
+    return { ok: false, error: { kind: 'provider', status, details } };
+  }
+  if (!response.ok) {
+    const details = await readBodySnippet(response);
+    return { ok: false, error: { kind: 'unknown', status, details } };
+  }
 
   try {
     const data = (await response.json()) as ScannedReceipt;
     return { ok: true, receipt: data };
-  } catch {
-    return { ok: false, error: { kind: 'unknown' } };
+  } catch (err) {
+    return {
+      ok: false,
+      error: {
+        kind: 'unknown',
+        status,
+        details: err instanceof Error ? err.message : String(err),
+      },
+    };
   }
 };

@@ -13,8 +13,8 @@ export interface CompressedImage {
 }
 
 const DEFAULTS: Required<CompressOptions> = {
-  maxSize: 1600,
-  quality: 0.85,
+  maxSize: 1280,
+  quality: 0.78,
   mimeType: 'image/jpeg',
 };
 
