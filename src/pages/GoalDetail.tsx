@@ -76,6 +76,12 @@ const GoalDetail: React.FC = () => {
   const [editIcon, setEditIcon] = useState<(typeof ICON_KEYS)[number]>('target');
   const [editArchived, setEditArchived] = useState(false);
 
+  const ensureFieldVisible = (el: HTMLElement) => {
+    window.setTimeout(() => {
+      el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }, 120);
+  };
+
   const load = useCallback(async () => {
     if (!id) {
       setLoading(false);
@@ -288,6 +294,7 @@ const GoalDetail: React.FC = () => {
               inputMode="decimal"
               value={contribAmount}
               onChange={(e) => setContribAmount(e.target.value)}
+              onFocus={(e) => ensureFieldVisible(e.currentTarget)}
               placeholder="0"
             />
           </div>
@@ -297,10 +304,11 @@ const GoalDetail: React.FC = () => {
             </label>
             <input
               id="c-date"
-              className={styles.input}
+              className={`${styles.input} ${styles.dateInput}`}
               type="date"
               value={contribDate}
               onChange={(e) => setContribDate(e.target.value)}
+              onFocus={(e) => ensureFieldVisible(e.currentTarget)}
             />
           </div>
         </div>
@@ -313,6 +321,7 @@ const GoalDetail: React.FC = () => {
             className={styles.input}
             value={contribNote}
             onChange={(e) => setContribNote(e.target.value)}
+            onFocus={(e) => ensureFieldVisible(e.currentTarget)}
           />
         </div>
         <button type="button" className={styles.btnPrimary} style={{ width: '100%', marginTop: 8 }} onClick={() => void onAddContribution()}>
@@ -354,20 +363,39 @@ const GoalDetail: React.FC = () => {
               <label className={styles.label} htmlFor="e-name">
                 {t('goals', 'name')}
               </label>
-              <input id="e-name" className={styles.input} value={editName} onChange={(e) => setEditName(e.target.value)} />
+              <input
+                id="e-name"
+                className={styles.input}
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                onFocus={(e) => ensureFieldVisible(e.currentTarget)}
+              />
             </div>
             <div className={styles.row2}>
               <div className={styles.field}>
                 <label className={styles.label} htmlFor="e-target">
                   {t('goals', 'target')}
                 </label>
-                <input id="e-target" className={styles.input} inputMode="decimal" value={editTarget} onChange={(e) => setEditTarget(e.target.value)} />
+                <input
+                  id="e-target"
+                  className={styles.input}
+                  inputMode="decimal"
+                  value={editTarget}
+                  onChange={(e) => setEditTarget(e.target.value)}
+                  onFocus={(e) => ensureFieldVisible(e.currentTarget)}
+                />
               </div>
               <div className={styles.field}>
                 <label className={styles.label} htmlFor="e-cur">
                   {t('goals', 'currency')}
                 </label>
-                <select id="e-cur" className={styles.input} value={editCurrency} onChange={(e) => setEditCurrency(e.target.value as GoalCurrency)}>
+                <select
+                  id="e-cur"
+                  className={styles.input}
+                  value={editCurrency}
+                  onChange={(e) => setEditCurrency(e.target.value as GoalCurrency)}
+                  onFocus={(e) => ensureFieldVisible(e.currentTarget)}
+                >
                   <option value="UAH">UAH</option>
                   <option value="PLN">PLN</option>
                   <option value="USD">USD</option>
@@ -378,7 +406,14 @@ const GoalDetail: React.FC = () => {
               <label className={styles.label} htmlFor="e-deadline">
                 {t('goals', 'deadline')}
               </label>
-              <input id="e-deadline" className={styles.input} type="date" value={editDeadline} onChange={(e) => setEditDeadline(e.target.value)} />
+              <input
+                id="e-deadline"
+                className={`${styles.input} ${styles.dateInput}`}
+                type="date"
+                value={editDeadline}
+                onChange={(e) => setEditDeadline(e.target.value)}
+                onFocus={(e) => ensureFieldVisible(e.currentTarget)}
+              />
             </div>
             <div className={styles.field}>
               <span className={styles.label}>{t('goals', 'color')}</span>

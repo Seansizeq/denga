@@ -189,21 +189,24 @@
   background: rgba(0, 0, 0, 0.55);
   z-index: 20;
   display: flex;
-  align-items: flex-end;
+  align-items: flex-start;
   justify-content: center;
   padding: 16px;
   padding-bottom: calc(var(--bottom-nav-height) + 16px + var(--safe-area-inset-bottom));
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .sheet {
   width: 100%;
   max-width: 480px;
-  max-height: 88vh;
+  max-height: calc(100dvh - var(--bottom-nav-height) - 24px - var(--safe-area-inset-top) - var(--safe-area-inset-bottom));
   overflow-y: auto;
   background: var(--bg-card);
   border-radius: 20px 20px 16px 16px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   padding: 18px 16px 20px;
+  margin-top: auto;
 }
 
 .sheetTitle {
@@ -232,6 +235,16 @@
   border-radius: 12px;
   padding: 10px 12px;
   font-size: 16px;
+}
+
+.dateInput {
+  min-height: 46px;
+  padding-right: 42px;
+}
+
+.dateInput::-webkit-calendar-picker-indicator {
+  opacity: 0.92;
+  cursor: pointer;
 }
 
 .row2 {

@@ -65,6 +65,12 @@ const Goals: React.FC = () => {
   const [iconKey, setIconKey] = useState<(typeof ICON_KEYS)[number]>('target');
   const [saveError, setSaveError] = useState('');
 
+  const ensureFieldVisible = (el: HTMLElement) => {
+    window.setTimeout(() => {
+      el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }, 120);
+  };
+
   const load = useCallback(async () => {
     setListError('');
     setLoading(true);
@@ -228,6 +234,7 @@ const Goals: React.FC = () => {
                 className={styles.input}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+                onFocus={(e) => ensureFieldVisible(e.currentTarget)}
                 placeholder={t('goals', 'name')}
               />
             </div>
@@ -242,6 +249,7 @@ const Goals: React.FC = () => {
                   inputMode="decimal"
                   value={target}
                   onChange={(e) => setTarget(e.target.value)}
+                  onFocus={(e) => ensureFieldVisible(e.currentTarget)}
                   placeholder="0"
                 />
               </div>
@@ -254,6 +262,7 @@ const Goals: React.FC = () => {
                   className={styles.input}
                   value={currency}
                   onChange={(e) => setCurrency(e.target.value as GoalCurrency)}
+                  onFocus={(e) => ensureFieldVisible(e.currentTarget)}
                 >
                   <option value="UAH">UAH</option>
                   <option value="PLN">PLN</option>
@@ -267,10 +276,11 @@ const Goals: React.FC = () => {
               </label>
               <input
                 id="goal-deadline"
-                className={styles.input}
+                className={`${styles.input} ${styles.dateInput}`}
                 type="date"
                 value={deadline}
                 onChange={(e) => setDeadline(e.target.value)}
+                onFocus={(e) => ensureFieldVisible(e.currentTarget)}
               />
             </div>
             <div className={styles.field}>
