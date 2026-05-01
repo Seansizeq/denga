@@ -894,6 +894,207 @@ const currencySymbol = (code) => {
   if (normalized === 'USD') return '$';
   return '₴';
 };
+const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+const formatMoney = (value) => Math.abs(Number(value) || 0).toLocaleString('uk-UA', { maximumFractionDigits: 2 });
+const sumExpenseByCategory = (txs) => {
+  const map = new Map();
+  for (const tx of txs || []) {
+    if (tx?.type !== 'expense') continue;
+    const amount = Math.max(0, Number(tx.amount) || 0);
+    if (!(amount > 0)) continue;
+    map.set(tx.categoryId, (map.get(tx.categoryId) ?? 0) + amount);
+  }
+  return map;
+};
+const parseAdvicePeriodDays = (raw) => {
+  const v = String(raw || '').trim().toLowerCase();
+  if (!v) return 7;
+  if (['week', 'тиждень', 'неделя', '7', '7d'].includes(v)) return 7;
+  if (['month', 'місяць', 'месяц', '30', '30d'].includes(v)) return 30;
+  return 7;
+};
+const collectBudgetRisks = async (dbConn, userId, txs, today, tz, fxPayload) => {
+  const rows = await dbConn.all(
+    `SELECT category_id AS categoryId, monthly_limit AS monthlyLimit, currency
+     FROM category_budgets
+     WHERE user_id = ?`,
+    [userId]
+  );
+  if (!Array.isArray(rows) || rows.length === 0) return [];
+  const ym = String(today || '').slice(0, 7);
+  const risks = [];
+  for (const row of rows) {
+    const limit = Number(row?.monthlyLimit);
+    if (!(limit > 0)) continue;
+    const budgetCurrency = normalizeCurrency(row?.currency);
+    let spent = 0;
+    for (const tx of txs || []) {
+      if (tx?.type !== 'expense' || tx?.categoryId !== row.categoryId) continue;
+      const txDay = dayFromIsoInZone(String(tx.date), tz);
+      if (!String(txDay).startsWith(ym)) continue;
+      spent += convertCurrencyServer(Number(tx.amount) || 0, normalizeCurrency(tx.currency), budgetCurrency, fxPayload);
+    }
+    const ratio = spent / limit;
+    if (ratio >= 0.8) {
+      risks.push({
+        categoryId: row.categoryId,
+        spent,
+        limit,
+        budgetCurrency,
+        ratio,
+      });
+    }
+  }
+  return risks.sort((a, b) => b.ratio - a.ratio);
+};
+const getGoalNudge = async (dbConn, userId, freeCash) => {
+  if (!(Number(freeCash) > 0)) return null;
+  const rows = await dbConn.all(
+    `SELECT
+       g.id AS id,
+       g.name AS name,
+       g.target_amount AS targetAmount,
+       g.currency AS currency,
+       COALESCE(SUM(c.amount), 0) AS saved
+     FROM goals g
+     LEFT JOIN goal_contributions c ON c.goal_id = g.id AND c.user_id = g.user_id
+     WHERE g.user_id = ? AND g.archived = 0
+     GROUP BY g.id, g.name, g.target_amount, g.currency
+     ORDER BY g.updated_at DESC`,
+    [userId]
+  );
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  const active = rows
+    .map((r) => ({
+      id: String(r.id),
+      name: String(r.name || 'Ціль'),
+      targetAmount: Math.max(0, Number(r.targetAmount) || 0),
+      saved: Math.max(0, Number(r.saved) || 0),
+      currency: normalizeCurrency(r.currency),
+    }))
+    .filter((g) => g.targetAmount > g.saved);
+  if (active.length === 0) return null;
+  active.sort((a, b) => (a.targetAmount - a.saved) - (b.targetAmount - b.saved));
+  const goal = active[0];
+  const remaining = Math.max(0, goal.targetAmount - goal.saved);
+  const suggested = Math.max(1, Math.round(Math.min(remaining, Number(freeCash) * 0.3)));
+  return {
+    ...goal,
+    remaining,
+    suggested,
+  };
+};
+const buildRecommendationItems = async ({
+  dbConn,
+  userId,
+  txs,
+  currentTxs,
+  previousTxs,
+  periodDays,
+  today,
+  tz,
+  reportCurrency,
+}) => {
+  const summary = summarizeTransactions(currentTxs);
+  const prevSummary = summarizeTransactions(previousTxs);
+  const currentExpenseByCategory = sumExpenseByCategory(currentTxs);
+  const previousExpenseByCategory = sumExpenseByCategory(previousTxs);
+  const totalExpense = Math.max(0, Number(summary.expense) || 0);
+  const candidates = [];
+  const fx = await fetchFxRates();
+
+  const budgetRisks = await collectBudgetRisks(dbConn, userId, txs, today, tz, fx);
+  if (budgetRisks.length > 0) {
+    const risk = budgetRisks[0];
+    const remaining = Math.max(0, risk.limit - risk.spent);
+    candidates.push({
+      priority: risk.ratio >= 1 ? 100 : 90,
+      insight: `Бюджет по «${categoryNameById(risk.categoryId)}» заповнений на ${Math.round(risk.ratio * 100)}%`,
+      action: risk.ratio >= 1
+        ? `Перевищення: +${formatMoney(risk.spent - risk.limit)} ${currencySymbol(risk.budgetCurrency)}. Знизьте витрати в цій категорії на найближчі 7 днів.`
+        : `До ліміту лишилось ~${formatMoney(remaining)} ${currencySymbol(risk.budgetCurrency)}. Встановіть тижневий cap по цій категорії.`,
+    });
+  }
+
+  let topLeak = null;
+  for (const [categoryId, amount] of currentExpenseByCategory.entries()) {
+    const share = totalExpense > 0 ? amount / totalExpense : 0;
+    if (!topLeak || share > topLeak.share) topLeak = { categoryId, amount, share };
+  }
+  if (topLeak && topLeak.share >= 0.4) {
+    const weeklyCap = Math.max(1, Math.round(topLeak.amount * 0.75));
+    candidates.push({
+      priority: 80,
+      insight: `Категорія «${categoryNameById(topLeak.categoryId)}» займає ${Math.round(topLeak.share * 100)}% витрат`,
+      action: `Щоб зменшити тиск на бюджет, тримайте витрати тут до ~${formatMoney(weeklyCap)} ${currencySymbol(reportCurrency)} протягом 7 днів.`,
+    });
+  }
+
+  let strongestSpike = null;
+  for (const [categoryId, amount] of currentExpenseByCategory.entries()) {
+    const prev = previousExpenseByCategory.get(categoryId) ?? 0;
+    if (!(amount >= 200) || !(prev > 0)) continue;
+    const growth = (amount - prev) / prev;
+    if (growth <= 0.25) continue;
+    if (!strongestSpike || growth > strongestSpike.growth) {
+      strongestSpike = { categoryId, amount, prev, growth };
+    }
+  }
+  if (strongestSpike) {
+    const softCap = Math.max(1, Math.round(strongestSpike.prev * 1.1));
+    candidates.push({
+      priority: 70,
+      insight: `Витрати «${categoryNameById(strongestSpike.categoryId)}» зросли на ${Math.round(strongestSpike.growth * 100)}% проти попереднього періоду`,
+      action: `Поверніть категорію до рівня ~${formatMoney(softCap)} ${currencySymbol(reportCurrency)} на період ${periodDays} днів.`,
+    });
+  }
+
+  if ((Number(summary.net) || 0) < 0) {
+    const deficit = Math.abs(Number(summary.net) || 0);
+    const targetCut = Math.max(1, Math.round(deficit * 0.5));
+    candidates.push({
+      priority: 85,
+      insight: `Поточний баланс від'ємний: -${formatMoney(deficit)} ${currencySymbol(reportCurrency)}`,
+      action: `Зменште витрати щонайменше на ~${formatMoney(targetCut)} ${currencySymbol(reportCurrency)} у наступні 7 днів, почніть з топ-категорії.`,
+    });
+  }
+
+  if ((Number(summary.net) || 0) > 0) {
+    const goalNudge = await getGoalNudge(dbConn, userId, Number(summary.net));
+    if (goalNudge) {
+      candidates.push({
+        priority: 60,
+        insight: `Є вільний залишок +${formatMoney(summary.net)} ${currencySymbol(reportCurrency)} та активна ціль «${goalNudge.name}»`,
+        action: `Рекомендований внесок: ~${formatMoney(goalNudge.suggested)} ${currencySymbol(goalNudge.currency)} (лишок до цілі: ${formatMoney(goalNudge.remaining)} ${currencySymbol(goalNudge.currency)}).`,
+      });
+    }
+  }
+
+  const incomeDrop = percentChange(summary.income, prevSummary.income);
+  if (incomeDrop < -20) {
+    candidates.push({
+      priority: 65,
+      insight: `Дохід зменшився на ${Math.abs(Math.round(incomeDrop))}% відносно попереднього періоду`,
+      action: 'Тимчасово підніміть частку обовʼязкових витрат у пріоритеті та відкладіть необовʼязкові покупки.',
+    });
+  }
+
+  return candidates
+    .sort((a, b) => b.priority - a.priority)
+    .slice(0, 5);
+};
+const formatRecommendationsSection = (items, title = '💡 РЕКОМЕНДАЦІЇ') => {
+  const lines = [title];
+  if (!Array.isArray(items) || items.length === 0) {
+    lines.push('• Даних поки замало для персональних порад. Додайте більше транзакцій за період.');
+    return lines.join('\n');
+  }
+  items.forEach((item, idx) => {
+    lines.push(`${idx + 1}. ${item.insight}`);
+    lines.push(`   → ${item.action}`);
+  });
+  return lines.join('\n');
+};
 const detectPrimaryCurrency = (txs) => {
   const counters = { UAH: 0, PLN: 0, USD: 0 };
   for (const tx of txs || []) {
@@ -1151,6 +1352,12 @@ const buildReportText = (reportType, periodLabel, txs, comparison, extra = {}) =
     lines.push('⏰ *РОБОЧИЙ ЧАС*');
     lines.push(`├ Відпрацьовано: *${workedHours.toLocaleString('uk-UA', { maximumFractionDigits: 2 })} год*`);
     lines.push('└ Деталі — у вебапі');
+    const recommendationLines = Array.isArray(extra.recommendationLines) ? extra.recommendationLines : [];
+    if (recommendationLines.length > 0) {
+      lines.push('');
+      lines.push('💡 *РЕКОМЕНДАЦІЇ*');
+      recommendationLines.forEach((line) => lines.push(line));
+    }
     return lines.join('\n');
   }
   if (reportType === 'monthly') {
@@ -1207,6 +1414,12 @@ const buildReportText = (reportType, periodLabel, txs, comparison, extra = {}) =
     lines.push('');
     lines.push('🎯 *ДОСЯГНЕННЯ*');
     lines.push(`✅ Збережено ${savedPct.toLocaleString('uk-UA', { maximumFractionDigits: 0 })}% від доходу`);
+    const recommendationLines = Array.isArray(extra.recommendationLines) ? extra.recommendationLines : [];
+    if (recommendationLines.length > 0) {
+      lines.push('');
+      lines.push('💡 *РЕКОМЕНДАЦІЇ*');
+      recommendationLines.forEach((line) => lines.push(line));
+    }
     return lines.join('\n');
   }
   const title = reportType === 'weekly' ? '📊 ТИЖНЕВИЙ ЗВІТ' : '📅 МІСЯЧНИЙ ЗВІТ';
@@ -1283,6 +1496,19 @@ const sendUserReport = async (dbConn, userId, chatId, reportType, timeZone) => {
     [plannerDayKey(userId, sortedDays[0]), plannerDayKey(userId, sortedDays[sortedDays.length - 1])]
   );
   const reportCurrency = normalizeCurrency(reportSettings.reportCurrency || detectPrimaryCurrency(scoped));
+  const periodDays = reportType === 'weekly' ? 7 : Math.max(28, sortedDays.length);
+  const recommendationItems = await buildRecommendationItems({
+    dbConn,
+    userId,
+    txs: Array.isArray(txs) ? txs : [],
+    currentTxs: scoped,
+    previousTxs: previousScoped,
+    periodDays,
+    today,
+    tz,
+    reportCurrency,
+  });
+  const recommendationLines = recommendationItems.map((item) => `• ${item.insight}. ${item.action}`);
   const entryHoursByDay = new Map();
   for (const row of shiftRows || []) {
     const day = String(row.day || '');
@@ -1315,10 +1541,50 @@ const sendUserReport = async (dbConn, userId, chatId, reportType, timeZone) => {
     previousExpense: previousSummary.expense,
     previousNet: previousSummary.net,
     periodEndDay,
+    recommendationLines,
   });
   await bot.sendMessage(chatId, text, {
     disable_web_page_preview: true,
     parse_mode: 'Markdown',
+  });
+};
+const sendFinancialAdvice = async (dbConn, userId, chatId, periodDaysRaw, timeZone) => {
+  if (!bot) return;
+  const tz = normalizeTimeZone(timeZone);
+  const periodDays = clamp(parseAdvicePeriodDays(periodDaysRaw), 7, 30);
+  const nowIso = new Date().toISOString();
+  const today = dayFromIsoInZone(nowIso, tz) || nowIso.slice(0, 10);
+  const currentSet = new Set();
+  for (let i = 0; i < periodDays; i += 1) currentSet.add(shiftIsoDay(today, -i));
+  const previousSet = new Set(Array.from(currentSet).map((d) => shiftIsoDay(d, -periodDays)));
+  const txs = await dbConn.all(
+    'SELECT amount, currency, categoryId, type, date FROM transactions WHERE user_id = ? ORDER BY date DESC LIMIT 5000',
+    [userId]
+  );
+  const allTxs = Array.isArray(txs) ? txs : [];
+  const currentTxs = allTxs.filter((tx) => currentSet.has(dayFromIsoInZone(tx.date, tz)));
+  const previousTxs = allTxs.filter((tx) => previousSet.has(dayFromIsoInZone(tx.date, tz)));
+  const reportCurrency = normalizeCurrency(detectPrimaryCurrency(currentTxs));
+  const items = await buildRecommendationItems({
+    dbConn,
+    userId,
+    txs: allTxs,
+    currentTxs,
+    previousTxs,
+    periodDays,
+    today,
+    tz,
+    reportCurrency,
+  });
+  const section = formatRecommendationsSection(items);
+  const summary = summarizeTransactions(currentTxs);
+  const header = [
+    `📌 Поради за останні ${periodDays} днів`,
+    `Баланс: ${summary.net >= 0 ? '+' : '-'}${formatMoney(summary.net)} ${currencySymbol(reportCurrency)}`,
+    '',
+  ].join('\n');
+  await bot.sendMessage(chatId, `${header}${section}`, {
+    disable_web_page_preview: true,
   });
 };
 const getUserTimeZone = async (dbConn, userId) => {
@@ -1623,6 +1889,7 @@ const parseCustomCategoryId = (id) => {
 const botMainMenuKeyboard = {
   keyboard: [
     [{ text: '📊 Тижневий звіт' }, { text: '📅 Місячний звіт' }],
+    [{ text: '💡 Рекомендації' }],
     [{ text: '⚙️ Налаштування звітів' }, { text: '🟢 Почати зміну' }],
     [{ text: '🔴 Завершити зміну' }],
   ],
@@ -1691,6 +1958,13 @@ if (bot) {
     await upsertBotUser(db, msg.from.id, msg.chat.id);
     const tz = await getUserTimeZone(db, userId);
     await sendUserReport(db, userId, msg.chat.id, 'monthly', tz);
+  });
+  bot.onText(/\/advice(?:\s+(.+))?/i, async (msg, match) => {
+    if (!msg.from?.id || !msg.chat?.id) return;
+    const userId = String(msg.from.id);
+    await upsertBotUser(db, msg.from.id, msg.chat.id);
+    const tz = await getUserTimeZone(db, userId);
+    await sendFinancialAdvice(db, userId, msg.chat.id, match?.[1], tz);
   });
   bot.onText(/\/report_time(?:\s+(.+))?/i, async (msg, match) => {
     if (!msg.from?.id || !msg.chat?.id) return;
@@ -1916,6 +2190,21 @@ if (bot) {
       });
       return;
     }
+    if (
+      /(^| )рекомендац(ія|ії|ии)($| )/i.test(normalizedText) ||
+      /(^| )совет(ы)?($| )/i.test(normalizedText) ||
+      /(^| )advice($| )/i.test(normalizedText) ||
+      normalizedText === 'рекомендації'
+    ) {
+      bot.processUpdate({
+        update_id: Date.now() + 4,
+        message: {
+          ...msg,
+          text: '/advice',
+        },
+      });
+      return;
+    }
     if (normalizedText === 'налаштування звітів' || normalizedText === 'настройки отчетов' || normalizedText === 'report settings') {
       await sendReportSettingsPanel(msg.chat.id, String(msg.from.id));
       return;
@@ -1928,7 +2217,7 @@ if (bot) {
         invalidAmountNoticeAt.set(msg.chat.id, now);
         bot.sendMessage(
           msg.chat.id,
-          'Не зрозумів суму. Надішліть число (наприклад, 100) або використайте /shift_start чи /shift_end.'
+          'Не зрозумів суму. Надішліть число (наприклад, 100) або використайте /shift_start, /shift_end чи /advice.'
         );
       }
       return;
