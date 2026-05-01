@@ -28,6 +28,15 @@ const CategoryGrid: React.FC<CategoryGridProps> = ({
 }) => {
   const { t } = useTranslation();
   const filtered = CATEGORIES.filter((c) => c.type === type);
+  const normalizeName = (value: string): string => value.trim().toLocaleLowerCase();
+  const builtInNameSet = new Set(
+    filtered.map((category) => {
+      const override = categoryOverrides[category.id] ?? {};
+      const displayName = override.name?.trim() || t('categories', category.id as CategoryKey);
+      return normalizeName(displayName);
+    })
+  );
+  const seenCustomNames = new Set<string>();
 
   return (
     <div className={styles.grid}>
@@ -62,6 +71,11 @@ const CategoryGrid: React.FC<CategoryGridProps> = ({
         );
       })}
       {customCategories.map((category) => {
+        const normalized = normalizeName(category.name);
+        if (!normalized) return null;
+        if (builtInNameSet.has(normalized)) return null;
+        if (seenCustomNames.has(normalized)) return null;
+        seenCustomNames.add(normalized);
         const IconComponent = iconRegistry[category.icon] ?? LucideIcons.Tag;
         const selected = selectedId === category.id;
         return (

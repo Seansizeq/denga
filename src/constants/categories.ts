@@ -8,15 +8,15 @@ export interface CategoryDef {
 }
 
 export const CATEGORIES: CategoryDef[] = [
-  { id: 'food', icon: 'ShoppingBag', color: '#FF9F0A', type: 'expense' },
+  { id: 'food', icon: 'Utensils', color: '#FF9F0A', type: 'expense' },
   { id: 'transport', icon: 'Car', color: '#0A84FF', type: 'expense' },
   { id: 'home', icon: 'Home', color: '#5E5CE6', type: 'expense' },
-  { id: 'entertainment', icon: 'Coffee', color: '#AF52DE', type: 'expense' },
-  { id: 'health', icon: 'Heart', color: '#FF2D55', type: 'expense' },
-  { id: 'other_expense', icon: 'MoreHorizontal', color: '#8E8E93', type: 'expense' },
+  { id: 'entertainment', icon: 'Gamepad2', color: '#AF52DE', type: 'expense' },
+  { id: 'health', icon: 'Pill', color: '#FF2D55', type: 'expense' },
+  { id: 'other_expense', icon: 'Receipt', color: '#8E8E93', type: 'expense' },
 
-  { id: 'salary', icon: 'TrendingUp', color: '#32D74B', type: 'income' },
-  { id: 'other_income', icon: 'Plus', color: '#30B0C7', type: 'income' },
+  { id: 'salary', icon: 'Wallet', color: '#32D74B', type: 'income' },
+  { id: 'other_income', icon: 'Coins', color: '#30B0C7', type: 'income' },
 ];
 
 const CUSTOM_CATEGORY_PREFIX = 'custom:';

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Target, Car, Plane, Shield, Trash2 } from 'lucide-react';
+import { Target, Car, Plane, Shield, Trash2, Home, Briefcase, Wallet, Heart, Gift } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import {
   addContribution,
@@ -20,12 +20,17 @@ import styles from './Goals.module.css';
 
 const GOAL_COLOR_RE = /^#[0-9A-Fa-f]{6}$/;
 const SWATCHES = ['#7C5CFF', '#22c55e', '#06b6d4', '#eab308', '#f97316', '#ec4899'] as const;
-const ICON_KEYS = ['target', 'car', 'plane', 'shield'] as const;
+const ICON_KEYS = ['target', 'car', 'plane', 'shield', 'home', 'briefcase', 'wallet', 'heart', 'gift'] as const;
 const ICON_MAP: Record<(typeof ICON_KEYS)[number], LucideIcon> = {
   target: Target,
   car: Car,
   plane: Plane,
   shield: Shield,
+  home: Home,
+  briefcase: Briefcase,
+  wallet: Wallet,
+  heart: Heart,
+  gift: Gift,
 };
 
 const GoalIcon: React.FC<{ name: string; color: string; size?: number }> = ({ name, color, size = 28 }) => {
