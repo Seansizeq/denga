@@ -54,23 +54,6 @@ export type CategoryBudget = {
   currency: 'UAH' | 'PLN' | 'USD';
 };
 
-export type DebtDirection = 'owed_to_me' | 'i_owe';
-export type DebtStatus = 'open' | 'closed';
-
-export type DebtRecord = {
-  id: string;
-  direction: DebtDirection;
-  personName: string;
-  amount: number;
-  currency: 'UAH' | 'PLN' | 'USD';
-  dueDate: string | null;
-  note: string | null;
-  status: DebtStatus;
-  closedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
 export const getReportSettings = async (): Promise<ReportSettings> => {
   const res = await apiFetch('/api/reports/settings');
   if (!res.ok) throw new Error('failed to load report settings');
@@ -136,55 +119,6 @@ export const setBudget = async (
 export const deleteBudget = async (categoryId: string): Promise<void> => {
   const res = await apiFetch(`/api/budgets/${encodeURIComponent(categoryId)}`, { method: 'DELETE' });
   if (!res.ok) throw new Error('failed to delete budget');
-};
-
-export const getDebts = async (status: DebtStatus | 'all' = 'open'): Promise<DebtRecord[]> => {
-  const res = await apiFetch(`/api/debts?status=${encodeURIComponent(status)}`);
-  if (!res.ok) throw new Error('failed to load debts');
-  return res.json();
-};
-
-export const createDebt = async (body: {
-  direction: DebtDirection;
-  personName: string;
-  amount: number;
-  currency: DebtRecord['currency'];
-  dueDate?: string | null;
-  note?: string;
-}): Promise<DebtRecord> => {
-  const res = await apiFetch('/api/debts', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error('failed to create debt');
-  return res.json();
-};
-
-export const updateDebt = async (
-  id: string,
-  patch: Partial<{
-    direction: DebtDirection;
-    personName: string;
-    amount: number;
-    currency: DebtRecord['currency'];
-    dueDate: string | null;
-    note: string;
-    status: DebtStatus;
-  }>
-): Promise<DebtRecord> => {
-  const res = await apiFetch(`/api/debts/${encodeURIComponent(id)}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(patch),
-  });
-  if (!res.ok) throw new Error('failed to update debt');
-  return res.json();
-};
-
-export const deleteDebt = async (id: string): Promise<void> => {
-  const res = await apiFetch(`/api/debts/${encodeURIComponent(id)}`, { method: 'DELETE' });
-  if (!res.ok) throw new Error('failed to delete debt');
 };
 
 export type GoalCurrency = 'UAH' | 'PLN' | 'USD';

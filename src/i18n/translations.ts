@@ -48,34 +48,6 @@ type Dict = {
     sectionCrypto: string;
     sectionDebt: string;
   };
-  debt: {
-    title: string;
-    owedToMe: string;
-    iOwe: string;
-    add: string;
-    personPlaceholder: string;
-    amountPlaceholder: string;
-    dueDate: string;
-    noDueDate: string;
-    notePlaceholder: string;
-    save: string;
-    closeOwedToMe: string;
-    closeIOwe: string;
-    reopen: string;
-    closedTitle: string;
-    showClosed: string;
-    hideClosed: string;
-    emptyOwedToMe: string;
-    emptyIOwe: string;
-    emptyClosed: string;
-    overdue: string;
-    dueToday: string;
-    dueInDays: string;
-    closedAt: string;
-    loadError: string;
-    saveError: string;
-    deleteConfirm: string;
-  };
   addTx: {
     title: string;
     editTitle: string;
@@ -375,34 +347,6 @@ const uk: Dict = {
     sectionCash: 'Готівка',
     sectionCrypto: 'Акції та крипта',
     sectionDebt: 'Борг',
-  },
-  debt: {
-    title: 'Облік боргів',
-    owedToMe: 'Мені винні',
-    iOwe: 'Я винен',
-    add: 'Додати',
-    personPlaceholder: 'Імʼя або хто',
-    amountPlaceholder: 'Сума',
-    dueDate: 'Повернути до',
-    noDueDate: 'Без дати',
-    notePlaceholder: 'Примітка',
-    save: 'Зберегти борг',
-    closeOwedToMe: 'Повернули',
-    closeIOwe: 'Погасив',
-    reopen: 'Повернути в активні',
-    closedTitle: 'Закриті борги',
-    showClosed: 'Показати закриті',
-    hideClosed: 'Сховати закриті',
-    emptyOwedToMe: 'Ніхто не винен',
-    emptyIOwe: 'Ви нікому не винні',
-    emptyClosed: 'Немає закритих боргів',
-    overdue: 'Прострочено',
-    dueToday: 'Сьогодні',
-    dueInDays: 'Через {n} дн.',
-    closedAt: 'Закрито',
-    loadError: 'Не вдалося завантажити борги',
-    saveError: 'Не вдалося зберегти борг',
-    deleteConfirm: 'Видалити цей борг?',
   },
   addTx: {
     title: 'Нова операція',
@@ -715,34 +659,6 @@ const ru: Dict = {
     sectionCrypto: 'Акции и крипта',
     sectionDebt: 'Долг',
   },
-  debt: {
-    title: 'Учет долгов',
-    owedToMe: 'Мне должны',
-    iOwe: 'Я должен',
-    add: 'Добавить',
-    personPlaceholder: 'Имя или кто',
-    amountPlaceholder: 'Сумма',
-    dueDate: 'Вернуть до',
-    noDueDate: 'Без даты',
-    notePlaceholder: 'Заметка',
-    save: 'Сохранить долг',
-    closeOwedToMe: 'Вернули',
-    closeIOwe: 'Погасил',
-    reopen: 'Вернуть в активные',
-    closedTitle: 'Закрытые долги',
-    showClosed: 'Показать закрытые',
-    hideClosed: 'Скрыть закрытые',
-    emptyOwedToMe: 'Никто не должен',
-    emptyIOwe: 'Вы никому не должны',
-    emptyClosed: 'Нет закрытых долгов',
-    overdue: 'Просрочено',
-    dueToday: 'Сегодня',
-    dueInDays: 'Через {n} дн.',
-    closedAt: 'Закрыт',
-    loadError: 'Не удалось загрузить долги',
-    saveError: 'Не удалось сохранить долг',
-    deleteConfirm: 'Удалить этот долг?',
-  },
   addTx: {
     title: 'Новая операция',
     editTitle: 'Редактирование операции',
@@ -1053,34 +969,6 @@ const en: Dict = {
     sectionCash: 'Cash',
     sectionCrypto: 'Stocks & crypto',
     sectionDebt: 'Debt',
-  },
-  debt: {
-    title: 'Debt tracker',
-    owedToMe: 'Owed to me',
-    iOwe: 'I owe',
-    add: 'Add',
-    personPlaceholder: 'Person name',
-    amountPlaceholder: 'Amount',
-    dueDate: 'Due date',
-    noDueDate: 'No due date',
-    notePlaceholder: 'Note',
-    save: 'Save debt',
-    closeOwedToMe: 'Returned',
-    closeIOwe: 'Paid',
-    reopen: 'Reopen',
-    closedTitle: 'Closed debts',
-    showClosed: 'Show closed',
-    hideClosed: 'Hide closed',
-    emptyOwedToMe: 'No one owes you',
-    emptyIOwe: 'You owe nothing',
-    emptyClosed: 'No closed debts',
-    overdue: 'Overdue',
-    dueToday: 'Due today',
-    dueInDays: 'In {n} days',
-    closedAt: 'Closed at',
-    loadError: 'Failed to load debts',
-    saveError: 'Failed to save debt',
-    deleteConfirm: 'Delete this debt?',
   },
   addTx: {
     title: 'New transaction',
