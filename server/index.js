@@ -2476,16 +2476,19 @@ app.delete('/api/transactions/:id', async (req, res) => {
 // --- Receipt OCR scan ---
 const RECEIPT_SCAN_RATE_LIMIT_MS = 3000;
 const lastReceiptScanByUser = new Map();
-const RECEIPT_IMAGE_BYTES_LIMIT = 10 * 1024 * 1024;
-const VISION_ENDPOINT = 'https://vision.googleapis.com/v1/images:annotate';
+const RECEIPT_IMAGE_BYTES_LIMIT = 1024 * 1024; // OCR.space free tier: 1 MB image
+const OCR_SPACE_ENDPOINT = 'https://api.ocr.space/parse/image';
+// Public test key from OCR.space — works out of the box but is heavily rate-limited.
+// Replace by registering a free API key at https://ocr.space/ocrapi (25k req/month).
+const OCR_SPACE_PUBLIC_FALLBACK_KEY = 'helloworld';
 
 const stripBase64Prefix = (raw) => {
   if (typeof raw !== 'string') return '';
   const trimmed = raw.trim();
   if (!trimmed) return '';
   const match = trimmed.match(/^data:image\/(jpeg|jpg|png|webp|heic|heif);base64,([\s\S]+)$/i);
-  if (match) return match[2].replace(/\s+/g, '');
-  return trimmed.replace(/\s+/g, '');
+  if (match) return { mime: match[1].toLowerCase(), data: match[2].replace(/\s+/g, '') };
+  return { mime: 'jpeg', data: trimmed.replace(/\s+/g, '') };
 };
 
 app.post('/api/receipts/scan', express.json({ limit: '12mb' }), async (req, res) => {
@@ -2494,14 +2497,7 @@ app.post('/api/receipts/scan', express.json({ limit: '12mb' }), async (req, res)
     res.status(401).json({ error: 'Unauthorized' });
     return;
   }
-  const apiKey = process.env.GOOGLE_CLOUD_VISION_API_KEY;
-  if (!apiKey) {
-    res.status(503).json({
-      error: 'Receipt scanning is not configured on the server',
-      code: 'OCR_NOT_CONFIGURED',
-    });
-    return;
-  }
+  const apiKey = process.env.OCR_SPACE_API_KEY || OCR_SPACE_PUBLIC_FALLBACK_KEY;
 
   const now = Date.now();
   const last = lastReceiptScanByUser.get(userId) ?? 0;
@@ -2515,60 +2511,83 @@ app.post('/api/receipts/scan', express.json({ limit: '12mb' }), async (req, res)
   }
   lastReceiptScanByUser.set(userId, now);
 
-  const base64 = stripBase64Prefix(req.body?.image);
+  const parsedImage = stripBase64Prefix(req.body?.image);
+  const base64 = parsedImage?.data ?? '';
+  const mime = parsedImage?.mime ?? 'jpeg';
   if (!base64 || base64.length < 100) {
     res.status(400).json({ error: 'image is required (base64)', code: 'INVALID_IMAGE' });
     return;
   }
   const approxBytes = Math.floor((base64.length * 3) / 4);
   if (approxBytes > RECEIPT_IMAGE_BYTES_LIMIT) {
-    res.status(413).json({ error: 'image too large', code: 'IMAGE_TOO_LARGE' });
+    res.status(413).json({
+      error: 'image too large (max ~1 MB after compression)',
+      code: 'IMAGE_TOO_LARGE',
+    });
     return;
   }
 
-  let visionJson;
+  // OCR.space requires the prefixed data URI in the base64Image field.
+  const dataUri = `data:image/${mime === 'jpg' ? 'jpeg' : mime};base64,${base64}`;
+  // OCREngine: 1 — поддерживает кириллицу (укр/рус); 3 — newer LSTM, но ограниченные языки.
+  const form = new URLSearchParams();
+  form.set('base64Image', dataUri);
+  form.set('language', 'ukr');
+  form.set('OCREngine', '1');
+  form.set('isOverlayRequired', 'false');
+  form.set('detectOrientation', 'true');
+  form.set('scale', 'true');
+  form.set('isTable', 'true');
+
+  let ocrJson;
   try {
-    const visionRes = await fetch(`${VISION_ENDPOINT}?key=${encodeURIComponent(apiKey)}`, {
+    const ocrRes = await fetch(OCR_SPACE_ENDPOINT, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        requests: [
-          {
-            image: { content: base64 },
-            features: [{ type: 'DOCUMENT_TEXT_DETECTION' }],
-            imageContext: { languageHints: ['uk', 'ru', 'pl', 'en'] },
-          },
-        ],
-      }),
+      headers: {
+        apikey: apiKey,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: form.toString(),
     });
-    if (!visionRes.ok) {
-      const errBody = await visionRes.text().catch(() => '');
-      console.error('[receipts] Vision API error', visionRes.status, errBody.slice(0, 500));
-      res.status(502).json({ error: 'OCR provider error', code: 'OCR_PROVIDER_ERROR' });
+    if (!ocrRes.ok) {
+      const errBody = await ocrRes.text().catch(() => '');
+      console.error('[receipts] OCR.space HTTP error', ocrRes.status, errBody.slice(0, 500));
+      res.status(502).json({
+        error: `OCR provider HTTP ${ocrRes.status}`,
+        code: 'OCR_PROVIDER_ERROR',
+        details: errBody.slice(0, 240),
+      });
       return;
     }
-    visionJson = await visionRes.json();
+    ocrJson = await ocrRes.json();
   } catch (err) {
-    console.error('[receipts] Vision API call failed', err);
-    res.status(502).json({ error: 'OCR provider unreachable', code: 'OCR_UNREACHABLE' });
-    return;
-  }
-
-  const responses = Array.isArray(visionJson?.responses) ? visionJson.responses : [];
-  const response = responses[0] ?? {};
-  if (response.error) {
-    console.error('[receipts] Vision API per-image error', response.error);
+    console.error('[receipts] OCR.space call failed', err);
     res.status(502).json({
-      error: response.error.message ?? 'OCR provider error',
-      code: 'OCR_PROVIDER_ERROR',
+      error: 'OCR provider unreachable',
+      code: 'OCR_UNREACHABLE',
+      details: err instanceof Error ? err.message : String(err),
     });
     return;
   }
-  const text =
-    response.fullTextAnnotation?.text ??
-    response.textAnnotations?.[0]?.description ??
-    '';
-  if (!text || !text.trim()) {
+
+  if (ocrJson?.IsErroredOnProcessing) {
+    const msg = Array.isArray(ocrJson.ErrorMessage)
+      ? ocrJson.ErrorMessage.join('; ')
+      : String(ocrJson.ErrorMessage ?? 'unknown OCR error');
+    console.error('[receipts] OCR.space processing error', msg, ocrJson.ErrorDetails);
+    res.status(502).json({
+      error: msg,
+      code: 'OCR_PROVIDER_ERROR',
+      details: String(ocrJson.ErrorDetails ?? '').slice(0, 240),
+    });
+    return;
+  }
+
+  const text = Array.isArray(ocrJson?.ParsedResults)
+    ? ocrJson.ParsedResults.map((r) => String(r?.ParsedText ?? '')).join('\n').trim()
+    : '';
+
+  if (!text) {
     res.status(200).json({
       shop: null,
       total: null,
