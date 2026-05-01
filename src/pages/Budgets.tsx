@@ -101,8 +101,8 @@ const Budgets: React.FC = () => {
   return (
     <div className={styles.container}>
       <header className={styles.header}>
-        <button type="button" className={styles.back} onClick={() => navigate('/settings')}>
-          ← {t('settings', 'title')}
+        <button type="button" className={styles.back} onClick={() => navigate('/stats')}>
+          ← {t('stats', 'title')}
         </button>
         <h1 className={styles.title}>{t('budgets', 'title')}</h1>
         <p className={styles.subtitle}>{t('budgets', 'subtitle')}</p>

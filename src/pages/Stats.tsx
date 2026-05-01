@@ -113,9 +113,6 @@ const Stats: React.FC = () => {
     <div className={styles.container}>
       <header className={styles.header}>
         <h1 className={styles.title}>{t('stats', 'title')}</h1>
-        <button type="button" className={styles.budgetsBtn} onClick={() => navigate('/budgets')}>
-          {t('settings', 'budgetsLink')} →
-        </button>
       </header>
       <div className={styles.rangeRow}>
         <div className={styles.rangeTabs} role="tablist" aria-label="Stats range">
@@ -132,6 +129,9 @@ const Stats: React.FC = () => {
             </button>
           ))}
         </div>
+        <button type="button" className={styles.budgetsBtn} onClick={() => navigate('/budgets')}>
+          Бюджет
+        </button>
       </div>
       {range === 'month' && (
         <div className={styles.monthNav}>
