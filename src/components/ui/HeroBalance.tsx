@@ -17,6 +17,8 @@ interface HeroBalanceProps {
   wealthOther?: { amount: number; currency: 'UAH' | 'PLN' };
   /** Зміна портфеля за ~30 днів, %; null — не показувати */
   wealthMonthChangePct?: number | null;
+  /** Підказка «натисніть на суму…»; на головній часто вимкнено */
+  showTapHint?: boolean;
 }
 
 const HeroBalance: React.FC<HeroBalanceProps> = ({
@@ -29,6 +31,7 @@ const HeroBalance: React.FC<HeroBalanceProps> = ({
   mainAmountCurrency = 'UAH',
   wealthOther,
   wealthMonthChangePct = null,
+  showTapHint = true,
 }) => {
   const { locale, t, displayCurrency } = useTranslation();
   const lc = localeProp || locale;
@@ -77,7 +80,7 @@ const HeroBalance: React.FC<HeroBalanceProps> = ({
           <span className={styles.monthChangeHint}>{t('balance', 'monthChangeHint')}</span>
         </div>
       ) : null}
-      <p className={styles.tapHint}>{t('balance', 'tapHint')}</p>
+      {showTapHint ? <p className={styles.tapHint}>{t('balance', 'tapHint')}</p> : null}
 
       {wealthMode && wealthOther && wealthOther.amount > 0 ? (
         <div className={styles.deltaRow}>

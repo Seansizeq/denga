@@ -233,8 +233,11 @@ const Dashboard: React.FC = () => {
           onOpenDetails={() => navigate('/accounts')}
           wealthMode={wealthMode}
           mainAmountCurrency={wealthMode ? mainAmountCurrency : 'UAH'}
-          wealthOther={wealthMode ? wealthOther : undefined}
+          wealthOther={
+            wealthMode && wealthOther && wealthOther.currency !== 'UAH' ? wealthOther : undefined
+          }
           wealthMonthChangePct={wealthMode ? wealthMonthChangePct : null}
+          showTapHint={false}
         />
 
         <QuickActions />
