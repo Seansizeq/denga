@@ -4,6 +4,7 @@ import { Target, Car, Plane, Shield, Trash2, Home, Briefcase, Wallet, Heart, Gif
 import type { LucideIcon } from 'lucide-react';
 import {
   addContribution,
+  apiFetch,
   deleteContribution,
   deleteGoal,
   getContributions,
@@ -13,6 +14,7 @@ import {
   type GoalContribution,
   type GoalCurrency,
 } from '../api/client';
+import { normalizeCurrency } from '../utils/currency';
 import { formatCurrency } from '../utils/formatters';
 import type { DisplayCurrency } from '../utils/formatters';
 import { useTranslation } from '../i18n/LanguageContext';
@@ -70,6 +72,10 @@ const GoalDetail: React.FC = () => {
   const [error, setError] = useState('');
   const [contribAmount, setContribAmount] = useState('');
   const [contribNote, setContribNote] = useState('');
+  const [contribAccountKey, setContribAccountKey] = useState('');
+  const [portfolioAccounts, setPortfolioAccounts] = useState<
+    Array<{ key: string; name: string; currency: GoalCurrency }>
+  >([]);
   const [actionError, setActionError] = useState('');
   const [editOpen, setEditOpen] = useState(false);
   const [editName, setEditName] = useState('');
@@ -85,6 +91,52 @@ const GoalDetail: React.FC = () => {
       el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
     }, 120);
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadPortfolio = async () => {
+      try {
+        const res = await apiFetch('/api/accounts');
+        if (!res.ok || cancelled) return;
+        const data: unknown = await res.json();
+        if (!Array.isArray(data) || cancelled) return;
+        const list: Array<{ key: string; name: string; currency: GoalCurrency }> = [];
+        for (const row of data) {
+          if (!row || typeof row !== 'object') continue;
+          const r = row as Record<string, unknown>;
+          const key = String(r.accountKey ?? '')
+            .trim()
+            .toLowerCase();
+          if (!key) continue;
+          const name = String(r.name ?? r.accountKey ?? '')
+            .trim()
+            .slice(0, 40);
+          const cur = normalizeCurrency(String(r.primaryCurrency ?? 'UAH')) as GoalCurrency;
+          list.push({ key, name: name || key, currency: cur });
+        }
+        list.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+        if (!cancelled) setPortfolioAccounts(list);
+      } catch {
+        if (!cancelled) setPortfolioAccounts([]);
+      }
+    };
+    void loadPortfolio();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const accountPayOptions = useMemo(() => {
+    if (!goal) return [];
+    return portfolioAccounts.filter((a) => a.currency === goal.currency);
+  }, [goal, portfolioAccounts]);
+
+  useEffect(() => {
+    if (!contribAccountKey) return;
+    if (!accountPayOptions.some((p) => p.key === contribAccountKey)) {
+      setContribAccountKey('');
+    }
+  }, [accountPayOptions, contribAccountKey]);
 
   const load = useCallback(async () => {
     if (!id) {
@@ -166,12 +218,23 @@ const GoalDetail: React.FC = () => {
     if (!Number.isFinite(n) || n <= 0) return;
     const todayIso = new Date().toISOString().slice(0, 10);
     try {
-      await addContribution(id, { amount: n, date: todayIso, note: contribNote.trim() });
+      await addContribution(id, {
+        amount: n,
+        date: todayIso,
+        note: contribNote.trim(),
+        accountKey: contribAccountKey.trim() ? contribAccountKey.trim().toLowerCase() : undefined,
+      });
       setContribAmount('');
       setContribNote('');
       await load();
-    } catch {
-      setActionError(t('goals', 'saveError'));
+    } catch (e: unknown) {
+      const code =
+        e && typeof e === 'object' && 'code' in e ? String((e as { code?: string }).code) : '';
+      if (code === 'ACCOUNT_CURRENCY_MISMATCH') {
+        setActionError(t('goals', 'accountMismatch'));
+      } else {
+        setActionError(t('goals', 'saveError'));
+      }
     }
   };
 
@@ -303,6 +366,39 @@ const GoalDetail: React.FC = () => {
           />
         </div>
         <div className={styles.field}>
+          <label className={styles.label} id="c-pay-label">
+            {t('goals', 'payFromAccount')}
+          </label>
+          {goal.currency === 'USD' ? (
+            <p className={styles.goalPayHint}>{t('goals', 'payFromUsdManual')}</p>
+          ) : (
+            <>
+              <p className={styles.goalPayHint} id="c-pay-hint">
+                {t('goals', 'payFromHint')}
+              </p>
+              <div className={styles.goalPayChips} role="group" aria-labelledby="c-pay-label c-pay-hint">
+                <button
+                  type="button"
+                  className={`${styles.goalPayChip} ${contribAccountKey === '' ? styles.goalPayChipActive : ''}`}
+                  onClick={() => setContribAccountKey('')}
+                >
+                  {t('addTx', 'paymentAccountNone')}
+                </button>
+                {accountPayOptions.map(({ key, name }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    className={`${styles.goalPayChip} ${contribAccountKey === key ? styles.goalPayChipActive : ''}`}
+                    onClick={() => setContribAccountKey(key)}
+                  >
+                    {name}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+        <div className={styles.field}>
           <label className={styles.label} htmlFor="c-note">
             {t('goals', 'contributionNote')}
           </label>
@@ -329,6 +425,9 @@ const GoalDetail: React.FC = () => {
               <div className={styles.contribMain}>
                 <div className={styles.contribDate}>{new Date(c.date + 'T12:00:00').toLocaleDateString(locale)}</div>
                 {c.note ? <p className={styles.contribNote}>{c.note}</p> : null}
+                {c.transactionId ? (
+                  <span className={styles.contribAccountBadge}>{t('goals', 'fromAccountShort')}</span>
+                ) : null}
               </div>
               <span className={styles.contribAmt}>{formatCurrency(c.amount, locale, cur)}</span>
               <button type="button" className={styles.iconBtn} aria-label={t('goals', 'delete')} onClick={() => void onDeleteContrib(c.id)}>

@@ -270,6 +270,11 @@ type Dict = {
     contributionsTitle: string;
     noContributions: string;
     deleteContribConfirm: string;
+    payFromAccount: string;
+    payFromHint: string;
+    fromAccountShort: string;
+    accountMismatch: string;
+    payFromUsdManual: string;
     completed: string;
     daysLeft: string;
     overdue: string;
@@ -577,6 +582,12 @@ const uk: Dict = {
     contributionsTitle: 'Внески',
     noContributions: 'Поки немає внесків',
     deleteContribConfirm: 'Видалити цей внесок?',
+    payFromAccount: 'Зняти з рахунку',
+    payFromHint:
+      'Лише рахунки в тій самій валюті, що й ціль. З’явиться витрата в історії; при видаленні внеску вона теж зникне.',
+    fromAccountShort: 'З рахунку',
+    accountMismatch: 'Валюта рахунку не збігається з валютою цілі.',
+    payFromUsdManual: 'Для цілі в USD рахунок не вибирається — лише ручний внесок.',
     completed: 'Готово',
     daysLeft: 'Залишилось {n} дн.',
     overdue: 'Прострочено',
@@ -889,6 +900,12 @@ const ru: Dict = {
     contributionsTitle: 'Взносы',
     noContributions: 'Пока нет взносов',
     deleteContribConfirm: 'Удалить этот взнос?',
+    payFromAccount: 'Списать со счёта',
+    payFromHint:
+      'Только счета в валюте цели. Появится расход в истории; при удалении взноса он тоже удалится.',
+    fromAccountShort: 'Со счёта',
+    accountMismatch: 'Валюта счёта не совпадает с валютой цели.',
+    payFromUsdManual: 'Для цели в USD счёт не выбирается — только ручной взнос.',
     completed: 'Готово',
     daysLeft: 'Осталось {n} дн.',
     overdue: 'Просрочено',
@@ -1201,6 +1218,12 @@ const en: Dict = {
     contributionsTitle: 'Contributions',
     noContributions: 'No contributions yet',
     deleteContribConfirm: 'Delete this contribution?',
+    payFromAccount: 'Debit an account',
+    payFromHint:
+      'Only accounts in the goal’s currency. Creates an expense in history; deleting the contribution removes it too.',
+    fromAccountShort: 'From account',
+    accountMismatch: 'Account currency does not match the goal currency.',
+    payFromUsdManual: 'USD goals use manual contributions only (no account debit).',
     completed: 'Done',
     daysLeft: '{n} days left',
     overdue: 'Overdue',

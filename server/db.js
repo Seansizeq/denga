@@ -371,6 +371,11 @@ export async function initDb() {
   await db.exec(`
     CREATE INDEX IF NOT EXISTS idx_goal_contrib_goal ON goal_contributions(goal_id)
   `);
+  try {
+    await db.exec(`ALTER TABLE goal_contributions ADD COLUMN transaction_id TEXT`);
+  } catch {
+    /* already exists */
+  }
 
   await db.exec(`
     CREATE INDEX IF NOT EXISTS idx_transactions_user_date

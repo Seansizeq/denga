@@ -145,6 +145,8 @@ export type GoalContribution = {
   date: string;
   note: string;
   createdAt: string;
+  /** Якщо внесок списався з рахунку — id транзакції-витрати */
+  transactionId?: string | null;
 };
 
 export const getGoals = async (): Promise<Goal[]> => {
@@ -210,14 +212,23 @@ export const getContributions = async (goalId: string): Promise<GoalContribution
 
 export const addContribution = async (
   goalId: string,
-  body: { amount: number; date: string; note?: string }
+  body: { amount: number; date: string; note?: string; accountKey?: string | null }
 ): Promise<GoalContribution> => {
   const res = await apiFetch(`/api/goals/${encodeURIComponent(goalId)}/contributions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error('failed to add contribution');
+  if (!res.ok) {
+    const err = new Error('failed to add contribution') as Error & { code?: string };
+    try {
+      const j = (await res.json()) as { code?: string };
+      if (typeof j?.code === 'string') err.code = j.code;
+    } catch {
+      /* ignore */
+    }
+    throw err;
+  }
   return res.json();
 };
 

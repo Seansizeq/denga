@@ -3192,6 +3192,19 @@ app.delete('/api/goals/:id', async (req, res) => {
     res.status(404).json({ error: 'Goal not found' });
     return;
   }
+  const linked = await db.all(
+    'SELECT transaction_id AS transactionId FROM goal_contributions WHERE goal_id = ? AND user_id = ? AND transaction_id IS NOT NULL',
+    [id, userId]
+  );
+  for (const row of linked || []) {
+    const tid = row?.transactionId ? String(row.transactionId).trim() : '';
+    if (!tid) continue;
+    const txRow = await db.get('SELECT * FROM transactions WHERE user_id = ? AND id = ? LIMIT 1', [userId, tid]);
+    if (txRow) {
+      await applyAccountDelta(db, userId, getAccountSlugFromNote(txRow.note), -accountDeltaForTx(txRow));
+      await db.run('DELETE FROM transactions WHERE user_id = ? AND id = ?', [userId, tid]);
+    }
+  }
   await db.run('DELETE FROM goal_contributions WHERE goal_id = ? AND user_id = ?', [id, userId]);
   await db.run('DELETE FROM goals WHERE id = ? AND user_id = ?', [id, userId]);
   res.status(204).end();
@@ -3232,7 +3245,7 @@ app.get('/api/goals/:id/contributions', async (req, res) => {
     return;
   }
   const rows = await db.all(
-    `SELECT id, goal_id AS goalId, amount, date, note, created_at AS createdAt
+    `SELECT id, goal_id AS goalId, amount, date, note, created_at AS createdAt, transaction_id AS transactionId
      FROM goal_contributions
      WHERE goal_id = ? AND user_id = ?
      ORDER BY date DESC, created_at DESC`,
@@ -3246,6 +3259,7 @@ app.get('/api/goals/:id/contributions', async (req, res) => {
       date: r.date,
       note: r.note ?? '',
       createdAt: r.createdAt,
+      transactionId: r.transactionId ? String(r.transactionId) : null,
     }))
   );
 });
@@ -3257,14 +3271,22 @@ app.post('/api/goals/:id/contributions', async (req, res) => {
     res.status(400).json({ error: 'invalid id' });
     return;
   }
-  const goal = await db.get('SELECT id FROM goals WHERE user_id = ? AND id = ?', [userId, goalId]);
-  if (!goal) {
+  const goalRow = await db.get(
+    'SELECT id, name, currency FROM goals WHERE user_id = ? AND id = ?',
+    [userId, goalId]
+  );
+  if (!goalRow) {
     res.status(404).json({ error: 'Goal not found' });
     return;
   }
   const amount = Number(req.body?.amount);
   const date = typeof req.body?.date === 'string' ? req.body.date : '';
   const note = typeof req.body?.note === 'string' ? req.body.note.trim().slice(0, 500) : '';
+  const accountKeyRaw = req.body?.accountKey;
+  const accountKey =
+    typeof accountKeyRaw === 'string' && accountKeyRaw.trim()
+      ? String(accountKeyRaw).trim().toLowerCase().slice(0, 48)
+      : null;
 
   if (!Number.isFinite(amount) || amount <= 0) {
     res.status(400).json({ error: 'amount must be > 0' });
@@ -3275,11 +3297,82 @@ app.post('/api/goals/:id/contributions', async (req, res) => {
     return;
   }
 
+  const goalCurrency = normalizeCurrency(goalRow.currency);
+  const goalName = String(goalRow.name || '').trim().slice(0, 80);
   const cid = uuidv4();
   const now = new Date().toISOString();
+
+  if (accountKey) {
+    const acct = await db.get(
+      `SELECT account_key AS k, primary_currency AS pc
+       FROM account_portfolio
+       WHERE user_id = ? AND LOWER(account_key) = ?
+       LIMIT 1`,
+      [userId, accountKey]
+    );
+    if (!acct?.k) {
+      res.status(400).json({ error: 'account not found', code: 'ACCOUNT_NOT_FOUND' });
+      return;
+    }
+    const acctKey = String(acct.k).trim().toLowerCase();
+    const acctCur = normalizeCurrency(acct.pc);
+    if (acctCur !== goalCurrency) {
+      res.status(400).json({
+        error: 'account primary currency must match goal currency',
+        code: 'ACCOUNT_CURRENCY_MISMATCH',
+      });
+      return;
+    }
+    const userNote = note.slice(0, 80);
+    const goalPrefix = `Ціль: ${goalName}`.slice(0, 80);
+    const baseNote = userNote ? `${goalPrefix}. ${userNote}` : goalPrefix;
+    let txNote = mergeAccountIntoNote(baseNote, acctKey);
+    if (txNote.length > 120) txNote = txNote.slice(0, 120);
+    const txId = uuidv4();
+    const txDate = `${date}T12:00:00.000Z`;
+
+    await db.run('BEGIN IMMEDIATE');
+    try {
+      await db.run(
+        `INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, note)
+         VALUES (?, ?, ?, ?, 'other_expense', 'expense', ?, ?)`,
+        [txId, userId, amount, goalCurrency, txDate, txNote]
+      );
+      await applyAccountDelta(db, userId, getAccountSlugFromNote(txNote), accountDeltaForTx({ amount, type: 'expense' }));
+      await checkBudgetThresholdsAfterExpense(userId, 'other_expense');
+      await db.run(
+        `INSERT INTO goal_contributions (id, goal_id, user_id, amount, date, note, created_at, transaction_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [cid, goalId, userId, amount, date, note || null, now, txId]
+      );
+      await db.run('UPDATE goals SET updated_at = ? WHERE id = ? AND user_id = ?', [now, goalId, userId]);
+      await db.run('COMMIT');
+    } catch (e) {
+      try {
+        await db.run('ROLLBACK');
+      } catch {
+        /* ignore */
+      }
+      console.error('[goals] contribution with account failed', e);
+      res.status(500).json({ error: 'failed to save contribution', code: 'CONTRIBUTION_SAVE_FAILED' });
+      return;
+    }
+
+    res.status(201).json({
+      id: cid,
+      goalId,
+      amount,
+      date,
+      note,
+      createdAt: now,
+      transactionId: txId,
+    });
+    return;
+  }
+
   await db.run(
-    `INSERT INTO goal_contributions (id, goal_id, user_id, amount, date, note, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO goal_contributions (id, goal_id, user_id, amount, date, note, created_at, transaction_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, NULL)`,
     [cid, goalId, userId, amount, date, note || null, now]
   );
   await db.run('UPDATE goals SET updated_at = ? WHERE id = ? AND user_id = ?', [now, goalId, userId]);
@@ -3291,6 +3384,7 @@ app.post('/api/goals/:id/contributions', async (req, res) => {
     date,
     note,
     createdAt: now,
+    transactionId: null,
   });
 });
 
@@ -3303,12 +3397,20 @@ app.delete('/api/goals/:id/contributions/:contribId', async (req, res) => {
     return;
   }
   const row = await db.get(
-    'SELECT id FROM goal_contributions WHERE id = ? AND goal_id = ? AND user_id = ?',
+    'SELECT id, transaction_id AS transactionId FROM goal_contributions WHERE id = ? AND goal_id = ? AND user_id = ?',
     [contribId, goalId, userId]
   );
   if (!row) {
     res.status(404).json({ error: 'Contribution not found' });
     return;
+  }
+  const linkedTxId = row.transactionId ? String(row.transactionId).trim() : '';
+  if (linkedTxId) {
+    const txRow = await db.get('SELECT * FROM transactions WHERE user_id = ? AND id = ? LIMIT 1', [userId, linkedTxId]);
+    if (txRow) {
+      await applyAccountDelta(db, userId, getAccountSlugFromNote(txRow.note), -accountDeltaForTx(txRow));
+      await db.run('DELETE FROM transactions WHERE user_id = ? AND id = ?', [userId, linkedTxId]);
+    }
   }
   await db.run('DELETE FROM goal_contributions WHERE id = ? AND goal_id = ? AND user_id = ?', [contribId, goalId, userId]);
   const now = new Date().toISOString();
