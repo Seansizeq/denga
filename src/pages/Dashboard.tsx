@@ -10,22 +10,31 @@ import RecentTransactions from '../components/ui/RecentTransactions';
 import type { RangeFilter } from '../components/ui/RecentTransactions';
 import { apiFetch } from '../api/client';
 import { isWithinLastDays } from '../utils/dateRanges';
+import {
+  computePortfolioPriorUahPln,
+  computeWealthMonthChangePercent,
+  parseCryptoPosition,
+  portfolioNeedsCryptoHistory,
+  priorNetInDisplayCurrency,
+  type CryptoUsdHistory,
+  type PortfolioRowInput,
+} from '../utils/portfolioMonthChange';
 import styles from './Dashboard.module.css';
 
 type PortfolioWorth = { uah: number; pln: number };
-type CryptoSymbol = 'BTC' | 'ETH' | 'SOL' | 'TON' | 'USDT';
 
-const parseCryptoPosition = (subText?: string | null): { symbol: CryptoSymbol; amount: number } | null => {
-  if (!subText) return null;
-  const m = subText.match(/([0-9][0-9\s\u00A0\u202F]*(?:[.,][0-9]+)?)\s*([A-Za-z]{3,5})/);
-  if (!m?.[1] || !m?.[2]) return null;
-  const amount = Number(m[1].replace(/[\s\u00A0\u202F]+/g, '').replace(',', '.'));
-  if (!Number.isFinite(amount) || amount <= 0) return null;
-  const symbol = m[2].toUpperCase();
-  if (symbol === 'BTC' || symbol === 'ETH' || symbol === 'SOL' || symbol === 'TON' || symbol === 'USDT') {
-    return { symbol, amount };
-  }
-  return null;
+const normalizeAccountRow = (row: Record<string, unknown>): PortfolioRowInput | null => {
+  const accountKey = String(row.accountKey ?? '').trim().toLowerCase();
+  if (!accountKey) return null;
+  const primaryAmount = Number(row.primaryAmount);
+  if (!Number.isFinite(primaryAmount)) return null;
+  return {
+    accountKey,
+    section: String(row.section ?? ''),
+    primaryAmount,
+    primaryCurrency: row.primaryCurrency === 'PLN' ? 'PLN' : 'UAH',
+    subText: typeof row.subText === 'string' ? row.subText : null,
+  };
 };
 
 const Dashboard: React.FC = () => {
@@ -34,6 +43,8 @@ const Dashboard: React.FC = () => {
   const { transactions, deleteTransaction } = useTransactions();
   const [range, setRange] = useState<RangeFilter>('today');
   const [worth, setWorth] = useState<PortfolioWorth | null>(null);
+  const [portfolioRows, setPortfolioRows] = useState<PortfolioRowInput[] | null>(null);
+  const [cryptoUsdHistory, setCryptoUsdHistory] = useState<CryptoUsdHistory | null>(null);
 
   const inRange = useMemo(() => {
     const now = new Date();
@@ -82,11 +93,15 @@ const Dashboard: React.FC = () => {
       ]);
       if (!accountsRes.ok) {
         setWorth(null);
+        setPortfolioRows(null);
+        setCryptoUsdHistory(null);
         return;
       }
       const data: unknown = await accountsRes.json();
       if (!Array.isArray(data) || data.length === 0) {
         setWorth(null);
+        setPortfolioRows(null);
+        setCryptoUsdHistory(null);
         return;
       }
       let cryptoUsdPrices: Record<string, number> = {};
@@ -100,11 +115,14 @@ const Dashboard: React.FC = () => {
         }
         cryptoUsdPrices = normalized;
       }
+      const rows: PortfolioRowInput[] = [];
       let uah = 0;
       let pln = 0;
       for (const row of data) {
         if (!row || typeof row !== 'object') continue;
         const r = row as Record<string, unknown>;
+        const normalized = normalizeAccountRow(r);
+        if (normalized) rows.push(normalized);
         const baseAmount = Number(r.primaryAmount);
         const section = String(r.section ?? '').trim().toLowerCase();
         const primaryCurrency = r.primaryCurrency === 'PLN' ? 'PLN' : 'UAH';
@@ -121,8 +139,35 @@ const Dashboard: React.FC = () => {
         else uah += amount;
       }
       setWorth({ uah, pln });
+      setPortfolioRows(rows);
+
+      const needsHist = portfolioNeedsCryptoHistory(rows);
+      if (needsHist) {
+        const histRes = await apiFetch('/api/crypto-prices-history');
+        if (!histRes.ok) {
+          setCryptoUsdHistory(null);
+          return;
+        }
+        const histBody = (await histRes.json()) as {
+          ok?: boolean;
+          prices30dAgo?: Record<string, number>;
+          pricesNow?: Record<string, number>;
+        };
+        if (histBody?.ok && histBody.prices30dAgo && histBody.pricesNow) {
+          setCryptoUsdHistory({
+            prices30dAgo: histBody.prices30dAgo as CryptoUsdHistory['prices30dAgo'],
+            pricesNow: histBody.pricesNow as CryptoUsdHistory['pricesNow'],
+          });
+        } else {
+          setCryptoUsdHistory(null);
+        }
+      } else {
+        setCryptoUsdHistory(null);
+      }
     } catch {
       setWorth(null);
+      setPortfolioRows(null);
+      setCryptoUsdHistory(null);
     }
   }, [convertAmount]);
 
@@ -134,9 +179,10 @@ const Dashboard: React.FC = () => {
 
   const wealthMode = worth !== null;
   const usePlnMain = displayCurrency === 'PLN';
-  const mainNet = wealthMode && worth
-    ? convertAmount(worth.uah, 'UAH') + convertAmount(worth.pln, 'PLN')
-    : summary.totalNet;
+  const mainNet =
+    wealthMode && worth
+      ? convertAmount(worth.uah, 'UAH') + convertAmount(worth.pln, 'PLN')
+      : summary.totalNet;
   const mainAmountCurrency = displayCurrency;
   const wealthOther =
     worth && wealthMode
@@ -147,6 +193,24 @@ const Dashboard: React.FC = () => {
           return undefined;
         })()
       : undefined;
+
+  const wealthMonthChangePct = useMemo(() => {
+    if (!worth || !portfolioRows || portfolioRows.length === 0) return null;
+    const needsHist = portfolioNeedsCryptoHistory(portfolioRows);
+    if (needsHist && !cryptoUsdHistory) return null;
+    const priorBuckets = computePortfolioPriorUahPln({
+      accounts: portfolioRows,
+      transactions,
+      convertAmount,
+      cryptoHistory: needsHist ? cryptoUsdHistory : null,
+      windowDays: 30,
+    });
+    if (!priorBuckets) return null;
+    const priorNet = priorNetInDisplayCurrency(priorBuckets, convertAmount);
+    const main =
+      convertAmount(worth.uah, 'UAH') + convertAmount(worth.pln, 'PLN');
+    return computeWealthMonthChangePercent(main, priorNet);
+  }, [worth, portfolioRows, cryptoUsdHistory, transactions, convertAmount]);
 
   return (
     <div className={styles.container}>
@@ -170,6 +234,7 @@ const Dashboard: React.FC = () => {
           wealthMode={wealthMode}
           mainAmountCurrency={wealthMode ? mainAmountCurrency : 'UAH'}
           wealthOther={wealthMode ? wealthOther : undefined}
+          wealthMonthChangePct={wealthMode ? wealthMonthChangePct : null}
         />
 
         <QuickActions />

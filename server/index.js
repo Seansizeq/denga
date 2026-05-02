@@ -159,6 +159,83 @@ let fxCacheFetchedAt = 0;
 const CRYPTO_CACHE_TTL_MS = 2 * 60 * 1000;
 let cryptoCache = null;
 let cryptoCacheFetchedAt = 0;
+const CRYPTO_HISTORY_CACHE_TTL_MS = 15 * 60 * 1000;
+let cryptoHistoryCache = null;
+let cryptoHistoryFetchedAt = 0;
+
+const COINGECKO_ID_TO_SYMBOL = {
+  bitcoin: 'BTC',
+  ethereum: 'ETH',
+  solana: 'SOL',
+  'the-open-network': 'TON',
+  tether: 'USDT',
+};
+const COINGECKO_CHART_IDS = Object.keys(COINGECKO_ID_TO_SYMBOL);
+
+const fetchOneCoinMarketChartUsd = async (coinId) => {
+  const res = await fetch(
+    `https://api.coingecko.com/api/v3/coins/${encodeURIComponent(coinId)}/market_chart?vs_currency=usd&days=30`,
+    { headers: { accept: 'application/json' } }
+  );
+  if (!res.ok) throw new Error(`chart ${coinId} ${res.status}`);
+  const data = await res.json();
+  const prices = data?.prices;
+  if (!Array.isArray(prices) || prices.length === 0) throw new Error(`no prices ${coinId}`);
+  const oldest = Number(prices[0][1]);
+  const newest = Number(prices[prices.length - 1][1]);
+  if (!Number.isFinite(oldest) || !Number.isFinite(newest) || oldest <= 0 || newest <= 0) {
+    throw new Error(`bad chart nums ${coinId}`);
+  }
+  return { past: oldest, now: newest };
+};
+
+const fetchCryptoUsdHistory = async () => {
+  const nowMs = Date.now();
+  if (cryptoHistoryCache && nowMs - cryptoHistoryFetchedAt < CRYPTO_HISTORY_CACHE_TTL_MS) {
+    return { ...cryptoHistoryCache, ok: true, source: 'cache' };
+  }
+  try {
+    const charts = await Promise.all(
+      COINGECKO_CHART_IDS.map((id) => fetchOneCoinMarketChartUsd(id).then((r) => ({ id, ...r })))
+    );
+    const prices30dAgo = {};
+    const pricesNow = {};
+    for (const row of charts) {
+      const sym = COINGECKO_ID_TO_SYMBOL[row.id];
+      if (sym) {
+        prices30dAgo[sym] = row.past;
+        pricesNow[sym] = row.now;
+      }
+    }
+    const symbols = Object.values(COINGECKO_ID_TO_SYMBOL);
+    const allOk = symbols.every(
+      (s) =>
+        Number.isFinite(prices30dAgo[s]) &&
+        prices30dAgo[s] > 0 &&
+        Number.isFinite(pricesNow[s]) &&
+        pricesNow[s] > 0
+    );
+    if (!allOk) throw new Error('incomplete history');
+    cryptoHistoryCache = {
+      prices30dAgo,
+      pricesNow,
+      updatedAt: new Date().toISOString(),
+    };
+    cryptoHistoryFetchedAt = nowMs;
+    return { ...cryptoHistoryCache, ok: true, source: 'live' };
+  } catch (e) {
+    if (cryptoHistoryCache) {
+      return { ...cryptoHistoryCache, ok: true, source: 'cache' };
+    }
+    return {
+      ok: false,
+      prices30dAgo: {},
+      pricesNow: {},
+      updatedAt: new Date(0).toISOString(),
+      source: 'unavailable',
+    };
+  }
+};
 /** Same math as src/utils/currency.ts — for server-side budget / FX logic */
 const convertCurrencyServer = (amount, from, to, fxPayload) => {
   const fromC = normalizeCurrency(from);
@@ -2016,7 +2093,7 @@ const seedAccountPortfolioIfEmpty = async () => {
       primary_currency: 'PLN',
       sub_text: '0,02294019 ETH',
       icon_tone: 'crypto',
-      badge: '₿',
+      badge: 'ETH',
       debt_phrase: null,
     },
     {
@@ -3266,6 +3343,36 @@ app.get('/api/crypto-prices', async (_req, res) => {
   res.json(payload);
 });
 
+app.get('/api/crypto-prices-history', async (_req, res) => {
+  const payload = await fetchCryptoUsdHistory();
+  res.json(payload);
+});
+
+const ACCOUNT_ICON_KEYS_ALLOWED = new Set([
+  'CreditCard',
+  'Landmark',
+  'Wallet',
+  'Banknote',
+  'PiggyBank',
+  'Coins',
+  'CircleDollarSign',
+  'HandCoins',
+]);
+
+const normalizeAccountBadge = (raw) => {
+  const s = String(raw ?? '')
+    .trim()
+    .replace(/[^\p{L}\p{N}]/gu, '');
+  const out = s.slice(0, 3);
+  return out ? out.toUpperCase() : '';
+};
+
+const normalizeAccountIconKey = (raw) => {
+  const k = raw == null ? '' : typeof raw === 'string' ? raw.trim() : '';
+  if (!k || k === 'auto') return null;
+  return ACCOUNT_ICON_KEYS_ALLOWED.has(k) ? k : null;
+};
+
 app.get('/api/accounts', async (req, res) => {
   const userId = req.authUserId;
   const rows = await db.all(
@@ -3279,6 +3386,7 @@ app.get('/api/accounts', async (req, res) => {
        sub_text AS subText,
        icon_tone AS iconTone,
        badge,
+       icon_key AS iconKey,
        debt_phrase AS debtPhrase,
        updatedAt
      FROM account_portfolio
@@ -3296,7 +3404,8 @@ app.post('/api/accounts', async (req, res) => {
   const primaryCurrency = req.body?.primaryCurrency === 'PLN' ? 'PLN' : 'UAH';
   const subText = typeof req.body?.subText === 'string' ? req.body.subText.trim() : '';
   const iconTone = typeof req.body?.iconTone === 'string' ? req.body.iconTone.trim() : '';
-  const badge = typeof req.body?.badge === 'string' ? req.body.badge.trim() : '';
+  const badge = normalizeAccountBadge(typeof req.body?.badge === 'string' ? req.body.badge : '');
+  const iconKey = normalizeAccountIconKey(req.body?.iconKey);
   const debtPhrase = typeof req.body?.debtPhrase === 'string' ? req.body.debtPhrase.trim() : '';
   const section = typeof req.body?.section === 'string' ? req.body.section.trim() : '';
   const sortIndex = req.body?.sortIndex === undefined ? undefined : Number(req.body.sortIndex);
@@ -3333,8 +3442,8 @@ app.post('/api/accounts', async (req, res) => {
   const now = new Date().toISOString();
   await db.run(
     `INSERT INTO account_portfolio
-     (account_key, user_id, section, sort_index, name, primary_amount, primary_currency, sub_text, icon_tone, badge, debt_phrase, updatedAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     (account_key, user_id, section, sort_index, name, primary_amount, primary_currency, sub_text, icon_tone, badge, icon_key, debt_phrase, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       accountKey,
       userId,
@@ -3346,6 +3455,7 @@ app.post('/api/accounts', async (req, res) => {
       subText ? subText : null,
       iconTone,
       badge ? badge : null,
+      iconKey,
       debtPhrase ? debtPhrase : null,
       now,
     ]
@@ -3362,6 +3472,7 @@ app.post('/api/accounts', async (req, res) => {
        sub_text AS subText,
        icon_tone AS iconTone,
        badge,
+       icon_key AS iconKey,
        debt_phrase AS debtPhrase,
        updatedAt
      FROM account_portfolio
@@ -3386,7 +3497,8 @@ app.put('/api/accounts/:key', async (req, res) => {
   const primaryCurrency = req.body?.primaryCurrency === 'PLN' ? 'PLN' : 'UAH';
   const subText = typeof req.body?.subText === 'string' ? req.body.subText.trim() : '';
   const iconTone = typeof req.body?.iconTone === 'string' ? req.body.iconTone.trim() : '';
-  const badge = typeof req.body?.badge === 'string' ? req.body.badge.trim() : '';
+  const badge = normalizeAccountBadge(typeof req.body?.badge === 'string' ? req.body.badge : '');
+  const iconKey = normalizeAccountIconKey(req.body?.iconKey);
   const debtPhrase = typeof req.body?.debtPhrase === 'string' ? req.body.debtPhrase.trim() : '';
   const section = typeof req.body?.section === 'string' ? req.body.section.trim() : '';
   const sortIndex = req.body?.sortIndex === undefined ? undefined : Number(req.body.sortIndex);
@@ -3437,6 +3549,7 @@ app.put('/api/accounts/:key', async (req, res) => {
          sub_text = ?,
          icon_tone = ?,
          badge = ?,
+         icon_key = ?,
          debt_phrase = ?,
          updatedAt = ?
      WHERE user_id = ? AND account_key = ?`,
@@ -3449,6 +3562,7 @@ app.put('/api/accounts/:key', async (req, res) => {
       subText ? subText : null,
       iconTone,
       badge ? badge : null,
+      iconKey,
       debtPhrase ? debtPhrase : null,
       now,
       userId,
@@ -3491,6 +3605,7 @@ app.put('/api/accounts/:key', async (req, res) => {
        sub_text AS subText,
        icon_tone AS iconTone,
        badge,
+       icon_key AS iconKey,
        debt_phrase AS debtPhrase,
        updatedAt
      FROM account_portfolio

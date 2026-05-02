@@ -8,6 +8,8 @@ import { getCustomCategoryName } from '../constants/categories';
 import { getAccountSlugFromNote } from '../utils/transactionAccount';
 import { useTranslation } from '../i18n/LanguageContext';
 import { apiFetch } from '../api/client';
+import { sanitizeAccountBadge } from '../utils/accountIcons';
+import { parseCryptoPosition } from '../utils/cryptoPosition';
 import styles from './Accounts.module.css';
 
 type PortfolioSection = 'bank' | 'cash' | 'crypto' | 'debt';
@@ -23,6 +25,7 @@ type PortfolioAccountRow = {
   subText: string | null;
   iconTone: IconTone;
   badge: string | null;
+  iconKey: string | null;
   debtPhrase: string | null;
 };
 
@@ -42,6 +45,7 @@ const parsePortfolioRow = (raw: unknown): PortfolioAccountRow | null => {
   const subText = typeof r.subText === 'string' ? r.subText : null;
   const debtPhrase = typeof r.debtPhrase === 'string' ? r.debtPhrase : null;
   const badge = typeof r.badge === 'string' ? r.badge : null;
+  const iconKey = typeof r.iconKey === 'string' && r.iconKey.trim() ? r.iconKey.trim() : null;
   const iconRaw = typeof r.iconTone === 'string' ? r.iconTone.trim() : 'neutral';
   const iconTone: IconTone = ['bank', 'cash', 'crypto', 'debt', 'neutral'].includes(iconRaw)
     ? (iconRaw as IconTone)
@@ -56,6 +60,7 @@ const parsePortfolioRow = (raw: unknown): PortfolioAccountRow | null => {
     subText,
     iconTone,
     badge,
+    iconKey,
     debtPhrase,
   };
 };
@@ -70,6 +75,7 @@ const mapPortfolioToEditable = (r: PortfolioAccountRow): EditableAccount => ({
   subText: r.subText ?? '',
   iconTone: r.iconTone,
   badge: r.badge ?? '',
+  iconKey: r.iconKey ?? '',
   debtPhrase: r.debtPhrase ?? '',
 });
 
@@ -87,6 +93,7 @@ const createEmptyAccount = (section: PortfolioSection, existing: readonly Portfo
     subText: '',
     iconTone: section,
     badge: '',
+    iconKey: '',
     debtPhrase: section === 'debt' ? 'мені винні' : '',
   };
 };
@@ -103,18 +110,6 @@ const formatGroupAmount = (amount: number, currency: string) => {
 };
 
 const normalizeLabel = (value: string) => value.trim().toLowerCase().replace(/\s+/g, ' ');
-const parseCryptoPosition = (subText?: string | null): { symbol: 'BTC' | 'ETH' | 'SOL' | 'TON' | 'USDT'; amount: number } | null => {
-  if (!subText) return null;
-  const m = subText.match(/([0-9][0-9\s\u00A0\u202F]*(?:[.,][0-9]+)?)\s*([A-Za-z]{3,5})/);
-  if (!m?.[1] || !m?.[2]) return null;
-  const amount = Number(m[1].replace(/[\s\u00A0\u202F]+/g, '').replace(',', '.'));
-  if (!Number.isFinite(amount) || amount <= 0) return null;
-  const symbol = m[2].toUpperCase();
-  if (symbol === 'BTC' || symbol === 'ETH' || symbol === 'SOL' || symbol === 'TON' || symbol === 'USDT') {
-    return { symbol, amount };
-  }
-  return null;
-};
 
 const Accounts: React.FC = () => {
   const { t, displayCurrency, convertAmount } = useTranslation();
@@ -185,6 +180,9 @@ const Accounts: React.FC = () => {
           badge: string;
           subAmount?: string;
           iconTone: 'bank' | 'cash' | 'crypto' | 'debt' | 'neutral';
+          section: PortfolioSection;
+          iconKey?: string | null;
+          cryptoSymbol?: string | null;
         }>,
       },
       cash: {
@@ -201,6 +199,9 @@ const Accounts: React.FC = () => {
           badge: string;
           subAmount?: string;
           iconTone: 'bank' | 'cash' | 'crypto' | 'debt' | 'neutral';
+          section: PortfolioSection;
+          iconKey?: string | null;
+          cryptoSymbol?: string | null;
         }>,
       },
       crypto: {
@@ -217,6 +218,9 @@ const Accounts: React.FC = () => {
           badge: string;
           subAmount?: string;
           iconTone: 'bank' | 'cash' | 'crypto' | 'debt' | 'neutral';
+          section: PortfolioSection;
+          iconKey?: string | null;
+          cryptoSymbol?: string | null;
         }>,
       },
       debt: {
@@ -233,18 +237,28 @@ const Accounts: React.FC = () => {
           badge: string;
           subAmount?: string;
           iconTone: 'bank' | 'cash' | 'crypto' | 'debt' | 'neutral';
+          section: PortfolioSection;
+          iconKey?: string | null;
+          cryptoSymbol?: string | null;
         }>,
       },
     };
 
     const accountMeta: Record<
       string,
-      { section: 'bank' | 'cash' | 'crypto' | 'debt'; label: string; badge: string; debtPhrase?: string; aliases?: string[] }
+      {
+        section: 'bank' | 'cash' | 'crypto' | 'debt';
+        label: string;
+        badge: string;
+        iconKey?: string | null;
+        debtPhrase?: string;
+        aliases?: string[];
+      }
     > = {
       pumb: { section: 'bank', label: 'pumb', badge: 'P', aliases: ['pumb uah', 'пумб'] },
       privat24: { section: 'bank', label: 'Privat24', badge: 'PB', aliases: ['privat', 'приват24', 'приват'] },
       wallet: { section: 'cash', label: 'Wallet', badge: 'W', aliases: ['готівка', 'кеш'] },
-      crypto: { section: 'crypto', label: 'crypto', badge: '₿' },
+      crypto: { section: 'crypto', label: 'crypto', badge: 'ETH' },
       sol: { section: 'crypto', label: 'sol', badge: 'S' },
       ton: { section: 'crypto', label: 'Ton', badge: 'T' },
       usdt: { section: 'crypto', label: 'usdt', badge: 'U', aliases: ['tether', 'usdc'] },
@@ -265,6 +279,7 @@ const Accounts: React.FC = () => {
         section: row.section,
         label: nameRaw,
         badge: badge.slice(0, 2),
+        iconKey: row.iconKey ?? prev?.iconKey ?? null,
         debtPhrase:
           row.section === 'debt' && row.debtPhrase?.trim()
             ? row.debtPhrase.trim()
@@ -378,12 +393,18 @@ const Accounts: React.FC = () => {
       );
       const iconTone: 'bank' | 'cash' | 'crypto' | 'debt' | 'neutral' =
         meta.section === 'debt' ? 'debt' : meta.section === 'bank' ? 'bank' : meta.section;
+      const cur = firstNonFiat?.[0]?.toUpperCase() ?? '';
+      const cryptoFromFiat =
+        meta.section === 'crypto' && ['BTC', 'ETH', 'SOL', 'TON', 'USDT'].includes(cur) ? cur : null;
       base[meta.section].rows.push({
         id: String(key),
         name: meta.label,
         amount: meta.debtPhrase ? `${meta.debtPhrase} ${amountText}` : amountText,
         badge: meta.badge,
         iconTone,
+        section: meta.section,
+        iconKey: meta.iconKey ?? null,
+        cryptoSymbol: cryptoFromFiat,
         subAmount: firstNonFiat
           ? `${Math.abs(firstNonFiat[1]).toLocaleString('ru-RU', { maximumFractionDigits: 8 })} ${firstNonFiat[0]}`
           : undefined,
@@ -427,6 +448,9 @@ const Accounts: React.FC = () => {
       badge: string;
       subAmount?: string;
       iconTone: 'bank' | 'cash' | 'crypto' | 'debt' | 'neutral';
+      section: PortfolioSection;
+      iconKey: string | null;
+      cryptoSymbol: string | null;
     };
 
     const rowsFor = (key: PortfolioSection) =>
@@ -446,7 +470,10 @@ const Accounts: React.FC = () => {
           const converted = convertAmount(dynamicPrimary, r.primaryCurrency, displayCurrency);
           const fxSub = r.primaryCurrency === displayCurrency ? '' : formatGroupAmount(converted, displayCurrency);
           const subAmount = [r.subText?.trim() ?? '', fxSub].filter(Boolean).join(' · ') || undefined;
-          const badge = (r.badge ?? '').trim() || r.name.slice(0, 1);
+          const badge =
+            r.section === 'crypto' && position
+              ? position.symbol
+              : sanitizeAccountBadge(r.badge ?? '', r.name);
           return {
             id: r.accountKey,
             name: r.name,
@@ -454,6 +481,9 @@ const Accounts: React.FC = () => {
             badge,
             subAmount,
             iconTone: r.iconTone,
+            section: r.section,
+            iconKey: r.iconKey,
+            cryptoSymbol: position?.symbol ?? null,
           } satisfies Row;
         });
 
@@ -549,6 +579,7 @@ const Accounts: React.FC = () => {
           subText: next.subText,
           iconTone: next.iconTone,
           badge: next.badge,
+          iconKey: (next.iconKey ?? '').trim() || null,
           debtPhrase: next.debtPhrase,
         }),
       });

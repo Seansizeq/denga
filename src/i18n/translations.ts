@@ -39,6 +39,7 @@ type Dict = {
     income: string;
     expense: string;
     tapHint: string;
+    monthChangeHint: string;
     moneySources: string;
     byCurrency: string;
     portfolioByCurrency: string;
@@ -339,6 +340,7 @@ const uk: Dict = {
     income: 'Доходи',
     expense: 'Витрати',
     tapHint: 'Натисніть на суму, щоб побачити деталі',
+    monthChangeHint: 'за 30 днів',
     moneySources: 'Звідки гроші',
     byCurrency: 'Баланс за валютами',
     portfolioByCurrency: 'Портфель за валютами',
@@ -650,6 +652,7 @@ const ru: Dict = {
     income: 'Доходы',
     expense: 'Расходы',
     tapHint: 'Нажмите на сумму, чтобы увидеть детали',
+    monthChangeHint: 'за 30 дней',
     moneySources: 'Откуда деньги',
     byCurrency: 'Баланс по валютам',
     portfolioByCurrency: 'Портфель по валютам',
@@ -961,6 +964,7 @@ const en: Dict = {
     income: 'Income',
     expense: 'Expenses',
     tapHint: 'Tap amount to see details',
+    monthChangeHint: '30 days',
     moneySources: 'Money sources',
     byCurrency: 'Balance by currency',
     portfolioByCurrency: 'Portfolio by currency',

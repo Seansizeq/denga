@@ -15,6 +15,8 @@ interface HeroBalanceProps {
   mainAmountCurrency?: DisplayCurrency;
   /** Додатково показати залишок в іншій валюті, якщо > 0 */
   wealthOther?: { amount: number; currency: 'UAH' | 'PLN' };
+  /** Зміна портфеля за ~30 днів, %; null — не показувати */
+  wealthMonthChangePct?: number | null;
 }
 
 const HeroBalance: React.FC<HeroBalanceProps> = ({
@@ -26,6 +28,7 @@ const HeroBalance: React.FC<HeroBalanceProps> = ({
   wealthMode = false,
   mainAmountCurrency = 'UAH',
   wealthOther,
+  wealthMonthChangePct = null,
 }) => {
   const { locale, t, displayCurrency } = useTranslation();
   const lc = localeProp || locale;
@@ -40,6 +43,14 @@ const HeroBalance: React.FC<HeroBalanceProps> = ({
 
   const otherFormat: DisplayCurrency = wealthOther?.currency === 'PLN' ? 'PLN' : 'UAH';
 
+  const formatWealthMonthPct = (pct: number) => {
+    const abs = Math.abs(pct);
+    const body = abs.toLocaleString(lc, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    if (pct > 0) return `+${body}%`;
+    if (pct < 0) return `−${body}%`;
+    return `${body}%`;
+  };
+
   return (
     <div className={styles.hero}>
       <button
@@ -52,6 +63,20 @@ const HeroBalance: React.FC<HeroBalanceProps> = ({
           {formatCurrency(Math.abs(net), lc, mainFormat)}
         </h1>
       </button>
+      {wealthMode &&
+      wealthMonthChangePct != null &&
+      Number.isFinite(wealthMonthChangePct) ? (
+        <div className={styles.monthChangeRow}>
+          <span
+            className={`${styles.monthChangePill} ${
+              wealthMonthChangePct >= 0 ? styles.positivePill : styles.negativePill
+            }`}
+          >
+            {formatWealthMonthPct(wealthMonthChangePct)}
+          </span>
+          <span className={styles.monthChangeHint}>{t('balance', 'monthChangeHint')}</span>
+        </div>
+      ) : null}
       <p className={styles.tapHint}>{t('balance', 'tapHint')}</p>
 
       {wealthMode && wealthOther && wealthOther.amount > 0 ? (

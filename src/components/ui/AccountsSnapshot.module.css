@@ -91,6 +91,7 @@
   align-items: center;
   flex-shrink: 0;
   overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
 }
 
 .icon {
@@ -126,6 +127,11 @@
 .iconNeutral {
   background: rgba(255, 255, 255, 0.10);
   color: #ffffff;
+}
+
+.iconSvg {
+  display: block;
+  flex-shrink: 0;
 }
 
 .info {

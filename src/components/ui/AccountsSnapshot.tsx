@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
+import { AccountRowAvatar } from './AccountRowAvatar';
 import styles from './AccountsSnapshot.module.css';
 
 type RowIconTone = 'bank' | 'cash' | 'crypto' | 'debt' | 'neutral';
@@ -11,6 +12,9 @@ type AccountRow = {
   subAmount?: string;
   badge?: string;
   iconTone?: RowIconTone;
+  section?: 'bank' | 'cash' | 'crypto' | 'debt';
+  iconKey?: string | null;
+  cryptoSymbol?: string | null;
 };
 
 type AccountSection = {
@@ -27,14 +31,6 @@ interface AccountsSnapshotProps {
   sections: readonly AccountSection[];
   onRowPress?: (id: string) => void;
 }
-
-const iconToneClass = (tone: RowIconTone) => {
-  if (tone === 'cash') return styles.iconCash;
-  if (tone === 'crypto') return styles.iconCrypto;
-  if (tone === 'debt') return styles.iconDebt;
-  if (tone === 'bank') return styles.iconBank;
-  return styles.iconNeutral;
-};
 
 const AccountsSnapshot: React.FC<AccountsSnapshotProps> = ({ sections, onRowPress }) => {
   const initialOpen = useMemo(() => {
@@ -111,11 +107,13 @@ const AccountsSnapshot: React.FC<AccountsSnapshotProps> = ({ sections, onRowPres
                       onClick={() => onRowPress?.(row.id)}
                       disabled={!onRowPress}
                     >
-                      <div className={styles.iconCircle}>
-                        <span className={`${styles.icon} ${iconToneClass(tone)}`}>
-                          {row.badge ?? row.name.slice(0, 1)}
-                        </span>
-                      </div>
+                      <AccountRowAvatar
+                        accountKey={row.id}
+                        iconTone={tone}
+                        section={row.section}
+                        iconKey={row.iconKey}
+                        cryptoSymbol={row.cryptoSymbol}
+                      />
 
                       <div className={styles.info}>
                         <span className={styles.name}>{row.name}</span>

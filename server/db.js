@@ -311,6 +311,11 @@ export async function initDb() {
     /* already exists */
   }
   try {
+    await db.exec(`ALTER TABLE account_portfolio ADD COLUMN icon_key TEXT`);
+  } catch {
+    /* already exists */
+  }
+  try {
     await db.exec(`ALTER TABLE users ADD COLUMN fx_baseline_json TEXT`);
   } catch {
     /* already exists */

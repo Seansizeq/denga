@@ -1,6 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { X } from 'lucide-react';
+import { Sparkles, X } from 'lucide-react';
 import { useTranslation } from '../../i18n/LanguageContext';
+import { AccountIconGlyph, type AccountIconKey } from '../../utils/accountIcons';
+import { parseCryptoPosition } from '../../utils/cryptoPosition';
+import { AccountRowAvatar } from './AccountRowAvatar';
 import styles from './AccountEditSheet.module.css';
 
 export type EditableAccount = {
@@ -13,6 +16,8 @@ export type EditableAccount = {
   subText: string;
   iconTone: 'bank' | 'cash' | 'crypto' | 'debt' | 'neutral';
   badge: string;
+  /** Empty string = automatic icon from section / account key. */
+  iconKey: string;
   debtPhrase: string;
 };
 
@@ -38,6 +43,17 @@ const COLOR_OPTIONS: Array<{ tone: EditableAccount['iconTone']; label: string; s
   { tone: 'neutral', label: 'Нейтральний', swatch: '#73737c' },
 ];
 
+const LUCIDE_PICKS: Array<{ key: Exclude<AccountIconKey, 'auto'>; label: string }> = [
+  { key: 'CreditCard', label: 'Картка' },
+  { key: 'Landmark', label: 'Банк' },
+  { key: 'Wallet', label: 'Гаманець' },
+  { key: 'Banknote', label: 'Готівка' },
+  { key: 'PiggyBank', label: 'Заощад.' },
+  { key: 'Coins', label: 'Крипта' },
+  { key: 'CircleDollarSign', label: 'Стейбл' },
+  { key: 'HandCoins', label: 'Борг' },
+];
+
 const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, onSave, onDelete }) => {
   const { t } = useTranslation();
   const [name, setName] = useState(() => initial.name);
@@ -45,6 +61,7 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
   const [currency, setCurrency] = useState<'UAH' | 'PLN'>(() => initial.primaryCurrency);
   const [section, setSection] = useState<EditableAccount['section']>(() => initial.section);
   const [badge, setBadge] = useState(() => initial.badge);
+  const [iconKey, setIconKey] = useState(() => (initial.iconKey ?? '').trim());
   const [debtPhrase, setDebtPhrase] = useState(() => initial.debtPhrase);
   const [iconTone, setIconTone] = useState<EditableAccount['iconTone']>(() => initial.iconTone);
   const [saving, setSaving] = useState(false);
@@ -52,6 +69,22 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
 
   const canEditDebtPhrase = useMemo(() => section === 'debt', [section]);
   const isCreateMode = useMemo(() => !initial.accountKey.trim(), [initial.accountKey]);
+
+  const previewAccountKey = useMemo(() => {
+    const k = initial.accountKey.trim();
+    if (k) return k;
+    const slug = name
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+    return slug || 'account';
+  }, [initial.accountKey, name]);
+
+  const previewCryptoSymbol = useMemo(() => {
+    if (section !== 'crypto') return null;
+    return parseCryptoPosition(initial.subText)?.symbol ?? null;
+  }, [section, initial.subText]);
 
   const handleSave = async () => {
     const n = parseMoney(amount);
@@ -66,7 +99,8 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
         primaryAmount: n,
         primaryCurrency: currency,
         subText: initial.subText,
-        badge: badge.trim(),
+        badge: badge.replace(/[^\p{L}\p{N}]/gu, '').slice(0, 3).toUpperCase(),
+        iconKey: iconKey.trim(),
         debtPhrase: debtPhrase.trim(),
         iconTone,
       });
@@ -109,6 +143,21 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
         {error ? <p className={styles.errorText}>{error}</p> : null}
 
         <div className={styles.body}>
+          <div className={styles.previewRow}>
+            <AccountRowAvatar
+              accountKey={previewAccountKey}
+              iconTone={iconTone}
+              section={section}
+              iconKey={iconKey || null}
+              cryptoSymbol={previewCryptoSymbol}
+              glyphSize={22}
+            />
+            <div className={styles.previewMeta}>
+              <span className={styles.previewTitle}>Перегляд іконки</span>
+              <span className={styles.previewName}>{name.trim() || '—'}</span>
+            </div>
+          </div>
+
           <label className={styles.label}>
             Назва
             <input className={styles.input} value={name} onChange={(e) => setName(e.target.value)} maxLength={40} />
@@ -130,8 +179,15 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
 
           <div className={styles.row2}>
             <label className={styles.label}>
-              Бейдж
-              <input className={styles.input} value={badge} onChange={(e) => setBadge(e.target.value)} maxLength={3} />
+              Ініціали (до 3 симв.)
+              <input
+                className={styles.input}
+                value={badge}
+                onChange={(e) => setBadge(e.target.value.replace(/[^\p{L}\p{N}]/gu, '').slice(0, 3))}
+                maxLength={3}
+                inputMode="text"
+                autoCapitalize="characters"
+              />
             </label>
             <label className={styles.label}>
               Розділ
@@ -147,6 +203,36 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
               </select>
             </label>
           </div>
+
+          <fieldset className={styles.colorFieldset}>
+            <legend className={styles.label}>Іконка</legend>
+            <div className={styles.iconGrid}>
+              <button
+                type="button"
+                className={`${styles.iconOption} ${styles.iconOptionWide} ${!iconKey ? styles.iconOptionActive : ''}`}
+                onClick={() => setIconKey('')}
+                aria-pressed={!iconKey}
+              >
+                <Sparkles size={20} strokeWidth={2.2} />
+                Авто
+              </button>
+              {LUCIDE_PICKS.map((opt) => {
+                const active = iconKey === opt.key;
+                return (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    className={`${styles.iconOption} ${active ? styles.iconOptionActive : ''}`}
+                    onClick={() => setIconKey(opt.key)}
+                    aria-pressed={active}
+                  >
+                    <AccountIconGlyph iconKey={opt.key} size={20} strokeWidth={2.2} />
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </fieldset>
 
           <fieldset className={styles.colorFieldset}>
             <legend className={styles.label}>Колір</legend>
