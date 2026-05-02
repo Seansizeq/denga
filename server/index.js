@@ -3849,6 +3849,21 @@ app.delete('/api/transactions/:id', async (req, res) => {
     res.status(404).json({ error: 'Transaction not found' });
     return;
   }
+  const linkedGoals = await db.all(
+    'SELECT goal_id AS goalId FROM goal_contributions WHERE user_id = ? AND transaction_id = ?',
+    [userId, id]
+  );
+  const now = new Date().toISOString();
+  if (Array.isArray(linkedGoals) && linkedGoals.length > 0) {
+    await db.run('DELETE FROM goal_contributions WHERE user_id = ? AND transaction_id = ?', [userId, id]);
+    const seen = new Set();
+    for (const row of linkedGoals) {
+      const gid = row?.goalId ? String(row.goalId) : '';
+      if (!gid || seen.has(gid)) continue;
+      seen.add(gid);
+      await db.run('UPDATE goals SET updated_at = ? WHERE id = ? AND user_id = ?', [now, gid, userId]);
+    }
+  }
   await applyAccountDelta(db, userId, getAccountSlugFromNote(current.note), -accountDeltaForTx(current));
   await db.run('DELETE FROM transactions WHERE user_id = ? AND id = ?', [userId, id]);
   res.status(204).send();
