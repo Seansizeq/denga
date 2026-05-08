@@ -24,7 +24,7 @@ import {
 } from '../utils/transactionAccount';
 import { normalizeCurrency, SUPPORTED_CURRENCIES, type CurrencyCode } from '../utils/currency';
 import { apiFetch } from '../api/client';
-import { useExpenseTemplates } from '../hooks/useExpenseTemplates';
+import { useExpenseTemplates, type ExpenseTemplate } from '../hooks/useExpenseTemplates';
 import ExpenseTemplateBar from '../components/ExpenseTemplateBar';
 import styles from './AddTransaction.module.css';
 
@@ -240,7 +240,7 @@ const AddTransaction: React.FC = () => {
     navigate('/');
   };
 
-  const handleApplyTemplate = useCallback((tpl: import('../hooks/useExpenseTemplates').ExpenseTemplate) => {
+  const handleApplyTemplate = useCallback((tpl: ExpenseTemplate) => {
     if (tpl.amount != null && tpl.amount > 0) setAmount(String(tpl.amount));
     setCurrency(tpl.currency);
     setCategoryId(tpl.categoryId);
@@ -309,20 +309,6 @@ const AddTransaction: React.FC = () => {
         </button>
       </div>
 
-      <ExpenseTemplateBar
-        templates={templates}
-        currentType={type}
-        canSave={isValid && !isEditing}
-        onApply={handleApplyTemplate}
-        onDelete={deleteTemplate}
-        onSave={handleSaveTemplate}
-        labels={{
-          title: t('addTx', 'templates'),
-          saveAsTemplate: t('addTx', 'saveAsTemplate'),
-          namePlaceholder: t('addTx', 'templateNamePlaceholder'),
-        }}
-      />
-
       <div className={styles.amountContainer}>
         <input
           type="text"
@@ -350,6 +336,20 @@ const AddTransaction: React.FC = () => {
           ))}
         </select>
       </div>
+
+      <ExpenseTemplateBar
+        templates={templates}
+        currentType={type}
+        canSave={isValid && !isEditing}
+        onApply={handleApplyTemplate}
+        onDelete={deleteTemplate}
+        onSave={handleSaveTemplate}
+        labels={{
+          title: t('addTx', 'templates'),
+          saveAsTemplate: t('addTx', 'saveAsTemplate'),
+          namePlaceholder: t('addTx', 'templateNamePlaceholder'),
+        }}
+      />
 
       <section className={styles.paymentSection} aria-label={t('addTx', 'paymentAccount')}>
         <h3 className={styles.sectionTitle}>{t('addTx', 'paymentAccount')}</h3>
