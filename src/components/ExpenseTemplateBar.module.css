@@ -1,0 +1,197 @@
+.section {
+  margin-bottom: 24px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.title {
+  font-size: 12px;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin: 0;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+}
+
+.actions {
+  display: flex;
+  gap: 6px;
+}
+
+.actionBtn {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-tertiary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, transform 0.12s;
+}
+
+.actionBtn:active {
+  transform: scale(0.93);
+}
+
+.actionBtnActive {
+  background: rgba(124, 92, 255, 0.2);
+  border-color: rgba(124, 92, 255, 0.35);
+  color: var(--accent-primary-strong);
+}
+
+/* ── Save-name form ── */
+.saveRow {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 10px;
+  animation: slideDown 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.nameInput {
+  flex: 1;
+  padding: 9px 14px;
+  background: var(--bg-card);
+  border: 1px solid rgba(124, 92, 255, 0.35);
+  border-radius: 10px;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+}
+
+.nameInput::placeholder {
+  color: var(--text-tertiary);
+}
+
+.saveCancelBtn,
+.saveConfirmBtn {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-family: inherit;
+  transition: transform 0.12s;
+  flex-shrink: 0;
+}
+
+.saveCancelBtn:active,
+.saveConfirmBtn:active {
+  transform: scale(0.92);
+}
+
+.saveCancelBtn {
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text-secondary);
+}
+
+.saveConfirmBtn {
+  background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-primary-strong) 100%);
+  color: #fff;
+}
+
+.saveConfirmBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── Chips row ── */
+.scroll {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: none;
+}
+
+.scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.chipWrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.chip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 8px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(124, 92, 255, 0.22);
+  background: rgba(124, 92, 255, 0.08);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, border-color 0.15s, transform 0.12s;
+  min-width: 72px;
+}
+
+.chip:active:not(:disabled) {
+  transform: scale(0.95);
+  background: rgba(124, 92, 255, 0.18);
+}
+
+.chip:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.chipName {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.chipAmount {
+  font-size: 11px;
+  color: var(--accent-primary-strong);
+  margin-top: 2px;
+  white-space: nowrap;
+}
+
+/* ── Delete badge ── */
+.deleteBtn {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent-red);
+  border: 1.5px solid var(--bg-primary);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  animation: popIn 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: transform 0.12s;
+}
+
+.deleteBtn:active {
+  transform: scale(0.88);
+}
+
+@keyframes popIn {
+  from { opacity: 0; transform: scale(0.5); }
+  to   { opacity: 1; transform: scale(1); }
+}

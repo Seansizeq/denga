@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import * as LucideIcons from 'lucide-react';
 import { X } from 'lucide-react';
@@ -24,6 +24,8 @@ import {
 } from '../utils/transactionAccount';
 import { normalizeCurrency, SUPPORTED_CURRENCIES, type CurrencyCode } from '../utils/currency';
 import { apiFetch } from '../api/client';
+import { useExpenseTemplates } from '../hooks/useExpenseTemplates';
+import ExpenseTemplateBar from '../components/ExpenseTemplateBar';
 import styles from './AddTransaction.module.css';
 
 const iconRegistry = LucideIcons as unknown as Record<string, React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>>;
@@ -44,6 +46,7 @@ const AddTransaction: React.FC = () => {
   const { transactions, addTransaction, updateTransaction } = useTransactions();
   const { t, language } = useTranslation();
   const [searchParams] = useSearchParams();
+  const { templates, saveTemplate, deleteTemplate } = useExpenseTemplates();
   const editId = searchParams.get('edit')?.trim() ?? '';
   const editingTransaction = editId ? transactions.find((tx) => tx.id === editId) : undefined;
   const isEditing = Boolean(editId);
@@ -237,6 +240,27 @@ const AddTransaction: React.FC = () => {
     navigate('/');
   };
 
+  const handleApplyTemplate = useCallback((tpl: import('../hooks/useExpenseTemplates').ExpenseTemplate) => {
+    if (tpl.amount != null && tpl.amount > 0) setAmount(String(tpl.amount));
+    setCurrency(tpl.currency);
+    setCategoryId(tpl.categoryId);
+    if (tpl.note !== undefined) setNote(tpl.note);
+    if (tpl.account !== undefined) setPaymentAccount(tpl.account);
+  }, []);
+
+  const handleSaveTemplate = useCallback((name: string) => {
+    const numAmount = parseFloat(amount.replace(',', '.'));
+    saveTemplate({
+      name,
+      type,
+      amount: Number.isFinite(numAmount) && numAmount > 0 ? numAmount : undefined,
+      currency,
+      categoryId,
+      note: note.trim() || undefined,
+      account: paymentAccount || undefined,
+    });
+  }, [amount, type, currency, categoryId, note, paymentAccount, saveTemplate]);
+
   const isValid = !!amount && parseFloat(amount.replace(',', '.')) > 0;
 
   return (
@@ -284,6 +308,20 @@ const AddTransaction: React.FC = () => {
           {t('addTx', 'income')}
         </button>
       </div>
+
+      <ExpenseTemplateBar
+        templates={templates}
+        currentType={type}
+        canSave={isValid && !isEditing}
+        onApply={handleApplyTemplate}
+        onDelete={deleteTemplate}
+        onSave={handleSaveTemplate}
+        labels={{
+          title: t('addTx', 'templates'),
+          saveAsTemplate: t('addTx', 'saveAsTemplate'),
+          namePlaceholder: t('addTx', 'templateNamePlaceholder'),
+        }}
+      />
 
       <div className={styles.amountContainer}>
         <input

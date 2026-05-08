@@ -74,6 +74,9 @@ type Dict = {
     paymentAccount: string;
     paymentAccountHint: string;
     paymentAccountNone: string;
+    templates: string;
+    saveAsTemplate: string;
+    templateNamePlaceholder: string;
   };
   history: { title: string; empty: string; deleteConfirm: string; edit: string; delete: string };
   planner: {
@@ -380,6 +383,9 @@ const uk: Dict = {
     paymentAccount: 'Рахунок',
     paymentAccountHint: 'Обери карту чи готівку — цей рахунок оновиться в «Рахунках»',
     paymentAccountNone: 'Не вказано',
+    templates: 'Шаблони',
+    saveAsTemplate: 'Зберегти як шаблон',
+    templateNamePlaceholder: 'Назва шаблону',
   },
   history: {
     title: 'Історія',
@@ -698,6 +704,9 @@ const ru: Dict = {
     paymentAccount: 'Счёт',
     paymentAccountHint: 'Выбери карту или наличные — этот счёт обновится в «Счетах»',
     paymentAccountNone: 'Не указано',
+    templates: 'Шаблоны',
+    saveAsTemplate: 'Сохранить как шаблон',
+    templateNamePlaceholder: 'Название шаблона',
   },
   history: {
     title: 'История',
@@ -1016,6 +1025,9 @@ const en: Dict = {
     paymentAccount: 'Account',
     paymentAccountHint: 'Pick a card or cash — this account will update on Accounts',
     paymentAccountNone: 'Not set',
+    templates: 'Templates',
+    saveAsTemplate: 'Save as template',
+    templateNamePlaceholder: 'Template name',
   },
   history: {
     title: 'History',
