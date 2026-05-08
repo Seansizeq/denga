@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
+import SplashScreen from './components/SplashScreen';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { TransactionProvider } from './context/TransactionContext';
 import BottomNavigation from './components/BottomNavigation';
@@ -118,6 +119,7 @@ const TelegramApp: React.FC = () => {
 
 function App() {
   const [isTelegram, setIsTelegram] = useState<boolean | null>(null);
+  const [splashDone, setSplashDone] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -140,8 +142,11 @@ function App() {
     }
   }, []);
 
-  if (isTelegram === null) {
-    return null;
+  const handleSplashFinished = useCallback(() => setSplashDone(true), []);
+
+  /* Show splash while checking Telegram OR while splash animation is still playing */
+  if (isTelegram === null || !splashDone) {
+    return <SplashScreen onFinished={handleSplashFinished} />;
   }
 
   if (!isTelegram) {
