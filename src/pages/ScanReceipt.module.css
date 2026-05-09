@@ -33,8 +33,12 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
   cursor: pointer;
-  padding: 0;
+  padding: 1px;
+  box-sizing: border-box;
+  overflow: visible;
+  line-height: 0;
   transition: background-color 0.15s ease, transform 0.15s ease;
 }
 
