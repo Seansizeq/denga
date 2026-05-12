@@ -12,7 +12,7 @@ import { formatCurrency } from '../utils/formatters';
 import { apiFetch } from '../api/client';
 import {
   ACCOUNT_NOTE_KEYS,
-  mergeAccountIntoNote,
+  mergeAccountIntoNoteLimited,
   type AccountNoteKey,
 } from '../utils/transactionAccount';
 import styles from './ScanReceipt.module.css';
@@ -22,7 +22,7 @@ const iconRegistry = LucideIcons as unknown as Record<
   React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>
 >;
 
-type ViewState = 'idle' | 'loading' | 'result' | 'error';
+type ViewState = 'idle' | 'loading' | 'result' | 'review' | 'error';
 
 const ACCOUNT_CHIP_LABELS: Record<AccountNoteKey, Record<Language, string>> = {
   pumb: { uk: 'PUMB', ru: 'PUMB', en: 'PUMB' },
@@ -45,6 +45,7 @@ const ScanReceipt: React.FC = () => {
   const [receipt, setReceipt] = useState<ScannedReceipt | null>(null);
   const [error, setError] = useState<ScanReceiptError | null>(null);
   const [saving, setSaving] = useState(false);
+  const [saveErrorMessage, setSaveErrorMessage] = useState('');
   const [selectedCategoryId, setSelectedCategoryId] = useState('other_expense');
   const [portfolioAccounts, setPortfolioAccounts] = useState<Array<{ key: string; name: string }>>([]);
   const [paymentAccount, setPaymentAccount] = useState('');
@@ -114,15 +115,31 @@ const ScanReceipt: React.FC = () => {
 
   const triggerCamera = () => {
     setError(null);
+    setSaveErrorMessage('');
     fileInputRef.current?.click();
+  };
+
+  const compressForUpload = async (file: File) => {
+    const attempts = [
+      undefined,
+      { maxSize: 1400, quality: 0.78 as const },
+      { maxSize: 1200, quality: 0.68 as const },
+      { maxSize: 1000, quality: 0.6 as const },
+    ];
+    let best = await compressImage(file, attempts[0]);
+    for (let i = 1; i < attempts.length && best.bytes > 980 * 1024; i += 1) {
+      best = await compressImage(file, attempts[i]);
+    }
+    return best;
   };
 
   const handleFile = async (file: File) => {
     setView('loading');
     setReceipt(null);
     setError(null);
+    setSaveErrorMessage('');
     try {
-      const compressed = await compressImage(file);
+      const compressed = await compressForUpload(file);
       setPreviewUrl(compressed.dataUrl);
       const res = await scanReceipt(compressed.base64);
       if (!res.ok) {
@@ -135,7 +152,7 @@ const ScanReceipt: React.FC = () => {
         ? res.receipt.categoryId
         : 'other_expense';
       setSelectedCategoryId(autoCategory);
-      setView('result');
+      setView(res.receipt.scanStatus === 'review_required' ? 'review' : 'result');
     } catch (err) {
       console.error('[scan] failed to process image', err);
       setError({ kind: 'unknown' });
@@ -163,22 +180,47 @@ const ScanReceipt: React.FC = () => {
     return noteParts.join(' • ').slice(0, 120);
   };
 
+  const reviewReasons = (r: ScannedReceipt): string[] => {
+    const reasons: string[] = [];
+    const flags = new Set(r.reviewFlags);
+    if (r.code === 'NO_TEXT_DETECTED' || flags.has('no_text_detected')) {
+      reasons.push(t('scan', 'reviewReasonNoText'));
+    }
+    if (flags.has('missing_total')) {
+      reasons.push(t('scan', 'reviewReasonMissingTotal'));
+    }
+    if (flags.has('missing_shop')) {
+      reasons.push(t('scan', 'reviewReasonMissingShop'));
+    }
+    if (flags.has('unknown_currency') || flags.has('unsupported_currency') || flags.has('inferred_currency')) {
+      reasons.push(t('scan', 'reviewReasonCurrency'));
+    }
+    if (flags.has('payment_total_override') || flags.has('payment_total_fallback')) {
+      reasons.push(t('scan', 'reviewReasonPayment'));
+    }
+    if (reasons.length === 0 && r.reviewRequired) {
+      reasons.push(t('scan', 'reviewReasonManualCheck'));
+    }
+    return reasons;
+  };
+
   const saveScannedTransaction = async () => {
     if (!receipt || receipt.total == null || receipt.total <= 0 || saving) return;
     if (!paymentAccount) return;
     setSaving(true);
-    const note = mergeAccountIntoNote(buildScannedNote(receipt), paymentAccount, allowedPaymentKeys);
+    setSaveErrorMessage('');
+    const note = mergeAccountIntoNoteLimited(buildScannedNote(receipt), paymentAccount, allowedPaymentKeys);
     const ok = await addTransaction({
       amount: receipt.total,
       currency: receipt.currency,
       type: 'expense',
       categoryId: selectedCategoryId,
+      date: receipt.date ?? undefined,
       note: note || undefined,
     });
     setSaving(false);
     if (!ok) {
-      setError({ kind: 'unknown', details: 'Failed to save transaction' });
-      setView('error');
+      setSaveErrorMessage(t('addTx', 'saveFailed'));
       return;
     }
     navigate('/');
@@ -190,9 +232,10 @@ const ScanReceipt: React.FC = () => {
     params.set('type', 'expense');
     if (receipt.total != null && receipt.total > 0) params.set('amount', String(receipt.total));
     if (receipt.currency) params.set('currency', receipt.currency);
+    if (receipt.date) params.set('date', receipt.date);
     if (selectedCategoryId) params.set('categoryId', selectedCategoryId);
     else if (receipt.categoryId) params.set('categoryId', receipt.categoryId);
-    const note = mergeAccountIntoNote(buildScannedNote(receipt), paymentAccount, allowedPaymentKeys);
+    const note = mergeAccountIntoNoteLimited(buildScannedNote(receipt), paymentAccount, allowedPaymentKeys);
     if (note) params.set('note', note);
     navigate(`/add?${params.toString()}`);
   };
@@ -224,6 +267,8 @@ const ScanReceipt: React.FC = () => {
     switch (err.kind) {
       case 'not_configured':
         return t('scan', 'errorNotConfigured');
+      case 'auth':
+        return t('scan', 'errorAuth');
       case 'rate_limited':
         return t('scan', 'errorRateLimited');
       case 'too_large':
@@ -238,6 +283,22 @@ const ScanReceipt: React.FC = () => {
         return t('scan', 'errorUnknown');
     }
   };
+
+  const errorExtra = (err: ScanReceiptError): string => {
+    if (err.kind === 'rate_limited') {
+      const seconds = Math.max(1, Math.ceil(err.retryAfterMs / 1000));
+      return t('scan', 'errorRateLimitedRetry').replace('{n}', String(seconds));
+    }
+    return '';
+  };
+
+  const canDirectSave = Boolean(
+    receipt &&
+      receipt.reviewRequired === false &&
+      paymentAccount &&
+      receipt.total != null &&
+      receipt.total > 0
+  );
 
   return (
     <div className={styles.container}>
@@ -290,6 +351,7 @@ const ScanReceipt: React.FC = () => {
         <section>
           <div className={styles.errorCard} role="alert">
             <div>{errorMessage(error)}</div>
+            {errorExtra(error) ? <div className={styles.errorExtra}>{errorExtra(error)}</div> : null}
             {error.status || error.details ? (
               <pre
                 style={{
@@ -315,7 +377,7 @@ const ScanReceipt: React.FC = () => {
         </section>
       ) : null}
 
-      {view === 'result' && receipt ? (
+      {(view === 'result' || view === 'review') && receipt ? (
         <section className={styles.result}>
           <div className={styles.thumbRow}>
             {previewUrl ? <img src={previewUrl} alt="" className={styles.thumb} /> : null}
@@ -340,6 +402,18 @@ const ScanReceipt: React.FC = () => {
             </div>
             <span className={styles.currencyChip}>{receipt.currency}</span>
           </div>
+
+          {view === 'review' ? (
+            <div className={styles.reviewCard} role="status">
+              <p className={styles.reviewTitle}>{t('scan', 'reviewTitle')}</p>
+              <p className={styles.reviewText}>{t('scan', 'reviewHint')}</p>
+              <ul className={styles.reviewList}>
+                {reviewReasons(receipt).map((reason) => (
+                  <li key={reason}>{reason}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
 
           <section className={styles.paymentSection} aria-label={t('addTx', 'category')}>
             <h3 className={styles.sectionTitle}>{t('addTx', 'category')}</h3>
@@ -382,23 +456,42 @@ const ScanReceipt: React.FC = () => {
             </div>
           ) : null}
 
+          {view === 'review' && receipt.rawText ? (
+            <div className={styles.rawTextCard}>
+              <p className={styles.itemsTitle}>{t('scan', 'ocrTextTitle')}</p>
+              <pre className={styles.rawTextContent}>{receipt.rawText.slice(0, 1000)}</pre>
+            </div>
+          ) : null}
+
+          {saveErrorMessage ? (
+            <div className={styles.errorCard} role="alert">
+              {saveErrorMessage}
+            </div>
+          ) : null}
+
           <div className={styles.actions}>
             <button
               type="button"
               className={styles.primaryBtn}
-              onClick={() => void saveScannedTransaction()}
-              disabled={saving || !paymentAccount || receipt.total == null || receipt.total <= 0}
+              onClick={view === 'review' ? openEditWithPrefill : () => void saveScannedTransaction()}
+              disabled={view === 'result' ? !canDirectSave || saving : false}
             >
-              {saving ? t('addTx', 'save') : t('scan', 'confirmAndEdit')}
+              {view === 'review'
+                ? t('scan', 'reviewAndEdit')
+                : saving
+                  ? t('addTx', 'save')
+                  : t('scan', 'saveConfirmed')}
             </button>
-            {!paymentAccount ? (
+            {!paymentAccount && view === 'result' ? (
               <p className={styles.requiredHint} role="alert">
-                Оберіть рахунок для списання
+                {t('scan', 'selectPaymentAccount')}
               </p>
             ) : null}
-            <button type="button" className={styles.secondaryBtn} onClick={openEditWithPrefill}>
-              {t('history', 'edit')}
-            </button>
+            {view === 'result' ? (
+              <button type="button" className={styles.secondaryBtn} onClick={openEditWithPrefill}>
+                {t('history', 'edit')}
+              </button>
+            ) : null}
             <button type="button" className={styles.secondaryBtn} onClick={triggerCamera}>
               {t('scan', 'retake')}
             </button>

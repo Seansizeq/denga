@@ -1,5 +1,4 @@
 // Pure parser for receipt OCR text. No I/O, no external deps.
-// Used by POST /api/receipts/scan after Google Vision returns plain text.
 
 const TOTAL_KEYWORDS = [
   'СУМА',
@@ -21,94 +20,106 @@ const TOTAL_KEYWORDS = [
   'К ОПЛАТЕ',
   'DO ZAPLATY',
   'DO ZAPŁATY',
+  'NALEZNOSC',
+  'NALEŻNOŚĆ',
+  'LACZNIE',
+  'ŁĄCZNIE',
 ];
 
-// Map of well-known shop names → categoryId. Keys lowercased and accent-folded.
-const SHOP_CATEGORY = {
-  // Grocery
-  'атб': 'food',
-  'atb': 'food',
-  'сільпо': 'food',
-  'сильпо': 'food',
-  'silpo': 'food',
+const BRANDED_SHOP_CATEGORY = {
+  атб: 'food',
+  atb: 'food',
+  сільпо: 'food',
+  сильпо: 'food',
+  silpo: 'food',
   'велика кишеня': 'food',
-  'novus': 'food',
-  'новус': 'food',
-  'metro': 'food',
-  'auchan': 'food',
-  'ашан': 'food',
-  'fora': 'food',
-  'фора': 'food',
-  'varus': 'food',
-  'варус': 'food',
-  'megamarket': 'food',
-  'мегамаркет': 'food',
-  'biedronka': 'food',
-  'lidl': 'food',
-  'kaufland': 'food',
-  'carrefour': 'food',
-  'tesco': 'food',
-  'żabka': 'food',
-  'zabka': 'food',
-  // Fuel
-  'okko': 'transport',
-  'окко': 'transport',
-  'wog': 'transport',
-  'вог': 'transport',
-  'shell': 'transport',
-  'orlen': 'transport',
-  'lotos': 'transport',
-  'bp': 'transport',
-  'socar': 'transport',
-  'упг': 'transport',
-  // Home / DIY
-  'епіцентр': 'home',
-  'эпицентр': 'home',
-  'epicentr': 'home',
-  'castorama': 'home',
+  novus: 'food',
+  новус: 'food',
+  metro: 'food',
+  auchan: 'food',
+  ашан: 'food',
+  fora: 'food',
+  фора: 'food',
+  varus: 'food',
+  варус: 'food',
+  megamarket: 'food',
+  мегамаркет: 'food',
+  biedronka: 'food',
+  lidl: 'food',
+  kaufland: 'food',
+  carrefour: 'food',
+  tesco: 'food',
+  żabka: 'food',
+  zabka: 'food',
+  dino: 'food',
+  netto: 'food',
+  stokrotka: 'food',
+  aldi: 'food',
+  lewiatan: 'food',
+  intermarche: 'food',
+  spar: 'food',
+  'delikatesy centrum': 'food',
+  okko: 'transport',
+  окко: 'transport',
+  wog: 'transport',
+  вог: 'transport',
+  shell: 'transport',
+  orlen: 'transport',
+  lotos: 'transport',
+  bp: 'transport',
+  socar: 'transport',
+  упг: 'transport',
+  епіцентр: 'home',
+  эпицентр: 'home',
+  epicentr: 'home',
+  castorama: 'home',
   'leroy merlin': 'home',
-  'леруа': 'home',
-  'obi': 'home',
-  'ikea': 'home',
-  'jysk': 'home',
+  леруа: 'home',
+  obi: 'home',
+  ikea: 'home',
+  jysk: 'home',
   'нова лінія': 'home',
-  // Pharmacy
-  'аптека': 'health',
-  'apteka': 'health',
-  'pharmacy': 'health',
-  'rossmann': 'health',
-  'россманн': 'health',
-  'подорожник': 'health',
-  'ананас': 'health',
+  rossmann: 'health',
+  россманн: 'health',
+  подорожник: 'health',
+  ананас: 'health',
   'doc.ua': 'health',
-  // Cafes / restaurants / fast food
-  'mcdonald': 'entertainment',
-  'макдональдс': 'entertainment',
-  'kfc': 'entertainment',
+  hebe: 'health',
+  'super-pharm': 'health',
+  'super pharm': 'health',
+  doz: 'health',
+  gemini: 'health',
+  mcdonald: 'entertainment',
+  макдональдс: 'entertainment',
+  kfc: 'entertainment',
   'burger king': 'entertainment',
-  'starbucks': 'entertainment',
-  'subway': 'entertainment',
+  starbucks: 'entertainment',
+  subway: 'entertainment',
   'puzata hata': 'entertainment',
   'пузата хата': 'entertainment',
   'aroma kava': 'entertainment',
   'арома кава': 'entertainment',
   'львівські круасани': 'entertainment',
-  'кафе': 'entertainment',
-  'cafe': 'entertainment',
-  'café': 'entertainment',
-  'restaurant': 'entertainment',
-  'ресторан': 'entertainment',
-  'pizza': 'entertainment',
-  'піца': 'entertainment',
-  'пицца': 'entertainment',
-  'sushi': 'entertainment',
-  'суші': 'entertainment',
-  'суши': 'entertainment',
 };
 
-// Keyword → category fallback when shop is unknown.
+const GENERIC_SHOP_HINT_CATEGORY = {
+  apteka: 'health',
+  аптека: 'health',
+  pharmacy: 'health',
+  cafe: 'entertainment',
+  café: 'entertainment',
+  кафе: 'entertainment',
+  restaurant: 'entertainment',
+  ресторан: 'entertainment',
+  pizza: 'entertainment',
+  піца: 'entertainment',
+  пицца: 'entertainment',
+  sushi: 'entertainment',
+  суші: 'entertainment',
+  суши: 'entertainment',
+};
+
 const ITEM_KEYWORD_CATEGORY = {
-  // food
   food: [
     'хліб',
     'хлеб',
@@ -116,7 +127,7 @@ const ITEM_KEYWORD_CATEGORY = {
     'сир',
     'сыр',
     'яйц',
-    'м\'ясо',
+    'мясо',
     'мясо',
     'риба',
     'рыба',
@@ -131,13 +142,34 @@ const ITEM_KEYWORD_CATEGORY = {
     'масло',
     'цукор',
     'сахар',
-    'borshch',
-    'piwo',
-    'пиво',
     'cukier',
     'mleko',
     'chleb',
     'jajka',
+    'ser',
+    'maslo',
+    'masło',
+    'bulka',
+    'bułka',
+    'wedlin',
+    'wędlin',
+    'kielbas',
+    'kiełbas',
+    'woda',
+    'sok',
+    'jogurt',
+    'makaron',
+    'ryz',
+    'ryż',
+    'kurcz',
+    'szynk',
+    'jabl',
+    'jabł',
+    'banan',
+    'chips',
+    'chipsy',
+    'czekolad',
+    'kawa',
   ],
   transport: [
     'бензин',
@@ -146,16 +178,14 @@ const ITEM_KEYWORD_CATEGORY = {
     'a92',
     'a95',
     'a98',
-    '95',
-    '98',
-    'олива',
-    'мастило',
-    'олі',
-    'oil',
     'paliwo',
     'lpg',
-    'gas',
-    'газ',
+    'benzyna',
+    'diesel',
+    'pb95',
+    'pb98',
+    'olej nap',
+    'myjnia',
   ],
   health: [
     'таблет',
@@ -173,6 +203,15 @@ const ITEM_KEYWORD_CATEGORY = {
     'antibiotyk',
     'maść',
     'lek',
+    'leki',
+    'tabletki',
+    'witamina',
+    'syrop',
+    'szampon',
+    'krem',
+    'zel',
+    'żel',
+    'pasta',
   ],
   home: [
     'фарба',
@@ -190,6 +229,15 @@ const ITEM_KEYWORD_CATEGORY = {
     'диван',
     'meble',
     'farba',
+    'recznik',
+    'ręcznik',
+    'scier',
+    'ścier',
+    'mop',
+    'lamp',
+    'swiec',
+    'świec',
+    'kubek',
   ],
   entertainment: [
     'кава',
@@ -218,13 +266,30 @@ const KNOWN_CATEGORY_IDS = new Set([
   'other_expense',
 ]);
 
-const foldText = (s) =>
-  String(s ?? '')
+const TOTAL_KEYWORDS_FOLDED = TOTAL_KEYWORDS.map((k) => foldText(k)).sort((a, b) => b.length - a.length);
+const MONEY_TOKEN_RE = /\d{1,3}(?:[\s\u00A0]\d{3})+(?:[.,]\d{1,2})?|\d+[.,]\d{1,2}|\d+/g;
+const TOTAL_EXCLUDE_RE = /\b(ptu|vat|tax|подат|ндс|пдв)\b/i;
+const ADDRESS_RE = /\b(ul\.|ulica|street|st\.|ave|avenue|вул\.|вулиця|просп|проспект|warszawa|warsaw|київ|kyiv|krakow|kraków|lodz|łódź)\b/i;
+const PAYMENT_KEYWORD_RE = /\b(gotowka|gotówka|platnosc|płatność|zapłacono|card|karta|payment|blik|cash)\b/i;
+const SAFE_PAYMENT_KEYWORD_RE = /\b(platnosc|płatność|zapłacono|card|karta|payment|blik)\b/i;
+const CASH_PAYMENT_KEYWORD_RE = /\b(gotowka|gotówka|cash)\b/i;
+const CHANGE_KEYWORD_RE = /\b(reszta|change|сдача)\b/i;
+const ITEM_EXCLUDE_RE = /\b(nip|regon|bdo|paragon|fiskaln|fiskalny|sprzed|kwota ptu|suma ptu|ptu|vat|rozliczenie|wydr|nr|sp\.?\s*op)\b/i;
+const POLISH_SIGNAL_RE = /[ąćęłńóśźż]|(?:\b(?:razem|platnosc|płatność|gotowka|gotówka|paragon|naleznosc|należność|lacznie|łącznie)\b)/i;
+const CYRILLIC_SIGNAL_RE = /[А-Яа-яІіЇїЄєҐґЁё]/;
+const DATE_RE = /\b(?:\d{2}[.\-/]\d{2}[.\-/]\d{4}|\d{4}-\d{2}-\d{2})\b/;
+
+function foldText(s) {
+  return String(s ?? '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[łŁ]/g, 'l')
     .toLowerCase()
     .replace(/ё/g, 'е')
     .replace(/[`'"´’]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
+}
 
 const splitLines = (text) =>
   String(text ?? '')
@@ -233,7 +298,6 @@ const splitLines = (text) =>
     .map((l) => l.trim())
     .filter(Boolean);
 
-// Parse "1 234,56" / "1234.56" / "1.234,56" → 1234.56
 const parseNumber = (raw) => {
   if (raw == null) return NaN;
   let s = String(raw).trim();
@@ -242,143 +306,287 @@ const parseNumber = (raw) => {
   const hasComma = s.includes(',');
   const hasDot = s.includes('.');
   if (hasComma && hasDot) {
-    // assume the rightmost separator is the decimal one
     if (s.lastIndexOf(',') > s.lastIndexOf('.')) {
       s = s.replace(/\./g, '').replace(',', '.');
     } else {
       s = s.replace(/,/g, '');
     }
   } else if (hasComma) {
-    // Single comma → decimal
     s = s.replace(',', '.');
   }
   const n = Number(s);
   return Number.isFinite(n) ? n : NaN;
 };
 
-const NUMBER_RE = /-?\d{1,3}(?:[\s\u00A0]?\d{3})*(?:[.,]\d{1,2})?|-?\d+(?:[.,]\d{1,2})?/g;
-const TOTAL_EXCLUDE_RE = /\b(ptu|vat|tax|подат|ндс|пдв)\b/i;
-const CURRENCY_HINT_RE = /\b(pln|uah|usd)\b|zł|₴|\$/i;
-const MONEY_LIKE_RE = /(?:\d[\s\u00A0]\d{3}(?:[.,]\d{1,2})?|\d+[.,]\d{2})$/;
-const PAYMENT_LINE_RE = /\b(gotowka|gotówka|platnosc|płatność|zapłacono|card|karta|payment)\b/i;
-
-const findNumbersInLine = (line) => {
-  const matches = String(line ?? '').match(NUMBER_RE);
-  if (!matches) return [];
-  return matches
-    .map((m) => parseNumber(m))
-    .filter((n) => Number.isFinite(n));
+const isTimeToken = (line, index, raw) => {
+  const prev = line[index - 1] ?? '';
+  const next = line[index + raw.length] ?? '';
+  return (prev === ':' || next === ':') && /^\d{1,2}$/.test(raw);
 };
 
-const findMoneyNumbersInLine = (line) => {
-  const matches = String(line ?? '').match(NUMBER_RE);
-  if (!matches) return [];
-  return matches
-    .filter((raw) => {
-      const v = String(raw).trim();
-      // Keep values that look like money: decimals ("44,99") or grouped thousands ("1 159").
-      if (MONEY_LIKE_RE.test(v)) return true;
-      // Avoid catching time parts from "14:49" as "49".
-      return false;
-    })
-    .map((m) => parseNumber(m))
-    .filter((n) => Number.isFinite(n) && n > 0);
+const extractMoneyTokens = (line) => {
+  const out = [];
+  const source = String(line ?? '');
+  for (const match of source.matchAll(MONEY_TOKEN_RE)) {
+    const raw = match[0];
+    const index = match.index ?? 0;
+    if (isTimeToken(source, index, raw)) continue;
+    const prev = source[index - 1] ?? '';
+    const next = source[index + raw.length] ?? '';
+    if (/\p{L}/u.test(prev) || /\p{L}/u.test(next)) continue;
+    const value = parseNumber(raw);
+    if (!Number.isFinite(value) || value <= 0) continue;
+    out.push({
+      raw,
+      index,
+      end: index + raw.length,
+      value,
+      hasDecimal: /[.,]\d{1,2}$/.test(raw),
+      hasGrouping: /[\s\u00A0]\d{3}/.test(raw),
+    });
+  }
+  return out;
 };
 
-export const extractTotal = (text) => {
-  const lines = splitLines(text);
+const normalizeLines = (text) =>
+  splitLines(text).map((line, index) => ({
+    index,
+    text: line,
+    folded: foldText(line),
+    moneyTokens: extractMoneyTokens(line),
+  }));
+
+const getBrandedShopCategoryId = (shop) => {
+  const folded = foldText(shop);
+  if (!folded) return null;
+  for (const [key, categoryId] of Object.entries(BRANDED_SHOP_CATEGORY)) {
+    if (folded.includes(foldText(key))) return categoryId;
+  }
+  return null;
+};
+
+const getSoftShopHintCategoryId = (shop) => {
+  const folded = foldText(shop);
+  if (!folded) return null;
+  for (const [key, categoryId] of Object.entries(GENERIC_SHOP_HINT_CATEGORY)) {
+    if (folded === foldText(key) || folded.startsWith(`${foldText(key)} `)) return categoryId;
+  }
+  return null;
+};
+
+const detectCurrency = (text) => {
+  const t = String(text ?? '');
+  if (/zł|\bpln\b|\bzl\b|złoty|zlotych/i.test(t)) return { currency: 'PLN', status: 'detected' };
+  if (/\$|usd|dollar/i.test(t)) return { currency: 'USD', status: 'detected' };
+  if (/грн|uah|₴|гривен|гривень/i.test(t)) return { currency: 'UAH', status: 'detected' };
+  if (/€|eur/i.test(t)) return { currency: 'UAH', status: 'unsupported' };
+  if (POLISH_SIGNAL_RE.test(t) && !CYRILLIC_SIGNAL_RE.test(t)) return { currency: 'PLN', status: 'inferred' };
+  if (CYRILLIC_SIGNAL_RE.test(t)) return { currency: 'UAH', status: 'inferred' };
+  return { currency: 'UAH', status: 'unknown' };
+};
+
+const prettifyShopName = (raw) => {
+  const cleaned = String(raw ?? '')
+    .replace(/[«»"']/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!cleaned) return null;
+  return cleaned.length > 40 ? cleaned.slice(0, 40) : cleaned;
+};
+
+const isAddressLike = (line) => /\b\d{2}-\d{3}\b/.test(line) || ADDRESS_RE.test(line);
+const looksLikeDateLine = (line) => DATE_RE.test(String(line ?? ''));
+
+const looksLikeGenericShopWord = (line) => {
+  const folded = foldText(line);
+  if (!folded) return false;
+  return Boolean(getSoftShopHintCategoryId(folded)) && !getBrandedShopCategoryId(folded);
+};
+
+const looksLikeShopFallback = (line) => {
+  const text = String(line?.text ?? line ?? '').trim();
+  if (!text || text.length < 3 || text.length > 40) return false;
+  if (!/\p{L}/u.test(text)) return false;
+  if (isAddressLike(text)) return false;
+  if (Array.isArray(line?.moneyTokens) && line.moneyTokens.length > 0) return false;
+  if (PAYMENT_KEYWORD_RE.test(text) || TOTAL_EXCLUDE_RE.test(text) || ITEM_EXCLUDE_RE.test(text)) return false;
+  if (TOTAL_KEYWORDS_FOLDED.some((k) => foldText(text).includes(k))) return false;
+  if (looksLikeGenericShopWord(text)) return false;
+  const digitCount = (text.match(/\d/g) ?? []).length;
+  return digitCount <= 6;
+};
+
+const hasTotalKeyword = (folded) => TOTAL_KEYWORDS_FOLDED.some((k) => folded.includes(k));
+
+const scoreTotalKeyword = (keyword) => {
+  if (!keyword) return 0;
+  if (keyword.includes('suma') || keyword.includes('razem') || keyword.includes('razом') || keyword.includes('total')) return 4;
+  if (keyword.includes('до сплати') || keyword.includes('к оплате')) return 3;
+  return 2;
+};
+
+const getCandidateAmount = (line) => {
+  const tokens = line.moneyTokens.filter((token) => token.value > 0);
+  if (tokens.length === 0) return null;
+  return tokens[tokens.length - 1];
+};
+
+const extractTotalFromLines = (lines) => {
   if (lines.length === 0) return null;
-
-  const folded = lines.map((l) => foldText(l));
-  const keywords = TOTAL_KEYWORDS.map((k) => foldText(k)).sort((a, b) => b.length - a.length);
   const candidates = [];
-
-  // First pass: collect scored candidates around total-like keywords.
-  for (let i = 0; i < lines.length; i++) {
-    const line = folded[i];
-    if (!line) continue;
-    const matched = keywords.find((k) => line.includes(k));
-    if (!matched) continue;
-
-    const hasTaxWord = TOTAL_EXCLUDE_RE.test(lines[i]);
-    const hasCurrencyHint = CURRENCY_HINT_RE.test(lines[i]);
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    const keyword = TOTAL_KEYWORDS_FOLDED.find((k) => line.folded.includes(k));
+    if (!keyword) continue;
     const inBottomHalf = i >= Math.floor(lines.length / 2);
-
-    const numbers = findMoneyNumbersInLine(lines[i]);
-    if (numbers.length > 0) {
-      const n = numbers[numbers.length - 1];
-      if (n > 0) {
-        let score = 0;
-        if (matched.includes('suma') || matched.includes('разом') || matched.includes('total')) score += 4;
-        if (hasCurrencyHint) score += 3;
-        if (inBottomHalf) score += 2;
-        if (hasTaxWord) score -= 5;
-        candidates.push({ value: n, score, line: i });
-      }
+    const hasTaxWord = TOTAL_EXCLUDE_RE.test(line.text);
+    const currentAmount = getCandidateAmount(line);
+    if (currentAmount) {
+      let score = scoreTotalKeyword(keyword);
+      if (currentAmount.hasDecimal || currentAmount.hasGrouping) score += 2;
+      if (/\b(pln|uah|usd|zl|грн)\b|zł|₴|\$/i.test(line.text)) score += 3;
+      if (inBottomHalf) score += 2;
+      if (hasTaxWord) score -= 6;
+      candidates.push({ value: currentAmount.value, score, line: i });
     }
-    // Sometimes keyword and number are on adjacent lines.
-    for (let j = i + 1; j < Math.min(i + 3, lines.length); j++) {
-      const next = findMoneyNumbersInLine(lines[j]);
-      if (next.length > 0) {
-        const n = next[next.length - 1];
-        if (n > 0) {
-          let score = 0;
-          if (matched.includes('suma') || matched.includes('разом') || matched.includes('total')) score += 3;
-          if (hasCurrencyHint || CURRENCY_HINT_RE.test(lines[j])) score += 2;
-          if (j >= Math.floor(lines.length / 2)) score += 2;
-          if (hasTaxWord || TOTAL_EXCLUDE_RE.test(lines[j])) score -= 5;
-          candidates.push({ value: n, score, line: j });
-        }
+    for (let j = i + 1; j < Math.min(i + 3, lines.length); j += 1) {
+      if (looksLikeDateLine(lines[j].text)) continue;
+      const nextAmount = getCandidateAmount(lines[j]);
+      if (!nextAmount) continue;
+      let score = scoreTotalKeyword(keyword) - 1;
+      if (nextAmount.hasDecimal || nextAmount.hasGrouping) score += 2;
+      if (/\b(pln|uah|usd|zl|грн)\b|zł|₴|\$/i.test(line.text) || /\b(pln|uah|usd|zl|грн)\b|zł|₴|\$/i.test(lines[j].text)) {
+        score += 2;
       }
+      if (j >= Math.floor(lines.length / 2)) score += 2;
+      if (hasTaxWord || TOTAL_EXCLUDE_RE.test(lines[j].text)) score -= 6;
+      candidates.push({ value: nextAmount.value, score, line: j });
     }
   }
-
   if (candidates.length > 0) {
     candidates.sort((a, b) => {
       if (b.score !== a.score) return b.score - a.score;
       if (b.value !== a.value) return b.value - a.value;
       return b.line - a.line;
     });
-    const top = candidates[0];
-    if (top && top.value > 0) return top.value;
+    return candidates[0].value;
   }
-
-  // Fallback 1: sum-like lines in lower half, ignore tax/VAT lines, pick max.
   const lowerHalf = lines.slice(Math.floor(lines.length / 2));
-  let bestSumLike = null;
-  for (const line of lowerHalf) {
-    const f = foldText(line);
-    if (!/(suma|razem|total|до сплати|к оплате|усього|всього|итого|разом)/i.test(f)) continue;
-    if (TOTAL_EXCLUDE_RE.test(line)) continue;
-    const nums = findMoneyNumbersInLine(line).filter((n) => n > 0);
-    if (nums.length === 0) continue;
-    const n = nums[nums.length - 1];
-    if (bestSumLike == null || n > bestSumLike) bestSumLike = n;
-  }
-  if (bestSumLike != null) return bestSumLike;
-
-  // Fallback 2: largest decimal number in the bottom 40% of the receipt.
-  const tail = lines.slice(Math.floor(lines.length * 0.6));
   let best = null;
-  for (const line of tail) {
-    for (const m of String(line).match(NUMBER_RE) ?? []) {
-      if (!/[.,]\d{1,2}$/.test(m)) continue;
-      const n = parseNumber(m);
-      if (!Number.isFinite(n) || n <= 0) continue;
-      if (best == null || n > best) best = n;
-    }
+  for (const line of lowerHalf) {
+    if (!hasTotalKeyword(line.folded)) continue;
+    if (TOTAL_EXCLUDE_RE.test(line.text)) continue;
+    const amount = getCandidateAmount(line);
+    if (!amount) continue;
+    if (best == null || amount.value > best) best = amount.value;
   }
-  return best;
+  if (best != null) return best;
+  const tail = lines.slice(Math.floor(lines.length * 0.6));
+  for (let i = tail.length - 1; i >= 0; i -= 1) {
+    if (looksLikeDateLine(tail[i].text)) continue;
+    const amount = tail[i].moneyTokens.findLast((token) => token.hasDecimal || token.hasGrouping);
+    if (amount?.value) return amount.value;
+  }
+  return null;
 };
 
-export const extractCurrency = (text) => {
-  const t = String(text ?? '');
-  if (/zł|pln|pln\b|złoty|zlotych/i.test(t)) return 'PLN';
-  if (/\$|usd|dollar/i.test(t)) return 'USD';
-  if (/€|eur/i.test(t)) return 'UAH'; // we don't support EUR; default safe
-  if (/грн|uah|₴|гривен|гривень/i.test(t)) return 'UAH';
-  return 'UAH';
+const pickPaymentLineAmount = (line) => {
+  const amount = getCandidateAmount(line);
+  return amount?.value ?? null;
 };
+
+const inferPaymentAmount = (lines) => {
+  const safePayments = [];
+  const cashPayments = [];
+  const changeAmounts = [];
+  let carryPaymentKind = null;
+
+  for (const line of lines) {
+    const hasPayment = PAYMENT_KEYWORD_RE.test(line.text);
+    const hasChange = CHANGE_KEYWORD_RE.test(line.text);
+    if (hasChange) {
+      const amount = pickPaymentLineAmount(line);
+      if (amount) changeAmounts.push(amount);
+      carryPaymentKind = null;
+      continue;
+    }
+    const amount = pickPaymentLineAmount(line);
+    if (SAFE_PAYMENT_KEYWORD_RE.test(line.text)) {
+      if (amount) safePayments.push(amount);
+      carryPaymentKind = 'safe';
+      continue;
+    }
+    if (CASH_PAYMENT_KEYWORD_RE.test(line.text)) {
+      if (amount) cashPayments.push(amount);
+      carryPaymentKind = 'cash';
+      continue;
+    }
+    if (!hasPayment && carryPaymentKind && amount && !looksLikeDateLine(line.text) && line.moneyTokens.length === 1) {
+      if (carryPaymentKind === 'safe') safePayments.push(amount);
+      if (carryPaymentKind === 'cash') cashPayments.push(amount);
+    }
+    carryPaymentKind = hasPayment ? carryPaymentKind : null;
+  }
+
+  if (safePayments.length > 0) {
+    return { amount: Math.max(...safePayments), source: 'safe' };
+  }
+  if (cashPayments.length > 0 && changeAmounts.length > 0) {
+    const paid = Math.max(...cashPayments);
+    const change = Math.max(...changeAmounts);
+    if (paid > change) return { amount: Number((paid - change).toFixed(2)), source: 'cash_change' };
+  }
+  if (cashPayments.length > 0) {
+    return { amount: Math.max(...cashPayments), source: 'cash' };
+  }
+  return { amount: null, source: null };
+};
+
+const cleanItemName = (raw) => {
+  let name = String(raw ?? '')
+    .replace(/[_]+/g, ' ')
+    .replace(/\s*[xх×*]\s*\d+(?:[.,]\d{1,2})?\s*=\s*$/u, '')
+    .replace(/\s*[=:*]+\s*$/u, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!name) return '';
+  name = name.replace(/^[A-ZА-Я]\s+/u, '').trim();
+  return name.slice(0, 60);
+};
+
+const extractItemsFromLines = (lines) => {
+  const out = [];
+  for (const line of lines) {
+    if (line.moneyTokens.length === 0) continue;
+    if (hasTotalKeyword(line.folded)) continue;
+    if (PAYMENT_KEYWORD_RE.test(line.text) || CHANGE_KEYWORD_RE.test(line.text)) continue;
+    if (ITEM_EXCLUDE_RE.test(line.text) || isAddressLike(line.text)) continue;
+    const amountToken = line.moneyTokens[line.moneyTokens.length - 1];
+    if (!amountToken) continue;
+    const trailing = line.text.slice(amountToken.end).trim();
+    if (trailing && !/^[\p{L}\s#.]*$/u.test(trailing)) continue;
+    const name = cleanItemName(line.text.slice(0, amountToken.index));
+    if (!name || /^pln$/i.test(name) || /^blik$/i.test(name) || looksLikeGenericShopWord(name)) continue;
+    const letters = (name.match(/\p{L}/gu) ?? []).length;
+    if (letters < 3) continue;
+    out.push({ name, amount: amountToken.value });
+    if (out.length >= 30) break;
+  }
+  return out;
+};
+
+const matchKeywordInText = (text, keyword) => {
+  const folded = foldText(text);
+  const word = foldText(keyword);
+  if (!folded || !word) return false;
+  if (word.includes(' ')) return folded.includes(word);
+  const tokens = folded.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  return tokens.some((token) => token.startsWith(word));
+};
+
+export const extractTotal = (text) => extractTotalFromLines(normalizeLines(text));
+
+export const extractCurrency = (text) => detectCurrency(text).currency;
 
 export const extractDate = (text) => {
   const t = String(text ?? '');
@@ -391,14 +599,12 @@ export const extractDate = (text) => {
     const dt = new Date(Date.UTC(yy, mm - 1, dd));
     return dt.getUTCFullYear() === yy && dt.getUTCMonth() === mm - 1 && dt.getUTCDate() === dd;
   };
-  // DD.MM.YYYY or DD/MM/YYYY or DD-MM-YYYY
   const m1 = t.match(/\b(\d{2})[.\-/](\d{2})[.\-/](\d{4})\b/);
   if (m1) {
     const [, d, mo, y] = m1;
     if (!isValidYmd(y, mo, d)) return null;
     return `${y}-${mo}-${d}`;
   }
-  // YYYY-MM-DD
   const m2 = t.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
   if (m2) {
     if (!isValidYmd(m2[1], m2[2], m2[3])) return null;
@@ -408,141 +614,92 @@ export const extractDate = (text) => {
 };
 
 export const extractShop = (text) => {
-  const lines = splitLines(text);
+  const lines = normalizeLines(text);
   if (lines.length === 0) return null;
-
-  // Look for known shop in the first 8 lines first (logo/header area).
   const head = lines.slice(0, 8);
   for (const line of head) {
-    const folded = foldText(line);
-    if (!folded) continue;
-    for (const key of Object.keys(SHOP_CATEGORY)) {
-      if (folded.includes(key)) {
-        return prettifyShopName(line);
-      }
-    }
+    if (isAddressLike(line.text)) continue;
+    if (getBrandedShopCategoryId(line.text)) return prettifyShopName(line.text);
   }
-
-  // Otherwise — first non-empty line that looks like a name (has letters, not too long).
   for (const line of head) {
-    const stripped = line.replace(/[^\p{L}\d \-&'"./№#]/gu, '').trim();
-    if (stripped.length >= 3 && stripped.length <= 40 && /\p{L}/u.test(stripped)) {
-      return prettifyShopName(stripped);
-    }
+    if (!looksLikeShopFallback(line)) continue;
+    return prettifyShopName(line.text);
   }
   return null;
 };
 
-const prettifyShopName = (raw) => {
-  const cleaned = String(raw ?? '')
-    .replace(/[«»"']/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (!cleaned) return null;
-  // Title-case acronyms preserved (keep as-is for short upper words).
-  return cleaned.length > 40 ? cleaned.slice(0, 40) : cleaned;
-};
-
-const TRAILING_AMOUNT_RE = /^(.+?)\s+(\d+(?:[.,]\d{1,2})?)\s*(?:[А-Яа-яA-Za-zₐ-ₜ.]*?)?\s*$/u;
-const ITEM_EXCLUDE_RE = /\b(nip|regon|bdo|paragon|fiskaln|fiskalny|ul\.|ulica|warszawa|sprzed|kwota ptu|suma ptu|ptu|vat|reszta|platnosc|płatno|gotowka|gotówka|rozliczenie|wydr|nr|sp\.?\s*op)\b/i;
-
-export const extractItems = (text) => {
-  const lines = splitLines(text);
-  const out = [];
-  for (const line of lines) {
-    const folded = foldText(line);
-    if (!folded) continue;
-    // Skip lines containing total keywords — those are not items.
-    if (TOTAL_KEYWORDS.some((k) => folded.includes(foldText(k)))) continue;
-    if (ITEM_EXCLUDE_RE.test(line)) continue;
-    if (/\b\d{2}-\d{3}\b/.test(line)) continue; // postal code / address block
-    // Item-line heuristic: must end with a number, must contain at least 3 letters.
-    const m = line.match(TRAILING_AMOUNT_RE);
-    if (!m) continue;
-    const namePart = m[1].trim();
-    const amount = parseNumber(m[2]);
-    if (!Number.isFinite(amount) || amount <= 0) continue;
-    if (/^pln\s*\d*$/i.test(namePart)) continue;
-    if (/^sp\.?\s*op\.?/i.test(namePart)) continue;
-    const letters = (namePart.match(/\p{L}/gu) ?? []).length;
-    if (letters < 3) continue;
-    const words = namePart
-      .replace(/[^\p{L}\p{N}\s]/gu, ' ')
-      .split(/\s+/)
-      .filter(Boolean);
-    // Drop very short, non-product rows like "PLN 1", "SP OP A 1", etc.
-    if (words.length <= 2 && words.every((w) => w.length <= 2 || /^\d+$/.test(w))) continue;
-    if (namePart.length > 60) continue;
-    out.push({ name: namePart.replace(/\s{2,}/g, ' ').slice(0, 60), amount });
-    if (out.length >= 30) break;
-  }
-  return out;
-};
+export const extractItems = (text) => extractItemsFromLines(normalizeLines(text));
 
 export const pickCategoryId = (shop, items) => {
-  const shopFolded = foldText(shop ?? '');
-  if (shopFolded) {
-    for (const key of Object.keys(SHOP_CATEGORY)) {
-      if (shopFolded.includes(key)) return SHOP_CATEGORY[key];
-    }
-  }
-  // Score by item keywords.
+  const brandedCategory = getBrandedShopCategoryId(shop);
+  if (brandedCategory) return brandedCategory;
   const scores = { food: 0, transport: 0, home: 0, health: 0, entertainment: 0 };
-  const itemsText = (items ?? [])
-    .map((i) => foldText(i?.name ?? ''))
-    .join(' ');
+  const itemsText = (items ?? []).map((item) => foldText(item?.name ?? '')).join(' ');
   if (itemsText) {
     for (const [cat, words] of Object.entries(ITEM_KEYWORD_CATEGORY)) {
-      for (const w of words) {
-        if (!w) continue;
-        if (itemsText.includes(w)) scores[cat] += 1;
+      for (const word of words) {
+        if (matchKeywordInText(itemsText, word)) scores[cat] += 1;
       }
     }
-    let best = null;
-    let bestScore = 0;
-    for (const [cat, score] of Object.entries(scores)) {
-      if (score > bestScore) {
-        best = cat;
-        bestScore = score;
-      }
-    }
-    if (best && KNOWN_CATEGORY_IDS.has(best)) return best;
   }
+  const softShopHint = getSoftShopHintCategoryId(shop);
+  if (softShopHint) scores[softShopHint] += 1;
+  let best = null;
+  let bestScore = 0;
+  for (const [cat, score] of Object.entries(scores)) {
+    if (score > bestScore) {
+      best = cat;
+      bestScore = score;
+    }
+  }
+  if (best && KNOWN_CATEGORY_IDS.has(best)) return best;
   return 'other_expense';
 };
 
 export const parseReceipt = (text) => {
   const safeText = typeof text === 'string' ? text : '';
+  const lines = normalizeLines(safeText);
   const shop = extractShop(safeText);
-  let total = extractTotal(safeText);
-  const currency = extractCurrency(safeText);
+  let total = extractTotalFromLines(lines);
+  const currencyInfo = detectCurrency(safeText);
   const date = extractDate(safeText);
-  const rawItems = extractItems(safeText);
-  // Payment lines are often more reliable than noisy OCR around item rows.
-  const paymentCandidates = splitLines(safeText)
-    .filter((line) => PAYMENT_LINE_RE.test(line))
-    .flatMap((line) => findMoneyNumbersInLine(line))
-    .filter((n) => Number.isFinite(n) && n > 0);
-  const paymentAmount = paymentCandidates.length > 0 ? Math.max(...paymentCandidates) : null;
+  const rawItems = extractItemsFromLines(lines);
+  const payment = inferPaymentAmount(lines);
+  const reviewFlags = [];
 
-  // If extracted total is clearly inconsistent but payment amount exists, prefer payment.
-  if (Number.isFinite(total) && total > 0 && Number.isFinite(paymentAmount) && paymentAmount > 0) {
-    if (total > paymentAmount * 1.5 || total < paymentAmount * 0.5) {
-      total = paymentAmount;
+  if (Number.isFinite(total) && total > 0 && Number.isFinite(payment.amount) && payment.amount > 0) {
+    const shouldOverride =
+      (payment.source === 'safe' || payment.source === 'cash_change') &&
+      (total > payment.amount * 1.5 || total < payment.amount * 0.5);
+    const shouldOverrideCashOnly = payment.source === 'cash' && total > payment.amount * 1.5;
+    if (shouldOverride || shouldOverrideCashOnly) {
+      total = payment.amount;
+      reviewFlags.push('payment_total_override');
     }
-  } else if ((!Number.isFinite(total) || total <= 0) && Number.isFinite(paymentAmount) && paymentAmount > 0) {
-    total = paymentAmount;
+  } else if ((!Number.isFinite(total) || total <= 0) && Number.isFinite(payment.amount) && payment.amount > 0) {
+    if (payment.source !== 'cash') {
+      total = payment.amount;
+      reviewFlags.push('payment_total_fallback');
+    }
   }
 
-  const totalCap = Number.isFinite(total) && total > 0 ? total * 1.05 : Infinity;
-  const items = rawItems.filter((i) => i.amount > 0 && i.amount <= totalCap);
-  const categoryId = pickCategoryId(shop, items);
+  if (currencyInfo.status !== 'detected') reviewFlags.push(`${currencyInfo.status}_currency`);
+  if (!shop && rawItems.length > 0) reviewFlags.push('missing_shop');
+  if (!Number.isFinite(total) || total <= 0) reviewFlags.push('missing_total');
+
+  const totalCap = Number.isFinite(total) && total > 0 ? total * 1.1 : Infinity;
+  const items = rawItems.filter((item) => item.amount > 0 && item.amount <= totalCap);
+  if (rawItems.length > 0 && items.length === 0) reviewFlags.push('items_filtered');
+
+  const categoryId = pickCategoryId(shop ?? '', items);
   return {
     shop,
     total: Number.isFinite(total) ? Number(total) : null,
-    currency,
+    currency: currencyInfo.currency,
     date,
     categoryId,
     items,
+    reviewFlags: Array.from(new Set(reviewFlags)),
+    reviewRequired: reviewFlags.length > 0,
   };
 };

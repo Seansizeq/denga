@@ -60,6 +60,16 @@ describe('receipts parser', () => {
       ].join('\n');
       expect(extractTotal(text)).toBeCloseTo(1159, 2);
     });
+
+    it('parses integer totals without decimal separator', () => {
+      const text = [
+        'ATB',
+        'Хліб 22',
+        'Молоко 39',
+        'СУМА 61',
+      ].join('\n');
+      expect(extractTotal(text)).toBeCloseTo(61, 2);
+    });
   });
 
   describe('extractCurrency', () => {
@@ -115,6 +125,25 @@ describe('receipts parser', () => {
       const text = `Магазин на розi\nХліб 22.00\nСУМА 22.00`;
       expect(extractShop(text)).toMatch(/Магазин/);
     });
+
+    it('does not treat address lines as shop name', () => {
+      const text = [
+        '03-734 Warszawa ul. Targowa 72',
+        'PARAGON FISKALNY',
+        'CHIPSY 13,89',
+        'SUMA PLN 13,89',
+      ].join('\n');
+      expect(extractShop(text)).toBeNull();
+    });
+
+    it('does not treat generic category words as shop name', () => {
+      const text = [
+        'CAFE',
+        'KAWA LATTE 14,99',
+        'SUMA PLN 14,99',
+      ].join('\n');
+      expect(extractShop(text)).toBeNull();
+    });
   });
 
   describe('extractItems', () => {
@@ -157,12 +186,37 @@ describe('receipts parser', () => {
       const items = extractItems(text);
       expect(items).toEqual([{ name: 'SLUCHAWKI TRUE # APPLE AIRPODS', amount: 159 }]);
     });
+
+    it('skips payment lines like BLIK from items', () => {
+      const text = [
+        'SKLEP XYZ',
+        'BUŁKA 2,50',
+        'SER 5,00',
+        'BLIK 7,50',
+      ].join('\n');
+      const items = extractItems(text);
+      expect(items).toEqual([
+        { name: 'BUŁKA', amount: 2.5 },
+        { name: 'SER', amount: 5 },
+      ]);
+    });
+
+    it('parses grouped-thousands item amounts', () => {
+      const text = [
+        'X-KOM',
+        'SLUCHAWKI TRUE APPLE AIRPODS 1 159,00',
+        'Suma: PLN 1 159,00',
+      ].join('\n');
+      const items = extractItems(text);
+      expect(items).toEqual([{ name: 'SLUCHAWKI TRUE APPLE AIRPODS', amount: 1159 }]);
+    });
   });
 
   describe('pickCategoryId', () => {
     it('maps grocery chain to food', () => {
       expect(pickCategoryId('ATB Market', [])).toBe('food');
       expect(pickCategoryId('Biedronka', [])).toBe('food');
+      expect(pickCategoryId('DINO', [])).toBe('food');
     });
 
     it('maps fuel station to transport', () => {
@@ -172,6 +226,7 @@ describe('receipts parser', () => {
 
     it('maps pharmacy to health', () => {
       expect(pickCategoryId('Аптека Доброго дня', [])).toBe('health');
+      expect(pickCategoryId('HEBE', [])).toBe('health');
     });
 
     it('uses item keywords when shop is unknown', () => {
@@ -180,6 +235,15 @@ describe('receipts parser', () => {
         { name: 'Молоко', amount: 30 },
       ];
       expect(pickCategoryId('Random shop name', items)).toBe('food');
+    });
+
+    it('matches Polish item keywords with diacritics', () => {
+      const items = [
+        { name: 'SER GOUDA', amount: 7.99 },
+        { name: 'BUŁKA', amount: 1.29 },
+        { name: 'MASŁO', amount: 8.99 },
+      ];
+      expect(pickCategoryId('Unknown', items)).toBe('food');
     });
 
     it('falls back to other_expense', () => {
@@ -236,6 +300,36 @@ describe('receipts parser', () => {
       expect(r.total).toBeCloseTo(10.49, 2);
       expect(r.currency).toBe('PLN');
       expect(r.categoryId).toBe('food');
+    });
+
+    it('parses a DINO grocery receipt as food', () => {
+      const text = [
+        'DINO',
+        '10.05.2026',
+        'MASŁO EXTRA 8,99',
+        'WODA MIN. 3,49',
+        'RAZEM PLN 12,48',
+      ].join('\n');
+      const r = parseReceipt(text);
+      expect(r.shop).toMatch(/DINO/i);
+      expect(r.total).toBeCloseTo(12.48, 2);
+      expect(r.currency).toBe('PLN');
+      expect(r.categoryId).toBe('food');
+    });
+
+    it('parses a HEBE receipt as health', () => {
+      const text = [
+        'HEBE',
+        '10.05.2026',
+        'SZAMPON 14,99',
+        'KREM 19,99',
+        'RAZEM PLN 34,98',
+      ].join('\n');
+      const r = parseReceipt(text);
+      expect(r.shop).toMatch(/HEBE/i);
+      expect(r.total).toBeCloseTo(34.98, 2);
+      expect(r.currency).toBe('PLN');
+      expect(r.categoryId).toBe('health');
     });
 
     it('returns safe defaults on garbage input', () => {
@@ -300,6 +394,33 @@ describe('receipts parser', () => {
       expect(r.total).toBeCloseTo(1159, 2);
       expect(r.total).not.toBeCloseTo(3159.6, 2);
       expect(r.date).toBe('2026-01-02');
+    });
+
+    it('does not replace total with tendered cash amount when change is present', () => {
+      const text = [
+        'CARREFOUR',
+        'CHIPSY 13,89',
+        'SUMA PLN 44,99',
+        'GOTÓWKA 100,00',
+        'RESZTA 55,01',
+      ].join('\n');
+      const r = parseReceipt(text);
+      expect(r.total).toBeCloseTo(44.99, 2);
+    });
+
+    it('does not include payment rows in parsed items', () => {
+      const text = [
+        'SKLEP XYZ',
+        'BUŁKA 2,50',
+        'SER 5,00',
+        'BLIK 7,50',
+      ].join('\n');
+      const r = parseReceipt(text);
+      expect(r.total).toBeCloseTo(7.5, 2);
+      expect(r.items).toEqual([
+        { name: 'BUŁKA', amount: 2.5 },
+        { name: 'SER', amount: 5 },
+      ]);
     });
   });
 });

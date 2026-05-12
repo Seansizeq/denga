@@ -7,7 +7,7 @@ import { v4 as uuidv4 } from 'uuid';
 import PImage from 'pureimage';
 import { getDatabasePath, initDb } from './db.js';
 import { startScheduledDatabaseBackups } from './backup.js';
-import { parseReceipt } from './receipts.js';
+import { createReceiptScanHandler } from './receipt-scan.js';
 import { existsSync } from 'fs';
 import path from 'path';
 import { PassThrough } from 'stream';
@@ -3751,6 +3751,7 @@ app.post('/api/transactions', async (req, res) => {
   const categoryId = typeof req.body?.categoryId === 'string' ? req.body.categoryId.trim() : '';
   const type = req.body?.type === 'income' || req.body?.type === 'expense' ? req.body.type : '';
   const note = typeof req.body?.note === 'string' ? req.body.note.trim() : '';
+  const parsedTxDate = req.body?.date === undefined ? new Date() : parseIsoDate(req.body.date);
   if (!Number.isFinite(amount) || amount <= 0) {
     res.status(400).json({ error: 'amount must be > 0', code: 'INVALID_AMOUNT' });
     return;
@@ -3767,6 +3768,10 @@ app.post('/api/transactions', async (req, res) => {
     res.status(400).json({ error: 'note must be <= 120 chars', code: 'INVALID_NOTE' });
     return;
   }
+  if (!parsedTxDate) {
+    res.status(400).json({ error: 'date must be YYYY-MM-DD', code: 'INVALID_DATE' });
+    return;
+  }
   const transaction = {
     id: uuidv4(),
     user_id: userId,
@@ -3774,7 +3779,7 @@ app.post('/api/transactions', async (req, res) => {
     currency,
     categoryId,
     type,
-    date: new Date().toISOString(),
+    date: parsedTxDate.toISOString(),
     note: note || undefined
   };
 
@@ -3803,6 +3808,7 @@ app.patch('/api/transactions/:id', async (req, res) => {
   const currency = req.body?.currency === undefined ? normalizeCurrency(current.currency) : normalizeCurrency(req.body.currency);
   const categoryId = typeof req.body?.categoryId === 'string' ? req.body.categoryId : current.categoryId;
   const type = req.body?.type === 'income' || req.body?.type === 'expense' ? req.body.type : current.type;
+  const parsedTxDate = req.body?.date === undefined ? new Date(current.date) : parseIsoDate(req.body.date);
   const note = req.body?.note === undefined
     ? (current.note ?? '')
     : (typeof req.body.note === 'string' ? req.body.note.trim() : '');
@@ -3819,8 +3825,15 @@ app.patch('/api/transactions/:id', async (req, res) => {
     res.status(400).json({ error: 'type must be income or expense' });
     return;
   }
+  if (!parsedTxDate || Number.isNaN(parsedTxDate.getTime())) {
+    res.status(400).json({ error: 'date must be YYYY-MM-DD' });
+    return;
+  }
 
-  await db.run('UPDATE transactions SET amount = ?, currency = ?, categoryId = ?, type = ?, note = ? WHERE user_id = ? AND id = ?', [amount, currency, categoryId, type, note || null, userId, id]);
+  await db.run(
+    'UPDATE transactions SET amount = ?, currency = ?, categoryId = ?, type = ?, date = ?, note = ? WHERE user_id = ? AND id = ?',
+    [amount, currency, categoryId, type, parsedTxDate.toISOString(), note || null, userId, id]
+  );
   const prevAccount = getAccountSlugFromNote(current.note);
   const nextAccount = getAccountSlugFromNote(note || '');
   if (prevAccount && prevAccount === nextAccount) {
@@ -3837,6 +3850,7 @@ app.patch('/api/transactions/:id', async (req, res) => {
     currency,
     categoryId,
     type,
+    date: parsedTxDate.toISOString(),
     note: note || undefined,
   });
 });
@@ -3870,165 +3884,7 @@ app.delete('/api/transactions/:id', async (req, res) => {
 });
 
 // --- Receipt OCR scan ---
-const RECEIPT_SCAN_RATE_LIMIT_MS = 3000;
-const lastReceiptScanByUser = new Map();
-const RECEIPT_IMAGE_BYTES_LIMIT = 1024 * 1024; // OCR.space free tier: 1 MB image
-const OCR_SPACE_ENDPOINT = 'https://api.ocr.space/parse/image';
-const OCR_SPACE_TIMEOUT_MS = 22000;
-// Public test key from OCR.space — works out of the box but is heavily rate-limited.
-// Replace by registering a free API key at https://ocr.space/ocrapi (25k req/month).
-const OCR_SPACE_PUBLIC_FALLBACK_KEY = 'helloworld';
-
-const stripBase64Prefix = (raw) => {
-  if (typeof raw !== 'string') return '';
-  const trimmed = raw.trim();
-  if (!trimmed) return '';
-  const match = trimmed.match(/^data:image\/(jpeg|jpg|png|webp|heic|heif);base64,([\s\S]+)$/i);
-  if (match) return { mime: match[1].toLowerCase(), data: match[2].replace(/\s+/g, '') };
-  return { mime: 'jpeg', data: trimmed.replace(/\s+/g, '') };
-};
-
-app.post('/api/receipts/scan', express.json({ limit: '12mb' }), async (req, res) => {
-  const userId = String(req.authUserId ?? '');
-  if (!userId) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-  const apiKey = process.env.OCR_SPACE_API_KEY || OCR_SPACE_PUBLIC_FALLBACK_KEY;
-
-  const now = Date.now();
-  const last = lastReceiptScanByUser.get(userId) ?? 0;
-  if (now - last < RECEIPT_SCAN_RATE_LIMIT_MS) {
-    res.status(429).json({
-      error: 'Too many scan requests, slow down',
-      code: 'RATE_LIMITED',
-      retryAfterMs: RECEIPT_SCAN_RATE_LIMIT_MS - (now - last),
-    });
-    return;
-  }
-  lastReceiptScanByUser.set(userId, now);
-
-  const parsedImage = stripBase64Prefix(req.body?.image);
-  const base64 = parsedImage?.data ?? '';
-  const mime = parsedImage?.mime ?? 'jpeg';
-  if (!base64 || base64.length < 100) {
-    res.status(400).json({ error: 'image is required (base64)', code: 'INVALID_IMAGE' });
-    return;
-  }
-  const approxBytes = Math.floor((base64.length * 3) / 4);
-  if (approxBytes > RECEIPT_IMAGE_BYTES_LIMIT) {
-    res.status(413).json({
-      error: 'image too large (max ~1 MB after compression)',
-      code: 'IMAGE_TOO_LARGE',
-    });
-    return;
-  }
-
-  // OCR.space: multipart/form-data with file is the most reliable way for big payloads.
-  // We intentionally avoid forcing "language" because OCR.space may reject
-  // some codes on certain plans/engines with E201 (invalid language).
-  const fileMime = mime === 'jpg' ? 'jpeg' : mime;
-  const fileBuffer = Buffer.from(base64, 'base64');
-  const fileName = `receipt.${fileMime === 'jpeg' ? 'jpg' : fileMime}`;
-
-  const callOcrSpace = async (language) => {
-    const fileBlob = new Blob([fileBuffer], { type: `image/${fileMime}` });
-    const form = new FormData();
-    if (language) form.append('language', language);
-    form.append('OCREngine', '2');
-    form.append('isOverlayRequired', 'false');
-    // Accuracy mode: enable OCR helpers for better recognition on real receipt photos.
-    form.append('detectOrientation', 'true');
-    form.append('scale', 'true');
-    form.append('isTable', 'true');
-    form.append('file', fileBlob, fileName);
-
-    const abort = new AbortController();
-    const timeoutId = setTimeout(() => abort.abort(), OCR_SPACE_TIMEOUT_MS);
-    const ocrRes = await fetch(OCR_SPACE_ENDPOINT, {
-      method: 'POST',
-      headers: { apikey: apiKey },
-      body: form,
-      signal: abort.signal,
-    }).finally(() => {
-      clearTimeout(timeoutId);
-    });
-    if (!ocrRes.ok) {
-      const errBody = await ocrRes.text().catch(() => '');
-      throw Object.assign(new Error(`HTTP ${ocrRes.status}`), {
-        httpStatus: ocrRes.status,
-        body: errBody,
-      });
-    }
-    return ocrRes.json();
-  };
-
-  const extractText = (json) =>
-    Array.isArray(json?.ParsedResults)
-      ? json.ParsedResults.map((r) => String(r?.ParsedText ?? '')).join('\n').trim()
-      : '';
-
-  const checkForError = (json) => {
-    if (!json?.IsErroredOnProcessing) return null;
-    const msg = Array.isArray(json.ErrorMessage)
-      ? json.ErrorMessage.join('; ')
-      : String(json.ErrorMessage ?? 'unknown OCR error');
-    return { msg, details: String(json.ErrorDetails ?? '').slice(0, 240) };
-  };
-
-  const cleanProviderDetails = (raw) => {
-    const txt = String(raw ?? '').trim();
-    if (!txt) return '';
-    // If provider returned an HTML error page, don't pass raw markup to client.
-    if (txt.startsWith('<!DOCTYPE') || txt.startsWith('<html')) return 'Provider temporary HTML error page';
-    return txt.slice(0, 240);
-  };
-
-  let ocrJson;
-  let text = '';
-  try {
-    // Fast path: single OCR request for responsiveness.
-    ocrJson = await callOcrSpace('');
-    const providerError = checkForError(ocrJson);
-    if (providerError) {
-      console.error('[receipts] OCR.space error', providerError.msg, providerError.details);
-      const timedOut = /timed out/i.test(providerError.msg) || /\bE101\b/i.test(providerError.msg);
-      res.status(502).json({
-        error: timedOut ? 'OCR provider timeout' : providerError.msg,
-        code: timedOut ? 'OCR_TIMEOUT' : 'OCR_PROVIDER_ERROR',
-        details: cleanProviderDetails(providerError.details),
-      });
-      return;
-    }
-    text = extractText(ocrJson);
-  } catch (err) {
-    console.error('[receipts] OCR.space call failed', err);
-    const isAbort = err && typeof err === 'object' && 'name' in err && err.name === 'AbortError';
-    res.status(isAbort ? 504 : 502).json({
-      error: isAbort ? 'OCR provider timeout' : 'OCR provider unreachable',
-      code: isAbort ? 'OCR_TIMEOUT' : 'OCR_UNREACHABLE',
-      details: err instanceof Error ? cleanProviderDetails(err.message) : cleanProviderDetails(String(err)),
-    });
-    return;
-  }
-
-  if (!text) {
-    res.status(200).json({
-      shop: null,
-      total: null,
-      currency: 'UAH',
-      date: null,
-      categoryId: 'other_expense',
-      items: [],
-      rawText: '',
-      code: 'NO_TEXT_DETECTED',
-    });
-    return;
-  }
-
-  const parsed = parseReceipt(text);
-  res.status(200).json({ ...parsed, rawText: text });
-});
+app.post('/api/receipts/scan', express.json({ limit: '12mb' }), createReceiptScanHandler());
 
 app.get('/api/custom-categories', async (req, res) => {
   const userId = req.authUserId;

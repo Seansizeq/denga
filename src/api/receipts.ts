@@ -15,10 +15,19 @@ export interface ScannedReceipt {
   items: ScannedReceiptItem[];
   rawText?: string;
   code?: string;
+  reviewFlags: string[];
+  reviewRequired: boolean;
+  scanStatus: 'ok' | 'review_required';
+  ocrMeta?: {
+    usedFallbackLanguage?: boolean;
+    elapsedMs?: number;
+    usedPublicFallback?: boolean;
+  };
 }
 
 export type ScanReceiptError =
   | { kind: 'not_configured'; status?: number; details?: string }
+  | { kind: 'auth'; status?: number; details?: string }
   | { kind: 'rate_limited'; retryAfterMs: number; status?: number; details?: string }
   | { kind: 'invalid'; status?: number; details?: string }
   | { kind: 'too_large'; status?: number; details?: string }
@@ -67,6 +76,10 @@ export const scanReceipt = async (
 
   const status = response.status;
 
+  if (status === 401) {
+    const details = await readBodySnippet(response);
+    return { ok: false, error: { kind: 'auth', status, details } };
+  }
   if (status === 503) {
     const details = await readBodySnippet(response);
     return { ok: false, error: { kind: 'not_configured', status, details } };
@@ -106,8 +119,32 @@ export const scanReceipt = async (
   }
 
   try {
-    const data = (await response.json()) as ScannedReceipt;
-    return { ok: true, receipt: data };
+    const data = (await response.json()) as Partial<ScannedReceipt>;
+    return {
+      ok: true,
+      receipt: {
+        shop: data.shop ?? null,
+        total: typeof data.total === 'number' ? data.total : null,
+        currency: data.currency === 'PLN' || data.currency === 'USD' ? data.currency : 'UAH',
+        date: data.date ?? null,
+        categoryId: typeof data.categoryId === 'string' && data.categoryId ? data.categoryId : 'other_expense',
+        items: Array.isArray(data.items)
+          ? data.items
+              .filter((row): row is ScannedReceiptItem => Boolean(row && typeof row === 'object'))
+              .map((row) => ({
+                name: String(row.name ?? '').slice(0, 60),
+                amount: Number(row.amount ?? 0),
+              }))
+              .filter((row) => row.name && Number.isFinite(row.amount) && row.amount > 0)
+          : [],
+        rawText: typeof data.rawText === 'string' ? data.rawText : undefined,
+        code: typeof data.code === 'string' ? data.code : undefined,
+        reviewFlags: Array.isArray(data.reviewFlags) ? data.reviewFlags.map((flag) => String(flag)) : [],
+        reviewRequired: Boolean(data.reviewRequired),
+        scanStatus: data.scanStatus === 'ok' ? 'ok' : 'review_required',
+        ocrMeta: data.ocrMeta && typeof data.ocrMeta === 'object' ? data.ocrMeta : undefined,
+      },
+    };
   } catch (err) {
     return {
       ok: false,

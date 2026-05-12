@@ -17,6 +17,15 @@ export interface Transaction {
   note?: string;
 }
 
+export interface TransactionDraft {
+  amount: number;
+  currency: Transaction['currency'];
+  categoryId: string;
+  type: TransactionType;
+  date?: string;
+  note?: string;
+}
+
 export interface Balance {
   total: number;
   income: number;

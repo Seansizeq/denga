@@ -410,3 +410,54 @@
   line-height: 1.45;
   margin-bottom: 16px;
 }
+
+.errorExtra {
+  margin-top: 8px;
+  font-size: 13px;
+  color: rgba(255, 200, 200, 0.92);
+}
+
+.reviewCard,
+.rawTextCard {
+  background: rgba(255, 201, 87, 0.10);
+  border: 1px solid rgba(255, 201, 87, 0.22);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+}
+
+.reviewTitle {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #ffd76a;
+}
+
+.reviewText {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.reviewList {
+  margin: 10px 0 0 18px;
+  padding: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.reviewList li + li {
+  margin-top: 6px;
+}
+
+.rawTextContent {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  max-height: 220px;
+  overflow: auto;
+}

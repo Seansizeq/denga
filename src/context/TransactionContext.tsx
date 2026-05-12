@@ -1,12 +1,12 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import type { Transaction, Balance } from '../types';
+import type { Transaction, Balance, TransactionDraft } from '../types';
 import { apiFetch } from '../api/client';
 import { normalizeCurrency } from '../utils/currency';
 
 interface TransactionContextType {
   transactions: Transaction[];
-  addTransaction: (transaction: Omit<Transaction, 'id' | 'date'>) => Promise<boolean>;
-  updateTransaction: (id: string, transaction: Omit<Transaction, 'id' | 'date'>) => Promise<boolean>;
+  addTransaction: (transaction: TransactionDraft) => Promise<boolean>;
+  updateTransaction: (id: string, transaction: TransactionDraft) => Promise<boolean>;
   deleteTransaction: (id: string) => Promise<boolean>;
   balance: Balance;
 }
@@ -65,7 +65,7 @@ export const TransactionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     });
   }, [transactions]);
 
-  const addTransaction = async (t: Omit<Transaction, 'id' | 'date'>) => {
+  const addTransaction = async (t: TransactionDraft) => {
     try {
       const response = await apiFetch('/api/transactions', {
         method: 'POST',
@@ -106,7 +106,7 @@ export const TransactionProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   };
 
-  const updateTransaction = async (id: string, t: Omit<Transaction, 'id' | 'date'>) => {
+  const updateTransaction = async (id: string, t: TransactionDraft) => {
     try {
       const response = await apiFetch(`/api/transactions/${id}`, {
         method: 'PATCH',

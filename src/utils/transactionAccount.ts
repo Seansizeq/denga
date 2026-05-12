@@ -45,3 +45,24 @@ export const mergeAccountIntoNote = (
   }
   return base ? `${base} Account: ${key}` : `Account: ${key}`;
 };
+
+export const mergeAccountIntoNoteLimited = (
+  note: string,
+  accountKey: string,
+  allowedKeys: ReadonlySet<string>,
+  maxLength = 120
+): string => {
+  const merged = mergeAccountIntoNote(note, accountKey, allowedKeys);
+  if (merged.length <= maxLength) return merged;
+
+  const key = accountKey.trim().toLowerCase();
+  if (!key || !allowedKeys.has(key)) return merged.slice(0, maxLength).trim();
+
+  const base = stripAccountFromNote(note).trim();
+  const suffix = base ? ` Account: ${key}` : `Account: ${key}`;
+  if (suffix.length >= maxLength) return suffix.slice(0, maxLength).trim();
+
+  const available = maxLength - suffix.length;
+  const trimmedBase = base.slice(0, available).trim();
+  return trimmedBase ? `${trimmedBase}${suffix}` : suffix;
+};

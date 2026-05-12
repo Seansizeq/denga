@@ -305,14 +305,28 @@ type Dict = {
     processing: string;
     retake: string;
     confirmAndEdit: string;
+    saveConfirmed: string;
+    reviewAndEdit: string;
     totalLabel: string;
     noTotalFound: string;
     unknownShop: string;
     noDate: string;
     itemsTitle: string;
     itemsMore: string;
+    reviewTitle: string;
+    reviewHint: string;
+    reviewReasonNoText: string;
+    reviewReasonMissingTotal: string;
+    reviewReasonMissingShop: string;
+    reviewReasonCurrency: string;
+    reviewReasonPayment: string;
+    reviewReasonManualCheck: string;
+    ocrTextTitle: string;
+    selectPaymentAccount: string;
+    errorAuth: string;
     errorNotConfigured: string;
     errorRateLimited: string;
+    errorRateLimitedRetry: string;
     errorTooLarge: string;
     errorInvalid: string;
     errorProvider: string;
@@ -621,14 +635,28 @@ const uk: Dict = {
     processing: 'Розпізнаємо чек…',
     retake: 'Зробити ще одне фото',
     confirmAndEdit: 'Перевірити та зберегти',
+    saveConfirmed: 'Зберегти без змін',
+    reviewAndEdit: 'Перевірити вручну',
     totalLabel: 'Сума чека',
     noTotalFound: 'Сума не знайдена',
     unknownShop: 'Магазин не визначено',
     noDate: 'Дата не визначена',
     itemsTitle: 'Позиції чека',
     itemsMore: '+ ще {n} позицій',
-    errorNotConfigured: 'Сканування чеків поки не налаштоване на сервері. Додайте GOOGLE_CLOUD_VISION_API_KEY у .env.',
+    reviewTitle: 'Потрібна ручна перевірка',
+    reviewHint: 'Ми щось розпізнали, але цей чек краще перевірити перед збереженням.',
+    reviewReasonNoText: 'OCR не зміг впевнено прочитати текст чека.',
+    reviewReasonMissingTotal: 'Не вдалося надійно визначити підсумкову суму.',
+    reviewReasonMissingShop: 'Магазин не вдалося визначити безпечно.',
+    reviewReasonCurrency: 'Валюта визначена непевно або лише за евристикою.',
+    reviewReasonPayment: 'Сума була скоригована за платіжним рядком і потребує перевірки.',
+    reviewReasonManualCheck: 'У результаті є неочевидні ознаки, які краще перевірити вручну.',
+    ocrTextTitle: 'Розпізнаний текст',
+    selectPaymentAccount: 'Оберіть рахунок для списання',
+    errorAuth: 'Сесію авторизації втрачено. Відкрийте застосунок з Telegram ще раз.',
+    errorNotConfigured: 'Сканування чеків не налаштоване на сервері. Додайте OCR_SPACE_API_KEY у .env або увімкніть явний fallback.',
     errorRateLimited: 'Занадто часто. Зачекайте кілька секунд і спробуйте ще раз.',
+    errorRateLimitedRetry: 'Повторіть спробу приблизно через {n} с.',
     errorTooLarge: 'Файл занадто великий. Зробіть фото з меншою якістю.',
     errorInvalid: 'Не вдалося прочитати фото. Сфотографуйте ще раз при кращому освітленні.',
     errorProvider: 'Сервіс розпізнавання тимчасово недоступний. Спробуйте пізніше.',
@@ -936,25 +964,39 @@ const ru: Dict = {
   },
   scan: {
     title: 'Сканер чека',
-    close: 'Закрити',
-    idleHint: 'Сфотографуйте паперовий чек — ми розпізнаємо магазин, суму і автоматично підкажемо категорію.',
-    takePhoto: 'Сфотографувати чек',
-    processing: 'Розпізнаємо чек…',
-    retake: 'Зробити ще одне фото',
-    confirmAndEdit: 'Перевірити та зберегти',
-    totalLabel: 'Сума чека',
-    noTotalFound: 'Сума не знайдена',
-    unknownShop: 'Магазин не визначено',
-    noDate: 'Дата не визначена',
-    itemsTitle: 'Позиції чека',
-    itemsMore: '+ ще {n} позицій',
-    errorNotConfigured: 'Сканування чеків поки не налаштоване на сервері. Додайте GOOGLE_CLOUD_VISION_API_KEY у .env.',
-    errorRateLimited: 'Занадто часто. Зачекайте кілька секунд і спробуйте ще раз.',
-    errorTooLarge: 'Файл занадто великий. Зробіть фото з меншою якістю.',
-    errorInvalid: 'Не вдалося прочитати фото. Сфотографуйте ще раз при кращому освітленні.',
-    errorProvider: 'Сервіс розпізнавання тимчасово недоступний. Спробуйте пізніше.',
-    errorNetwork: 'Немає з’єднання з сервером. Перевірте інтернет.',
-    errorUnknown: 'Щось пішло не так. Спробуйте ще раз.',
+    close: 'Закрыть',
+    idleHint: 'Сфотографируйте бумажный чек — мы распознаем магазин, сумму и автоматически подскажем категорию.',
+    takePhoto: 'Сфотографировать чек',
+    processing: 'Распознаём чек…',
+    retake: 'Сделать ещё одно фото',
+    confirmAndEdit: 'Проверить и сохранить',
+    saveConfirmed: 'Сохранить без изменений',
+    reviewAndEdit: 'Проверить вручную',
+    totalLabel: 'Сумма чека',
+    noTotalFound: 'Сумма не найдена',
+    unknownShop: 'Магазин не определён',
+    noDate: 'Дата не определена',
+    itemsTitle: 'Позиции чека',
+    itemsMore: '+ ещё {n} позиций',
+    reviewTitle: 'Нужна ручная проверка',
+    reviewHint: 'Часть данных распознана, но этот чек лучше проверить перед сохранением.',
+    reviewReasonNoText: 'OCR не смог уверенно прочитать текст чека.',
+    reviewReasonMissingTotal: 'Не удалось надёжно определить итоговую сумму.',
+    reviewReasonMissingShop: 'Магазин не удалось безопасно определить.',
+    reviewReasonCurrency: 'Валюта определена неуверенно или только эвристикой.',
+    reviewReasonPayment: 'Сумма была скорректирована по платёжной строке и требует проверки.',
+    reviewReasonManualCheck: 'В результате есть неочевидные признаки, которые лучше проверить вручную.',
+    ocrTextTitle: 'Распознанный текст',
+    selectPaymentAccount: 'Выберите счёт для списания',
+    errorAuth: 'Сессия авторизации потеряна. Откройте приложение из Telegram ещё раз.',
+    errorNotConfigured: 'Сканирование чеков не настроено на сервере. Добавьте OCR_SPACE_API_KEY в .env или включите явный fallback.',
+    errorRateLimited: 'Слишком часто. Подождите несколько секунд и попробуйте снова.',
+    errorRateLimitedRetry: 'Повторите попытку примерно через {n} с.',
+    errorTooLarge: 'Файл слишком большой. Сделайте фото с меньшим качеством.',
+    errorInvalid: 'Не удалось прочитать фото. Сфотографируйте ещё раз при лучшем освещении.',
+    errorProvider: 'Сервис распознавания временно недоступен. Попробуйте позже.',
+    errorNetwork: 'Нет соединения с сервером. Проверьте интернет.',
+    errorUnknown: 'Что-то пошло не так. Попробуйте ещё раз.',
   },
   stub: {
     title: 'Только через Telegram',
@@ -1256,26 +1298,40 @@ const en: Dict = {
     other_expense: 'Other',
   },
   scan: {
-    title: 'Сканер чека',
-    close: 'Закрити',
-    idleHint: 'Сфотографуйте паперовий чек — ми розпізнаємо магазин, суму і автоматично підкажемо категорію.',
-    takePhoto: 'Сфотографувати чек',
-    processing: 'Розпізнаємо чек…',
-    retake: 'Зробити ще одне фото',
-    confirmAndEdit: 'Перевірити та зберегти',
-    totalLabel: 'Сума чека',
-    noTotalFound: 'Сума не знайдена',
-    unknownShop: 'Магазин не визначено',
-    noDate: 'Дата не визначена',
-    itemsTitle: 'Позиції чека',
-    itemsMore: '+ ще {n} позицій',
-    errorNotConfigured: 'Сканування чеків поки не налаштоване на сервері. Додайте GOOGLE_CLOUD_VISION_API_KEY у .env.',
-    errorRateLimited: 'Занадто часто. Зачекайте кілька секунд і спробуйте ще раз.',
-    errorTooLarge: 'Файл занадто великий. Зробіть фото з меншою якістю.',
-    errorInvalid: 'Не вдалося прочитати фото. Сфотографуйте ще раз при кращому освітленні.',
-    errorProvider: 'Сервіс розпізнавання тимчасово недоступний. Спробуйте пізніше.',
-    errorNetwork: 'Немає з’єднання з сервером. Перевірте інтернет.',
-    errorUnknown: 'Щось пішло не так. Спробуйте ще раз.',
+    title: 'Receipt Scan',
+    close: 'Close',
+    idleHint: 'Take a photo of a paper receipt — we will detect the shop, total, and suggest a category.',
+    takePhoto: 'Take receipt photo',
+    processing: 'Reading receipt…',
+    retake: 'Take another photo',
+    confirmAndEdit: 'Review and save',
+    saveConfirmed: 'Save as scanned',
+    reviewAndEdit: 'Review manually',
+    totalLabel: 'Receipt total',
+    noTotalFound: 'Total not found',
+    unknownShop: 'Shop not detected',
+    noDate: 'Date not detected',
+    itemsTitle: 'Receipt items',
+    itemsMore: '+ {n} more items',
+    reviewTitle: 'Manual review required',
+    reviewHint: 'We parsed part of the receipt, but this result should be checked before saving.',
+    reviewReasonNoText: 'OCR could not confidently read the receipt text.',
+    reviewReasonMissingTotal: 'The final total could not be determined reliably.',
+    reviewReasonMissingShop: 'The merchant could not be identified safely.',
+    reviewReasonCurrency: 'The currency is uncertain or inferred heuristically.',
+    reviewReasonPayment: 'The total was adjusted using a payment line and should be verified.',
+    reviewReasonManualCheck: 'This result has ambiguous signals and should be checked manually.',
+    ocrTextTitle: 'Recognized text',
+    selectPaymentAccount: 'Select the account to debit',
+    errorAuth: 'Authorization expired. Open the app from Telegram again.',
+    errorNotConfigured: 'Receipt OCR is not configured on the server. Add OCR_SPACE_API_KEY in .env or enable an explicit fallback.',
+    errorRateLimited: 'Too many attempts. Wait a few seconds and try again.',
+    errorRateLimitedRetry: 'Try again in about {n} s.',
+    errorTooLarge: 'The file is too large. Retake the photo with lower quality.',
+    errorInvalid: 'The photo could not be read. Try again with better lighting.',
+    errorProvider: 'The recognition service is temporarily unavailable. Try again later.',
+    errorNetwork: 'No connection to the server. Check your internet.',
+    errorUnknown: 'Something went wrong. Try again.',
   },
   stub: {
     title: 'Telegram only',

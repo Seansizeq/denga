@@ -18,7 +18,7 @@ import type { TransactionType } from '../types';
 import {
   ACCOUNT_NOTE_KEYS,
   getAccountSlugFromNote,
-  mergeAccountIntoNote,
+  mergeAccountIntoNoteLimited,
   stripAccountFromNote,
   type AccountNoteKey,
 } from '../utils/transactionAccount';
@@ -57,6 +57,7 @@ const AddTransaction: React.FC = () => {
   const prefillAmountRaw = !isEditing ? searchParams.get('amount')?.trim() ?? '' : '';
   const prefillCurrencyRaw = !isEditing ? searchParams.get('currency') ?? '' : '';
   const prefillCategoryRaw = !isEditing ? searchParams.get('categoryId')?.trim() ?? '' : '';
+  const prefillDateRaw = !isEditing ? searchParams.get('date')?.trim() ?? '' : '';
   const prefillNoteRaw = !isEditing ? (searchParams.get('note') ?? '').slice(0, 120) : '';
 
   const [amount, setAmount] = useState(() => {
@@ -73,6 +74,12 @@ const AddTransaction: React.FC = () => {
     return normalizeCurrency(undefined);
   });
   const [type, setType] = useState<TransactionType>(initialType);
+  const [date, setDate] = useState(() => {
+    const fromEdit = editingTransaction?.date?.slice(0, 10);
+    if (fromEdit && /^\d{4}-\d{2}-\d{2}$/.test(fromEdit)) return fromEdit;
+    if (prefillDateRaw && /^\d{4}-\d{2}-\d{2}$/.test(prefillDateRaw)) return prefillDateRaw;
+    return new Date().toISOString().slice(0, 10);
+  });
   const [categoryId, setCategoryId] = useState(() => {
     if (editingTransaction) return editingTransaction.categoryId;
     if (prefillCategoryRaw) return prefillCategoryRaw;
@@ -209,6 +216,7 @@ const AddTransaction: React.FC = () => {
     setAmount(String(tx.amount));
     setCurrency(normalizeCurrency(tx.currency));
     setType(tx.type);
+    setDate(tx.date.slice(0, 10));
     setCategoryId(tx.categoryId);
     setPaymentAccount(getAccountSlugFromNote(tx.note) ?? '');
     setNote(stripAccountFromNote(tx.note ?? ''));
@@ -224,12 +232,13 @@ const AddTransaction: React.FC = () => {
     setSaveError('');
     const numAmount = parseFloat(amount.replace(',', '.'));
     if (!numAmount || numAmount <= 0) return;
-    const mergedNote = mergeAccountIntoNote(note.trim(), paymentAccount, allowedPaymentKeys);
+    const mergedNote = mergeAccountIntoNoteLimited(note.trim(), paymentAccount, allowedPaymentKeys);
     const payload = {
       amount: numAmount,
       currency,
       type,
       categoryId,
+      date,
       note: mergedNote || undefined,
     };
     const ok = isEditing && editId ? await updateTransaction(editId, payload) : await addTransaction(payload);
@@ -594,6 +603,16 @@ const AddTransaction: React.FC = () => {
             </div>
           </div>
         ) : null}
+      </section>
+
+      <section className={styles.noteSection}>
+        <h3 className={styles.sectionTitle}>{t('goals', 'contributionDate')}</h3>
+        <input
+          type="date"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+          className={styles.noteInput}
+        />
       </section>
 
       <section className={styles.noteSection}>
