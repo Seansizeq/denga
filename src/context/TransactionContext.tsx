@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import type { Transaction, Balance, TransactionDraft } from '../types';
 import { apiFetch } from '../api/client';
 import { normalizeCurrency } from '../utils/currency';
@@ -9,15 +9,27 @@ interface TransactionContextType {
   updateTransaction: (id: string, transaction: TransactionDraft) => Promise<boolean>;
   deleteTransaction: (id: string) => Promise<boolean>;
   balance: Balance;
+  isBootstrapping: boolean;
 }
 
 const TransactionContext = createContext<TransactionContextType | undefined>(undefined);
 
-export const TransactionProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const TransactionProvider: React.FC<{
+  children: React.ReactNode;
+  onReady?: () => void;
+}> = ({ children, onReady }) => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [balance, setBalance] = useState<Balance>({ total: 0, income: 0, expense: 0 });
+  const [isBootstrapping, setIsBootstrapping] = useState(true);
+  const readyNotifiedRef = useRef(false);
 
-  const fetchTransactions = async () => {
+  const notifyReady = useCallback(() => {
+    if (readyNotifiedRef.current) return;
+    readyNotifiedRef.current = true;
+    onReady?.();
+  }, [onReady]);
+
+  const fetchTransactions = useCallback(async ({ initial = false }: { initial?: boolean } = {}) => {
     try {
       const response = await apiFetch('/api/transactions');
       if (!response.ok) return;
@@ -31,8 +43,13 @@ export const TransactionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setTransactions(normalized);
     } catch (error) {
       console.error('Error fetching transactions:', error);
+    } finally {
+      if (initial) {
+        setIsBootstrapping(false);
+        notifyReady();
+      }
     }
-  };
+  }, [notifyReady]);
 
   const tryParseJson = async (response: Response) => {
     try {
@@ -43,11 +60,13 @@ export const TransactionProvider: React.FC<{ children: React.ReactNode }> = ({ c
   };
 
   useEffect(() => {
-    fetchTransactions();
+    void fetchTransactions({ initial: true });
     // Poll for changes from the bot every 5 seconds
-    const interval = setInterval(fetchTransactions, 5000);
+    const interval = window.setInterval(() => {
+      void fetchTransactions();
+    }, 5000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchTransactions]);
 
   useEffect(() => {
     const income = transactions
@@ -137,7 +156,9 @@ export const TransactionProvider: React.FC<{ children: React.ReactNode }> = ({ c
   };
 
   return (
-    <TransactionContext.Provider value={{ transactions, addTransaction, updateTransaction, deleteTransaction, balance }}>
+    <TransactionContext.Provider
+      value={{ transactions, addTransaction, updateTransaction, deleteTransaction, balance, isBootstrapping }}
+    >
       {children}
     </TransactionContext.Provider>
   );

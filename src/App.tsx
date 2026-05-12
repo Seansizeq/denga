@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import SplashScreen from './components/SplashScreen';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { TransactionProvider } from './context/TransactionContext';
@@ -89,11 +89,11 @@ const isInsideTelegram = (): boolean => {
   return false;
 };
 
-const TelegramApp: React.FC = () => {
+const TelegramApp: React.FC<{ onReady: () => void }> = ({ onReady }) => {
   useTelegramFullscreen();
 
   return (
-    <TransactionProvider>
+    <TransactionProvider onReady={onReady}>
       <Router>
         <div className="app-content">
           <Routes>
@@ -119,7 +119,8 @@ const TelegramApp: React.FC = () => {
 
 function App() {
   const [isTelegram, setIsTelegram] = useState<boolean | null>(null);
-  const [splashDone, setSplashDone] = useState(false);
+  const [appReady, setAppReady] = useState(false);
+  const [showSplash, setShowSplash] = useState(true);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -134,7 +135,6 @@ function App() {
     const tg = tgWindow.Telegram?.WebApp;
     if (isInsideTelegram()) {
       tg?.expand?.();
-      tg?.ready?.();
       tg?.disableVerticalSwipes?.();
       setIsTelegram(true);
     } else {
@@ -142,18 +142,33 @@ function App() {
     }
   }, []);
 
-  const handleSplashFinished = useCallback(() => setSplashDone(true), []);
+  useEffect(() => {
+    if (isTelegram === false) {
+      setAppReady(true);
+    }
+  }, [isTelegram]);
 
-  /* Show splash while checking Telegram OR while splash animation is still playing */
-  if (isTelegram === null || !splashDone) {
-    return <SplashScreen onFinished={handleSplashFinished} />;
-  }
+  useEffect(() => {
+    if (!appReady || isTelegram !== true) return;
+    const tgWindow = window as Window & TelegramWindow;
+    tgWindow.Telegram?.WebApp?.ready?.();
+  }, [appReady, isTelegram]);
 
-  if (!isTelegram) {
-    return <BrowserStub />;
-  }
+  const handleAppReady = useCallback(() => setAppReady(true), []);
+  const handleSplashHidden = useCallback(() => setShowSplash(false), []);
 
-  return <TelegramApp />;
+  return (
+    <>
+      {isTelegram === false ? <BrowserStub /> : null}
+      {isTelegram === true ? <TelegramApp onReady={handleAppReady} /> : null}
+      {showSplash ? (
+        <SplashScreen
+          isReady={isTelegram !== null && appReady}
+          onHidden={handleSplashHidden}
+        />
+      ) : null}
+    </>
+  );
 }
 
 export default App;

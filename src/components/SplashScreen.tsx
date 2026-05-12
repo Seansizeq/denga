@@ -1,27 +1,39 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import styles from './SplashScreen.module.css';
 
 interface SplashScreenProps {
-  onFinished: () => void;
+  isReady: boolean;
+  onHidden?: () => void;
+  exitDelayMs?: number;
 }
 
-const SplashScreen: React.FC<SplashScreenProps> = ({ onFinished }) => {
+const HIDE_DURATION_MS = 450;
+
+const SplashScreen: React.FC<SplashScreenProps> = ({
+  isReady,
+  onHidden,
+  exitDelayMs = 120,
+}) => {
   const [hiding, setHiding] = useState(false);
+  const hideTriggeredRef = useRef(false);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setHiding(true);
-    }, 1400);
+    if (!isReady || hideTriggeredRef.current) return;
+    hideTriggeredRef.current = true;
 
-    const removeTimer = setTimeout(() => {
-      onFinished();
-    }, 1900);
+    const timer = window.setTimeout(() => {
+      setHiding(true);
+    }, exitDelayMs);
+
+    const removeTimer = window.setTimeout(() => {
+      onHidden?.();
+    }, exitDelayMs + HIDE_DURATION_MS);
 
     return () => {
-      clearTimeout(timer);
-      clearTimeout(removeTimer);
+      window.clearTimeout(timer);
+      window.clearTimeout(removeTimer);
     };
-  }, [onFinished]);
+  }, [exitDelayMs, isReady, onHidden]);
 
   return (
     <div className={`${styles.splash} ${hiding ? styles.hide : ''}`}>
