@@ -38,6 +38,9 @@ export const TransactionProvider: React.FC<{
         ? data.map((row) => ({
             ...row,
             currency: normalizeCurrency((row as { currency?: string }).currency),
+            transferToCurrency: (row as { transferToCurrency?: string }).transferToCurrency
+              ? normalizeCurrency((row as { transferToCurrency?: string }).transferToCurrency)
+              : undefined,
           }))
         : [];
       setTransactions(normalized);
@@ -98,6 +101,9 @@ export const TransactionProvider: React.FC<{
           {
             ...(newTransaction as Transaction),
             currency: normalizeCurrency((newTransaction as { currency?: string }).currency),
+            transferToCurrency: (newTransaction as { transferToCurrency?: string }).transferToCurrency
+              ? normalizeCurrency((newTransaction as { transferToCurrency?: string }).transferToCurrency)
+              : undefined,
           },
           ...prev,
         ]);
@@ -141,6 +147,9 @@ export const TransactionProvider: React.FC<{
               ? {
                   ...(updated as Transaction),
                   currency: normalizeCurrency((updated as { currency?: string }).currency),
+                  transferToCurrency: (updated as { transferToCurrency?: string }).transferToCurrency
+                    ? normalizeCurrency((updated as { transferToCurrency?: string }).transferToCurrency)
+                    : undefined,
                 }
               : tx
           )

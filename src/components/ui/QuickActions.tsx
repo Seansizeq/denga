@@ -58,6 +58,7 @@ const QuickActions: React.FC = () => {
           type="button"
           className={`${styles.item} ${styles[tone]}`}
           onClick={onPress}
+          aria-label={labelKey}
         >
           <span className={styles.circle}>
             <Icon size={24} strokeWidth={1.5} />

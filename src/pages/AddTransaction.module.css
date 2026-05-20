@@ -99,6 +99,12 @@
   gap: 4px;
 }
 
+.transferAmounts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .amountInput {
   border: none;
   background: none;
@@ -131,6 +137,26 @@
 
 .paymentSection {
   margin-bottom: 28px;
+}
+
+.transferGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.transferField {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.transferLabel {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  font-weight: 600;
 }
 
 .paymentHint {

@@ -30,10 +30,14 @@ export async function initDb() {
       user_id TEXT NOT NULL DEFAULT '',
       amount REAL NOT NULL,
       currency TEXT NOT NULL DEFAULT 'UAH',
+      transferToAmount REAL,
+      transferToCurrency TEXT,
       categoryId TEXT NOT NULL,
       type TEXT NOT NULL,
       date TEXT NOT NULL,
       note TEXT,
+      fromAccountKey TEXT,
+      toAccountKey TEXT,
       telegram_user_id INTEGER
     )
   `);
@@ -223,6 +227,20 @@ export async function initDb() {
   `);
 
   await db.exec(`
+    CREATE TABLE IF NOT EXISTS planner_user_settings (
+      user_id TEXT PRIMARY KEY,
+      default_shift_template_id TEXT,
+      automation_token TEXT,
+      updated_at TEXT NOT NULL
+    )
+  `);
+  try {
+    await db.exec(`ALTER TABLE planner_user_settings ADD COLUMN automation_token TEXT`);
+  } catch {
+    /* already exists */
+  }
+
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS planner_shift_templates (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL DEFAULT '',
@@ -282,6 +300,26 @@ export async function initDb() {
   }
   try {
     await db.exec(`ALTER TABLE transactions ADD COLUMN currency TEXT NOT NULL DEFAULT 'UAH'`);
+  } catch {
+    /* already exists */
+  }
+  try {
+    await db.exec(`ALTER TABLE transactions ADD COLUMN transferToAmount REAL`);
+  } catch {
+    /* already exists */
+  }
+  try {
+    await db.exec(`ALTER TABLE transactions ADD COLUMN transferToCurrency TEXT`);
+  } catch {
+    /* already exists */
+  }
+  try {
+    await db.exec(`ALTER TABLE transactions ADD COLUMN fromAccountKey TEXT`);
+  } catch {
+    /* already exists */
+  }
+  try {
+    await db.exec(`ALTER TABLE transactions ADD COLUMN toAccountKey TEXT`);
   } catch {
     /* already exists */
   }

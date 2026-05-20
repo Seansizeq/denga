@@ -2,7 +2,14 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from '../i18n/LanguageContext';
 import { formatPlannerMoney, type PlannerCurrency } from '../utils/formatters';
 import type { RangeFilter } from '../components/ui/RecentTransactions';
-import { apiFetch } from '../api/client';
+import {
+  apiFetch,
+  getPlannerAutomation,
+  getPlannerSettings,
+  rotatePlannerAutomationToken,
+  updatePlannerSettings,
+  type PlannerAutomation,
+} from '../api/client';
 import { buildPastDays, isWithinLastDays } from '../utils/dateRanges';
 import styles from './CalendarPlanner.module.css';
 
@@ -182,6 +189,10 @@ const CalendarPlanner: React.FC = () => {
   const [endTime, setEndTime] = useState('17:00');
   const [, setVvRev] = useState(0);
   const [shiftTemplates, setShiftTemplates] = useState<ShiftTemplate[]>([]);
+  const [defaultShiftTemplateId, setDefaultShiftTemplateId] = useState<string | null>(null);
+  const [plannerSettingsSaving, setPlannerSettingsSaving] = useState(false);
+  const [automation, setAutomation] = useState<PlannerAutomation | null>(null);
+  const [automationLoading, setAutomationLoading] = useState(false);
   const [salaryRateInput, setSalaryRateInput] = useState('');
   const [salaryAmountInput, setSalaryAmountInput] = useState('');
   const [salaryCurrency, setSalaryCurrency] = useState<PlannerCurrency>('UAH');
@@ -450,6 +461,76 @@ const CalendarPlanner: React.FC = () => {
   useEffect(() => {
     void loadShiftTemplates();
   }, []);
+
+  const loadPlannerSettings = async () => {
+    try {
+      const settings = await getPlannerSettings();
+      setDefaultShiftTemplateId(settings.defaultShiftTemplateId ?? null);
+    } catch (error) {
+      console.error('Failed to load planner settings:', error);
+    }
+  };
+
+  useEffect(() => {
+    void loadPlannerSettings();
+  }, []);
+
+  const loadPlannerAutomation = async () => {
+    setAutomationLoading(true);
+    try {
+      const data = await getPlannerAutomation();
+      setAutomation(data);
+    } catch (error) {
+      console.error('Failed to load planner automation:', error);
+    } finally {
+      setAutomationLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadPlannerAutomation();
+  }, []);
+
+  const copyAutomationUrl = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const persistDefaultShiftTemplate = async (value: string) => {
+    setPlannerSettingsSaving(true);
+    try {
+      const next =
+        value === ''
+          ? null
+          : value === 'none'
+            ? 'none'
+            : value;
+      const settings = await updatePlannerSettings({ defaultShiftTemplateId: next });
+      setDefaultShiftTemplateId(settings.defaultShiftTemplateId ?? null);
+    } catch (error) {
+      console.error('Failed to save default shift template:', error);
+    } finally {
+      setPlannerSettingsSaving(false);
+    }
+  };
+
+  const resolveDefaultStartTemplate = (): ShiftTemplate | null | undefined => {
+    if (!defaultShiftTemplateId) return undefined;
+    if (defaultShiftTemplateId === 'none') return null;
+    return shiftTemplates.find((tpl) => tpl.id === defaultShiftTemplateId) ?? undefined;
+  };
+
+  const openStartShiftFlow = () => {
+    const preset = resolveDefaultStartTemplate();
+    if (preset === undefined) {
+      setStartShiftChooserOpen(true);
+      return;
+    }
+    void handleStartShift(preset);
+  };
 
   const loadDayShiftEntries = useCallback(async (dayIso: string) => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dayIso)) {
@@ -821,11 +902,89 @@ const CalendarPlanner: React.FC = () => {
             type="button"
             className={styles.startShiftBtn}
             disabled={activeShiftLoading}
-            onClick={() => setStartShiftChooserOpen(true)}
+            onClick={openStartShiftFlow}
           >
             {activeShiftLoading ? '...' : t('planner', 'startShift')}
           </button>
         )}
+
+        <div className={styles.defaultTemplateCard}>
+          <label className={styles.defaultTemplateLabel} htmlFor="default-shift-template">
+            {t('planner', 'defaultShiftTemplate')}
+          </label>
+          <select
+            id="default-shift-template"
+            className={styles.defaultTemplateSelect}
+            disabled={plannerSettingsSaving}
+            value={defaultShiftTemplateId ?? ''}
+            onChange={(e) => void persistDefaultShiftTemplate(e.target.value)}
+          >
+            <option value="">{t('planner', 'defaultShiftTemplateAsk')}</option>
+            <option value="none">{t('planner', 'defaultShiftTemplateWithout')}</option>
+            {shiftTemplates.map((tpl) => {
+              const label =
+                tpl.name.trim() && tpl.symbol.trim()
+                  ? `${tpl.name.trim()} · ${tpl.symbol.trim()}`
+                  : tpl.name.trim() || tpl.symbol.trim() || tpl.id;
+              return (
+                <option key={tpl.id} value={tpl.id}>
+                  {label}
+                </option>
+              );
+            })}
+          </select>
+          <p className={styles.defaultTemplateHint}>{t('planner', 'defaultShiftTemplateHint')}</p>
+        </div>
+
+        <div className={styles.defaultTemplateCard}>
+          <p className={styles.defaultTemplateLabel}>{t('planner', 'shortcutsTitle')}</p>
+          <p className={styles.defaultTemplateHint}>{t('planner', 'shortcutsHint')}</p>
+          {automationLoading && !automation ? (
+            <p className={styles.defaultTemplateHint}>{t('planner', 'loading')}</p>
+          ) : automation ? (
+            <>
+              <div className={styles.shortcutUrlRow}>
+                <span className={styles.shortcutUrlLabel}>{t('planner', 'shortcutsStartUrl')}</span>
+                <button
+                  type="button"
+                  className={styles.shortcutCopyBtn}
+                  onClick={() => void copyAutomationUrl(automation.startUrl)}
+                >
+                  {t('planner', 'shortcutsCopyUrl')}
+                </button>
+              </div>
+              <code className={styles.shortcutUrlCode}>{automation.startUrl}</code>
+              <div className={styles.shortcutUrlRow}>
+                <span className={styles.shortcutUrlLabel}>{t('planner', 'shortcutsEndUrl')}</span>
+                <button
+                  type="button"
+                  className={styles.shortcutCopyBtn}
+                  onClick={() => void copyAutomationUrl(automation.endUrl)}
+                >
+                  {t('planner', 'shortcutsCopyUrl')}
+                </button>
+              </div>
+              <code className={styles.shortcutUrlCode}>{automation.endUrl}</code>
+              <button
+                type="button"
+                className={styles.shortcutRotateBtn}
+                disabled={automationLoading}
+                onClick={async () => {
+                  setAutomationLoading(true);
+                  try {
+                    setAutomation(await rotatePlannerAutomationToken());
+                  } catch (error) {
+                    console.error('Failed to rotate automation token:', error);
+                  } finally {
+                    setAutomationLoading(false);
+                  }
+                }}
+              >
+                {t('planner', 'shortcutsRotateToken')}
+              </button>
+            </>
+          ) : null}
+        </div>
 
         <div className={styles.reportCard}>
           <div className={styles.reportHeader}>

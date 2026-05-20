@@ -4,7 +4,7 @@ export interface CategoryDef {
   id: CategoryKey;
   icon: string;
   color: string;
-  type: 'income' | 'expense';
+  type: 'income' | 'expense' | 'transfer';
 }
 
 export const CATEGORIES: CategoryDef[] = [
@@ -14,6 +14,7 @@ export const CATEGORIES: CategoryDef[] = [
   { id: 'entertainment', icon: 'Gamepad2', color: '#AF52DE', type: 'expense' },
   { id: 'health', icon: 'Pill', color: '#FF2D55', type: 'expense' },
   { id: 'other_expense', icon: 'Receipt', color: '#8E8E93', type: 'expense' },
+  { id: 'transfer', icon: 'ArrowRightLeft', color: '#5AC8FA', type: 'transfer' },
 
   { id: 'salary', icon: 'Wallet', color: '#32D74B', type: 'income' },
   { id: 'other_income', icon: 'Coins', color: '#30B0C7', type: 'income' },

@@ -20,6 +20,10 @@ export interface TelegramWebApp {
   disableVerticalSwipes?: () => void;
   requestFullscreen?: () => void;
   exitFullscreen?: () => void;
+  showAlert?: (message: string) => Promise<void>;
+  HapticFeedback?: {
+    impactOccurred?: (style: 'light' | 'medium' | 'heavy' | 'rigid' | 'soft') => void;
+  };
   onEvent?: (event: string, cb: () => void) => void;
   offEvent?: (event: string, cb: () => void) => void;
 }

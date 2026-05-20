@@ -54,7 +54,6 @@ vi.mock('../i18n/LanguageContext', () => ({
         'scan.totalLabel': 'Сума чека',
         'scan.noTotalFound': 'Сума не знайдена',
         'scan.unknownShop': 'Магазин не визначено',
-        'scan.noDate': 'Дата не визначена',
         'scan.itemsTitle': 'Позиції чека',
         'scan.itemsMore': '+ ще {n} позицій',
         'scan.reviewTitle': 'Потрібна ручна перевірка',
@@ -68,6 +67,8 @@ vi.mock('../i18n/LanguageContext', () => ({
         'addTx.category': 'Категорія',
         'addTx.paymentAccount': 'Рахунок',
         'addTx.paymentAccountHint': 'hint',
+        'addTx.note': 'Нотатка',
+        'addTx.notePlaceholder': 'Додайте примітку',
         'addTx.save': 'Зберегти',
         'addTx.saveFailed': 'Не вдалося зберегти. Перевір з’єднання і спробуй ще раз.',
         'history.edit': 'Редагувати',
@@ -156,7 +157,7 @@ describe('ScanReceipt', () => {
 
     expect(await screen.findByText('Не вдалося зберегти. Перевір з’єднання і спробуй ще раз.')).toBeTruthy();
     await waitFor(() => {
-      expect(screen.getByText('АТБ')).toBeTruthy();
+      expect(screen.getByDisplayValue('АТБ')).toBeTruthy();
     });
   });
 });

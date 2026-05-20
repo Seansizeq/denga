@@ -7,6 +7,7 @@ import { formatCurrency, formatDate } from '../../utils/formatters';
 import { useTranslation } from '../../i18n/LanguageContext';
 import type { CategoryKey } from '../../i18n/translations';
 import { stripAccountFromNote } from '../../utils/transactionAccount';
+import { getTransferSummaryLabel } from '../../utils/transactionUtils';
 import styles from './TransactionItem.module.css';
 
 const iconRegistry = LucideIcons as unknown as Record<string, React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>>;
@@ -42,11 +43,21 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onDelete
 
   const categoryName = customCategory?.name ?? t('categories', category.id as CategoryKey);
   const cleanNote = stripAccountFromNote(transaction.note?.trim() ?? '');
-  const subtitle = cleanNote || formatDate(transaction.date, locale);
+  const transferSummary = getTransferSummaryLabel(transaction);
+  const subtitle = cleanNote || transferSummary || formatDate(transaction.date, locale);
   const isIncome = transaction.type === 'income';
+  const isTransfer = transaction.type === 'transfer';
   const txCurrency = transaction.currency;
   const displayAmount = convertAmount(transaction.amount, txCurrency);
   const showEquivalent = txCurrency !== displayCurrency;
+  const destinationAmount =
+    transaction.transferToAmount && transaction.transferToAmount > 0
+      ? transaction.transferToAmount
+      : transaction.amount;
+  const destinationCurrency = transaction.transferToCurrency ?? txCurrency;
+  const amountLabel = isTransfer
+    ? `${formatCurrency(transaction.amount, locale, txCurrency)} -> ${formatCurrency(destinationAmount, locale, destinationCurrency)}`
+    : `${isIncome ? '+' : '−'}${formatCurrency(transaction.amount, locale, txCurrency)}`;
 
   return (
     <div
@@ -63,11 +74,10 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onDelete
 
       <div className={styles.right}>
         <span
-          className={`${styles.amount} ${isIncome ? styles.income : styles.expense}`}
+          className={`${styles.amount} ${isTransfer ? '' : isIncome ? styles.income : styles.expense}`}
         >
-          {isIncome ? '+' : '−'}
-          {formatCurrency(transaction.amount, locale, txCurrency)}
-          {showEquivalent ? (
+          {amountLabel}
+          {!isTransfer && showEquivalent ? (
             <span className={styles.subtitle}>
               {` (${formatCurrency(displayAmount, locale, displayCurrency)})`}
             </span>

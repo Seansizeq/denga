@@ -171,6 +171,42 @@
   gap: 14px;
 }
 
+.insightsGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.insightCard {
+  background: linear-gradient(160deg, rgba(24, 23, 39, 0.98) 0%, rgba(18, 17, 31, 0.98) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 18px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.insightTitle {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-tertiary);
+  font-weight: 700;
+}
+
+.insightValue {
+  font-size: 18px;
+  line-height: 1.15;
+  color: var(--text-primary);
+}
+
+.insightMeta {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
 .sectionTitle {
   font-size: 16px;
   font-weight: 600;

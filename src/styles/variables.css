@@ -97,6 +97,14 @@ button {
   font-family: inherit;
 }
 
+input,
+textarea,
+select,
+option,
+[contenteditable='true'] {
+  user-select: text;
+}
+
 ::-webkit-scrollbar {
   width: 0px;
   background: transparent;

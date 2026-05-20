@@ -34,6 +34,9 @@ const History: React.FC = () => {
   return (
     <div className={styles.container}>
       <header className={styles.header}>
+        <button type="button" className={styles.back} onClick={() => navigate('/')}>
+          ← {t('history', 'back')}
+        </button>
         <h1 className={styles.title}>{t('history', 'title')}</h1>
       </header>
 

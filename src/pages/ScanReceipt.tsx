@@ -49,6 +49,10 @@ const ScanReceipt: React.FC = () => {
   const [selectedCategoryId, setSelectedCategoryId] = useState('other_expense');
   const [portfolioAccounts, setPortfolioAccounts] = useState<Array<{ key: string; name: string }>>([]);
   const [paymentAccount, setPaymentAccount] = useState('');
+  const [draftShop, setDraftShop] = useState('');
+  const [draftTotal, setDraftTotal] = useState('');
+  const [draftDate, setDraftDate] = useState('');
+  const [draftNote, setDraftNote] = useState('');
 
   const allowedPaymentKeys = useMemo(() => {
     const s = new Set<string>([...ACCOUNT_NOTE_KEYS]);
@@ -169,7 +173,8 @@ const ScanReceipt: React.FC = () => {
 
   const buildScannedNote = (r: ScannedReceipt): string => {
     const noteParts: string[] = [];
-    if (r.shop) noteParts.push(r.shop);
+    if (draftShop.trim()) noteParts.push(draftShop.trim());
+    else if (r.shop) noteParts.push(r.shop);
     if (r.items.length > 0) {
       const itemsBrief = r.items
         .slice(0, 3)
@@ -177,7 +182,8 @@ const ScanReceipt: React.FC = () => {
         .join(', ');
       if (itemsBrief) noteParts.push(itemsBrief);
     }
-    return noteParts.join(' • ').slice(0, 120);
+    const autoNote = noteParts.join(' • ').slice(0, 120);
+    return draftNote.trim() || autoNote;
   };
 
   const reviewReasons = (r: ScannedReceipt): string[] => {
@@ -204,18 +210,37 @@ const ScanReceipt: React.FC = () => {
     return reasons;
   };
 
+  useEffect(() => {
+    if (!receipt) {
+      setDraftShop('');
+      setDraftTotal('');
+      setDraftDate('');
+      setDraftNote('');
+      return;
+    }
+    setDraftShop(receipt.shop ?? '');
+    setDraftTotal(receipt.total != null && receipt.total > 0 ? String(receipt.total) : '');
+    setDraftDate(receipt.date ?? '');
+    setDraftNote('');
+  }, [receipt]);
+
+  const parsedDraftTotal = useMemo(() => {
+    const value = Number.parseFloat(draftTotal.replace(',', '.'));
+    return Number.isFinite(value) && value > 0 ? value : null;
+  }, [draftTotal]);
+
   const saveScannedTransaction = async () => {
-    if (!receipt || receipt.total == null || receipt.total <= 0 || saving) return;
+    if (!receipt || parsedDraftTotal == null || saving) return;
     if (!paymentAccount) return;
     setSaving(true);
     setSaveErrorMessage('');
     const note = mergeAccountIntoNoteLimited(buildScannedNote(receipt), paymentAccount, allowedPaymentKeys);
     const ok = await addTransaction({
-      amount: receipt.total,
+      amount: parsedDraftTotal,
       currency: receipt.currency,
       type: 'expense',
       categoryId: selectedCategoryId,
-      date: receipt.date ?? undefined,
+      date: draftDate || undefined,
       note: note || undefined,
     });
     setSaving(false);
@@ -230,9 +255,9 @@ const ScanReceipt: React.FC = () => {
     if (!receipt) return;
     const params = new URLSearchParams();
     params.set('type', 'expense');
-    if (receipt.total != null && receipt.total > 0) params.set('amount', String(receipt.total));
+    if (parsedDraftTotal != null) params.set('amount', String(parsedDraftTotal));
     if (receipt.currency) params.set('currency', receipt.currency);
-    if (receipt.date) params.set('date', receipt.date);
+    if (draftDate) params.set('date', draftDate);
     if (selectedCategoryId) params.set('categoryId', selectedCategoryId);
     else if (receipt.categoryId) params.set('categoryId', receipt.categoryId);
     const note = mergeAccountIntoNoteLimited(buildScannedNote(receipt), paymentAccount, allowedPaymentKeys);
@@ -294,10 +319,8 @@ const ScanReceipt: React.FC = () => {
 
   const canDirectSave = Boolean(
     receipt &&
-      receipt.reviewRequired === false &&
       paymentAccount &&
-      receipt.total != null &&
-      receipt.total > 0
+      parsedDraftTotal != null
   );
 
   return (
@@ -382,23 +405,33 @@ const ScanReceipt: React.FC = () => {
           <div className={styles.thumbRow}>
             {previewUrl ? <img src={previewUrl} alt="" className={styles.thumb} /> : null}
             <div className={styles.shopBlock}>
-              <h3 className={styles.shopName}>
-                {receipt.shop ?? t('scan', 'unknownShop')}
-              </h3>
-              <p className={styles.shopMeta}>
-                {receipt.date ?? t('scan', 'noDate')}
-              </p>
+              <input
+                type="text"
+                value={draftShop}
+                onChange={(e) => setDraftShop(e.target.value)}
+                className={styles.shopInput}
+                placeholder={t('scan', 'unknownShop')}
+              />
+              <input
+                type="date"
+                value={draftDate}
+                onChange={(e) => setDraftDate(e.target.value)}
+                className={styles.shopDateInput}
+              />
             </div>
           </div>
 
           <div className={styles.totalCard}>
             <div>
               <p className={styles.totalLabel}>{t('scan', 'totalLabel')}</p>
-              <p className={styles.totalValue}>
-                {receipt.total != null
-                  ? formatCurrency(receipt.total, locale, receipt.currency)
-                  : t('scan', 'noTotalFound')}
-              </p>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={draftTotal}
+                onChange={(e) => setDraftTotal(e.target.value.replace(/[^0-9.,]/g, ''))}
+                className={styles.totalInput}
+                placeholder={t('scan', 'noTotalFound')}
+              />
             </div>
             <span className={styles.currencyChip}>{receipt.currency}</span>
           </div>
@@ -437,6 +470,18 @@ const ScanReceipt: React.FC = () => {
             </div>
           </section>
 
+          <section className={styles.paymentSection} aria-label={t('addTx', 'note')}>
+            <h3 className={styles.sectionTitle}>{t('addTx', 'note')}</h3>
+            <input
+              type="text"
+              value={draftNote}
+              onChange={(e) => setDraftNote(e.target.value)}
+              className={styles.noteInput}
+              placeholder={t('addTx', 'notePlaceholder')}
+              maxLength={120}
+            />
+          </section>
+
           {receipt.items.length > 0 ? (
             <div className={styles.itemsCard}>
               <p className={styles.itemsTitle}>{t('scan', 'itemsTitle')}</p>
@@ -473,25 +518,19 @@ const ScanReceipt: React.FC = () => {
             <button
               type="button"
               className={styles.primaryBtn}
-              onClick={view === 'review' ? openEditWithPrefill : () => void saveScannedTransaction()}
-              disabled={view === 'result' ? !canDirectSave || saving : false}
+              onClick={() => void saveScannedTransaction()}
+              disabled={!canDirectSave || saving}
             >
-              {view === 'review'
-                ? t('scan', 'reviewAndEdit')
-                : saving
-                  ? t('addTx', 'save')
-                  : t('scan', 'saveConfirmed')}
+              {saving ? t('addTx', 'save') : t('scan', 'saveConfirmed')}
             </button>
-            {!paymentAccount && view === 'result' ? (
+            {!paymentAccount || parsedDraftTotal == null ? (
               <p className={styles.requiredHint} role="alert">
-                {t('scan', 'selectPaymentAccount')}
+                {!paymentAccount ? t('scan', 'selectPaymentAccount') : t('scan', 'noTotalFound')}
               </p>
             ) : null}
-            {view === 'result' ? (
-              <button type="button" className={styles.secondaryBtn} onClick={openEditWithPrefill}>
-                {t('history', 'edit')}
-              </button>
-            ) : null}
+            <button type="button" className={styles.secondaryBtn} onClick={openEditWithPrefill}>
+              {view === 'review' ? t('scan', 'reviewAndEdit') : t('history', 'edit')}
+            </button>
             <button type="button" className={styles.secondaryBtn} onClick={triggerCamera}>
               {t('scan', 'retake')}
             </button>

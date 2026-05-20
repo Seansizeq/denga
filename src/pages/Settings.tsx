@@ -16,6 +16,7 @@ import {
   type Reminder,
   type ReminderKind,
 } from '../api/client';
+import { hapticLight, showAppAlert } from '../utils/notify';
 import styles from './Settings.module.css';
 
 const APP_VERSION = (import.meta.env.VITE_APP_VERSION as string | undefined) ?? 'dev';
@@ -97,6 +98,30 @@ const Settings: React.FC = () => {
       setLoadingAutomation(false);
     }
   };
+
+  const handleSendWeeklyReport = useCallback(async () => {
+    setLoadingAutomation(true);
+    try {
+      await sendWeeklyReportNow();
+      hapticLight();
+    } catch {
+      showAppAlert(t('settings', 'reportSendFailed'));
+    } finally {
+      setLoadingAutomation(false);
+    }
+  }, [t]);
+
+  const handleSendMonthlyReport = useCallback(async () => {
+    setLoadingAutomation(true);
+    try {
+      await sendMonthlyReportNow();
+      hapticLight();
+    } catch {
+      showAppAlert(t('settings', 'reportSendFailed'));
+    } finally {
+      setLoadingAutomation(false);
+    }
+  }, [t]);
 
   return (
     <div className={styles.container}>
@@ -239,10 +264,20 @@ const Settings: React.FC = () => {
               onChange={(e) => void setReportPatch({ sendTime: e.target.value })}
             />
           </label>
-          <button type="button" className={styles.row} disabled={loadingAutomation} onClick={() => void sendWeeklyReportNow()}>
+          <button
+            type="button"
+            className={styles.row}
+            disabled={loadingAutomation}
+            onClick={() => void handleSendWeeklyReport()}
+          >
             <span className={styles.rowLabel}>{t('settings', 'sendWeeklyNow')}</span>
           </button>
-          <button type="button" className={styles.row} disabled={loadingAutomation} onClick={() => void sendMonthlyReportNow()}>
+          <button
+            type="button"
+            className={styles.row}
+            disabled={loadingAutomation}
+            onClick={() => void handleSendMonthlyReport()}
+          >
             <span className={styles.rowLabel}>{t('settings', 'sendMonthlyNow')}</span>
           </button>
           {reminders.map((reminder) => (
@@ -277,7 +312,15 @@ const Settings: React.FC = () => {
                     className={styles.reminderNumber}
                     type="number"
                     min={reminder.kind === 'fx_change' ? 1 : 0}
-                    max={reminder.kind === 'fx_change' ? 100 : reminder.kind === 'inactivity' ? 90 : 31}
+                    max={
+                      reminder.kind === 'fx_change'
+                        ? 100
+                        : reminder.kind === 'inactivity'
+                          ? 90
+                          : reminder.kind === 'shift_evening_before'
+                            ? 30
+                            : 31
+                    }
                     step={1}
                     value={reminder.leadDays}
                     disabled={loadingAutomation}

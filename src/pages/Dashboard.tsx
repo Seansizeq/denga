@@ -72,7 +72,7 @@ const Dashboard: React.FC = () => {
       (acc, tx) => {
         const amountInDisplay = convertAmount(tx.amount, tx.currency);
         if (tx.type === 'income') acc.income += amountInDisplay;
-        else acc.expense += amountInDisplay;
+        else if (tx.type === 'expense') acc.expense += amountInDisplay;
         return acc;
       },
       { income: 0, expense: 0 },

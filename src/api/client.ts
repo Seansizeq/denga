@@ -31,6 +31,17 @@ export type ReportSettings = {
   sendTime: string;
 };
 
+export type PlannerSettings = {
+  /** null = ask each time; "none" = start without template; otherwise template id */
+  defaultShiftTemplateId: string | null;
+};
+
+export type PlannerAutomation = {
+  token: string;
+  startUrl: string;
+  endUrl: string;
+};
+
 export type ReminderKind =
   | 'daily'
   | 'subscriptions'
@@ -57,6 +68,36 @@ export type CategoryBudget = {
 export const getReportSettings = async (): Promise<ReportSettings> => {
   const res = await apiFetch('/api/reports/settings');
   if (!res.ok) throw new Error('failed to load report settings');
+  return res.json();
+};
+
+export const getPlannerSettings = async (): Promise<PlannerSettings> => {
+  const res = await apiFetch('/api/planner/settings');
+  if (!res.ok) throw new Error('failed to load planner settings');
+  return res.json();
+};
+
+export const getPlannerAutomation = async (): Promise<PlannerAutomation> => {
+  const res = await apiFetch('/api/planner/automation');
+  if (!res.ok) throw new Error('failed to load planner automation');
+  return res.json();
+};
+
+export const rotatePlannerAutomationToken = async (): Promise<PlannerAutomation> => {
+  const res = await apiFetch('/api/planner/automation/rotate-token', { method: 'POST' });
+  if (!res.ok) throw new Error('failed to rotate automation token');
+  return res.json();
+};
+
+export const updatePlannerSettings = async (
+  patch: Partial<PlannerSettings>
+): Promise<PlannerSettings> => {
+  const res = await apiFetch('/api/planner/settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) throw new Error('failed to update planner settings');
   return res.json();
 };
 

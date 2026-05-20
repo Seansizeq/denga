@@ -78,7 +78,7 @@ type Dict = {
     saveAsTemplate: string;
     templateNamePlaceholder: string;
   };
-  history: { title: string; empty: string; deleteConfirm: string; edit: string; delete: string };
+  history: { title: string; empty: string; deleteConfirm: string; edit: string; delete: string; back: string };
   planner: {
     title: string;
     subtitle: string;
@@ -147,6 +147,17 @@ type Dict = {
     minutesShort: string;
     chooseStartTemplate: string;
     startWithoutTemplate: string;
+    defaultShiftTemplate: string;
+    defaultShiftTemplateNone: string;
+    defaultShiftTemplateAsk: string;
+    defaultShiftTemplateWithout: string;
+    defaultShiftTemplateHint: string;
+    shortcutsTitle: string;
+    shortcutsHint: string;
+    shortcutsStartUrl: string;
+    shortcutsEndUrl: string;
+    shortcutsRotateToken: string;
+    shortcutsCopyUrl: string;
     dayShifts: string;
     dayShiftsEmpty: string;
     reportShiftBanners: string;
@@ -188,6 +199,7 @@ type Dict = {
     saveError: string;
     disabledSection: string;
     enable: string;
+    back: string;
   };
   stats: {
     title: string;
@@ -195,6 +207,13 @@ type Dict = {
     totalIncome: string;
     totalExpense: string;
     net: string;
+    insightsTitle: string;
+    noInsights: string;
+    insightTrend: string;
+    insightGrowth: string;
+    insightAnomaly: string;
+    insightRecurring: string;
+    previousPeriod: string;
     byCategory: string;
     noData: string;
     transactions: string;
@@ -232,6 +251,7 @@ type Dict = {
     reportSendTime: string;
     sendWeeklyNow: string;
     sendMonthlyNow: string;
+    reportSendFailed: string;
     dailyReminder: string;
     subscriptionsReminder: string;
     reminderInactivity: string;
@@ -294,6 +314,7 @@ type Dict = {
     entertainment: string;
     health: string;
     salary: string;
+    transfer: string;
     other_income: string;
     other_expense: string;
   };
@@ -304,13 +325,11 @@ type Dict = {
     takePhoto: string;
     processing: string;
     retake: string;
-    confirmAndEdit: string;
     saveConfirmed: string;
     reviewAndEdit: string;
     totalLabel: string;
     noTotalFound: string;
     unknownShop: string;
-    noDate: string;
     itemsTitle: string;
     itemsMore: string;
     reviewTitle: string;
@@ -407,6 +426,7 @@ const uk: Dict = {
     deleteConfirm: 'Видалити цю операцію?',
     edit: 'Редагувати',
     delete: 'Видалити',
+    back: 'На головну',
   },
   planner: {
     title: 'Календар',
@@ -476,6 +496,17 @@ const uk: Dict = {
     minutesShort: 'хв',
     chooseStartTemplate: 'Оберіть шаблон для старту',
     startWithoutTemplate: 'Почати без шаблону',
+    defaultShiftTemplate: 'Шаблон за замовчуванням',
+    defaultShiftTemplateNone: 'Не задано',
+    defaultShiftTemplateAsk: 'Питати щоразу',
+    defaultShiftTemplateWithout: 'Без шаблону',
+    defaultShiftTemplateHint: 'Для Telegram і Shortcuts: «почати зміну» стартує одразу з цим шаблоном.',
+    shortcutsTitle: 'iPhone Shortcuts (без вибору бота)',
+    shortcutsHint: 'У «Отримати вміст URL» вставте посилання нижче. Спочатку задайте шаблон за замовчуванням.',
+    shortcutsStartUrl: 'Почати зміну',
+    shortcutsEndUrl: 'Завершити зміну',
+    shortcutsRotateToken: 'Новий ключ',
+    shortcutsCopyUrl: 'Копіювати',
     dayShifts: 'Зміни за день',
     dayShiftsEmpty: 'Ще немає завершених змін за цей день',
     reportShiftBanners: 'Кожна зміна',
@@ -517,6 +548,7 @@ const uk: Dict = {
     saveError: 'Не вдалося зберегти підписку. Перевір з’єднання.',
     disabledSection: 'Вимкнені (залишились у базі)',
     enable: 'Увімкнути',
+    back: 'На головну',
   },
   stats: {
     title: 'Статистика',
@@ -524,6 +556,13 @@ const uk: Dict = {
     totalIncome: 'Усього доходів',
     totalExpense: 'Усього витрат',
     net: 'Чистий результат',
+    insightsTitle: 'Інсайти',
+    noInsights: 'Ще недостатньо даних для висновків',
+    insightTrend: 'Тренд витрат',
+    insightGrowth: 'Найшвидше зростає',
+    insightAnomaly: 'Аномальна витрата',
+    insightRecurring: 'Повторюється',
+    previousPeriod: 'До минулого періоду',
     byCategory: 'За категоріями',
     noData: 'Немає даних для цього періоду',
     transactions: 'операцій',
@@ -561,6 +600,7 @@ const uk: Dict = {
     reportSendTime: 'Час надсилання звіту',
     sendWeeklyNow: 'Надіслати тижневий звіт зараз',
     sendMonthlyNow: 'Надіслати місячний звіт зараз',
+    reportSendFailed: 'Не вдалося надіслати звіт. Перевірте зв’язок із Telegram або налаштування бота.',
     dailyReminder: 'Щоденне нагадування',
     subscriptionsReminder: 'Нагадування про підписки',
     reminderInactivity: 'Немає витрат N днів',
@@ -624,6 +664,7 @@ const uk: Dict = {
     entertainment: 'Розваги',
     health: "Здоров'я",
     salary: 'Зарплата',
+    transfer: 'Переказ',
     other_income: 'Корекція балансу',
     other_expense: 'Інше',
   },
@@ -634,13 +675,11 @@ const uk: Dict = {
     takePhoto: 'Сфотографувати чек',
     processing: 'Розпізнаємо чек…',
     retake: 'Зробити ще одне фото',
-    confirmAndEdit: 'Перевірити та зберегти',
     saveConfirmed: 'Зберегти без змін',
     reviewAndEdit: 'Перевірити вручну',
     totalLabel: 'Сума чека',
     noTotalFound: 'Сума не знайдена',
     unknownShop: 'Магазин не визначено',
-    noDate: 'Дата не визначена',
     itemsTitle: 'Позиції чека',
     itemsMore: '+ ще {n} позицій',
     reviewTitle: 'Потрібна ручна перевірка',
@@ -742,6 +781,7 @@ const ru: Dict = {
     deleteConfirm: 'Удалить эту операцию?',
     edit: 'Редактировать',
     delete: 'Удалить',
+    back: 'На главную',
   },
   planner: {
     title: 'Календарь',
@@ -811,6 +851,17 @@ const ru: Dict = {
     minutesShort: 'мин',
     chooseStartTemplate: 'Выберите шаблон для старта',
     startWithoutTemplate: 'Начать без шаблона',
+    defaultShiftTemplate: 'Шаблон по умолчанию',
+    defaultShiftTemplateNone: 'Не задан',
+    defaultShiftTemplateAsk: 'Спрашивать каждый раз',
+    defaultShiftTemplateWithout: 'Без шаблона',
+    defaultShiftTemplateHint: 'Для Telegram и Shortcuts: «начать смену» сразу стартует с этим шаблоном.',
+    shortcutsTitle: 'iPhone Shortcuts (без выбора бота)',
+    shortcutsHint: 'В действии «Получить содержимое URL» вставьте ссылку ниже. Сначала выберите шаблон по умолчанию.',
+    shortcutsStartUrl: 'Начать смену',
+    shortcutsEndUrl: 'Завершить смену',
+    shortcutsRotateToken: 'Новый ключ',
+    shortcutsCopyUrl: 'Копировать',
     dayShifts: 'Смены за день',
     dayShiftsEmpty: 'За этот день пока нет завершённых смен',
     reportShiftBanners: 'Каждая смена',
@@ -852,6 +903,7 @@ const ru: Dict = {
     saveError: 'Не удалось сохранить подписку. Проверь соединение.',
     disabledSection: 'Отключённые (в базе остаются)',
     enable: 'Включить',
+    back: 'На главную',
   },
   stats: {
     title: 'Статистика',
@@ -859,6 +911,13 @@ const ru: Dict = {
     totalIncome: 'Всего доходов',
     totalExpense: 'Всего расходов',
     net: 'Чистый результат',
+    insightsTitle: 'Инсайты',
+    noInsights: 'Пока недостаточно данных для выводов',
+    insightTrend: 'Тренд расходов',
+    insightGrowth: 'Растёт быстрее всего',
+    insightAnomaly: 'Аномальная трата',
+    insightRecurring: 'Повторяется',
+    previousPeriod: 'К прошлому периоду',
     byCategory: 'По категориям',
     noData: 'Нет данных за этот период',
     transactions: 'операций',
@@ -896,6 +955,7 @@ const ru: Dict = {
     reportSendTime: 'Время отправки отчёта',
     sendWeeklyNow: 'Отправить недельный отчёт сейчас',
     sendMonthlyNow: 'Отправить месячный отчёт сейчас',
+    reportSendFailed: 'Не удалось отправить отчёт. Проверьте связь с Telegram или настройки бота.',
     dailyReminder: 'Ежедневное напоминание',
     subscriptionsReminder: 'Напоминание о подписках',
     reminderInactivity: 'Нет расходов N дней',
@@ -959,6 +1019,7 @@ const ru: Dict = {
     entertainment: 'Развлечения',
     health: 'Здоровье',
     salary: 'Зарплата',
+    transfer: 'Перевод',
     other_income: 'Корекція балансу',
     other_expense: 'Другое',
   },
@@ -969,13 +1030,11 @@ const ru: Dict = {
     takePhoto: 'Сфотографировать чек',
     processing: 'Распознаём чек…',
     retake: 'Сделать ещё одно фото',
-    confirmAndEdit: 'Проверить и сохранить',
     saveConfirmed: 'Сохранить без изменений',
     reviewAndEdit: 'Проверить вручную',
     totalLabel: 'Сумма чека',
     noTotalFound: 'Сумма не найдена',
     unknownShop: 'Магазин не определён',
-    noDate: 'Дата не определена',
     itemsTitle: 'Позиции чека',
     itemsMore: '+ ещё {n} позиций',
     reviewTitle: 'Нужна ручная проверка',
@@ -1077,6 +1136,7 @@ const en: Dict = {
     deleteConfirm: 'Delete this transaction?',
     edit: 'Edit',
     delete: 'Delete',
+    back: 'Home',
   },
   planner: {
     title: 'Calendar',
@@ -1146,6 +1206,17 @@ const en: Dict = {
     minutesShort: 'm',
     chooseStartTemplate: 'Choose a template to start',
     startWithoutTemplate: 'Start without template',
+    defaultShiftTemplate: 'Default shift template',
+    defaultShiftTemplateNone: 'Not set',
+    defaultShiftTemplateAsk: 'Ask every time',
+    defaultShiftTemplateWithout: 'Without template',
+    defaultShiftTemplateHint: 'For Telegram and Shortcuts: "start shift" begins immediately with this template.',
+    shortcutsTitle: 'iPhone Shortcuts (no bot picker)',
+    shortcutsHint: 'Use "Get Contents of URL" with the links below. Set a default template first.',
+    shortcutsStartUrl: 'Start shift',
+    shortcutsEndUrl: 'End shift',
+    shortcutsRotateToken: 'New key',
+    shortcutsCopyUrl: 'Copy',
     dayShifts: 'Shifts for this day',
     dayShiftsEmpty: 'No completed shifts for this day yet',
     reportShiftBanners: 'Each shift',
@@ -1187,6 +1258,7 @@ const en: Dict = {
     saveError: 'Could not save subscription. Check your connection.',
     disabledSection: 'Disabled (still in database)',
     enable: 'Enable',
+    back: 'Home',
   },
   stats: {
     title: 'Stats',
@@ -1194,6 +1266,13 @@ const en: Dict = {
     totalIncome: 'Total income',
     totalExpense: 'Total expenses',
     net: 'Net',
+    insightsTitle: 'Insights',
+    noInsights: 'Not enough data for insights yet',
+    insightTrend: 'Spending trend',
+    insightGrowth: 'Growing fastest',
+    insightAnomaly: 'Anomalous spend',
+    insightRecurring: 'Recurring hint',
+    previousPeriod: 'Vs previous period',
     byCategory: 'By category',
     noData: 'No data for this period',
     transactions: 'transactions',
@@ -1231,6 +1310,7 @@ const en: Dict = {
     reportSendTime: 'Report send time',
     sendWeeklyNow: 'Send weekly report now',
     sendMonthlyNow: 'Send monthly report now',
+    reportSendFailed: 'Could not send the report. Check your Telegram link and bot availability.',
     dailyReminder: 'Daily reminder',
     subscriptionsReminder: 'Subscription reminder',
     reminderInactivity: 'No expenses for N days',
@@ -1294,6 +1374,7 @@ const en: Dict = {
     entertainment: 'Entertainment',
     health: 'Health',
     salary: 'Salary',
+    transfer: 'Transfer',
     other_income: 'Корекція балансу',
     other_expense: 'Other',
   },
@@ -1304,13 +1385,11 @@ const en: Dict = {
     takePhoto: 'Take receipt photo',
     processing: 'Reading receipt…',
     retake: 'Take another photo',
-    confirmAndEdit: 'Review and save',
     saveConfirmed: 'Save as scanned',
     reviewAndEdit: 'Review manually',
     totalLabel: 'Receipt total',
     noTotalFound: 'Total not found',
     unknownShop: 'Shop not detected',
-    noDate: 'Date not detected',
     itemsTitle: 'Receipt items',
     itemsMore: '+ {n} more items',
     reviewTitle: 'Manual review required',

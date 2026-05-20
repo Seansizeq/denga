@@ -1,7 +1,7 @@
 import type { Transaction } from '../types';
 import type { CurrencyCode } from './currency';
 import { isWithinLastDays } from './dateRanges';
-import { getAccountSlugFromNote } from './transactionAccount';
+import { getTransactionAccountEffects } from './transactionUtils';
 
 export type CryptoSymbol = 'BTC' | 'ETH' | 'SOL' | 'TON' | 'USDT';
 
@@ -31,12 +31,6 @@ export const parseCryptoPosition = (subText?: string | null): { symbol: CryptoSy
   return null;
 };
 
-const accountDeltaForTx = (tx: Pick<Transaction, 'amount' | 'type'>): number => {
-  const amount = Number(tx.amount);
-  if (!Number.isFinite(amount) || amount <= 0) return 0;
-  return tx.type === 'income' ? amount : -amount;
-};
-
 const sumAccountDeltasInWindow = (
   transactions: readonly Transaction[],
   accountKey: string,
@@ -47,8 +41,9 @@ const sumAccountDeltasInWindow = (
   const key = accountKey.toLowerCase();
   for (const tx of transactions) {
     if (!isWithinLastDays(tx.date, windowDays, now)) continue;
-    if (getAccountSlugFromNote(tx.note) !== key) continue;
-    sum += accountDeltaForTx(tx);
+    const effect = getTransactionAccountEffects(tx).find((row) => row.accountKey === key);
+    if (!effect) continue;
+    sum += effect.delta;
   }
   return sum;
 };

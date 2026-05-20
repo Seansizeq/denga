@@ -5,11 +5,11 @@ import AccountsSnapshot from '../components/ui/AccountsSnapshot';
 import AccountEditSheet, { type EditableAccount } from '../components/ui/AccountEditSheet';
 import { useTransactions } from '../context/TransactionContext';
 import { getCustomCategoryName } from '../constants/categories';
-import { getAccountSlugFromNote } from '../utils/transactionAccount';
 import { useTranslation } from '../i18n/LanguageContext';
 import { apiFetch } from '../api/client';
 import { sanitizeAccountBadge } from '../utils/accountIcons';
 import { parseCryptoPosition } from '../utils/cryptoPosition';
+import { getTransactionAccountEffects } from '../utils/transactionUtils';
 import styles from './Accounts.module.css';
 
 type PortfolioSection = 'bank' | 'cash' | 'crypto' | 'debt';
@@ -289,13 +289,15 @@ const Accounts: React.FC = () => {
     }
 
     transactions.forEach((tx) => {
-      const slug = getAccountSlugFromNote(tx.note);
-      if (!slug || accountMeta[slug]) return;
-      accountMeta[slug] = {
-        section: 'bank',
-        label: slug,
-        badge: slug.slice(0, 2).toUpperCase(),
-      };
+      for (const effect of getTransactionAccountEffects(tx)) {
+        const slug = effect.accountKey;
+        if (!slug || accountMeta[slug]) continue;
+        accountMeta[slug] = {
+          section: 'bank',
+          label: slug,
+          badge: slug.slice(0, 2).toUpperCase(),
+        };
+      }
     });
 
     const aliasToKey = new Map<string, string>();
@@ -354,33 +356,37 @@ const Accounts: React.FC = () => {
       return null;
     };
 
-    const resolveTransactionAccountKey = (tx: { categoryId: string; note?: string }): string | null => {
-      const fromNote = getAccountSlugFromNote(tx.note);
-      if (fromNote && accountMeta[fromNote]) {
-        return fromNote;
-      }
-      return resolveAccountKey(tx.categoryId);
-    };
-
     (Object.keys(accountMeta) as string[]).forEach((k) => {
       accountTotals.set(String(k), emptyTotals());
     });
 
     transactions.forEach((tx) => {
-      const key = resolveTransactionAccountKey(tx);
-      if (!key) return;
-      const meta = accountMeta[key as string];
-      if (!meta) return;
-      const sign = tx.type === 'income' ? 1 : -1;
-      const currency = tx.currency;
-      const isFiat = currency === 'UAH' || currency === 'PLN';
-      const current = accountTotals.get(String(key)) ?? emptyTotals();
-      current.byCurrency.set(currency, (current.byCurrency.get(currency) ?? 0) + sign * tx.amount);
-      if (isFiat) {
-        if (currency === 'PLN') current.pln += sign * tx.amount;
-        else current.uah += sign * tx.amount;
+      const fallbackKey = resolveAccountKey(tx.categoryId);
+      const effects = getTransactionAccountEffects(tx);
+      if (effects.length === 0 && fallbackKey) {
+        const meta = accountMeta[fallbackKey];
+        if (!meta) return;
+        const sign = tx.type === 'income' ? 1 : -1;
+        const txCurrency = tx.currency;
+        const current = accountTotals.get(String(fallbackKey)) ?? emptyTotals();
+        current.byCurrency.set(txCurrency, (current.byCurrency.get(txCurrency) ?? 0) + sign * tx.amount);
+        if (txCurrency === 'PLN') current.pln += sign * tx.amount;
+        else if (txCurrency === 'UAH') current.uah += sign * tx.amount;
+        accountTotals.set(String(fallbackKey), current);
+        return;
       }
-      accountTotals.set(String(key), current);
+
+      for (const effect of effects) {
+        const key = String(effect.accountKey ?? '').trim().toLowerCase();
+        if (!key) continue;
+        const meta = accountMeta[key];
+        if (!meta) continue;
+        const current = accountTotals.get(String(key)) ?? emptyTotals();
+        current.byCurrency.set(effect.currency, (current.byCurrency.get(effect.currency) ?? 0) + effect.delta);
+        if (effect.currency === 'PLN') current.pln += effect.delta;
+        else if (effect.currency === 'UAH') current.uah += effect.delta;
+        accountTotals.set(String(key), current);
+      }
     });
 
     const pushAccount = (key: string) => {

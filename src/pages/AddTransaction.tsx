@@ -52,7 +52,12 @@ const AddTransaction: React.FC = () => {
   const isEditing = Boolean(editId);
 
   const initialType: TransactionType =
-    editingTransaction?.type ?? (searchParams.get('type') === 'income' ? 'income' : 'expense');
+    editingTransaction?.type
+    ?? (searchParams.get('type') === 'income'
+      ? 'income'
+      : searchParams.get('type') === 'transfer'
+        ? 'transfer'
+        : 'expense');
 
   const prefillAmountRaw = !isEditing ? searchParams.get('amount')?.trim() ?? '' : '';
   const prefillCurrencyRaw = !isEditing ? searchParams.get('currency') ?? '' : '';
@@ -83,7 +88,9 @@ const AddTransaction: React.FC = () => {
   const [categoryId, setCategoryId] = useState(() => {
     if (editingTransaction) return editingTransaction.categoryId;
     if (prefillCategoryRaw) return prefillCategoryRaw;
-    return initialType === 'income' ? 'salary' : 'food';
+    if (initialType === 'income') return 'salary';
+    if (initialType === 'transfer') return 'transfer';
+    return 'food';
   });
   const [isCreatingCustom, setIsCreatingCustom] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -106,7 +113,16 @@ const AddTransaction: React.FC = () => {
     { id: string; name: string; icon: string; color: string; isCustom: boolean } | null
   >(null);
   const [editingCustomId, setEditingCustomId] = useState<string | null>(null);
-  const [portfolioAccounts, setPortfolioAccounts] = useState<Array<{ key: string; name: string }>>([]);
+  const [portfolioAccounts, setPortfolioAccounts] = useState<Array<{ key: string; name: string; currency: CurrencyCode }>>([]);
+  const [transferFromAccountKey, setTransferFromAccountKey] = useState(() => editingTransaction?.fromAccountKey ?? '');
+  const [transferToAccountKey, setTransferToAccountKey] = useState(() => editingTransaction?.toAccountKey ?? '');
+  const [transferToAmount, setTransferToAmount] = useState(() => {
+    if (editingTransaction?.transferToAmount && editingTransaction.transferToAmount > 0) {
+      return String(editingTransaction.transferToAmount);
+    }
+    if (editingTransaction?.type === 'transfer') return String(editingTransaction.amount);
+    return '';
+  });
 
   const allowedPaymentKeys = useMemo(() => {
     const s = new Set<string>([...ACCOUNT_NOTE_KEYS]);
@@ -130,6 +146,20 @@ const AddTransaction: React.FC = () => {
     return out;
   }, [portfolioAccounts, language]);
 
+  const transferFromAccount = useMemo(
+    () => portfolioAccounts.find((account) => account.key === transferFromAccountKey) ?? null,
+    [portfolioAccounts, transferFromAccountKey]
+  );
+  const transferToAccount = useMemo(
+    () => portfolioAccounts.find((account) => account.key === transferToAccountKey) ?? null,
+    [portfolioAccounts, transferToAccountKey]
+  );
+  const transferUsesExchange = Boolean(
+    transferFromAccount &&
+      transferToAccount &&
+      transferFromAccount.currency !== transferToAccount.currency
+  );
+
   useEffect(() => {
     let cancelled = false;
     const loadPortfolio = async () => {
@@ -138,7 +168,7 @@ const AddTransaction: React.FC = () => {
         if (!res.ok || cancelled) return;
         const data: unknown = await res.json();
         if (!Array.isArray(data) || cancelled) return;
-        const list: Array<{ key: string; name: string }> = [];
+        const list: Array<{ key: string; name: string; currency: CurrencyCode }> = [];
         for (const row of data) {
           if (!row || typeof row !== 'object') continue;
           const r = row as Record<string, unknown>;
@@ -149,7 +179,11 @@ const AddTransaction: React.FC = () => {
           const name = String(r.name ?? r.accountKey ?? '')
             .trim()
             .slice(0, 40);
-          list.push({ key, name: name || key });
+          list.push({
+            key,
+            name: name || key,
+            currency: normalizeCurrency(typeof r.primaryCurrency === 'string' ? r.primaryCurrency : undefined),
+          });
         }
         list.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
         if (!cancelled) setPortfolioAccounts(list);
@@ -166,6 +200,10 @@ const AddTransaction: React.FC = () => {
   useEffect(() => {
     let cancelled = false;
     const loadCustomCategories = async () => {
+      if (type === 'transfer') {
+        setCustomCategories([]);
+        return;
+      }
       try {
         const response = await apiFetch(`/api/custom-categories?type=${type}`);
         if (!response.ok) return;
@@ -219,6 +257,15 @@ const AddTransaction: React.FC = () => {
     setDate(tx.date.slice(0, 10));
     setCategoryId(tx.categoryId);
     setPaymentAccount(getAccountSlugFromNote(tx.note) ?? '');
+    setTransferFromAccountKey(tx.fromAccountKey ?? '');
+    setTransferToAccountKey(tx.toAccountKey ?? '');
+    setTransferToAmount(
+      tx.transferToAmount && tx.transferToAmount > 0
+        ? String(tx.transferToAmount)
+        : tx.type === 'transfer'
+          ? String(tx.amount)
+          : ''
+    );
     setNote(stripAccountFromNote(tx.note ?? ''));
   }, [editId, transactions]);
 
@@ -226,21 +273,63 @@ const AddTransaction: React.FC = () => {
     if (!editId) setPaymentAccount('');
   }, [editId]);
 
+  useEffect(() => {
+    if (type !== 'transfer') return;
+    if (!transferFromAccountKey && portfolioAccounts.length > 0) {
+      setTransferFromAccountKey(portfolioAccounts[0].key);
+    }
+    if (!transferToAccountKey && portfolioAccounts.length > 1) {
+      const fallback = portfolioAccounts.find((account) => account.key !== transferFromAccountKey) ?? portfolioAccounts[0];
+      if (fallback) setTransferToAccountKey(fallback.key);
+    }
+  }, [type, portfolioAccounts, transferFromAccountKey, transferToAccountKey]);
+
+  useEffect(() => {
+    if (type !== 'transfer' || !transferFromAccount) return;
+    setCurrency(transferFromAccount.currency);
+  }, [type, transferFromAccount]);
+
+  useEffect(() => {
+    if (type !== 'transfer' || transferUsesExchange) return;
+    if (!amount) {
+      setTransferToAmount('');
+      return;
+    }
+    setTransferToAmount(amount);
+  }, [type, transferUsesExchange, amount]);
+
   const canCreateCustomCategory = newCategoryName.trim().length > 0;
 
   const handleSave = async () => {
     setSaveError('');
     const numAmount = parseFloat(amount.replace(',', '.'));
     if (!numAmount || numAmount <= 0) return;
+    const transferDestinationAmount = parseFloat(transferToAmount.replace(',', '.'));
     const mergedNote = mergeAccountIntoNoteLimited(note.trim(), paymentAccount, allowedPaymentKeys);
-    const payload = {
-      amount: numAmount,
-      currency,
-      type,
-      categoryId,
-      date,
-      note: mergedNote || undefined,
-    };
+    const payload = type === 'transfer'
+      ? {
+          amount: numAmount,
+          currency: transferFromAccount?.currency ?? currency,
+          type,
+          categoryId: 'transfer',
+          date,
+          note: note.trim() || undefined,
+          fromAccountKey: transferFromAccountKey || undefined,
+          toAccountKey: transferToAccountKey || undefined,
+          transferToAmount:
+            Number.isFinite(transferDestinationAmount) && transferDestinationAmount > 0
+              ? transferDestinationAmount
+              : numAmount,
+          transferToCurrency: transferToAccount?.currency ?? transferFromAccount?.currency ?? currency,
+        }
+      : {
+          amount: numAmount,
+          currency,
+          type,
+          categoryId,
+          date,
+          note: mergedNote || undefined,
+        };
     const ok = isEditing && editId ? await updateTransaction(editId, payload) : await addTransaction(payload);
     if (!ok) {
       setSaveError(t('addTx', 'saveFailed'));
@@ -270,7 +359,16 @@ const AddTransaction: React.FC = () => {
     });
   }, [amount, type, currency, categoryId, note, paymentAccount, saveTemplate]);
 
-  const isValid = !!amount && parseFloat(amount.replace(',', '.')) > 0;
+  const isValid = useMemo(() => {
+    const parsedAmount = parseFloat(amount.replace(',', '.'));
+    if (!(parsedAmount > 0)) return false;
+    if (type !== 'transfer') return true;
+    if (!transferFromAccountKey || !transferToAccountKey || transferFromAccountKey === transferToAccountKey) {
+      return false;
+    }
+    const parsedDestination = parseFloat(transferToAmount.replace(',', '.'));
+    return parsedDestination > 0;
+  }, [amount, type, transferFromAccountKey, transferToAccountKey, transferToAmount]);
 
   return (
     <div className={styles.container}>
@@ -316,75 +414,166 @@ const AddTransaction: React.FC = () => {
         >
           {t('addTx', 'income')}
         </button>
-      </div>
-
-      <div className={styles.amountContainer}>
-        <input
-          type="text"
-          inputMode="decimal"
-          pattern="[0-9]*[.,]?[0-9]*"
-          placeholder={t('addTx', 'amountPlaceholder')}
-          value={amount}
-          onChange={(e) => {
-            const v = e.target.value.replace(/[^0-9.,]/g, '');
-            setAmount(v);
+        <button
+          type="button"
+          className={`${styles.typeBtn} ${type === 'transfer' ? styles.active : ''}`}
+          onClick={() => {
+            setType('transfer');
+            setCategoryId('transfer');
+            setIsCreatingCustom(false);
           }}
-          className={styles.amountInput}
-          autoFocus
-        />
-        <select
-          className={styles.currencySelect}
-          value={currency}
-          onChange={(e) => setCurrency(normalizeCurrency(e.target.value))}
-          aria-label={t('settings', 'currency')}
         >
-          {SUPPORTED_CURRENCIES.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
+          {t('categories', 'transfer')}
+        </button>
       </div>
 
-      <ExpenseTemplateBar
-        templates={templates}
-        currentType={type}
-        canSave={isValid && !isEditing}
-        onApply={handleApplyTemplate}
-        onDelete={deleteTemplate}
-        onSave={handleSaveTemplate}
-        labels={{
-          title: t('addTx', 'templates'),
-          saveAsTemplate: t('addTx', 'saveAsTemplate'),
-          namePlaceholder: t('addTx', 'templateNamePlaceholder'),
-        }}
-      />
+      {type === 'transfer' ? (
+        <>
+          <section className={styles.noteSection}>
+            <h3 className={styles.sectionTitle}>{t('addTx', 'paymentAccount')}</h3>
+            <div className={styles.transferGrid}>
+              <label className={styles.transferField}>
+                <span className={styles.transferLabel}>{t('addTx', 'expense')}</span>
+                <select
+                  className={styles.noteInput}
+                  value={transferFromAccountKey}
+                  onChange={(e) => setTransferFromAccountKey(e.target.value)}
+                >
+                  <option value="">{t('addTx', 'paymentAccountNone')}</option>
+                  {portfolioAccounts.map((account) => (
+                    <option key={account.key} value={account.key}>
+                      {account.name} ({account.currency})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className={styles.transferField}>
+                <span className={styles.transferLabel}>{t('addTx', 'income')}</span>
+                <select
+                  className={styles.noteInput}
+                  value={transferToAccountKey}
+                  onChange={(e) => setTransferToAccountKey(e.target.value)}
+                >
+                  <option value="">{t('addTx', 'paymentAccountNone')}</option>
+                  {portfolioAccounts.map((account) => (
+                    <option key={account.key} value={account.key}>
+                      {account.name} ({account.currency})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            {transferUsesExchange ? (
+              <p className={styles.paymentHint}>
+                {`${transferFromAccount?.currency ?? currency} -> ${transferToAccount?.currency ?? currency}`}
+              </p>
+            ) : null}
+          </section>
 
-      <section className={styles.paymentSection} aria-label={t('addTx', 'paymentAccount')}>
-        <h3 className={styles.sectionTitle}>{t('addTx', 'paymentAccount')}</h3>
-        <p className={styles.paymentHint}>{t('addTx', 'paymentAccountHint')}</p>
-        <div className={styles.paymentChips}>
-          <button
-            type="button"
-            className={`${styles.paymentChip} ${paymentAccount === '' ? styles.paymentChipActive : ''}`}
-            onClick={() => setPaymentAccount('')}
-          >
-            {t('addTx', 'paymentAccountNone')}
-          </button>
-          {paymentChipOptions.map(({ key, label }) => (
-            <button
-              key={key}
-              type="button"
-              className={`${styles.paymentChip} ${paymentAccount === key ? styles.paymentChipActive : ''}`}
-              onClick={() => setPaymentAccount(paymentAccount === key ? '' : key)}
+          <div className={styles.transferAmounts}>
+            <div className={styles.amountContainer}>
+              <input
+                type="text"
+                inputMode="decimal"
+                pattern="[0-9]*[.,]?[0-9]*"
+                placeholder={t('addTx', 'amountPlaceholder')}
+                value={amount}
+                onChange={(e) => {
+                  const v = e.target.value.replace(/[^0-9.,]/g, '');
+                  setAmount(v);
+                }}
+                className={styles.amountInput}
+                autoFocus
+              />
+              <div className={styles.currencySelect}>{transferFromAccount?.currency ?? currency}</div>
+            </div>
+
+            <div className={styles.amountContainer}>
+              <input
+                type="text"
+                inputMode="decimal"
+                pattern="[0-9]*[.,]?[0-9]*"
+                placeholder={t('addTx', 'amountPlaceholder')}
+                value={transferToAmount}
+                onChange={(e) => {
+                  const v = e.target.value.replace(/[^0-9.,]/g, '');
+                  setTransferToAmount(v);
+                }}
+                className={styles.amountInput}
+              />
+              <div className={styles.currencySelect}>{transferToAccount?.currency ?? transferFromAccount?.currency ?? currency}</div>
+            </div>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className={styles.amountContainer}>
+            <input
+              type="text"
+              inputMode="decimal"
+              pattern="[0-9]*[.,]?[0-9]*"
+              placeholder={t('addTx', 'amountPlaceholder')}
+              value={amount}
+              onChange={(e) => {
+                const v = e.target.value.replace(/[^0-9.,]/g, '');
+                setAmount(v);
+              }}
+              className={styles.amountInput}
+              autoFocus
+            />
+            <select
+              className={styles.currencySelect}
+              value={currency}
+              onChange={(e) => setCurrency(normalizeCurrency(e.target.value))}
+              aria-label={t('settings', 'currency')}
             >
-              {label}
-            </button>
-          ))}
-        </div>
-      </section>
+              {SUPPORTED_CURRENCIES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </div>
 
-      <section className={styles.categorySection}>
+          <ExpenseTemplateBar
+            templates={templates}
+            currentType={type}
+            canSave={isValid && !isEditing}
+            onApply={handleApplyTemplate}
+            onDelete={deleteTemplate}
+            onSave={handleSaveTemplate}
+            labels={{
+              title: t('addTx', 'templates'),
+              saveAsTemplate: t('addTx', 'saveAsTemplate'),
+              namePlaceholder: t('addTx', 'templateNamePlaceholder'),
+            }}
+          />
+
+          <section className={styles.paymentSection} aria-label={t('addTx', 'paymentAccount')}>
+            <h3 className={styles.sectionTitle}>{t('addTx', 'paymentAccount')}</h3>
+            <p className={styles.paymentHint}>{t('addTx', 'paymentAccountHint')}</p>
+            <div className={styles.paymentChips}>
+              <button
+                type="button"
+                className={`${styles.paymentChip} ${paymentAccount === '' ? styles.paymentChipActive : ''}`}
+                onClick={() => setPaymentAccount('')}
+              >
+                {t('addTx', 'paymentAccountNone')}
+              </button>
+              {paymentChipOptions.map(({ key, label }) => (
+                <button
+                  key={key}
+                  type="button"
+                  className={`${styles.paymentChip} ${paymentAccount === key ? styles.paymentChipActive : ''}`}
+                  onClick={() => setPaymentAccount(paymentAccount === key ? '' : key)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section className={styles.categorySection}>
         <h3 className={styles.sectionTitle}>{t('addTx', 'category')}</h3>
 
         <CategoryGrid
@@ -603,7 +792,9 @@ const AddTransaction: React.FC = () => {
             </div>
           </div>
         ) : null}
-      </section>
+          </section>
+        </>
+      )}
 
       <section className={styles.noteSection}>
         <h3 className={styles.sectionTitle}>{t('goals', 'contributionDate')}</h3>

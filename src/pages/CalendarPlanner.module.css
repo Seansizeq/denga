@@ -855,6 +855,79 @@
   background: rgba(255, 69, 58, 0.2);
 }
 
+.defaultTemplateCard {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md, 12px);
+  background: var(--surface-elevated, rgba(255, 255, 255, 0.06));
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+}
+
+.defaultTemplateLabel {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.72));
+}
+
+.defaultTemplateSelect {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.12));
+  background: var(--surface, rgba(0, 0, 0, 0.2));
+  color: inherit;
+  font-size: 15px;
+}
+
+.defaultTemplateHint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.55));
+}
+
+.shortcutUrlRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.shortcutUrlLabel {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.shortcutCopyBtn,
+.shortcutRotateBtn {
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.12));
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+}
+
+.shortcutUrlCode {
+  display: block;
+  margin-top: 6px;
+  padding: 8px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 1.35;
+  word-break: break-all;
+  background: rgba(0, 0, 0, 0.2);
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.7));
+}
+
+.shortcutRotateBtn {
+  width: 100%;
+}
+
 .startShiftBtn {
   width: 100%;
   border: none;

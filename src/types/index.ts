@@ -1,4 +1,4 @@
-export type TransactionType = 'income' | 'expense';
+export type TransactionType = 'income' | 'expense' | 'transfer';
 
 export interface Category {
   id: string;
@@ -15,6 +15,10 @@ export interface Transaction {
   type: TransactionType;
   date: string;
   note?: string;
+  fromAccountKey?: string;
+  toAccountKey?: string;
+  transferToAmount?: number;
+  transferToCurrency?: 'UAH' | 'PLN' | 'USD';
 }
 
 export interface TransactionDraft {
@@ -24,6 +28,10 @@ export interface TransactionDraft {
   type: TransactionType;
   date?: string;
   note?: string;
+  fromAccountKey?: string;
+  toAccountKey?: string;
+  transferToAmount?: number;
+  transferToCurrency?: Transaction['currency'];
 }
 
 export interface Balance {

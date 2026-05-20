@@ -196,6 +196,31 @@
   margin: 0;
 }
 
+.shopInput,
+.shopDateInput,
+.noteInput,
+.totalInput {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary);
+  border-radius: 14px;
+  padding: 12px 14px;
+  font: inherit;
+  outline: none;
+}
+
+.shopInput {
+  font-size: 17px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.shopDateInput {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
 .totalCard {
   background: var(--bg-card);
   border: 1px solid var(--border-light);
@@ -220,6 +245,15 @@
   font-weight: 700;
   color: var(--text-primary);
   margin: 0;
+}
+
+.totalInput {
+  border: none;
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  font-size: 28px;
+  font-weight: 700;
 }
 
 .currencyChip {

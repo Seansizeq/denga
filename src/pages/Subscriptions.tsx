@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Plus } from 'lucide-react';
 import { formatCurrency } from '../utils/formatters';
 import { useTranslation } from '../i18n/LanguageContext';
@@ -18,6 +19,7 @@ interface Subscription {
 }
 
 const Subscriptions: React.FC = () => {
+  const navigate = useNavigate();
   const { t, locale, displayCurrency } = useTranslation();
   const [items, setItems] = useState<Subscription[]>([]);
   const [loading, setLoading] = useState(true);
@@ -67,7 +69,7 @@ const Subscriptions: React.FC = () => {
     [activeItems]
   );
 
-  const resetForm = () => {
+  const resetForm = useCallback(() => {
     setName('');
     setAmount('');
     setCycle('monthly');
@@ -75,7 +77,16 @@ const Subscriptions: React.FC = () => {
     setNote('');
     setEditingId(null);
     setIsFormOpen(false);
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!isFormOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') resetForm();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isFormOpen, resetForm]);
 
   const onSave = async () => {
     setActionError('');
@@ -215,6 +226,9 @@ const Subscriptions: React.FC = () => {
   return (
     <div className={styles.container}>
       <header className={styles.header}>
+        <button type="button" className={styles.back} onClick={() => navigate('/')}>
+          ← {t('subscriptions', 'back')}
+        </button>
         <h1 className={styles.title}>{t('subscriptions', 'title')}</h1>
         <span className={styles.subtitle}>{t('subscriptions', 'subtitle')}</span>
       </header>
@@ -263,10 +277,18 @@ const Subscriptions: React.FC = () => {
       ) : null}
 
       {isFormOpen ? (
-        <div className={styles.modalOverlay} onClick={resetForm}>
-          <section className={styles.modalCard} onClick={(e) => e.stopPropagation()}>
+        <div className={styles.modalOverlay} role="presentation" onClick={resetForm}>
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="subscriptions-form-title"
+            className={styles.modalCard}
+            onClick={(e) => e.stopPropagation()}
+          >
             {actionError ? <p className={styles.formError}>{actionError}</p> : null}
-            <h2 className={styles.formTitle}>{t('subscriptions', 'addTitle')}</h2>
+            <h2 id="subscriptions-form-title" className={styles.formTitle}>
+              {editingId ? `${t('subscriptions', 'edit')}` : t('subscriptions', 'addTitle')}
+            </h2>
             <div className={styles.formGrid}>
               <input
                 type="text"

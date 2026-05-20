@@ -1,14 +1,6 @@
 export type PlannerCurrency = 'UAH' | 'PLN';
 export type DisplayCurrency = PlannerCurrency | 'USD';
 
-export const getCurrencyFromNote = (note?: string): DisplayCurrency | null => {
-  if (!note) return null;
-  const match = note.match(/\bCurrency:\s*([A-Za-z]{3})\b/i);
-  const raw = match?.[1]?.toUpperCase();
-  if (raw === 'UAH' || raw === 'PLN' || raw === 'USD') return raw;
-  return null;
-};
-
 export const formatPlannerMoney = (amount: number, locale: string, currency: PlannerCurrency): string => {
   const formatted = Math.abs(amount).toLocaleString(locale, {
     minimumFractionDigits: 0,
