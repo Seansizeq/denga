@@ -871,14 +871,44 @@
   color: var(--text-secondary, rgba(255, 255, 255, 0.72));
 }
 
-.defaultTemplateSelect {
+.defaultTemplatePickerBtn {
   width: 100%;
-  padding: 10px 12px;
-  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
   border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.12));
   background: var(--surface, rgba(0, 0, 0, 0.2));
   color: inherit;
   font-size: 15px;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.defaultTemplatePickerBtn:active {
+  transform: scale(0.99);
+}
+
+.defaultTemplatePickerValue {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.defaultTemplatePickerChevron {
+  flex-shrink: 0;
+  opacity: 0.6;
+  font-size: 14px;
+}
+
+.defaultTemplateCard .templateBtn {
+  width: 100%;
+  margin-top: 8px;
 }
 
 .defaultTemplateHint {

@@ -10,6 +10,7 @@ import {
   updatePlannerSettings,
   type PlannerAutomation,
 } from '../api/client';
+import { hapticLight, showAppAlert } from '../utils/notify';
 import { buildPastDays, isWithinLastDays } from '../utils/dateRanges';
 import styles from './CalendarPlanner.module.css';
 
@@ -181,6 +182,7 @@ const CalendarPlanner: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [chooserOpen, setChooserOpen] = useState(false);
   const [startShiftChooserOpen, setStartShiftChooserOpen] = useState(false);
+  const [defaultTemplatePickerOpen, setDefaultTemplatePickerOpen] = useState(false);
   const [editorOpened, setEditorOpened] = useState(false);
   const [shiftName, setShiftName] = useState('');
   const [shiftSymbol, setShiftSymbol] = useState('');
@@ -206,7 +208,7 @@ const CalendarPlanner: React.FC = () => {
   const monthInputRef = useRef<HTMLInputElement | null>(null);
   const [shiftElapsedText, setShiftElapsedText] = useState('0г 0хв');
 
-  const modalAnyOpen = chooserOpen || editorOpened || startShiftChooserOpen;
+  const modalAnyOpen = chooserOpen || editorOpened || startShiftChooserOpen || defaultTemplatePickerOpen;
 
   const overlayBox = modalAnyOpen ? readVisualOverlayBox() : null;
 
@@ -499,6 +501,18 @@ const CalendarPlanner: React.FC = () => {
     }
   };
 
+  const formatTemplateLabel = (tpl: ShiftTemplate): string =>
+    tpl.name.trim() && tpl.symbol.trim()
+      ? `${tpl.name.trim()} · ${tpl.symbol.trim()}`
+      : tpl.name.trim() || tpl.symbol.trim() || tpl.id;
+
+  const defaultShiftTemplateLabel = useMemo(() => {
+    if (!defaultShiftTemplateId) return t('planner', 'defaultShiftTemplateAsk');
+    if (defaultShiftTemplateId === 'none') return t('planner', 'defaultShiftTemplateWithout');
+    const tpl = shiftTemplates.find((item) => item.id === defaultShiftTemplateId);
+    return tpl ? formatTemplateLabel(tpl) : t('planner', 'defaultShiftTemplateAsk');
+  }, [defaultShiftTemplateId, shiftTemplates, t]);
+
   const persistDefaultShiftTemplate = async (value: string) => {
     setPlannerSettingsSaving(true);
     try {
@@ -510,8 +524,12 @@ const CalendarPlanner: React.FC = () => {
             : value;
       const settings = await updatePlannerSettings({ defaultShiftTemplateId: next });
       setDefaultShiftTemplateId(settings.defaultShiftTemplateId ?? null);
+      setDefaultTemplatePickerOpen(false);
+      hapticLight();
+      showAppAlert(t('planner', 'defaultShiftTemplateSaved'));
     } catch (error) {
       console.error('Failed to save default shift template:', error);
+      showAppAlert(t('planner', 'defaultShiftTemplateSaveFailed'));
     } finally {
       setPlannerSettingsSaving(false);
     }
@@ -647,7 +665,10 @@ const CalendarPlanner: React.FC = () => {
           salaryCurrency,
         }),
       });
-      if (response.ok) void loadShiftTemplates();
+      if (response.ok) {
+        void loadShiftTemplates();
+        void loadPlannerSettings();
+      }
     } catch (error) {
       console.error('Failed to save shift template:', error);
     }
@@ -752,7 +773,10 @@ const CalendarPlanner: React.FC = () => {
       const response = await apiFetch(`/api/planner/shift-templates/${encodeURIComponent(tpl.id)}`, {
         method: 'DELETE',
       });
-      if (response.ok) void loadShiftTemplates();
+      if (response.ok) {
+        void loadShiftTemplates();
+        void loadPlannerSettings();
+      }
     } catch (error) {
       console.error('Failed to delete shift template:', error);
     }
@@ -909,30 +933,25 @@ const CalendarPlanner: React.FC = () => {
         )}
 
         <div className={styles.defaultTemplateCard}>
-          <label className={styles.defaultTemplateLabel} htmlFor="default-shift-template">
-            {t('planner', 'defaultShiftTemplate')}
-          </label>
-          <select
-            id="default-shift-template"
-            className={styles.defaultTemplateSelect}
+          <p className={styles.defaultTemplateLabel}>{t('planner', 'defaultShiftTemplate')}</p>
+          <button
+            type="button"
+            className={styles.defaultTemplatePickerBtn}
             disabled={plannerSettingsSaving}
-            value={defaultShiftTemplateId ?? ''}
-            onChange={(e) => void persistDefaultShiftTemplate(e.target.value)}
+            onClick={() => {
+              hapticLight();
+              setDefaultTemplatePickerOpen(true);
+            }}
           >
-            <option value="">{t('planner', 'defaultShiftTemplateAsk')}</option>
-            <option value="none">{t('planner', 'defaultShiftTemplateWithout')}</option>
-            {shiftTemplates.map((tpl) => {
-              const label =
-                tpl.name.trim() && tpl.symbol.trim()
-                  ? `${tpl.name.trim()} · ${tpl.symbol.trim()}`
-                  : tpl.name.trim() || tpl.symbol.trim() || tpl.id;
-              return (
-                <option key={tpl.id} value={tpl.id}>
-                  {label}
-                </option>
-              );
-            })}
-          </select>
+            <span className={styles.defaultTemplatePickerValue}>{defaultShiftTemplateLabel}</span>
+            <span className={styles.defaultTemplatePickerChevron} aria-hidden>
+              ▾
+            </span>
+          </button>
+          <p className={styles.defaultTemplateHint}>{t('planner', 'defaultShiftTemplateTap')}</p>
+          {shiftTemplates.length === 0 ? (
+            <p className={styles.defaultTemplateHint}>{t('planner', 'defaultShiftTemplateNoTemplates')}</p>
+          ) : null}
           <p className={styles.defaultTemplateHint}>{t('planner', 'defaultShiftTemplateHint')}</p>
         </div>
 
@@ -1095,6 +1114,55 @@ const CalendarPlanner: React.FC = () => {
 
         {loading && <p className={styles.loading}>{t('planner', 'loading')}</p>}
       </section>
+
+      {defaultTemplatePickerOpen && overlayBox ? (
+        <div
+          className={`${styles.modalOverlay} ${overlayBox.keyboardOpen ? styles.modalOverlayKeyboard : ''}`}
+          style={{ top: overlayBox.top, height: overlayBox.height }}
+          onClick={() => setDefaultTemplatePickerOpen(false)}
+        >
+          <div className={styles.modalSheet} onClick={(e) => e.stopPropagation()}>
+            <p className={styles.templateSectionLabel}>{t('planner', 'defaultShiftTemplate')}</p>
+            <button
+              type="button"
+              className={styles.addShiftBtn}
+              disabled={plannerSettingsSaving}
+              onClick={() => void persistDefaultShiftTemplate('')}
+            >
+              {t('planner', 'defaultShiftTemplateAsk')}
+            </button>
+            <button
+              type="button"
+              className={styles.templateBtn}
+              disabled={plannerSettingsSaving}
+              onClick={() => void persistDefaultShiftTemplate('none')}
+            >
+              {t('planner', 'defaultShiftTemplateWithout')}
+            </button>
+            {shiftTemplates.length > 0 ? (
+              <ul className={styles.templateList} role="list">
+                {shiftTemplates.map((tpl) => (
+                  <li key={`default-${tpl.id}`} className={styles.templateRow}>
+                    <button
+                      type="button"
+                      className={styles.templateBtn}
+                      disabled={plannerSettingsSaving}
+                      onClick={() => void persistDefaultShiftTemplate(tpl.id)}
+                    >
+                      {formatTemplateLabel(tpl)}
+                      <span className={styles.templateCurrencyTag}>
+                        {tpl.salaryCurrency === 'PLN' ? 'zł' : '₴'}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className={styles.dayShiftsEmpty}>{t('planner', 'defaultShiftTemplateNoTemplates')}</p>
+            )}
+          </div>
+        </div>
+      ) : null}
 
       {startShiftChooserOpen && overlayBox ? (
         <div
