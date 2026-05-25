@@ -217,6 +217,7 @@ export async function initDb() {
       user_id TEXT NOT NULL DEFAULT '',
       name TEXT NOT NULL,
       amount REAL NOT NULL,
+      currency TEXT NOT NULL DEFAULT 'UAH',
       cycle TEXT NOT NULL,
       nextChargeDate TEXT NOT NULL,
       note TEXT,
@@ -225,6 +226,11 @@ export async function initDb() {
       updatedAt TEXT NOT NULL
     )
   `);
+  try {
+    await db.exec(`ALTER TABLE subscriptions ADD COLUMN currency TEXT NOT NULL DEFAULT 'UAH'`);
+  } catch {
+    /* already exists */
+  }
 
   await db.exec(`
     CREATE TABLE IF NOT EXISTS planner_user_settings (

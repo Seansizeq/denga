@@ -357,7 +357,7 @@ const runSubscriptionAutopayForUser = async (userId) => {
   if (!todayIso) return;
 
   const dueSubs = await db.all(
-    `SELECT id, name, amount, cycle, nextChargeDate, note
+    `SELECT id, name, amount, currency, cycle, nextChargeDate, note
      FROM subscriptions
      WHERE user_id = ? AND active = 1 AND nextChargeDate <= ?
      ORDER BY nextChargeDate ASC`,
@@ -370,6 +370,7 @@ const runSubscriptionAutopayForUser = async (userId) => {
     for (const sub of dueSubs) {
       const amount = Number(sub.amount);
       const cycle = sub.cycle === 'yearly' ? 'yearly' : 'monthly';
+      const subCurrency = normalizeCurrency(sub.currency);
       let due = parseIsoDate(String(sub.nextChargeDate ?? ''));
       if (!due || !Number.isFinite(amount) || amount <= 0) continue;
 
@@ -382,7 +383,7 @@ const runSubscriptionAutopayForUser = async (userId) => {
           id: uuidv4(),
           user_id: userId,
           amount,
-          currency: 'UAH',
+          currency: subCurrency,
           categoryId: 'other_expense',
           type: 'expense',
           date: txDate,
@@ -810,7 +811,7 @@ const dispatchReminder = async (dbConn, userId, reminder, timeZone, chatId, slot
     if (kind === 'subscriptions') {
       const target = shiftIsoDay(today, Number(reminder.leadDays || 0));
       const due = await dbConn.all(
-        `SELECT name, amount, nextChargeDate
+        `SELECT name, amount, currency, nextChargeDate
          FROM subscriptions
          WHERE user_id = ? AND active = 1 AND nextChargeDate = ?
          ORDER BY nextChargeDate ASC`,
@@ -819,7 +820,8 @@ const dispatchReminder = async (dbConn, userId, reminder, timeZone, chatId, slot
       if (!Array.isArray(due) || due.length === 0) return;
       const lines = [`🔔 ${String(reminder.title || 'Нагадування про підписки')} (${target})`];
       due.slice(0, 10).forEach((sub, idx) => {
-        lines.push(`${idx + 1}. ${sub.name} — ${Number(sub.amount || 0).toLocaleString('uk-UA', { maximumFractionDigits: 2 })}`);
+        const cur = normalizeCurrency(sub.currency);
+        lines.push(`${idx + 1}. ${sub.name} — ${Number(sub.amount || 0).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} ${cur}`);
       });
       await sendTracked(lines.join('\n'));
       return;
@@ -4655,7 +4657,7 @@ app.get('/api/subscriptions', async (req, res) => {
   const userId = req.authUserId;
   await runSubscriptionAutopayForUser(userId);
   const rows = await db.all(
-    `SELECT id, name, amount, cycle, nextChargeDate, note, active, createdAt, updatedAt
+    `SELECT id, name, amount, currency, cycle, nextChargeDate, note, active, createdAt, updatedAt
      FROM subscriptions
      WHERE user_id = ?
      ORDER BY active DESC, nextChargeDate ASC, createdAt DESC`
@@ -4666,6 +4668,7 @@ app.get('/api/subscriptions', async (req, res) => {
     rows.map((row) => ({
       ...row,
       amount: Number(row.amount) || 0,
+      currency: normalizeCurrency(row.currency),
       active: Boolean(row.active),
     }))
   );
@@ -4675,6 +4678,7 @@ app.post('/api/subscriptions', async (req, res) => {
   const userId = req.authUserId;
   const name = typeof req.body?.name === 'string' ? req.body.name.trim().replace(/\s+/g, ' ') : '';
   const amount = Number(req.body?.amount);
+  const currency = normalizeCurrency(req.body?.currency);
   const cycle = req.body?.cycle === 'yearly' ? 'yearly' : 'monthly';
   const nextChargeDate = typeof req.body?.nextChargeDate === 'string' ? req.body.nextChargeDate : '';
   const note = typeof req.body?.note === 'string' ? req.body.note.trim() : '';
@@ -4695,15 +4699,16 @@ app.post('/api/subscriptions', async (req, res) => {
   const id = uuidv4();
   const now = new Date().toISOString();
   await db.run(
-    `INSERT INTO subscriptions (id, user_id, name, amount, cycle, nextChargeDate, note, active, createdAt, updatedAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
-    [id, userId, name, amount, cycle, nextChargeDate, note, now, now]
+    `INSERT INTO subscriptions (id, user_id, name, amount, currency, cycle, nextChargeDate, note, active, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+    [id, userId, name, amount, currency, cycle, nextChargeDate, note, now, now]
   );
 
   res.status(201).json({
     id,
     name,
     amount,
+    currency,
     cycle,
     nextChargeDate,
     note,
@@ -4726,6 +4731,9 @@ app.patch('/api/subscriptions/:id', async (req, res) => {
     ? req.body.name.trim().replace(/\s+/g, ' ')
     : current.name;
   const amount = req.body?.amount === undefined ? Number(current.amount) : Number(req.body.amount);
+  const currency = req.body?.currency === undefined
+    ? normalizeCurrency(current.currency)
+    : normalizeCurrency(req.body.currency);
   const cycle = req.body?.cycle === undefined
     ? current.cycle
     : (req.body.cycle === 'yearly' ? 'yearly' : 'monthly');
@@ -4751,14 +4759,15 @@ app.patch('/api/subscriptions/:id', async (req, res) => {
   const now = new Date().toISOString();
   await db.run(
     `UPDATE subscriptions
-     SET name = ?, amount = ?, cycle = ?, nextChargeDate = ?, note = ?, active = ?, updatedAt = ?
+     SET name = ?, amount = ?, currency = ?, cycle = ?, nextChargeDate = ?, note = ?, active = ?, updatedAt = ?
      WHERE user_id = ? AND id = ?`,
-    [name, amount, cycle, nextChargeDate, note, active ? 1 : 0, now, userId, id]
+    [name, amount, currency, cycle, nextChargeDate, note, active ? 1 : 0, now, userId, id]
   );
   res.json({
     ...current,
     name,
     amount,
+    currency,
     cycle,
     nextChargeDate,
     note,

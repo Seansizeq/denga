@@ -1,30 +1,36 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus } from 'lucide-react';
-import { formatCurrency } from '../utils/formatters';
+import { formatCurrency, type PlannerCurrency } from '../utils/formatters';
 import { useTranslation } from '../i18n/LanguageContext';
 import { apiFetch } from '../api/client';
 import styles from './Subscriptions.module.css';
 
 type BillingCycle = 'monthly' | 'yearly';
+type SubscriptionCurrency = PlannerCurrency;
 
 interface Subscription {
   id: string;
   name: string;
   amount: number;
+  currency: SubscriptionCurrency;
   cycle: BillingCycle;
   nextChargeDate: string;
   note?: string;
   active: boolean;
 }
 
+const normalizeSubCurrency = (raw: unknown): SubscriptionCurrency =>
+  raw === 'PLN' ? 'PLN' : 'UAH';
+
 const Subscriptions: React.FC = () => {
   const navigate = useNavigate();
-  const { t, locale, displayCurrency } = useTranslation();
+  const { t, locale } = useTranslation();
   const [items, setItems] = useState<Subscription[]>([]);
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
+  const [currency, setCurrency] = useState<SubscriptionCurrency>('UAH');
   const [cycle, setCycle] = useState<BillingCycle>('monthly');
   const [nextChargeDate, setNextChargeDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState('');
@@ -43,7 +49,14 @@ const Subscriptions: React.FC = () => {
         return;
       }
       const data = await response.json();
-      if (Array.isArray(data)) setItems(data);
+      if (Array.isArray(data)) {
+        setItems(
+          data.map((sub: Subscription) => ({
+            ...sub,
+            currency: normalizeSubCurrency(sub.currency),
+          }))
+        );
+      }
     } catch (error) {
       console.error('Error fetching subscriptions:', error);
       setListError(t('subscriptions', 'loadError'));
@@ -59,19 +72,28 @@ const Subscriptions: React.FC = () => {
   const activeItems = useMemo(() => items.filter((s) => s.active), [items]);
   const disabledItems = useMemo(() => items.filter((s) => !s.active), [items]);
 
-  const monthlyTotal = useMemo(
-    () => activeItems.reduce((sum, s) => sum + (s.cycle === 'monthly' ? s.amount : s.amount / 12), 0),
-    [activeItems]
-  );
+  const monthlyTotals = useMemo(() => {
+    const acc: Record<SubscriptionCurrency, number> = { UAH: 0, PLN: 0 };
+    for (const s of activeItems) {
+      const cur = normalizeSubCurrency(s.currency);
+      acc[cur] += s.cycle === 'monthly' ? s.amount : s.amount / 12;
+    }
+    return acc;
+  }, [activeItems]);
 
-  const yearlyTotal = useMemo(
-    () => activeItems.reduce((sum, s) => sum + (s.cycle === 'yearly' ? s.amount : s.amount * 12), 0),
-    [activeItems]
-  );
+  const yearlyTotals = useMemo(() => {
+    const acc: Record<SubscriptionCurrency, number> = { UAH: 0, PLN: 0 };
+    for (const s of activeItems) {
+      const cur = normalizeSubCurrency(s.currency);
+      acc[cur] += s.cycle === 'yearly' ? s.amount : s.amount * 12;
+    }
+    return acc;
+  }, [activeItems]);
 
   const resetForm = useCallback(() => {
     setName('');
     setAmount('');
+    setCurrency('UAH');
     setCycle('monthly');
     setNextChargeDate(new Date().toISOString().slice(0, 10));
     setNote('');
@@ -101,6 +123,7 @@ const Subscriptions: React.FC = () => {
           body: JSON.stringify({
             name: name.trim(),
             amount: numericAmount,
+            currency,
             cycle,
             nextChargeDate,
             note: note.trim(),
@@ -112,10 +135,11 @@ const Subscriptions: React.FC = () => {
         return;
       }
       const saved = (await response.json()) as Subscription;
+      const normalizedSaved: Subscription = { ...saved, currency: normalizeSubCurrency(saved.currency) };
       if (editingId) {
-        setItems((prev) => prev.map((s) => (s.id === editingId ? { ...s, ...saved } : s)));
+        setItems((prev) => prev.map((s) => (s.id === editingId ? { ...s, ...normalizedSaved } : s)));
       } else {
-        setItems((prev) => [saved, ...prev]);
+        setItems((prev) => [normalizedSaved, ...prev]);
       }
       resetForm();
     } catch (error) {
@@ -154,6 +178,7 @@ const Subscriptions: React.FC = () => {
         body: JSON.stringify({
           name: sub.name,
           amount: sub.amount,
+          currency: sub.currency,
           cycle: sub.cycle,
           nextChargeDate: sub.nextChargeDate,
           note: sub.note ?? '',
@@ -165,7 +190,8 @@ const Subscriptions: React.FC = () => {
         return;
       }
       const updated = (await response.json()) as Subscription;
-      setItems((prev) => prev.map((s) => (s.id === id ? { ...s, ...updated } : s)));
+      const normalized: Subscription = { ...updated, currency: normalizeSubCurrency(updated.currency) };
+      setItems((prev) => prev.map((s) => (s.id === id ? { ...s, ...normalized } : s)));
     } catch (error) {
       console.error('Error enabling subscription:', error);
       setActionError(t('subscriptions', 'saveError'));
@@ -178,12 +204,14 @@ const Subscriptions: React.FC = () => {
     setIsFormOpen(true);
     setName(sub.name);
     setAmount(String(sub.amount));
+    setCurrency(normalizeSubCurrency(sub.currency));
     setCycle(sub.cycle);
     setNextChargeDate(sub.nextChargeDate);
     setNote(sub.note ?? '');
   };
 
   const renderCard = (sub: Subscription, opts: { showEnable?: boolean }) => {
+    const subCurrency = normalizeSubCurrency(sub.currency);
     const yearlyForItem = sub.cycle === 'yearly' ? sub.amount : sub.amount * 12;
     return (
       <article
@@ -192,7 +220,7 @@ const Subscriptions: React.FC = () => {
       >
         <div className={styles.itemTop}>
           <span className={styles.itemName}>{sub.name}</span>
-          <span className={styles.itemAmount}>{formatCurrency(sub.amount, locale, displayCurrency)}</span>
+          <span className={styles.itemAmount}>{formatCurrency(sub.amount, locale, subCurrency)}</span>
         </div>
         <div className={styles.itemMeta}>
           <span>{sub.cycle === 'monthly' ? t('subscriptions', 'monthly') : t('subscriptions', 'yearly')}</span>
@@ -200,7 +228,7 @@ const Subscriptions: React.FC = () => {
         </div>
         <div className={styles.itemYearlyRow}>
           <span>{t('subscriptions', 'yearlyForItem')}</span>
-          <strong>{formatCurrency(yearlyForItem, locale, displayCurrency)}</strong>
+          <strong>{formatCurrency(yearlyForItem, locale, subCurrency)}</strong>
         </div>
         {sub.note ? <p className={styles.itemNote}>{sub.note}</p> : null}
         <div className={styles.itemActions}>
@@ -247,11 +275,21 @@ const Subscriptions: React.FC = () => {
       <div className={styles.summaryGrid}>
         <div className={styles.summaryCard}>
           <span className={styles.summaryLabel}>{t('subscriptions', 'monthlyTotal')}</span>
-          <span className={styles.summaryValue}>{formatCurrency(monthlyTotal, locale, displayCurrency)}</span>
+          {monthlyTotals.UAH > 0 || monthlyTotals.PLN === 0 ? (
+            <span className={styles.summaryValue}>{formatCurrency(monthlyTotals.UAH, locale, 'UAH')}</span>
+          ) : null}
+          {monthlyTotals.PLN > 0 ? (
+            <span className={styles.summaryValue}>{formatCurrency(monthlyTotals.PLN, locale, 'PLN')}</span>
+          ) : null}
         </div>
         <div className={styles.summaryCard}>
           <span className={styles.summaryLabel}>{t('subscriptions', 'yearlyTotal')}</span>
-          <span className={styles.summaryValue}>{formatCurrency(yearlyTotal, locale, displayCurrency)}</span>
+          {yearlyTotals.UAH > 0 || yearlyTotals.PLN === 0 ? (
+            <span className={styles.summaryValue}>{formatCurrency(yearlyTotals.UAH, locale, 'UAH')}</span>
+          ) : null}
+          {yearlyTotals.PLN > 0 ? (
+            <span className={styles.summaryValue}>{formatCurrency(yearlyTotals.PLN, locale, 'PLN')}</span>
+          ) : null}
         </div>
       </div>
 
@@ -303,6 +341,24 @@ const Subscriptions: React.FC = () => {
                 onChange={(e) => setAmount(e.target.value.replace(/[^0-9.,]/g, ''))}
                 placeholder={t('subscriptions', 'amount')}
               />
+              <div className={styles.currencySegment} role="group" aria-label="Currency">
+                <button
+                  type="button"
+                  className={styles.currencySegmentBtn}
+                  aria-pressed={currency === 'UAH'}
+                  onClick={() => setCurrency('UAH')}
+                >
+                  ₴
+                </button>
+                <button
+                  type="button"
+                  className={styles.currencySegmentBtn}
+                  aria-pressed={currency === 'PLN'}
+                  onClick={() => setCurrency('PLN')}
+                >
+                  zł
+                </button>
+              </div>
               <select value={cycle} onChange={(e) => setCycle(e.target.value as BillingCycle)}>
                 <option value="monthly">{t('subscriptions', 'monthly')}</option>
                 <option value="yearly">{t('subscriptions', 'yearly')}</option>
@@ -340,6 +396,7 @@ const Subscriptions: React.FC = () => {
           if (!isFormOpen) {
             setName('');
             setAmount('');
+            setCurrency('UAH');
             setCycle('monthly');
             setNextChargeDate(new Date().toISOString().slice(0, 10));
             setNote('');
