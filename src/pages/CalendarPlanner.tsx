@@ -152,6 +152,24 @@ const formatElapsedShiftTime = (
   return `${hours}${unitLabels.hours} ${minutes}${unitLabels.minutes}`;
 };
 
+const formatDecimalHoursAsHoursMinutes = (
+  decimalHours: number,
+  unitLabels: { hours: string; minutes: string }
+): string => {
+  const total = Math.max(0, Number(decimalHours) || 0);
+  let totalMinutes = Math.round(total * 60);
+  let hours = Math.floor(totalMinutes / 60);
+  let minutes = totalMinutes - hours * 60;
+  if (minutes === 60) {
+    hours += 1;
+    minutes = 0;
+  }
+  if (hours === 0 && minutes === 0) return `0${unitLabels.hours}`;
+  if (hours === 0) return `${minutes}${unitLabels.minutes}`;
+  if (minutes === 0) return `${hours}${unitLabels.hours}`;
+  return `${hours}${unitLabels.hours} ${minutes}${unitLabels.minutes}`;
+};
+
 const expectedPayForDay = (p: DayPlan): number => {
   if (!p.hasShift) return 0;
   if (p.salaryAmount > 0) return p.salaryAmount;
@@ -529,7 +547,10 @@ const CalendarPlanner: React.FC = () => {
       showAppAlert(t('planner', 'defaultShiftTemplateSaved'));
     } catch (error) {
       console.error('Failed to save default shift template:', error);
-      showAppAlert(t('planner', 'defaultShiftTemplateSaveFailed'));
+      const msg = error instanceof Error && error.message.includes(':')
+        ? error.message.split(':').slice(1).join(':').trim()
+        : '';
+      showAppAlert(msg ? `${t('planner', 'defaultShiftTemplateSaveFailed')} (${msg})` : t('planner', 'defaultShiftTemplateSaveFailed'));
     } finally {
       setPlannerSettingsSaving(false);
     }
@@ -1043,7 +1064,10 @@ const CalendarPlanner: React.FC = () => {
             <div className={styles.reportStatItem}>
               <span className={styles.reportLabel}>{t('planner', 'reportHoursTotal')}</span>
               <strong className={styles.reportValue}>
-                {monthReport.totalHours.toLocaleString(locale, { maximumFractionDigits: 1, minimumFractionDigits: 0 })}
+                {formatDecimalHoursAsHoursMinutes(monthReport.totalHours, {
+                  hours: t('planner', 'hoursShort'),
+                  minutes: t('planner', 'minutesShort'),
+                })}
               </strong>
             </div>
           </div>
@@ -1084,7 +1108,12 @@ const CalendarPlanner: React.FC = () => {
                   <li key={`report-${entry.id}`} className={styles.dayShiftRow}>
                     <span className={styles.dayShiftMain}>{entry.note || t('planner', 'shiftTitle')}</span>
                     <span className={styles.dayShiftMeta}>
-                      {entry.day} · {entry.workedHours.toLocaleString(locale, { maximumFractionDigits: 2 })}{t('planner', 'hoursShort')} ·{' '}
+                      {entry.day} ·{' '}
+                      {formatDecimalHoursAsHoursMinutes(entry.workedHours, {
+                        hours: t('planner', 'hoursShort'),
+                        minutes: t('planner', 'minutesShort'),
+                      })}{' '}
+                      ·{' '}
                       {entry.salaryAmount > 0 ? formatPlannerMoney(entry.salaryAmount, locale, entry.salaryCurrency) : '—'}
                     </span>
                     {!entry.id.startsWith('day-') ? (
@@ -1217,7 +1246,11 @@ const CalendarPlanner: React.FC = () => {
                   <li key={entry.id} className={styles.dayShiftRow}>
                     <span className={styles.dayShiftMain}>{entry.note || t('planner', 'shiftTitle')}</span>
                     <span className={styles.dayShiftMeta}>
-                      {entry.workedHours.toLocaleString(locale, { maximumFractionDigits: 2 })}{t('planner', 'hoursShort')} ·{' '}
+                      {formatDecimalHoursAsHoursMinutes(entry.workedHours, {
+                        hours: t('planner', 'hoursShort'),
+                        minutes: t('planner', 'minutesShort'),
+                      })}{' '}
+                      ·{' '}
                       {entry.salaryAmount > 0 ? formatPlannerMoney(entry.salaryAmount, locale, entry.salaryCurrency) : '—'}
                     </span>
                   </li>

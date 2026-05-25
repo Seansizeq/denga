@@ -97,7 +97,16 @@ export const updatePlannerSettings = async (
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(patch),
   });
-  if (!res.ok) throw new Error('failed to update planner settings');
+  if (!res.ok) {
+    let detail = '';
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (body?.error) detail = `: ${body.error}`;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(`failed to update planner settings${detail}`);
+  }
   return res.json();
 };
 

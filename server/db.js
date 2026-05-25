@@ -239,6 +239,11 @@ export async function initDb() {
   } catch {
     /* already exists */
   }
+  try {
+    await db.exec(`ALTER TABLE planner_user_settings ADD COLUMN default_shift_template_id TEXT`);
+  } catch {
+    /* already exists */
+  }
 
   await db.exec(`
     CREATE TABLE IF NOT EXISTS planner_shift_templates (

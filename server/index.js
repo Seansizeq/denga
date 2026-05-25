@@ -530,6 +530,21 @@ const dayFromIsoInZone = (iso, timeZone = DEFAULT_BOT_TIMEZONE) => {
   const parts = formatDatePartsForZone(iso, timeZone);
   return parts?.day ?? '';
 };
+const formatHoursAsHoursMinutes = (decimalHours, units = { h: 'год', m: 'хв' }) => {
+  const total = Math.max(0, Number(decimalHours) || 0);
+  let totalMinutes = Math.round(total * 60);
+  let hours = Math.floor(totalMinutes / 60);
+  let minutes = totalMinutes - hours * 60;
+  if (minutes === 60) {
+    hours += 1;
+    minutes = 0;
+  }
+  if (hours === 0 && minutes === 0) return `0 ${units.h}`;
+  if (hours === 0) return `${minutes} ${units.m}`;
+  if (minutes === 0) return `${hours} ${units.h}`;
+  return `${hours} ${units.h} ${minutes} ${units.m}`;
+};
+
 const buildBotShiftNote = (startIso, endIso, timeZone = DEFAULT_BOT_TIMEZONE) => {
   const start = parseTimeFromIso(startIso, timeZone);
   const end = parseTimeFromIso(endIso, timeZone);
@@ -1490,13 +1505,13 @@ const buildAchievementLines = async ({
   if (reportType === 'weekly' && wh >= 40) {
     candidates.push({
       priority: 50,
-      line: `⏱️ Відпрацьовано ${wh.toLocaleString('uk-UA', { maximumFractionDigits: 2 })} год / ${wd} днів`,
+      line: `⏱️ Відпрацьовано ${formatHoursAsHoursMinutes(wh)} / ${wd} днів`,
     });
   }
   if (reportType === 'monthly' && wh >= 160) {
     candidates.push({
       priority: 50,
-      line: `⏱️ Відпрацьовано ${wh.toLocaleString('uk-UA', { maximumFractionDigits: 2 })} год / ${wd} днів`,
+      line: `⏱️ Відпрацьовано ${formatHoursAsHoursMinutes(wh)} / ${wd} днів`,
     });
   }
   return candidates
@@ -1771,7 +1786,7 @@ const buildReportText = (reportType, periodLabel, txs, comparison, extra = {}) =
     }
     lines.push('');
     lines.push('⏰ *РОБОЧИЙ ЧАС*');
-    lines.push(`├ Відпрацьовано: *${workedHours.toLocaleString('uk-UA', { maximumFractionDigits: 2 })} год*`);
+    lines.push(`├ Відпрацьовано: *${formatHoursAsHoursMinutes(workedHours)}*`);
     lines.push('└ Деталі — у вебапі');
     const achievementLines = Array.isArray(extra.achievementLines) ? extra.achievementLines : [];
     if (achievementLines.length > 0) {
@@ -1820,9 +1835,9 @@ const buildReportText = (reportType, periodLabel, txs, comparison, extra = {}) =
     }
     lines.push('');
     lines.push('⏰ *РОБОЧИЙ ЧАС*');
-    lines.push(`├ Всього відпрацьовано: *${workedHours.toLocaleString('uk-UA', { maximumFractionDigits: 2 })} год*`);
+    lines.push(`├ Всього відпрацьовано: *${formatHoursAsHoursMinutes(workedHours)}*`);
     lines.push(`├ Робочих днів: ${workingDays}`);
-    lines.push(`└ Середньо/день: ${avgPerDay.toLocaleString('uk-UA', { maximumFractionDigits: 2 })} год`);
+    lines.push(`└ Середньо/день: ${formatHoursAsHoursMinutes(avgPerDay)}`);
     lines.push('');
     lines.push('📈 *ПОРІВНЯННЯ З МИНУЛИМ МІСЯЦЕМ*');
     lines.push(`├ Дохід: \`${incomePct >= 0 ? '+' : ''}${incomePct.toLocaleString('uk-UA', { maximumFractionDigits: 0 })}%\` ${incomePct >= 0 ? '⬆️' : '⬇️'}`);
@@ -2797,7 +2812,7 @@ if (bot) {
     });
     bot.sendMessage(
       msg.chat.id,
-      `🔴 Зміну завершено (${parseTimeFromIso(now.toISOString(), userTimeZone)}). Відпрацьовано: ${roundedHours.toLocaleString('uk-UA', { maximumFractionDigits: 2 })} год.`
+      `🔴 Зміну завершено (${parseTimeFromIso(now.toISOString(), userTimeZone)}). Відпрацьовано: ${formatHoursAsHoursMinutes(roundedHours)}.`
     );
   });
 
@@ -5075,6 +5090,59 @@ app.delete('/api/planner/shifts/:id', async (req, res) => {
   res.status(204).end();
 });
 
+app.get('/api/planner/settings', async (req, res) => {
+  const userId = req.authUserId;
+  const settings = await getPlannerUserSettings(db, userId);
+  res.json(settings);
+});
+
+app.put('/api/planner/settings', async (req, res) => {
+  const userId = req.authUserId;
+  if (req.body?.defaultShiftTemplateId !== undefined && req.body.defaultShiftTemplateId !== null) {
+    const v = req.body.defaultShiftTemplateId;
+    if (v !== 'none' && typeof v !== 'string') {
+      res.status(400).json({ error: 'defaultShiftTemplateId must be template id, "none", or null' });
+      return;
+    }
+  }
+  const updated = await updatePlannerUserSettings(db, userId, {
+    defaultShiftTemplateId: req.body?.defaultShiftTemplateId,
+  });
+  if (updated?.error === 'TEMPLATE_NOT_FOUND') {
+    res.status(404).json({ error: 'Template not found' });
+    return;
+  }
+  res.json(updated);
+});
+
+app.get('/api/planner/automation', async (req, res) => {
+  const userId = req.authUserId;
+  await ensurePlannerUserSettings(db, userId);
+  const row = await db.get(
+    'SELECT automation_token FROM planner_user_settings WHERE user_id = ? LIMIT 1',
+    [userId]
+  );
+  const token = String(row?.automation_token ?? '');
+  res.json({
+    token,
+    ...buildAutomationShiftUrls(req, token),
+  });
+});
+
+app.post('/api/planner/automation/rotate-token', async (req, res) => {
+  const userId = req.authUserId;
+  await ensurePlannerUserSettings(db, userId);
+  const token = createAutomationToken();
+  await db.run(
+    `UPDATE planner_user_settings SET automation_token = ?, updated_at = ? WHERE user_id = ?`,
+    [token, new Date().toISOString(), userId]
+  );
+  res.json({
+    token,
+    ...buildAutomationShiftUrls(req, token),
+  });
+});
+
 app.put('/api/planner/:day', async (req, res) => {
   const userId = req.authUserId;
   const { day } = req.params;
@@ -5121,59 +5189,6 @@ app.put('/api/planner/:day', async (req, res) => {
 
 const normalizeShiftTemplateKey = (name, symbol, currency) =>
   `${String(name).trim().toLowerCase()}::${String(symbol).trim().toLowerCase()}::${currency === 'PLN' ? 'PLN' : 'UAH'}`;
-
-app.get('/api/planner/settings', async (req, res) => {
-  const userId = req.authUserId;
-  const settings = await getPlannerUserSettings(db, userId);
-  res.json(settings);
-});
-
-app.get('/api/planner/automation', async (req, res) => {
-  const userId = req.authUserId;
-  await ensurePlannerUserSettings(db, userId);
-  const row = await db.get(
-    'SELECT automation_token FROM planner_user_settings WHERE user_id = ? LIMIT 1',
-    [userId]
-  );
-  const token = String(row?.automation_token ?? '');
-  res.json({
-    token,
-    ...buildAutomationShiftUrls(req, token),
-  });
-});
-
-app.post('/api/planner/automation/rotate-token', async (req, res) => {
-  const userId = req.authUserId;
-  await ensurePlannerUserSettings(db, userId);
-  const token = createAutomationToken();
-  await db.run(
-    `UPDATE planner_user_settings SET automation_token = ?, updated_at = ? WHERE user_id = ?`,
-    [token, new Date().toISOString(), userId]
-  );
-  res.json({
-    token,
-    ...buildAutomationShiftUrls(req, token),
-  });
-});
-
-app.put('/api/planner/settings', async (req, res) => {
-  const userId = req.authUserId;
-  if (req.body?.defaultShiftTemplateId !== undefined && req.body.defaultShiftTemplateId !== null) {
-    const v = req.body.defaultShiftTemplateId;
-    if (v !== 'none' && typeof v !== 'string') {
-      res.status(400).json({ error: 'defaultShiftTemplateId must be template id, "none", or null' });
-      return;
-    }
-  }
-  const updated = await updatePlannerUserSettings(db, userId, {
-    defaultShiftTemplateId: req.body?.defaultShiftTemplateId,
-  });
-  if (updated?.error === 'TEMPLATE_NOT_FOUND') {
-    res.status(404).json({ error: 'Template not found' });
-    return;
-  }
-  res.json(updated);
-});
 
 app.get('/api/planner/shift-templates', async (req, res) => {
   const userId = req.authUserId;
