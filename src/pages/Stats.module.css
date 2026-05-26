@@ -31,6 +31,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  box-sizing: border-box;
+  flex-shrink: 0;
 }
 
 .rangeRow {
@@ -38,18 +40,20 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  height: 40px;
   margin-bottom: 12px;
 }
 
 .rangeTabs {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px;
-  min-height: 40px;
+  gap: 2px;
+  padding: 3px;
+  height: 40px;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 999px;
+  box-sizing: border-box;
 }
 
 .rangeTabBtn {

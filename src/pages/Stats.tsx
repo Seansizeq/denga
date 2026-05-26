@@ -3,10 +3,9 @@ import { ChevronLeft, ChevronRight, Eye, EyeOff } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useTransactions } from '../context/TransactionContext';
 import { useTranslation } from '../i18n/LanguageContext';
-import { formatCurrency, formatDate, isSameMonth } from '../utils/formatters';
+import { formatCurrency, isSameMonth } from '../utils/formatters';
 import { findCategory, getCustomCategoryData } from '../constants/categories';
 import type { CategoryKey } from '../i18n/translations';
-import { buildSpendingInsights } from '../utils/spendingInsights';
 import styles from './Stats.module.css';
 
 type StatsRange = 'week' | 'month' | 'year';
@@ -90,49 +89,6 @@ const Stats: React.FC = () => {
     [categoryRows, hiddenCategoryIds]
   );
   const visibleExpenseTotal = visibleCategoryRows.reduce((sum, row) => sum + row.total, 0);
-  const insights = useMemo(
-    () => buildSpendingInsights({ transactions, convertAmount, range, selectedMonth }),
-    [transactions, convertAmount, range, selectedMonth]
-  );
-  const insightCards = useMemo(() => {
-    const cards: Array<{ id: string; title: string; value: string; meta: string }> = [];
-    if (insights.trend) {
-      const sign = insights.trend.percent >= 0 ? '+' : '−';
-      cards.push({
-        id: 'trend',
-        title: t('stats', 'insightTrend'),
-        value: `${sign}${Math.abs(insights.trend.percent).toFixed(0)}%`,
-        meta: `${t('stats', 'previousPeriod')} · ${formatCurrency(Math.abs(insights.trend.delta), locale, displayCurrency)}`,
-      });
-    }
-    if (insights.growingCategory) {
-      const customCategory = getCustomCategoryData(insights.growingCategory.categoryId);
-      const category = customCategory ? findCategory('other_expense') : findCategory(insights.growingCategory.categoryId);
-      cards.push({
-        id: 'growth',
-        title: t('stats', 'insightGrowth'),
-        value: customCategory?.name ?? t('categories', category.id as CategoryKey),
-        meta: `+${formatCurrency(insights.growingCategory.delta, locale, displayCurrency)}`,
-      });
-    }
-    if (insights.anomaly) {
-      cards.push({
-        id: 'anomaly',
-        title: t('stats', 'insightAnomaly'),
-        value: formatCurrency(insights.anomaly.amount, locale, displayCurrency),
-        meta: `${formatDate(insights.anomaly.date, locale)} · avg ${formatCurrency(insights.anomaly.average, locale, displayCurrency)}`,
-      });
-    }
-    if (insights.recurring) {
-      cards.push({
-        id: 'recurring',
-        title: t('stats', 'insightRecurring'),
-        value: insights.recurring.label,
-        meta: `${insights.recurring.count}x · ${Math.round(insights.recurring.cadenceDays)}d · ${formatCurrency(insights.recurring.averageAmount, locale, displayCurrency)}`,
-      });
-    }
-    return cards;
-  }, [displayCurrency, insights, locale, t]);
 
   const donutBackground = useMemo(() => {
     if (!visibleExpenseTotal) {
@@ -223,26 +179,6 @@ const Stats: React.FC = () => {
           {formatCurrency(net, locale, displayCurrency)}
         </span>
       </div>
-
-      <section className={styles.section}>
-        <h2 className={styles.sectionTitle}>{t('stats', 'insightsTitle')}</h2>
-        {insightCards.length === 0 ? (
-          <div className={styles.emptyState}>
-            <span className={styles.emptyIcon}>💡</span>
-            <p className={styles.emptyText}>{t('stats', 'noInsights')}</p>
-          </div>
-        ) : (
-          <div className={styles.insightsGrid}>
-            {insightCards.map((card) => (
-              <article key={card.id} className={styles.insightCard}>
-                <span className={styles.insightTitle}>{card.title}</span>
-                <strong className={styles.insightValue}>{card.value}</strong>
-                <span className={styles.insightMeta}>{card.meta}</span>
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
 
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>{t('stats', 'byCategory')}</h2>
