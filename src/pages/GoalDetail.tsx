@@ -4,7 +4,6 @@ import { Target, Car, Plane, Shield, Trash2, Home, Briefcase, Wallet, Heart, Gif
 import type { LucideIcon } from 'lucide-react';
 import {
   addContribution,
-  apiFetch,
   deleteContribution,
   deleteGoal,
   getContributions,
@@ -18,6 +17,7 @@ import { normalizeCurrency } from '../utils/currency';
 import { formatCurrency } from '../utils/formatters';
 import type { DisplayCurrency } from '../utils/formatters';
 import { useTranslation } from '../i18n/LanguageContext';
+import { usePortfolio } from '../context/PortfolioContext';
 import styles from './Goals.module.css';
 
 const GOAL_COLOR_RE = /^#[0-9A-Fa-f]{6}$/;
@@ -73,9 +73,24 @@ const GoalDetail: React.FC = () => {
   const [contribAmount, setContribAmount] = useState('');
   const [contribNote, setContribNote] = useState('');
   const [contribAccountKey, setContribAccountKey] = useState('');
-  const [portfolioAccounts, setPortfolioAccounts] = useState<
-    Array<{ key: string; name: string; currency: GoalCurrency }>
-  >([]);
+  const { accounts: rawAccounts } = usePortfolio();
+  const portfolioAccounts = useMemo<Array<{ key: string; name: string; currency: GoalCurrency }>>(
+    () => {
+      const list: Array<{ key: string; name: string; currency: GoalCurrency }> = [];
+      for (const row of rawAccounts) {
+        if (!row || typeof row !== 'object') continue;
+        const r = row as Record<string, unknown>;
+        const key = String(r.accountKey ?? '').trim().toLowerCase();
+        if (!key) continue;
+        const name = String(r.name ?? r.accountKey ?? '').trim().slice(0, 40);
+        const cur = normalizeCurrency(String(r.primaryCurrency ?? 'UAH')) as GoalCurrency;
+        list.push({ key, name: name || key, currency: cur });
+      }
+      list.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+      return list;
+    },
+    [rawAccounts],
+  );
   const [actionError, setActionError] = useState('');
   const [editOpen, setEditOpen] = useState(false);
   const [editName, setEditName] = useState('');
@@ -91,40 +106,6 @@ const GoalDetail: React.FC = () => {
       el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
     }, 120);
   };
-
-  useEffect(() => {
-    let cancelled = false;
-    const loadPortfolio = async () => {
-      try {
-        const res = await apiFetch('/api/accounts');
-        if (!res.ok || cancelled) return;
-        const data: unknown = await res.json();
-        if (!Array.isArray(data) || cancelled) return;
-        const list: Array<{ key: string; name: string; currency: GoalCurrency }> = [];
-        for (const row of data) {
-          if (!row || typeof row !== 'object') continue;
-          const r = row as Record<string, unknown>;
-          const key = String(r.accountKey ?? '')
-            .trim()
-            .toLowerCase();
-          if (!key) continue;
-          const name = String(r.name ?? r.accountKey ?? '')
-            .trim()
-            .slice(0, 40);
-          const cur = normalizeCurrency(String(r.primaryCurrency ?? 'UAH')) as GoalCurrency;
-          list.push({ key, name: name || key, currency: cur });
-        }
-        list.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
-        if (!cancelled) setPortfolioAccounts(list);
-      } catch {
-        if (!cancelled) setPortfolioAccounts([]);
-      }
-    };
-    void loadPortfolio();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const accountPayOptions = useMemo(() => {
     if (!goal) return [];

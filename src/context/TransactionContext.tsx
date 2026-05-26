@@ -1,7 +1,20 @@
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { Transaction, Balance, TransactionDraft } from '../types';
 import { apiFetch } from '../api/client';
 import { normalizeCurrency } from '../utils/currency';
+import { usePersistedState } from '../hooks/usePersistedState';
+
+const TRANSACTIONS_STORAGE_KEY = 'denga_transactions_v1';
+
+const isTransactionArray = (v: unknown): v is Transaction[] =>
+  Array.isArray(v) &&
+  v.every(
+    (item) =>
+      item &&
+      typeof item === 'object' &&
+      typeof (item as Transaction).id === 'string' &&
+      typeof (item as Transaction).amount === 'number',
+  );
 
 interface TransactionContextType {
   transactions: Transaction[];
@@ -18,8 +31,11 @@ export const TransactionProvider: React.FC<{
   children: React.ReactNode;
   onReady?: () => void;
 }> = ({ children, onReady }) => {
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [balance, setBalance] = useState<Balance>({ total: 0, income: 0, expense: 0 });
+  const [transactions, setTransactions] = usePersistedState<Transaction[]>(
+    TRANSACTIONS_STORAGE_KEY,
+    [],
+    { validate: isTransactionArray },
+  );
   const [isBootstrapping, setIsBootstrapping] = useState(true);
   const readyNotifiedRef = useRef(false);
 
@@ -52,7 +68,7 @@ export const TransactionProvider: React.FC<{
         notifyReady();
       }
     }
-  }, [notifyReady]);
+  }, [notifyReady, setTransactions]);
 
   const tryParseJson = async (response: Response) => {
     try {
@@ -62,29 +78,29 @@ export const TransactionProvider: React.FC<{
     }
   };
 
+  const hasHydratedTransactionsRef = useRef(transactions.length > 0);
+
   useEffect(() => {
+    if (hasHydratedTransactionsRef.current) {
+      setIsBootstrapping(false);
+      notifyReady();
+    }
     void fetchTransactions({ initial: true });
     // Poll for changes from the bot every 5 seconds
     const interval = window.setInterval(() => {
       void fetchTransactions();
     }, 5000);
     return () => clearInterval(interval);
-  }, [fetchTransactions]);
+  }, [fetchTransactions, notifyReady]);
 
-  useEffect(() => {
-    const income = transactions
-      .filter(t => t.type === 'income')
-      .reduce((sum, t) => sum + t.amount, 0);
-    
-    const expense = transactions
-      .filter(t => t.type === 'expense')
-      .reduce((sum, t) => sum + t.amount, 0);
-    
-    setBalance({
-      total: income - expense,
-      income,
-      expense
-    });
+  const balance = useMemo<Balance>(() => {
+    let income = 0;
+    let expense = 0;
+    for (const tx of transactions) {
+      if (tx.type === 'income') income += tx.amount;
+      else if (tx.type === 'expense') expense += tx.amount;
+    }
+    return { total: income - expense, income, expense };
   }, [transactions]);
 
   const addTransaction = async (t: TransactionDraft) => {

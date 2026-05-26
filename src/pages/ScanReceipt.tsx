@@ -4,12 +4,12 @@ import * as LucideIcons from 'lucide-react';
 import { Camera, ScanLine, X } from 'lucide-react';
 import { useTranslation } from '../i18n/LanguageContext';
 import { useTransactions } from '../context/TransactionContext';
+import { usePortfolio } from '../context/PortfolioContext';
 import { CATEGORIES, findCategory, getCustomCategoryData, inferCustomCategoryIcon } from '../constants/categories';
 import type { CategoryKey, Language } from '../i18n/translations';
 import { compressImage } from '../utils/imageCompress';
 import { scanReceipt, type ScanReceiptError, type ScannedReceipt } from '../api/receipts';
 import { formatCurrency } from '../utils/formatters';
-import { apiFetch } from '../api/client';
 import {
   ACCOUNT_NOTE_KEYS,
   mergeAccountIntoNoteLimited,
@@ -47,7 +47,23 @@ const ScanReceipt: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [saveErrorMessage, setSaveErrorMessage] = useState('');
   const [selectedCategoryId, setSelectedCategoryId] = useState('other_expense');
-  const [portfolioAccounts, setPortfolioAccounts] = useState<Array<{ key: string; name: string }>>([]);
+  const { accounts: rawAccounts } = usePortfolio();
+  const portfolioAccounts = useMemo<Array<{ key: string; name: string }>>(
+    () => {
+      const list: Array<{ key: string; name: string }> = [];
+      for (const row of rawAccounts) {
+        if (!row || typeof row !== 'object') continue;
+        const r = row as Record<string, unknown>;
+        const key = String(r.accountKey ?? '').trim().toLowerCase();
+        if (!key) continue;
+        const name = String(r.name ?? r.accountKey ?? '').trim().slice(0, 40);
+        list.push({ key, name: name || key });
+      }
+      list.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+      return list;
+    },
+    [rawAccounts],
+  );
   const [paymentAccount, setPaymentAccount] = useState('');
   const [draftShop, setDraftShop] = useState('');
   const [draftTotal, setDraftTotal] = useState('');
@@ -83,39 +99,6 @@ const ScanReceipt: React.FC = () => {
     }
     return out;
   }, [portfolioAccounts, language]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const loadPortfolio = async () => {
-      try {
-        const res = await apiFetch('/api/accounts');
-        if (!res.ok || cancelled) return;
-        const data: unknown = await res.json();
-        if (!Array.isArray(data) || cancelled) return;
-        const list: Array<{ key: string; name: string }> = [];
-        for (const row of data) {
-          if (!row || typeof row !== 'object') continue;
-          const r = row as Record<string, unknown>;
-          const key = String(r.accountKey ?? '')
-            .trim()
-            .toLowerCase();
-          if (!key) continue;
-          const name = String(r.name ?? r.accountKey ?? '')
-            .trim()
-            .slice(0, 40);
-          list.push({ key, name: name || key });
-        }
-        list.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
-        if (!cancelled) setPortfolioAccounts(list);
-      } catch {
-        if (!cancelled) setPortfolioAccounts([]);
-      }
-    };
-    void loadPortfolio();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const triggerCamera = () => {
     setError(null);

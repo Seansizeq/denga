@@ -1,9 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
 import Header from '../components/ui/Header';
 import AccountsSnapshot from '../components/ui/AccountsSnapshot';
 import AccountEditSheet, { type EditableAccount } from '../components/ui/AccountEditSheet';
 import { useTransactions } from '../context/TransactionContext';
+import { usePortfolio } from '../context/PortfolioContext';
 import { getCustomCategoryName } from '../constants/categories';
 import { useTranslation } from '../i18n/LanguageContext';
 import { apiFetch } from '../api/client';
@@ -114,55 +115,15 @@ const normalizeLabel = (value: string) => value.trim().toLowerCase().replace(/\s
 const Accounts: React.FC = () => {
   const { t, displayCurrency, convertAmount } = useTranslation();
   const { transactions } = useTransactions();
-  const [portfolio, setPortfolio] = useState<readonly PortfolioAccountRow[]>([]);
+  const { accounts, cryptoPrices, refreshAccounts } = usePortfolio();
   const [editing, setEditing] = useState<EditableAccount | null>(null);
-  const [cryptoUsdPrices, setCryptoUsdPrices] = useState<Record<string, number>>({});
 
-  const loadPortfolio = useCallback(async () => {
-    try {
-      const res = await apiFetch('/api/accounts');
-      if (!res.ok) return;
-      const data: unknown = await res.json();
-      if (!Array.isArray(data)) return;
-      const next = data.map(parsePortfolioRow).filter((r): r is PortfolioAccountRow => Boolean(r));
-      setPortfolio(next);
-    } catch {
-      // ignore: fallback to transaction-derived view
-    }
-  }, []);
+  const portfolio = useMemo<readonly PortfolioAccountRow[]>(
+    () => accounts.map(parsePortfolioRow).filter((r): r is PortfolioAccountRow => Boolean(r)),
+    [accounts],
+  );
 
-  useEffect(() => {
-    const t = window.setTimeout(() => {
-      void loadPortfolio();
-    }, 0);
-    return () => window.clearTimeout(t);
-  }, [loadPortfolio]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const loadCryptoPrices = async () => {
-      try {
-        const res = await apiFetch('/api/crypto-prices');
-        if (!res.ok || cancelled) return;
-        const data = await res.json();
-        const prices = (data?.prices ?? {}) as Record<string, unknown>;
-        const normalized: Record<string, number> = {};
-        for (const [k, v] of Object.entries(prices)) {
-          const n = Number(v);
-          if (Number.isFinite(n) && n > 0) normalized[k.toUpperCase()] = n;
-        }
-        if (!cancelled) setCryptoUsdPrices(normalized);
-      } catch {
-        if (!cancelled) setCryptoUsdPrices({});
-      }
-    };
-    void loadCryptoPrices();
-    const id = window.setInterval(() => void loadCryptoPrices(), 120000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(id);
-    };
-  }, []);
+  const cryptoUsdPrices = cryptoPrices;
 
   const txSections = useMemo(() => {
     const base = {
@@ -592,9 +553,9 @@ const Accounts: React.FC = () => {
       if (!res.ok) {
         throw new Error('save failed');
       }
-      await loadPortfolio();
+      await refreshAccounts();
     },
-    [loadPortfolio]
+    [refreshAccounts]
   );
 
   const handleDeleteAccount = useCallback(
@@ -607,9 +568,9 @@ const Accounts: React.FC = () => {
       if (!res.ok) {
         throw new Error('delete failed');
       }
-      await loadPortfolio();
+      await refreshAccounts();
     },
-    [loadPortfolio]
+    [refreshAccounts]
   );
 
   return (

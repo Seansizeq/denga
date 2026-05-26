@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import * as LucideIcons from 'lucide-react';
 import { X } from 'lucide-react';
 import { useTransactions } from '../context/TransactionContext';
+import { usePortfolio } from '../context/PortfolioContext';
 import CategoryGrid from '../components/ui/CategoryGrid';
 import {
   createCustomCategoryId,
@@ -113,7 +114,27 @@ const AddTransaction: React.FC = () => {
     { id: string; name: string; icon: string; color: string; isCustom: boolean } | null
   >(null);
   const [editingCustomId, setEditingCustomId] = useState<string | null>(null);
-  const [portfolioAccounts, setPortfolioAccounts] = useState<Array<{ key: string; name: string; currency: CurrencyCode }>>([]);
+  const { accounts: rawAccounts } = usePortfolio();
+  const portfolioAccounts = useMemo<Array<{ key: string; name: string; currency: CurrencyCode }>>(
+    () => {
+      const list: Array<{ key: string; name: string; currency: CurrencyCode }> = [];
+      for (const row of rawAccounts) {
+        if (!row || typeof row !== 'object') continue;
+        const r = row as Record<string, unknown>;
+        const key = String(r.accountKey ?? '').trim().toLowerCase();
+        if (!key) continue;
+        const name = String(r.name ?? r.accountKey ?? '').trim().slice(0, 40);
+        list.push({
+          key,
+          name: name || key,
+          currency: normalizeCurrency(typeof r.primaryCurrency === 'string' ? r.primaryCurrency : undefined),
+        });
+      }
+      list.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+      return list;
+    },
+    [rawAccounts],
+  );
   const [transferFromAccountKey, setTransferFromAccountKey] = useState(() => editingTransaction?.fromAccountKey ?? '');
   const [transferToAccountKey, setTransferToAccountKey] = useState(() => editingTransaction?.toAccountKey ?? '');
   const [transferToAmount, setTransferToAmount] = useState(() => {
@@ -159,43 +180,6 @@ const AddTransaction: React.FC = () => {
       transferToAccount &&
       transferFromAccount.currency !== transferToAccount.currency
   );
-
-  useEffect(() => {
-    let cancelled = false;
-    const loadPortfolio = async () => {
-      try {
-        const res = await apiFetch('/api/accounts');
-        if (!res.ok || cancelled) return;
-        const data: unknown = await res.json();
-        if (!Array.isArray(data) || cancelled) return;
-        const list: Array<{ key: string; name: string; currency: CurrencyCode }> = [];
-        for (const row of data) {
-          if (!row || typeof row !== 'object') continue;
-          const r = row as Record<string, unknown>;
-          const key = String(r.accountKey ?? '')
-            .trim()
-            .toLowerCase();
-          if (!key) continue;
-          const name = String(r.name ?? r.accountKey ?? '')
-            .trim()
-            .slice(0, 40);
-          list.push({
-            key,
-            name: name || key,
-            currency: normalizeCurrency(typeof r.primaryCurrency === 'string' ? r.primaryCurrency : undefined),
-          });
-        }
-        list.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
-        if (!cancelled) setPortfolioAccounts(list);
-      } catch {
-        if (!cancelled) setPortfolioAccounts([]);
-      }
-    };
-    void loadPortfolio();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     let cancelled = false;

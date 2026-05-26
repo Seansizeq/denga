@@ -39,6 +39,17 @@ vi.mock('../context/TransactionContext', () => ({
   }),
 }));
 
+vi.mock('../context/PortfolioContext', () => ({
+  usePortfolio: () => ({
+    accounts: [],
+    cryptoPrices: {},
+    cryptoUsdHistory: null,
+    refreshAccounts: vi.fn(),
+    refreshCryptoPrices: vi.fn(),
+    refreshCryptoHistory: vi.fn(),
+  }),
+}));
+
 vi.mock('../i18n/LanguageContext', () => ({
   useTranslation: () => ({
     locale: 'uk-UA',

@@ -1,14 +1,14 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus } from 'lucide-react';
 import { useTransactions } from '../context/TransactionContext';
 import { useTranslation } from '../i18n/LanguageContext';
+import { usePortfolio } from '../context/PortfolioContext';
 import Header from '../components/ui/Header';
 import HeroBalance from '../components/ui/HeroBalance';
 import QuickActions from '../components/ui/QuickActions';
 import RecentTransactions from '../components/ui/RecentTransactions';
 import type { RangeFilter } from '../components/ui/RecentTransactions';
-import { apiFetch } from '../api/client';
 import { isWithinLastDays } from '../utils/dateRanges';
 import {
   computePortfolioPriorUahPln,
@@ -16,7 +16,6 @@ import {
   parseCryptoPosition,
   portfolioNeedsCryptoHistory,
   priorNetInDisplayCurrency,
-  type CryptoUsdHistory,
   type PortfolioRowInput,
 } from '../utils/portfolioMonthChange';
 import styles from './Dashboard.module.css';
@@ -41,10 +40,8 @@ const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const { t, displayCurrency, convertAmount } = useTranslation();
   const { transactions, deleteTransaction } = useTransactions();
+  const { accounts, cryptoPrices, cryptoUsdHistory, refreshCryptoHistory } = usePortfolio();
   const [range, setRange] = useState<RangeFilter>('today');
-  const [worth, setWorth] = useState<PortfolioWorth | null>(null);
-  const [portfolioRows, setPortfolioRows] = useState<PortfolioRowInput[] | null>(null);
-  const [cryptoUsdHistory, setCryptoUsdHistory] = useState<CryptoUsdHistory | null>(null);
 
   const inRange = useMemo(() => {
     const now = new Date();
@@ -85,97 +82,48 @@ const Dashboard: React.FC = () => {
     };
   }, [transactions, convertAmount]);
 
-  const loadWorth = useCallback(async () => {
-    try {
-      const [accountsRes, cryptoRes] = await Promise.all([
-        apiFetch('/api/accounts'),
-        apiFetch('/api/crypto-prices'),
-      ]);
-      if (!accountsRes.ok) {
-        setWorth(null);
-        setPortfolioRows(null);
-        setCryptoUsdHistory(null);
-        return;
-      }
-      const data: unknown = await accountsRes.json();
-      if (!Array.isArray(data) || data.length === 0) {
-        setWorth(null);
-        setPortfolioRows(null);
-        setCryptoUsdHistory(null);
-        return;
-      }
-      let cryptoUsdPrices: Record<string, number> = {};
-      if (cryptoRes.ok) {
-        const cryptoPayload = await cryptoRes.json();
-        const prices = (cryptoPayload?.prices ?? {}) as Record<string, unknown>;
-        const normalized: Record<string, number> = {};
-        for (const [k, v] of Object.entries(prices)) {
-          const n = Number(v);
-          if (Number.isFinite(n) && n > 0) normalized[k.toUpperCase()] = n;
-        }
-        cryptoUsdPrices = normalized;
-      }
-      const rows: PortfolioRowInput[] = [];
-      let uah = 0;
-      let pln = 0;
-      for (const row of data) {
-        if (!row || typeof row !== 'object') continue;
-        const r = row as Record<string, unknown>;
-        const normalized = normalizeAccountRow(r);
-        if (normalized) rows.push(normalized);
-        const baseAmount = Number(r.primaryAmount);
-        const section = String(r.section ?? '').trim().toLowerCase();
-        const primaryCurrency = r.primaryCurrency === 'PLN' ? 'PLN' : 'UAH';
-        if (!Number.isFinite(baseAmount)) continue;
-        let amount = baseAmount;
-        if (section === 'crypto') {
-          const position = parseCryptoPosition(typeof r.subText === 'string' ? r.subText : null);
-          const marketUsd = position ? (cryptoUsdPrices[position.symbol] ?? 0) * position.amount : 0;
-          if (marketUsd > 0) {
-            amount = convertAmount(marketUsd, 'USD', primaryCurrency);
-          }
-        }
-        if (primaryCurrency === 'PLN') pln += amount;
-        else uah += amount;
-      }
-      setWorth({ uah, pln });
-      setPortfolioRows(rows);
-
-      const needsHist = portfolioNeedsCryptoHistory(rows);
-      if (needsHist) {
-        const histRes = await apiFetch('/api/crypto-prices-history');
-        if (!histRes.ok) {
-          setCryptoUsdHistory(null);
-          return;
-        }
-        const histBody = (await histRes.json()) as {
-          ok?: boolean;
-          prices30dAgo?: Record<string, number>;
-          pricesNow?: Record<string, number>;
-        };
-        if (histBody?.ok && histBody.prices30dAgo && histBody.pricesNow) {
-          setCryptoUsdHistory({
-            prices30dAgo: histBody.prices30dAgo as CryptoUsdHistory['prices30dAgo'],
-            pricesNow: histBody.pricesNow as CryptoUsdHistory['pricesNow'],
-          });
-        } else {
-          setCryptoUsdHistory(null);
-        }
-      } else {
-        setCryptoUsdHistory(null);
-      }
-    } catch {
-      setWorth(null);
-      setPortfolioRows(null);
-      setCryptoUsdHistory(null);
+  const portfolioRows = useMemo<PortfolioRowInput[]>(() => {
+    const rows: PortfolioRowInput[] = [];
+    for (const row of accounts) {
+      const normalized = normalizeAccountRow(row);
+      if (normalized) rows.push(normalized);
     }
-  }, [convertAmount]);
+    return rows;
+  }, [accounts]);
+
+  const worth = useMemo<PortfolioWorth | null>(() => {
+    if (accounts.length === 0) return null;
+    let uah = 0;
+    let pln = 0;
+    for (const row of accounts) {
+      const baseAmount = Number(row.primaryAmount);
+      const section = String(row.section ?? '').trim().toLowerCase();
+      const primaryCurrency = row.primaryCurrency === 'PLN' ? 'PLN' : 'UAH';
+      if (!Number.isFinite(baseAmount)) continue;
+      let amount = baseAmount;
+      if (section === 'crypto') {
+        const position = parseCryptoPosition(typeof row.subText === 'string' ? row.subText : null);
+        const marketUsd = position ? (cryptoPrices[position.symbol] ?? 0) * position.amount : 0;
+        if (marketUsd > 0) {
+          amount = convertAmount(marketUsd, 'USD', primaryCurrency);
+        }
+      }
+      if (primaryCurrency === 'PLN') pln += amount;
+      else uah += amount;
+    }
+    return { uah, pln };
+  }, [accounts, cryptoPrices, convertAmount]);
+
+  const needsCryptoHistory = useMemo(
+    () => portfolioNeedsCryptoHistory(portfolioRows),
+    [portfolioRows],
+  );
 
   useEffect(() => {
-    void loadWorth();
-    const id = window.setInterval(() => void loadWorth(), 5000);
-    return () => window.clearInterval(id);
-  }, [loadWorth]);
+    if (needsCryptoHistory && !cryptoUsdHistory) {
+      void refreshCryptoHistory();
+    }
+  }, [needsCryptoHistory, cryptoUsdHistory, refreshCryptoHistory]);
 
   const wealthMode = worth !== null;
   const usePlnMain = displayCurrency === 'PLN';

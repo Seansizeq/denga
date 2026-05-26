@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import SplashScreen from './components/SplashScreen';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { TransactionProvider } from './context/TransactionContext';
+import { PortfolioProvider } from './context/PortfolioContext';
 import BottomNavigation from './components/BottomNavigation';
 import Dashboard from './pages/Dashboard';
 import Accounts from './pages/Accounts';
@@ -94,25 +95,27 @@ const TelegramApp: React.FC<{ onReady: () => void }> = ({ onReady }) => {
 
   return (
     <TransactionProvider onReady={onReady}>
-      <Router>
-        <div className="app-content">
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/accounts" element={<Accounts />} />
-            <Route path="/history" element={<History />} />
-            <Route path="/calendar" element={<CalendarPlanner />} />
-            <Route path="/subscriptions" element={<Subscriptions />} />
-            <Route path="/add" element={<AddTransaction />} />
-            <Route path="/scan" element={<ScanReceipt />} />
-            <Route path="/stats" element={<Stats />} />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="/budgets" element={<Budgets />} />
-            <Route path="/goals" element={<Goals />} />
-            <Route path="/goals/:id" element={<GoalDetail />} />
-          </Routes>
-          <BottomNavigation />
-        </div>
-      </Router>
+      <PortfolioProvider>
+        <Router>
+          <div className="app-content">
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/accounts" element={<Accounts />} />
+              <Route path="/history" element={<History />} />
+              <Route path="/calendar" element={<CalendarPlanner />} />
+              <Route path="/subscriptions" element={<Subscriptions />} />
+              <Route path="/add" element={<AddTransaction />} />
+              <Route path="/scan" element={<ScanReceipt />} />
+              <Route path="/stats" element={<Stats />} />
+              <Route path="/settings" element={<Settings />} />
+              <Route path="/budgets" element={<Budgets />} />
+              <Route path="/goals" element={<Goals />} />
+              <Route path="/goals/:id" element={<GoalDetail />} />
+            </Routes>
+            <BottomNavigation />
+          </div>
+        </Router>
+      </PortfolioProvider>
     </TransactionProvider>
   );
 };

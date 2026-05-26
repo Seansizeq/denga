@@ -4,7 +4,10 @@ import { Plus } from 'lucide-react';
 import { formatCurrency, type PlannerCurrency } from '../utils/formatters';
 import { useTranslation } from '../i18n/LanguageContext';
 import { apiFetch } from '../api/client';
+import { usePersistedState } from '../hooks/usePersistedState';
 import styles from './Subscriptions.module.css';
+
+const SUBSCRIPTIONS_STORAGE_KEY = 'denga_subscriptions_v1';
 
 type BillingCycle = 'monthly' | 'yearly';
 type SubscriptionCurrency = PlannerCurrency;
@@ -23,11 +26,25 @@ interface Subscription {
 const normalizeSubCurrency = (raw: unknown): SubscriptionCurrency =>
   raw === 'PLN' ? 'PLN' : 'UAH';
 
+const isSubscriptionArray = (v: unknown): v is Subscription[] =>
+  Array.isArray(v) &&
+  v.every(
+    (item) =>
+      item &&
+      typeof item === 'object' &&
+      typeof (item as Subscription).id === 'string' &&
+      typeof (item as Subscription).amount === 'number',
+  );
+
 const Subscriptions: React.FC = () => {
   const navigate = useNavigate();
   const { t, locale } = useTranslation();
-  const [items, setItems] = useState<Subscription[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [items, setItems] = usePersistedState<Subscription[]>(
+    SUBSCRIPTIONS_STORAGE_KEY,
+    [],
+    { validate: isSubscriptionArray },
+  );
+  const [loading, setLoading] = useState(items.length === 0);
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
   const [currency, setCurrency] = useState<SubscriptionCurrency>('UAH');
@@ -41,7 +58,6 @@ const Subscriptions: React.FC = () => {
 
   const load = useCallback(async () => {
     setListError('');
-    setLoading(true);
     try {
       const response = await apiFetch('/api/subscriptions');
       if (!response.ok) {
@@ -63,7 +79,7 @@ const Subscriptions: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [t]);
+  }, [t, setItems]);
 
   useEffect(() => {
     void load();

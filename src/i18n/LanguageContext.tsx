@@ -6,11 +6,26 @@ import type { TelegramWindow } from '../types/telegram';
 import type { CurrencyCode, FxRatesPayload } from '../utils/currency';
 import { convertCurrency, fallbackRates } from '../utils/currency';
 import { apiFetch } from '../api/client';
+import { usePersistedState } from '../hooks/usePersistedState';
 
 const STORAGE_KEY = 'denga_lang';
 const CURRENCY_STORAGE_KEY = 'denga_currency';
+const FX_STORAGE_KEY = 'denga_fx_rates_v1';
 const DEFAULT_LANG: Language = 'uk';
 const DEFAULT_CURRENCY: DisplayCurrency = 'UAH';
+
+const isFxRatesPayload = (v: unknown): v is FxRatesPayload => {
+  if (!v || typeof v !== 'object') return false;
+  const obj = v as Record<string, unknown>;
+  if (obj.base !== 'USD' && obj.base !== 'PLN' && obj.base !== 'UAH') return false;
+  if (!obj.rates || typeof obj.rates !== 'object') return false;
+  const r = obj.rates as Record<string, unknown>;
+  return (
+    Number.isFinite(Number(r.USD)) &&
+    Number.isFinite(Number(r.PLN)) &&
+    Number.isFinite(Number(r.UAH))
+  );
+};
 
 type Dict = typeof translations['uk'];
 
@@ -73,8 +88,14 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
     return DEFAULT_CURRENCY;
   });
-  const [fxRates, setFxRates] = useState<FxRatesPayload>(fallbackRates);
-  const [fxStatus, setFxStatus] = useState<'live' | 'cache' | 'fallback'>('fallback');
+  const [fxRates, setFxRates] = usePersistedState<FxRatesPayload>(
+    FX_STORAGE_KEY,
+    fallbackRates,
+    { validate: isFxRatesPayload },
+  );
+  const [fxStatus, setFxStatus] = useState<'live' | 'cache' | 'fallback'>(
+    () => (fxRates.source === 'live' || fxRates.source === 'cache' ? 'cache' : 'fallback'),
+  );
 
   useEffect(() => {
     try {
@@ -97,7 +118,6 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     try {
       const res = await apiFetch('/api/fx-rates');
       if (!res.ok) {
-        setFxRates(fallbackRates);
         setFxStatus('fallback');
         return;
       }
@@ -115,10 +135,9 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setFxRates(payload);
       setFxStatus(payload.source);
     } catch {
-      setFxRates(fallbackRates);
       setFxStatus('fallback');
     }
-  }, []);
+  }, [setFxRates]);
 
   useEffect(() => {
     void refreshFxRates();
