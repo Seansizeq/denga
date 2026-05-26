@@ -15,6 +15,7 @@ const Stats: React.FC = () => {
   const { t, locale, displayCurrency, convertAmount } = useTranslation();
   const { transactions } = useTransactions();
   const [range, setRange] = useState<StatsRange>('month');
+  const [chartType, setChartType] = useState<'expense' | 'income'>('expense');
   const [selectedMonth, setSelectedMonth] = useState(() => new Date());
   const [hiddenCategoryIds, setHiddenCategoryIds] = useState<string[]>([]);
 
@@ -50,14 +51,14 @@ const Stats: React.FC = () => {
   const byCategory = useMemo(() => {
     const map = new Map<string, { id: string; total: number; count: number }>();
     for (const tx of filtered) {
-      if (tx.type !== 'expense') continue;
+      if (tx.type !== chartType) continue;
       const existing = map.get(tx.categoryId) ?? { id: tx.categoryId, total: 0, count: 0 };
       existing.total += convertAmount(tx.amount, tx.currency);
       existing.count += 1;
       map.set(tx.categoryId, existing);
     }
     return Array.from(map.values()).sort((a, b) => b.total - a.total);
-  }, [filtered, convertAmount]);
+  }, [filtered, convertAmount, chartType]);
 
   const rangeOptions: StatsRange[] = ['week', 'month', 'year'];
   const monthLabel = useMemo(
@@ -73,25 +74,27 @@ const Stats: React.FC = () => {
     () =>
       byCategory.map((row) => {
         const customCategory = getCustomCategoryData(row.id);
-        const category = customCategory ? findCategory('other_expense') : findCategory(row.id);
+        const category = customCategory
+          ? findCategory(chartType === 'expense' ? 'other_expense' : 'other_income')
+          : findCategory(row.id);
         return {
           ...row,
           color: customCategory?.color ?? category.color,
           name: customCategory?.name ?? t('categories', category.id as CategoryKey),
         };
       }),
-    [byCategory, t]
+    [byCategory, chartType, t]
   );
 
-  const totalExpenseByCategories = categoryRows.reduce((sum, row) => sum + row.total, 0);
+  const totalByCategories = categoryRows.reduce((sum, row) => sum + row.total, 0);
   const visibleCategoryRows = useMemo(
     () => categoryRows.filter((row) => !hiddenCategoryIds.includes(row.id)),
     [categoryRows, hiddenCategoryIds]
   );
-  const visibleExpenseTotal = visibleCategoryRows.reduce((sum, row) => sum + row.total, 0);
+  const visibleTotal = visibleCategoryRows.reduce((sum, row) => sum + row.total, 0);
 
   const donutBackground = useMemo(() => {
-    if (!visibleExpenseTotal) {
+    if (!visibleTotal) {
       return 'conic-gradient(var(--bg-card-light) 0deg 360deg)';
     }
     if (visibleCategoryRows.length === 1) {
@@ -100,14 +103,14 @@ const Stats: React.FC = () => {
     let acc = 0;
     const segments = visibleCategoryRows
       .map((row) => {
-        const rawStart = (acc / visibleExpenseTotal) * 360;
+        const rawStart = (acc / visibleTotal) * 360;
         acc += row.total;
-        const rawEnd = (acc / visibleExpenseTotal) * 360;
+        const rawEnd = (acc / visibleTotal) * 360;
         return `${row.color} ${rawStart.toFixed(2)}deg ${rawEnd.toFixed(2)}deg`;
       })
       .join(', ');
     return `conic-gradient(${segments})`;
-  }, [visibleCategoryRows, visibleExpenseTotal]);
+  }, [visibleCategoryRows, visibleTotal]);
 
   return (
     <div className={styles.container}>
@@ -181,7 +184,35 @@ const Stats: React.FC = () => {
       </div>
 
       <section className={styles.section}>
-        <h2 className={styles.sectionTitle}>{t('stats', 'byCategory')}</h2>
+        <div className={styles.sectionHeaderWithToggle}>
+          <h2 className={styles.sectionTitle}>{t('stats', 'byCategory')}</h2>
+          <div className={styles.chartTypeTabs} role="tablist">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={chartType === 'expense'}
+              className={`${styles.chartTypeBtn} ${chartType === 'expense' ? styles.chartTypeBtnActive : ''}`}
+              onClick={() => {
+                setChartType('expense');
+                setHiddenCategoryIds([]);
+              }}
+            >
+              {t('balance', 'expense')}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={chartType === 'income'}
+              className={`${styles.chartTypeBtn} ${chartType === 'income' ? styles.chartTypeBtnActive : ''}`}
+              onClick={() => {
+                setChartType('income');
+                setHiddenCategoryIds([]);
+              }}
+            >
+              {t('balance', 'income')}
+            </button>
+          </div>
+        </div>
 
         {byCategory.length === 0 ? (
           <div className={styles.emptyState}>
@@ -194,8 +225,10 @@ const Stats: React.FC = () => {
               <div className={styles.donutGlow} style={{ background: donutBackground }} aria-hidden="true" />
               <div className={styles.donut} style={{ background: donutBackground }}>
                 <div className={styles.donutInner}>
-                  <span className={styles.donutLabel}>{t('stats', 'totalExpense')}</span>
-                  <span className={styles.donutValue}>{formatCurrency(visibleExpenseTotal, locale, displayCurrency)}</span>
+                  <span className={styles.donutLabel}>
+                    {chartType === 'expense' ? t('stats', 'totalExpense') : t('stats', 'totalIncome')}
+                  </span>
+                  <span className={styles.donutValue}>{formatCurrency(visibleTotal, locale, displayCurrency)}</span>
                   <span className={styles.donutSubLabel}>
                     {visibleCategoryRows.length} {t('stats', 'byCategory').toLowerCase()}
                   </span>
@@ -215,8 +248,8 @@ const Stats: React.FC = () => {
                   </span>
                   <span className={styles.legendRight}>
                     <span className={styles.legendPercent}>
-                      {totalExpenseByCategories
-                        ? `${Math.round((row.total / totalExpenseByCategories) * 100)}%`
+                      {totalByCategories
+                        ? `${Math.round((row.total / totalByCategories) * 100)}%`
                         : '0%'}
                     </span>
                     <span className={styles.legendValue}>{formatCurrency(row.total, locale, displayCurrency)}</span>
