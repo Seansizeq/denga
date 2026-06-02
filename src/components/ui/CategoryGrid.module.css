@@ -2,6 +2,7 @@
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 12px 8px;
+  padding-bottom: 8px;
 }
 
 .categoryBtn {

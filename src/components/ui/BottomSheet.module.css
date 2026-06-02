@@ -9,7 +9,7 @@
   padding: 0;
   overflow: hidden;
   overscroll-behavior: contain;
-  touch-action: none;
+  touch-action: pan-y;
   animation: overlayFade 0.16s ease;
 }
 
@@ -30,7 +30,7 @@
   border-radius: 20px 20px 0 0;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-bottom: none;
-  padding: 14px 16px calc(20px + var(--safe-area-inset-bottom));
+  padding: 14px 16px 0;
   animation: sheetUp 0.2s ease;
 }
 
@@ -75,12 +75,14 @@
 }
 
 .body {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
+  max-height: calc(min(85dvh, 100dvh - var(--safe-area-inset-top) - 24px) - 56px);
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
   touch-action: pan-y;
+  padding-bottom: calc(32px + var(--safe-area-inset-bottom));
 }

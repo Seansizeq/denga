@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import styles from './BottomSheet.module.css';
 
@@ -20,9 +21,18 @@ const BottomSheet: React.FC<BottomSheetProps> = ({ open, title, onClose, closeLa
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
+
   if (!open) return null;
 
-  return (
+  return createPortal(
     <div
       className={styles.overlay}
       role="presentation"
@@ -39,7 +49,8 @@ const BottomSheet: React.FC<BottomSheetProps> = ({ open, title, onClose, closeLa
         </div>
         <div className={styles.body}>{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 };
 
