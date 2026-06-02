@@ -14,37 +14,30 @@ import {
   type CustomCategoryIcon,
 } from '../constants/categories';
 import { useTranslation } from '../i18n/LanguageContext';
-import type { Language } from '../i18n/translations';
 import type { TransactionType } from '../types';
 import {
-  ACCOUNT_NOTE_KEYS,
   getAccountSlugFromNote,
   mergeAccountIntoNoteLimited,
   stripAccountFromNote,
-  type AccountNoteKey,
 } from '../utils/transactionAccount';
 import { normalizeCurrency, SUPPORTED_CURRENCIES, type CurrencyCode } from '../utils/currency';
 import { apiFetch } from '../api/client';
 import { useExpenseTemplates, type ExpenseTemplate } from '../hooks/useExpenseTemplates';
+import { usePaymentAccountOptions } from '../hooks/usePaymentAccountOptions';
+import {
+  hasPrefillParams,
+  loadAddTransactionDefaults,
+  saveAddTransactionDefaults,
+} from '../utils/addTransactionDefaults';
+import { resolveCategoryForTypeChange } from '../utils/categoryForType';
 import ExpenseTemplateBar from '../components/ExpenseTemplateBar';
 import styles from './AddTransaction.module.css';
 
 const iconRegistry = LucideIcons as unknown as Record<string, React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>>;
 
-const ACCOUNT_CHIP_LABELS: Record<AccountNoteKey, Record<Language, string>> = {
-  pumb: { uk: 'PUMB', ru: 'PUMB', en: 'PUMB' },
-  privat24: { uk: 'Privat24', ru: 'Privat24', en: 'Privat24' },
-  wallet: { uk: 'Готівка', ru: 'Наличные', en: 'Cash' },
-  crypto: { uk: 'Crypto', ru: 'Крипто', en: 'Crypto' },
-  sol: { uk: 'SOL', ru: 'SOL', en: 'SOL' },
-  ton: { uk: 'TON', ru: 'TON', en: 'TON' },
-  usdt: { uk: 'USDT', ru: 'USDT', en: 'USDT' },
-  misha: { uk: 'Борг', ru: 'Долг', en: 'Debt' },
-};
-
 const AddTransaction: React.FC = () => {
   const navigate = useNavigate();
-  const { transactions, addTransaction, updateTransaction } = useTransactions();
+  const { transactions, addTransaction, updateTransaction, isBootstrapping } = useTransactions();
   const { t, language } = useTranslation();
   const [searchParams] = useSearchParams();
   const { templates, saveTemplate, deleteTemplate } = useExpenseTemplates();
@@ -65,6 +58,13 @@ const AddTransaction: React.FC = () => {
   const prefillCategoryRaw = !isEditing ? searchParams.get('categoryId')?.trim() ?? '' : '';
   const prefillDateRaw = !isEditing ? searchParams.get('date')?.trim() ?? '' : '';
   const prefillNoteRaw = !isEditing ? (searchParams.get('note') ?? '').slice(0, 120) : '';
+  const prefillAccountRaw = !isEditing ? searchParams.get('account')?.trim().toLowerCase() ?? '' : '';
+
+  const initialPaymentAccount = (() => {
+    if (editingTransaction) return getAccountSlugFromNote(editingTransaction.note) ?? '';
+    if (prefillAccountRaw) return prefillAccountRaw;
+    return getAccountSlugFromNote(prefillNoteRaw) ?? '';
+  })();
 
   const [amount, setAmount] = useState(() => {
     if (editingTransaction) return String(editingTransaction.amount);
@@ -102,7 +102,7 @@ const AddTransaction: React.FC = () => {
     if (prefillNoteRaw) return stripAccountFromNote(prefillNoteRaw);
     return '';
   });
-  const [paymentAccount, setPaymentAccount] = useState<string>(() => getAccountSlugFromNote(editingTransaction?.note) ?? '');
+  const [paymentAccount, setPaymentAccount] = useState<string>(initialPaymentAccount);
   const [saveError, setSaveError] = useState('');
   const hydratedEditRef = useRef<string>('');
   const [customCategories, setCustomCategories] = useState<
@@ -145,27 +145,10 @@ const AddTransaction: React.FC = () => {
     return '';
   });
 
-  const allowedPaymentKeys = useMemo(() => {
-    const s = new Set<string>([...ACCOUNT_NOTE_KEYS]);
-    portfolioAccounts.forEach((r) => s.add(r.key));
-    return s;
-  }, [portfolioAccounts]);
+  const { allowedPaymentKeys, paymentChipOptions } = usePaymentAccountOptions(portfolioAccounts, language);
 
-  const paymentChipOptions = useMemo(() => {
-    const seen = new Set<string>();
-    const out: { key: string; label: string }[] = [];
-    for (const r of portfolioAccounts) {
-      if (!r.key || seen.has(r.key)) continue;
-      seen.add(r.key);
-      out.push({ key: r.key, label: r.name });
-    }
-    for (const k of ACCOUNT_NOTE_KEYS) {
-      if (seen.has(k)) continue;
-      seen.add(k);
-      out.push({ key: k, label: ACCOUNT_CHIP_LABELS[k][language] });
-    }
-    return out;
-  }, [portfolioAccounts, language]);
+  const editNotFound = isEditing && !isBootstrapping && !editingTransaction;
+  const customCategoryIds = useMemo(() => customCategories.map((c) => c.id), [customCategories]);
 
   const transferFromAccount = useMemo(
     () => portfolioAccounts.find((account) => account.key === transferFromAccountKey) ?? null,
@@ -254,8 +237,16 @@ const AddTransaction: React.FC = () => {
   }, [editId, transactions]);
 
   useEffect(() => {
-    if (!editId) setPaymentAccount('');
-  }, [editId]);
+    if (isEditing || hasPrefillParams(searchParams, isEditing)) return;
+    const defaults = loadAddTransactionDefaults();
+    if (!defaults) return;
+    if (defaults.currency) setCurrency(normalizeCurrency(defaults.currency));
+    if (defaults.paymentAccount) setPaymentAccount(defaults.paymentAccount);
+    if (defaults.type && defaults.type !== 'transfer') setType(defaults.type);
+    if (defaults.categoryId && defaults.type && defaults.type !== 'transfer') {
+      setCategoryId(defaults.categoryId);
+    }
+  }, [isEditing, searchParams]);
 
   useEffect(() => {
     if (type !== 'transfer') return;
@@ -284,7 +275,42 @@ const AddTransaction: React.FC = () => {
 
   const canCreateCustomCategory = newCategoryName.trim().length > 0;
 
+  const handleClose = useCallback(() => {
+    if (window.history.length > 1) navigate(-1);
+    else navigate('/');
+  }, [navigate]);
+
+  const handleTypeChange = useCallback(
+    (newType: TransactionType) => {
+      setType(newType);
+      setIsCreatingCustom(false);
+      setManagingCustom(null);
+      setCategoryId((current) =>
+        resolveCategoryForTypeChange(current, newType, customCategoryIds),
+      );
+    },
+    [customCategoryIds],
+  );
+
+  const handleRepeatLast = useCallback(() => {
+    const last = transactions.find((tx) => tx.type === type);
+    if (!last || type === 'transfer') return;
+    setAmount(String(last.amount));
+    setCurrency(normalizeCurrency(last.currency));
+    setCategoryId(last.categoryId);
+    setNote(stripAccountFromNote(last.note ?? ''));
+    setPaymentAccount(getAccountSlugFromNote(last.note) ?? '');
+    setDate(last.date.slice(0, 10));
+  }, [transactions, type]);
+
+  const setQuickDate = useCallback((offsetDays: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() + offsetDays);
+    setDate(d.toISOString().slice(0, 10));
+  }, []);
+
   const handleSave = async () => {
+    if (editNotFound) return;
     setSaveError('');
     const numAmount = parseFloat(amount.replace(',', '.'));
     if (!numAmount || numAmount <= 0) return;
@@ -319,6 +345,14 @@ const AddTransaction: React.FC = () => {
       setSaveError(t('addTx', 'saveFailed'));
       return;
     }
+    if (type !== 'transfer') {
+      saveAddTransactionDefaults({
+        type,
+        currency,
+        categoryId,
+        paymentAccount: paymentAccount || undefined,
+      });
+    }
     navigate('/');
   };
 
@@ -344,6 +378,7 @@ const AddTransaction: React.FC = () => {
   }, [amount, type, currency, categoryId, note, paymentAccount, saveTemplate]);
 
   const isValid = useMemo(() => {
+    if (editNotFound) return false;
     const parsedAmount = parseFloat(amount.replace(',', '.'));
     if (!(parsedAmount > 0)) return false;
     if (type !== 'transfer') return true;
@@ -352,14 +387,43 @@ const AddTransaction: React.FC = () => {
     }
     const parsedDestination = parseFloat(transferToAmount.replace(',', '.'));
     return parsedDestination > 0;
-  }, [amount, type, transferFromAccountKey, transferToAccountKey, transferToAmount]);
+  }, [amount, type, transferFromAccountKey, transferToAccountKey, transferToAmount, editNotFound]);
+
+  const validationHint = useMemo(() => {
+    if (editNotFound) return t('addTx', 'editNotFound');
+    const parsedAmount = parseFloat(amount.replace(',', '.'));
+    if (!(parsedAmount > 0)) return t('addTx', 'hintAmount');
+    if (type !== 'transfer') return '';
+    if (!transferFromAccountKey || !transferToAccountKey) return t('addTx', 'hintTransferAccounts');
+    if (transferFromAccountKey === transferToAccountKey) return t('addTx', 'hintTransferDifferent');
+    const parsedDestination = parseFloat(transferToAmount.replace(',', '.'));
+    if (!(parsedDestination > 0)) return t('addTx', 'hintTransferDestination');
+    return '';
+  }, [
+    editNotFound,
+    amount,
+    type,
+    transferFromAccountKey,
+    transferToAccountKey,
+    transferToAmount,
+    t,
+  ]);
+
+  const canRepeatLast = !isEditing && type !== 'transfer' && transactions.some((tx) => tx.type === type);
+
+  const amountKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && isValid && !editNotFound) {
+      e.preventDefault();
+      void handleSave();
+    }
+  };
 
   return (
     <div className={styles.container}>
       <header className={styles.header}>
         <button
           type="button"
-          onClick={() => navigate(-1)}
+          onClick={handleClose}
           className={styles.closeBtn}
           aria-label={t('addTx', 'cancel')}
         >
@@ -368,6 +432,12 @@ const AddTransaction: React.FC = () => {
         <h2 className={styles.title}>{isEditing ? t('addTx', 'editTitle') : t('addTx', 'title')}</h2>
         <span className={styles.headerSpacer} aria-hidden="true" />
       </header>
+
+      {editNotFound ? (
+        <p className={styles.editNotFoundBanner} role="alert">
+          {t('addTx', 'editNotFound')}
+        </p>
+      ) : null}
 
       {saveError ? (
         <p className={styles.saveError} role="alert">
@@ -379,33 +449,21 @@ const AddTransaction: React.FC = () => {
         <button
           type="button"
           className={`${styles.typeBtn} ${type === 'expense' ? styles.active : ''}`}
-          onClick={() => {
-            setType('expense');
-            setCategoryId('food');
-            setIsCreatingCustom(false);
-          }}
+          onClick={() => handleTypeChange('expense')}
         >
           {t('addTx', 'expense')}
         </button>
         <button
           type="button"
           className={`${styles.typeBtn} ${type === 'income' ? styles.active : ''}`}
-          onClick={() => {
-            setType('income');
-            setCategoryId('salary');
-            setIsCreatingCustom(false);
-          }}
+          onClick={() => handleTypeChange('income')}
         >
           {t('addTx', 'income')}
         </button>
         <button
           type="button"
           className={`${styles.typeBtn} ${type === 'transfer' ? styles.active : ''}`}
-          onClick={() => {
-            setType('transfer');
-            setCategoryId('transfer');
-            setIsCreatingCustom(false);
-          }}
+          onClick={() => handleTypeChange('transfer')}
         >
           {t('categories', 'transfer')}
         </button>
@@ -414,10 +472,10 @@ const AddTransaction: React.FC = () => {
       {type === 'transfer' ? (
         <>
           <section className={styles.noteSection}>
-            <h3 className={styles.sectionTitle}>{t('addTx', 'paymentAccount')}</h3>
+            <h3 className={styles.sectionTitle}>{t('addTx', 'transferSection')}</h3>
             <div className={styles.transferGrid}>
               <label className={styles.transferField}>
-                <span className={styles.transferLabel}>{t('addTx', 'expense')}</span>
+                <span className={styles.transferLabel}>{t('addTx', 'transferFrom')}</span>
                 <select
                   className={styles.noteInput}
                   value={transferFromAccountKey}
@@ -432,7 +490,7 @@ const AddTransaction: React.FC = () => {
                 </select>
               </label>
               <label className={styles.transferField}>
-                <span className={styles.transferLabel}>{t('addTx', 'income')}</span>
+                <span className={styles.transferLabel}>{t('addTx', 'transferTo')}</span>
                 <select
                   className={styles.noteInput}
                   value={transferToAccountKey}
@@ -468,6 +526,7 @@ const AddTransaction: React.FC = () => {
                 }}
                 className={styles.amountInput}
                 autoFocus
+                onKeyDown={amountKeyDown}
               />
               <div className={styles.currencySelect}>{transferFromAccount?.currency ?? currency}</div>
             </div>
@@ -484,6 +543,7 @@ const AddTransaction: React.FC = () => {
                   setTransferToAmount(v);
                 }}
                 className={styles.amountInput}
+                onKeyDown={amountKeyDown}
               />
               <div className={styles.currencySelect}>{transferToAccount?.currency ?? transferFromAccount?.currency ?? currency}</div>
             </div>
@@ -491,6 +551,12 @@ const AddTransaction: React.FC = () => {
         </>
       ) : (
         <>
+          {canRepeatLast ? (
+            <button type="button" className={styles.repeatLastBtn} onClick={handleRepeatLast}>
+              {t('addTx', 'repeatLast')}
+            </button>
+          ) : null}
+
           <div className={styles.amountContainer}>
             <input
               type="text"
@@ -504,6 +570,7 @@ const AddTransaction: React.FC = () => {
               }}
               className={styles.amountInput}
               autoFocus
+              onKeyDown={amountKeyDown}
             />
             <select
               className={styles.currencySelect}
@@ -530,6 +597,10 @@ const AddTransaction: React.FC = () => {
               title: t('addTx', 'templates'),
               saveAsTemplate: t('addTx', 'saveAsTemplate'),
               namePlaceholder: t('addTx', 'templateNamePlaceholder'),
+              editTemplates: t('addTx', 'editTemplates'),
+              cancelTemplate: t('addTx', 'cancelTemplate'),
+              saveTemplate: t('addTx', 'saveTemplate'),
+              deleteTemplate: (name) => t('addTx', 'deleteTemplate').replace('{name}', name),
             }}
           />
 
@@ -781,13 +852,21 @@ const AddTransaction: React.FC = () => {
       )}
 
       <section className={styles.noteSection}>
-        <h3 className={styles.sectionTitle}>{t('goals', 'contributionDate')}</h3>
+        <h3 className={styles.sectionTitle}>{t('addTx', 'date')}</h3>
         <input
           type="date"
           value={date}
           onChange={(e) => setDate(e.target.value)}
           className={styles.noteInput}
         />
+        <div className={styles.dateQuickRow}>
+          <button type="button" className={styles.dateQuickBtn} onClick={() => setQuickDate(0)}>
+            {t('addTx', 'dateToday')}
+          </button>
+          <button type="button" className={styles.dateQuickBtn} onClick={() => setQuickDate(-1)}>
+            {t('addTx', 'dateYesterday')}
+          </button>
+        </div>
       </section>
 
       <section className={styles.noteSection}>
@@ -805,9 +884,14 @@ const AddTransaction: React.FC = () => {
       <div className={styles.saveBarSpacer} aria-hidden="true" />
 
       <div className={styles.saveBar}>
+        {!isValid && validationHint ? (
+          <p className={styles.validationHint} role="status">
+            {validationHint}
+          </p>
+        ) : null}
         <button
           type="button"
-          onClick={handleSave}
+          onClick={() => void handleSave()}
           className={styles.saveBtn}
           disabled={!isValid}
         >

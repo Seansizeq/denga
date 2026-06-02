@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight, Eye, EyeOff } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useTransactions } from '../context/TransactionContext';
 import { useTranslation } from '../i18n/LanguageContext';
-import { formatCurrency, isSameMonth } from '../utils/formatters';
+import { formatCurrency, isSameMonth, isInIsoWeek, getIsoWeekRange } from '../utils/formatters';
 import { findCategory, getCustomCategoryData } from '../constants/categories';
 import type { CategoryKey } from '../i18n/translations';
 import styles from './Stats.module.css';
@@ -17,21 +17,19 @@ const Stats: React.FC = () => {
   const [range, setRange] = useState<StatsRange>('month');
   const [chartType, setChartType] = useState<'expense' | 'income'>('expense');
   const [selectedMonth, setSelectedMonth] = useState(() => new Date());
+  const [selectedWeek, setSelectedWeek] = useState(() => new Date());
   const [hiddenCategoryIds, setHiddenCategoryIds] = useState<string[]>([]);
 
   const inRange = useMemo(() => {
     const now = new Date();
     return (iso: string) => {
       const d = new Date(iso);
-      if (range === 'week') {
-        const diff = (now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24);
-        return diff >= 0 && diff <= 7;
-      }
+      if (range === 'week') return isInIsoWeek(iso, selectedWeek);
       if (range === 'month') return isSameMonth(iso, selectedMonth);
       if (range === 'year') return d.getFullYear() === now.getFullYear();
       return true;
     };
-  }, [range, selectedMonth]);
+  }, [range, selectedMonth, selectedWeek]);
 
   const filtered = useMemo(
     () => transactions.filter((tx) => inRange(tx.date)),
@@ -66,8 +64,31 @@ const Stats: React.FC = () => {
     [selectedMonth, locale]
   );
 
+  const weekLabel = useMemo(() => {
+    const { start, end } = getIsoWeekRange(selectedWeek);
+    const sameMonth = start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear();
+    const startStr = start.toLocaleDateString(locale, {
+      day: 'numeric',
+      month: sameMonth ? undefined : 'short',
+    });
+    const endStr = end.toLocaleDateString(locale, {
+      day: 'numeric',
+      month: 'short',
+      year: start.getFullYear() === end.getFullYear() ? undefined : 'numeric',
+    });
+    return `${startStr} – ${endStr}`;
+  }, [selectedWeek, locale]);
+
   const shiftSelectedMonth = (delta: number) => {
     setSelectedMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + delta, 1));
+  };
+
+  const shiftSelectedWeek = (delta: number) => {
+    setSelectedWeek((prev) => {
+      const next = new Date(prev);
+      next.setDate(prev.getDate() + delta * 7);
+      return next;
+    });
   };
 
   const categoryRows = useMemo(
@@ -151,6 +172,27 @@ const Stats: React.FC = () => {
             type="button"
             className={styles.monthNavBtn}
             onClick={() => shiftSelectedMonth(1)}
+            aria-label={t('planner', 'nextMonth')}
+          >
+            <ChevronRight size={16} />
+          </button>
+        </div>
+      )}
+      {range === 'week' && (
+        <div className={styles.monthNav}>
+          <button
+            type="button"
+            className={styles.monthNavBtn}
+            onClick={() => shiftSelectedWeek(-1)}
+            aria-label={t('planner', 'prevMonth')}
+          >
+            <ChevronLeft size={16} />
+          </button>
+          <span className={styles.monthNavLabel}>{weekLabel}</span>
+          <button
+            type="button"
+            className={styles.monthNavBtn}
+            onClick={() => shiftSelectedWeek(1)}
             aria-label={t('planner', 'nextMonth')}
           >
             <ChevronRight size={16} />

@@ -15,6 +15,10 @@ interface Props {
     title: string;
     saveAsTemplate: string;
     namePlaceholder: string;
+    editTemplates: string;
+    cancelTemplate: string;
+    saveTemplate: string;
+    deleteTemplate: (name: string) => string;
   };
 }
 
@@ -41,7 +45,6 @@ const ExpenseTemplateBar: React.FC<Props> = ({
     setSaving(false);
   };
 
-  // Nothing to show — no templates yet and can't save either
   if (filtered.length === 0 && !canSave) return null;
 
   return (
@@ -70,7 +73,7 @@ const ExpenseTemplateBar: React.FC<Props> = ({
               id="btn-template-edit-mode"
               className={`${styles.actionBtn} ${editMode ? styles.actionBtnActive : ''}`}
               onClick={() => setEditMode((e) => !e)}
-              aria-label="Редагувати шаблони"
+              aria-label={labels.editTemplates}
             >
               {editMode ? (
                 <Check size={15} strokeWidth={2.5} />
@@ -102,7 +105,7 @@ const ExpenseTemplateBar: React.FC<Props> = ({
             type="button"
             className={styles.saveCancelBtn}
             onClick={() => setSaving(false)}
-            aria-label="Скасувати"
+            aria-label={labels.cancelTemplate}
           >
             <X size={14} strokeWidth={2.5} />
           </button>
@@ -111,7 +114,7 @@ const ExpenseTemplateBar: React.FC<Props> = ({
             className={styles.saveConfirmBtn}
             disabled={!name.trim()}
             onClick={handleSave}
-            aria-label="Зберегти"
+            aria-label={labels.saveTemplate}
           >
             <Check size={14} strokeWidth={2.5} />
           </button>
@@ -143,7 +146,7 @@ const ExpenseTemplateBar: React.FC<Props> = ({
                   type="button"
                   className={styles.deleteBtn}
                   onClick={() => onDelete(tpl.id)}
-                  aria-label={`Видалити шаблон ${tpl.name}`}
+                  aria-label={labels.deleteTemplate(tpl.name)}
                 >
                   <X size={10} strokeWidth={3} />
                 </button>

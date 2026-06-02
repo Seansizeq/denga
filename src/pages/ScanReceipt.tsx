@@ -6,15 +6,12 @@ import { useTranslation } from '../i18n/LanguageContext';
 import { useTransactions } from '../context/TransactionContext';
 import { usePortfolio } from '../context/PortfolioContext';
 import { CATEGORIES, findCategory, getCustomCategoryData, inferCustomCategoryIcon } from '../constants/categories';
-import type { CategoryKey, Language } from '../i18n/translations';
+import type { CategoryKey } from '../i18n/translations';
 import { compressImage } from '../utils/imageCompress';
 import { scanReceipt, type ScanReceiptError, type ScannedReceipt } from '../api/receipts';
 import { formatCurrency } from '../utils/formatters';
-import {
-  ACCOUNT_NOTE_KEYS,
-  mergeAccountIntoNoteLimited,
-  type AccountNoteKey,
-} from '../utils/transactionAccount';
+import { mergeAccountIntoNoteLimited } from '../utils/transactionAccount';
+import { usePaymentAccountOptions } from '../hooks/usePaymentAccountOptions';
 import styles from './ScanReceipt.module.css';
 
 const iconRegistry = LucideIcons as unknown as Record<
@@ -23,17 +20,6 @@ const iconRegistry = LucideIcons as unknown as Record<
 >;
 
 type ViewState = 'idle' | 'loading' | 'result' | 'review' | 'error';
-
-const ACCOUNT_CHIP_LABELS: Record<AccountNoteKey, Record<Language, string>> = {
-  pumb: { uk: 'PUMB', ru: 'PUMB', en: 'PUMB' },
-  privat24: { uk: 'Privat24', ru: 'Privat24', en: 'Privat24' },
-  wallet: { uk: 'Готівка', ru: 'Наличные', en: 'Cash' },
-  crypto: { uk: 'Crypto', ru: 'Крипто', en: 'Crypto' },
-  sol: { uk: 'SOL', ru: 'SOL', en: 'SOL' },
-  ton: { uk: 'TON', ru: 'TON', en: 'TON' },
-  usdt: { uk: 'USDT', ru: 'USDT', en: 'USDT' },
-  misha: { uk: 'Борг', ru: 'Долг', en: 'Debt' },
-};
 
 const ScanReceipt: React.FC = () => {
   const navigate = useNavigate();
@@ -70,35 +56,7 @@ const ScanReceipt: React.FC = () => {
   const [draftDate, setDraftDate] = useState('');
   const [draftNote, setDraftNote] = useState('');
 
-  const allowedPaymentKeys = useMemo(() => {
-    const s = new Set<string>([...ACCOUNT_NOTE_KEYS]);
-    portfolioAccounts.forEach((r) => s.add(r.key));
-    return s;
-  }, [portfolioAccounts]);
-
-  const paymentChipOptions = useMemo(() => {
-    const seen = new Set<string>();
-    const seenLabels = new Set<string>();
-    const out: { key: string; label: string }[] = [];
-    for (const r of portfolioAccounts) {
-      const key = String(r.key ?? '').trim().toLowerCase();
-      const label = String(r.name ?? '').trim();
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      if (label) seenLabels.add(label.toLowerCase());
-      out.push({ key, label: label || key });
-    }
-    for (const k of ACCOUNT_NOTE_KEYS) {
-      const key = String(k).trim().toLowerCase();
-      const label = ACCOUNT_CHIP_LABELS[k][language];
-      // Don't add fallback chip if a portfolio chip with same key or same label is already present.
-      if (seen.has(key) || seenLabels.has(label.toLowerCase())) continue;
-      seen.add(key);
-      seenLabels.add(label.toLowerCase());
-      out.push({ key, label });
-    }
-    return out;
-  }, [portfolioAccounts, language]);
+  const { allowedPaymentKeys, paymentChipOptions } = usePaymentAccountOptions(portfolioAccounts, language);
 
   const triggerCamera = () => {
     setError(null);
@@ -245,6 +203,7 @@ const ScanReceipt: React.FC = () => {
     else if (receipt.categoryId) params.set('categoryId', receipt.categoryId);
     const note = mergeAccountIntoNoteLimited(buildScannedNote(receipt), paymentAccount, allowedPaymentKeys);
     if (note) params.set('note', note);
+    if (paymentAccount) params.set('account', paymentAccount);
     navigate(`/add?${params.toString()}`);
   };
 

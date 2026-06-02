@@ -77,6 +77,22 @@ type Dict = {
     templates: string;
     saveAsTemplate: string;
     templateNamePlaceholder: string;
+    date: string;
+    transferFrom: string;
+    transferTo: string;
+    transferSection: string;
+    editNotFound: string;
+    hintAmount: string;
+    hintTransferAccounts: string;
+    hintTransferDifferent: string;
+    hintTransferDestination: string;
+    dateToday: string;
+    dateYesterday: string;
+    repeatLast: string;
+    editTemplates: string;
+    cancelTemplate: string;
+    saveTemplate: string;
+    deleteTemplate: string;
   };
   history: { title: string; empty: string; deleteConfirm: string; edit: string; delete: string; back: string };
   planner: {
@@ -423,6 +439,22 @@ const uk: Dict = {
     templates: 'Шаблони',
     saveAsTemplate: 'Зберегти як шаблон',
     templateNamePlaceholder: 'Назва шаблону',
+    date: 'Дата',
+    transferFrom: 'З рахунку',
+    transferTo: 'На рахунок',
+    transferSection: 'Переказ',
+    editNotFound: 'Операцію не знайдено. Поверніться до історії.',
+    hintAmount: 'Введіть суму більше нуля',
+    hintTransferAccounts: 'Оберіть рахунки для переказу',
+    hintTransferDifferent: 'Рахунки мають відрізнятися',
+    hintTransferDestination: 'Введіть суму зарахування',
+    dateToday: 'Сьогодні',
+    dateYesterday: 'Вчора',
+    repeatLast: 'Повторити останню',
+    editTemplates: 'Редагувати шаблони',
+    cancelTemplate: 'Скасувати',
+    saveTemplate: 'Зберегти',
+    deleteTemplate: 'Видалити шаблон {name}',
   },
   history: {
     title: 'Історія',
@@ -782,6 +814,22 @@ const ru: Dict = {
     templates: 'Шаблоны',
     saveAsTemplate: 'Сохранить как шаблон',
     templateNamePlaceholder: 'Название шаблона',
+    date: 'Дата',
+    transferFrom: 'Со счёта',
+    transferTo: 'На счёт',
+    transferSection: 'Перевод',
+    editNotFound: 'Операция не найдена. Вернитесь в историю.',
+    hintAmount: 'Введите сумму больше нуля',
+    hintTransferAccounts: 'Выберите счета для перевода',
+    hintTransferDifferent: 'Счета должны отличаться',
+    hintTransferDestination: 'Введите сумму зачисления',
+    dateToday: 'Сегодня',
+    dateYesterday: 'Вчера',
+    repeatLast: 'Повторить последнюю',
+    editTemplates: 'Редактировать шаблоны',
+    cancelTemplate: 'Отмена',
+    saveTemplate: 'Сохранить',
+    deleteTemplate: 'Удалить шаблон {name}',
   },
   history: {
     title: 'История',
@@ -1141,6 +1189,22 @@ const en: Dict = {
     templates: 'Templates',
     saveAsTemplate: 'Save as template',
     templateNamePlaceholder: 'Template name',
+    date: 'Date',
+    transferFrom: 'From account',
+    transferTo: 'To account',
+    transferSection: 'Transfer',
+    editNotFound: 'Transaction not found. Go back to history.',
+    hintAmount: 'Enter an amount greater than zero',
+    hintTransferAccounts: 'Select accounts for the transfer',
+    hintTransferDifferent: 'Accounts must be different',
+    hintTransferDestination: 'Enter the credited amount',
+    dateToday: 'Today',
+    dateYesterday: 'Yesterday',
+    repeatLast: 'Repeat last',
+    editTemplates: 'Edit templates',
+    cancelTemplate: 'Cancel',
+    saveTemplate: 'Save',
+    deleteTemplate: 'Delete template {name}',
   },
   history: {
     title: 'History',

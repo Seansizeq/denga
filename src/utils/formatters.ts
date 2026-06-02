@@ -53,3 +53,21 @@ export const isSameMonth = (iso: string, ref: Date = new Date()): boolean => {
   const d = new Date(iso);
   return d.getFullYear() === ref.getFullYear() && d.getMonth() === ref.getMonth();
 };
+
+export const getIsoWeekRange = (ref: Date = new Date()): { start: Date; end: Date } => {
+  const start = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate());
+  start.setHours(0, 0, 0, 0);
+  const day = start.getDay();
+  const offsetToMonday = day === 0 ? -6 : 1 - day;
+  start.setDate(start.getDate() + offsetToMonday);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  end.setHours(23, 59, 59, 999);
+  return { start, end };
+};
+
+export const isInIsoWeek = (iso: string, ref: Date = new Date()): boolean => {
+  const { start, end } = getIsoWeekRange(ref);
+  const t = new Date(iso).getTime();
+  return t >= start.getTime() && t <= end.getTime();
+};

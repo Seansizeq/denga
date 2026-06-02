@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useCallback } from 'react';
 import * as LucideIcons from 'lucide-react';
 import { CATEGORIES, inferCustomCategoryColor, inferCustomCategoryIcon } from '../../constants/categories';
 import { useTranslation } from '../../i18n/LanguageContext';
@@ -7,6 +7,16 @@ import styles from './CategoryGrid.module.css';
 
 const iconRegistry = LucideIcons as unknown as Record<string, React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>>;
 
+const LONG_PRESS_MS = 500;
+
+export interface ManageableCategory {
+  id: string;
+  name: string;
+  icon: string;
+  color: string;
+  isCustom: boolean;
+}
+
 interface CategoryGridProps {
   selectedId: string;
   type: 'income' | 'expense';
@@ -14,8 +24,67 @@ interface CategoryGridProps {
   onAddCustom?: () => void;
   customCategories?: Array<{ id: string; name: string; icon: string; color: string }>;
   categoryOverrides?: Record<string, { name?: string; icon?: string; color?: string }>;
-  onManageCategory?: (category: { id: string; name: string; icon: string; color: string; isCustom: boolean }) => void;
+  onManageCategory?: (category: ManageableCategory) => void;
 }
+
+interface CategoryButtonProps {
+  selected: boolean;
+  onSelect: () => void;
+  onManage?: () => void;
+  children: React.ReactNode;
+}
+
+const CategoryButton: React.FC<CategoryButtonProps> = ({ selected, onSelect, onManage, children }) => {
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressTriggered = useRef(false);
+
+  const clearTimer = useCallback(() => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  }, []);
+
+  const handlePointerDown = () => {
+    if (!onManage) return;
+    longPressTriggered.current = false;
+    clearTimer();
+    longPressTimer.current = setTimeout(() => {
+      longPressTriggered.current = true;
+      onManage();
+    }, LONG_PRESS_MS);
+  };
+
+  const handlePointerUp = () => {
+    clearTimer();
+    if (!longPressTriggered.current) onSelect();
+  };
+
+  const handlePointerLeave = () => {
+    clearTimer();
+  };
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    if (!onManage) return;
+    e.preventDefault();
+    onManage();
+  };
+
+  return (
+    <button
+      type="button"
+      className={`${styles.categoryBtn} ${selected ? styles.selected : ''}`}
+      onClick={onManage ? undefined : onSelect}
+      onPointerDown={onManage ? handlePointerDown : undefined}
+      onPointerUp={onManage ? handlePointerUp : undefined}
+      onPointerLeave={onManage ? handlePointerLeave : undefined}
+      onPointerCancel={onManage ? handlePointerLeave : undefined}
+      onContextMenu={onManage ? handleContextMenu : undefined}
+    >
+      {children}
+    </button>
+  );
+};
 
 const CategoryGrid: React.FC<CategoryGridProps> = ({
   selectedId,
@@ -47,27 +116,25 @@ const CategoryGrid: React.FC<CategoryGridProps> = ({
         const displayName = override.name?.trim() || t('categories', category.id as CategoryKey);
         const IconComponent = iconRegistry[iconName] ?? LucideIcons.Circle;
         const selected = selectedId === category.id;
+        const managePayload: ManageableCategory = {
+          id: category.id,
+          name: displayName,
+          icon: iconName,
+          color: iconColor,
+          isCustom: false,
+        };
         return (
-          <button
+          <CategoryButton
             key={category.id}
-            type="button"
-            className={`${styles.categoryBtn} ${selected ? styles.selected : ''}`}
-            onClick={() => {
-              onSelect(category.id);
-              onManageCategory?.({
-                id: category.id,
-                name: displayName,
-                icon: iconName,
-                color: iconColor,
-                isCustom: false,
-              });
-            }}
+            selected={selected}
+            onSelect={() => onSelect(category.id)}
+            onManage={onManageCategory ? () => onManageCategory(managePayload) : undefined}
           >
             <div className={styles.iconBox}>
               <IconComponent size={24} color={iconColor} strokeWidth={1.5} />
             </div>
             <span className={styles.name}>{displayName}</span>
-          </button>
+          </CategoryButton>
         );
       })}
       {customCategories.map((category) => {
@@ -80,21 +147,24 @@ const CategoryGrid: React.FC<CategoryGridProps> = ({
         const resolvedColor = inferCustomCategoryColor(category.name, category.color);
         const IconComponent = iconRegistry[resolvedIcon] ?? LucideIcons.Tag;
         const selected = selectedId === category.id;
+        const managePayload: ManageableCategory = {
+          ...category,
+          icon: resolvedIcon,
+          color: resolvedColor,
+          isCustom: true,
+        };
         return (
-          <button
+          <CategoryButton
             key={category.id}
-            type="button"
-            className={`${styles.categoryBtn} ${selected ? styles.selected : ''}`}
-            onClick={() => {
-              onSelect(category.id);
-              onManageCategory?.({ ...category, icon: resolvedIcon, color: resolvedColor, isCustom: true });
-            }}
+            selected={selected}
+            onSelect={() => onSelect(category.id)}
+            onManage={onManageCategory ? () => onManageCategory(managePayload) : undefined}
           >
             <div className={styles.iconBox}>
               <IconComponent size={24} color={resolvedColor} strokeWidth={1.5} />
             </div>
             <span className={styles.name}>{category.name}</span>
-          </button>
+          </CategoryButton>
         );
       })}
       <button
