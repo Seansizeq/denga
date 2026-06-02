@@ -218,6 +218,7 @@ export async function initDb() {
       name TEXT NOT NULL,
       amount REAL NOT NULL,
       currency TEXT NOT NULL DEFAULT 'UAH',
+      categoryId TEXT NOT NULL DEFAULT 'other_expense',
       cycle TEXT NOT NULL,
       nextChargeDate TEXT NOT NULL,
       note TEXT,
@@ -228,6 +229,11 @@ export async function initDb() {
   `);
   try {
     await db.exec(`ALTER TABLE subscriptions ADD COLUMN currency TEXT NOT NULL DEFAULT 'UAH'`);
+  } catch {
+    /* already exists */
+  }
+  try {
+    await db.exec(`ALTER TABLE subscriptions ADD COLUMN categoryId TEXT NOT NULL DEFAULT 'other_expense'`);
   } catch {
     /* already exists */
   }

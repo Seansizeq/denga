@@ -5,6 +5,8 @@ import { formatCurrency, type PlannerCurrency } from '../utils/formatters';
 import { useTranslation } from '../i18n/LanguageContext';
 import { apiFetch } from '../api/client';
 import { usePersistedState } from '../hooks/usePersistedState';
+import { CATEGORIES, getCustomCategoryName } from '../constants/categories';
+import type { CategoryKey } from '../i18n/translations';
 import styles from './Subscriptions.module.css';
 
 const SUBSCRIPTIONS_STORAGE_KEY = 'denga_subscriptions_v1';
@@ -12,11 +14,15 @@ const SUBSCRIPTIONS_STORAGE_KEY = 'denga_subscriptions_v1';
 type BillingCycle = 'monthly' | 'yearly';
 type SubscriptionCurrency = PlannerCurrency;
 
+const EXPENSE_CATEGORIES = CATEGORIES.filter((c) => c.type === 'expense');
+const DEFAULT_CATEGORY_ID = 'other_expense';
+
 interface Subscription {
   id: string;
   name: string;
   amount: number;
   currency: SubscriptionCurrency;
+  categoryId: string;
   cycle: BillingCycle;
   nextChargeDate: string;
   note?: string;
@@ -25,6 +31,9 @@ interface Subscription {
 
 const normalizeSubCurrency = (raw: unknown): SubscriptionCurrency =>
   raw === 'PLN' ? 'PLN' : 'UAH';
+
+const normalizeCategoryId = (raw: unknown): string =>
+  typeof raw === 'string' && raw.trim() ? raw : DEFAULT_CATEGORY_ID;
 
 const isSubscriptionArray = (v: unknown): v is Subscription[] =>
   Array.isArray(v) &&
@@ -48,6 +57,7 @@ const Subscriptions: React.FC = () => {
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
   const [currency, setCurrency] = useState<SubscriptionCurrency>('UAH');
+  const [categoryId, setCategoryId] = useState<string>(DEFAULT_CATEGORY_ID);
   const [cycle, setCycle] = useState<BillingCycle>('monthly');
   const [nextChargeDate, setNextChargeDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState('');
@@ -70,6 +80,7 @@ const Subscriptions: React.FC = () => {
           data.map((sub: Subscription) => ({
             ...sub,
             currency: normalizeSubCurrency(sub.currency),
+            categoryId: normalizeCategoryId(sub.categoryId),
           }))
         );
       }
@@ -106,10 +117,23 @@ const Subscriptions: React.FC = () => {
     return acc;
   }, [activeItems]);
 
+  const categoryLabel = useCallback(
+    (id: string): string => {
+      const custom = getCustomCategoryName(id);
+      if (custom) return custom;
+      if (EXPENSE_CATEGORIES.some((c) => c.id === id)) {
+        return t('categories', id as CategoryKey);
+      }
+      return t('categories', DEFAULT_CATEGORY_ID);
+    },
+    [t],
+  );
+
   const resetForm = useCallback(() => {
     setName('');
     setAmount('');
     setCurrency('UAH');
+    setCategoryId(DEFAULT_CATEGORY_ID);
     setCycle('monthly');
     setNextChargeDate(new Date().toISOString().slice(0, 10));
     setNote('');
@@ -140,6 +164,7 @@ const Subscriptions: React.FC = () => {
             name: name.trim(),
             amount: numericAmount,
             currency,
+            categoryId,
             cycle,
             nextChargeDate,
             note: note.trim(),
@@ -151,7 +176,11 @@ const Subscriptions: React.FC = () => {
         return;
       }
       const saved = (await response.json()) as Subscription;
-      const normalizedSaved: Subscription = { ...saved, currency: normalizeSubCurrency(saved.currency) };
+      const normalizedSaved: Subscription = {
+        ...saved,
+        currency: normalizeSubCurrency(saved.currency),
+        categoryId: normalizeCategoryId(saved.categoryId),
+      };
       if (editingId) {
         setItems((prev) => prev.map((s) => (s.id === editingId ? { ...s, ...normalizedSaved } : s)));
       } else {
@@ -195,6 +224,7 @@ const Subscriptions: React.FC = () => {
           name: sub.name,
           amount: sub.amount,
           currency: sub.currency,
+          categoryId: sub.categoryId,
           cycle: sub.cycle,
           nextChargeDate: sub.nextChargeDate,
           note: sub.note ?? '',
@@ -206,10 +236,33 @@ const Subscriptions: React.FC = () => {
         return;
       }
       const updated = (await response.json()) as Subscription;
-      const normalized: Subscription = { ...updated, currency: normalizeSubCurrency(updated.currency) };
+      const normalized: Subscription = {
+        ...updated,
+        currency: normalizeSubCurrency(updated.currency),
+        categoryId: normalizeCategoryId(updated.categoryId),
+      };
       setItems((prev) => prev.map((s) => (s.id === id ? { ...s, ...normalized } : s)));
     } catch (error) {
       console.error('Error enabling subscription:', error);
+      setActionError(t('subscriptions', 'saveError'));
+    }
+  };
+
+  const onDelete = async (id: string) => {
+    setActionError('');
+    if (typeof window !== 'undefined' && !window.confirm(t('subscriptions', 'deleteConfirm'))) {
+      return;
+    }
+    try {
+      const response = await apiFetch(`/api/subscriptions/${id}`, { method: 'DELETE' });
+      if (!response.ok) {
+        setActionError(t('subscriptions', 'saveError'));
+        return;
+      }
+      setItems((prev) => prev.filter((s) => s.id !== id));
+      if (editingId === id) resetForm();
+    } catch (error) {
+      console.error('Error deleting subscription:', error);
       setActionError(t('subscriptions', 'saveError'));
     }
   };
@@ -221,9 +274,24 @@ const Subscriptions: React.FC = () => {
     setName(sub.name);
     setAmount(String(sub.amount));
     setCurrency(normalizeSubCurrency(sub.currency));
+    setCategoryId(normalizeCategoryId(sub.categoryId));
     setCycle(sub.cycle);
     setNextChargeDate(sub.nextChargeDate);
     setNote(sub.note ?? '');
+  };
+
+  const renderTotals = (totals: Record<SubscriptionCurrency, number>) => {
+    const withValue = (['UAH', 'PLN'] as SubscriptionCurrency[]).filter((cur) => totals[cur] > 0);
+    const shown = withValue.length > 0 ? withValue : (['UAH'] as SubscriptionCurrency[]);
+    return (
+      <div className={styles.summaryStack}>
+        {shown.map((cur) => (
+          <span key={cur} className={styles.summaryValue}>
+            {formatCurrency(totals[cur], locale, cur)}
+          </span>
+        ))}
+      </div>
+    );
   };
 
   const renderCard = (sub: Subscription, opts: { showEnable?: boolean }) => {
@@ -242,6 +310,9 @@ const Subscriptions: React.FC = () => {
           <span>{sub.cycle === 'monthly' ? t('subscriptions', 'monthly') : t('subscriptions', 'yearly')}</span>
           <span>{new Date(sub.nextChargeDate).toLocaleDateString(locale)}</span>
         </div>
+        <div className={styles.itemCategoryRow}>
+          <span className={styles.itemCategoryChip}>{categoryLabel(sub.categoryId)}</span>
+        </div>
         <div className={styles.itemYearlyRow}>
           <span>{t('subscriptions', 'yearlyForItem')}</span>
           <strong>{formatCurrency(yearlyForItem, locale, subCurrency)}</strong>
@@ -249,9 +320,14 @@ const Subscriptions: React.FC = () => {
         {sub.note ? <p className={styles.itemNote}>{sub.note}</p> : null}
         <div className={styles.itemActions}>
           {opts.showEnable ? (
-            <button type="button" className={styles.enableBtn} onClick={() => void onEnable(sub.id)}>
-              {t('subscriptions', 'enable')}
-            </button>
+            <>
+              <button type="button" className={styles.enableBtn} onClick={() => void onEnable(sub.id)}>
+                {t('subscriptions', 'enable')}
+              </button>
+              <button type="button" className={styles.deleteBtn} onClick={() => void onDelete(sub.id)}>
+                {t('subscriptions', 'delete')}
+              </button>
+            </>
           ) : (
             <>
               <button type="button" className={styles.editBtn} onClick={() => onEdit(sub)}>
@@ -259,6 +335,9 @@ const Subscriptions: React.FC = () => {
               </button>
               <button type="button" className={styles.disableBtn} onClick={() => void onDisable(sub.id)}>
                 {t('subscriptions', 'disable')}
+              </button>
+              <button type="button" className={styles.deleteBtn} onClick={() => void onDelete(sub.id)}>
+                {t('subscriptions', 'delete')}
               </button>
             </>
           )}
@@ -291,21 +370,11 @@ const Subscriptions: React.FC = () => {
       <div className={styles.summaryGrid}>
         <div className={styles.summaryCard}>
           <span className={styles.summaryLabel}>{t('subscriptions', 'monthlyTotal')}</span>
-          {monthlyTotals.UAH > 0 || monthlyTotals.PLN === 0 ? (
-            <span className={styles.summaryValue}>{formatCurrency(monthlyTotals.UAH, locale, 'UAH')}</span>
-          ) : null}
-          {monthlyTotals.PLN > 0 ? (
-            <span className={styles.summaryValue}>{formatCurrency(monthlyTotals.PLN, locale, 'PLN')}</span>
-          ) : null}
+          {renderTotals(monthlyTotals)}
         </div>
         <div className={styles.summaryCard}>
           <span className={styles.summaryLabel}>{t('subscriptions', 'yearlyTotal')}</span>
-          {yearlyTotals.UAH > 0 || yearlyTotals.PLN === 0 ? (
-            <span className={styles.summaryValue}>{formatCurrency(yearlyTotals.UAH, locale, 'UAH')}</span>
-          ) : null}
-          {yearlyTotals.PLN > 0 ? (
-            <span className={styles.summaryValue}>{formatCurrency(yearlyTotals.PLN, locale, 'PLN')}</span>
-          ) : null}
+          {renderTotals(yearlyTotals)}
         </div>
       </div>
 
@@ -375,6 +444,17 @@ const Subscriptions: React.FC = () => {
                   zł
                 </button>
               </div>
+              <select
+                value={EXPENSE_CATEGORIES.some((c) => c.id === categoryId) ? categoryId : DEFAULT_CATEGORY_ID}
+                onChange={(e) => setCategoryId(e.target.value)}
+                aria-label={t('subscriptions', 'category')}
+              >
+                {EXPENSE_CATEGORIES.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {t('categories', c.id as CategoryKey)}
+                  </option>
+                ))}
+              </select>
               <select value={cycle} onChange={(e) => setCycle(e.target.value as BillingCycle)}>
                 <option value="monthly">{t('subscriptions', 'monthly')}</option>
                 <option value="yearly">{t('subscriptions', 'yearly')}</option>
@@ -413,6 +493,7 @@ const Subscriptions: React.FC = () => {
             setName('');
             setAmount('');
             setCurrency('UAH');
+            setCategoryId(DEFAULT_CATEGORY_ID);
             setCycle('monthly');
             setNextChargeDate(new Date().toISOString().slice(0, 10));
             setNote('');

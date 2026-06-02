@@ -208,6 +208,7 @@ type Dict = {
     name: string;
     amount: string;
     cycle: string;
+    category: string;
     monthly: string;
     yearly: string;
     yearlyForItem: string;
@@ -218,6 +219,8 @@ type Dict = {
     saveChanges: string;
     cancelEdit: string;
     disable: string;
+    delete: string;
+    deleteConfirm: string;
     loadError: string;
     saveError: string;
     disabledSection: string;
@@ -604,6 +607,7 @@ const uk: Dict = {
     name: 'Назва',
     amount: 'Сума',
     cycle: 'Цикл',
+    category: 'Категорія',
     monthly: 'Щомісяця',
     yearly: 'Щороку',
     yearlyForItem: 'За рік',
@@ -614,6 +618,8 @@ const uk: Dict = {
     saveChanges: 'Зберегти зміни',
     cancelEdit: 'Скасувати редагування',
     disable: 'Вимкнути',
+    delete: 'Видалити',
+    deleteConfirm: 'Видалити підписку назавжди? Цю дію не можна скасувати.',
     loadError: 'Не вдалося завантажити підписки. Спробуй пізніше.',
     saveError: 'Не вдалося зберегти підписку. Перевір з’єднання.',
     disabledSection: 'Вимкнені (залишились у базі)',
@@ -1006,6 +1012,7 @@ const ru: Dict = {
     name: 'Название',
     amount: 'Сумма',
     cycle: 'Цикл',
+    category: 'Категория',
     monthly: 'Ежемесячно',
     yearly: 'Ежегодно',
     yearlyForItem: 'За год',
@@ -1016,6 +1023,8 @@ const ru: Dict = {
     saveChanges: 'Сохранить изменения',
     cancelEdit: 'Отменить редактирование',
     disable: 'Отключить',
+    delete: 'Удалить',
+    deleteConfirm: 'Удалить подписку навсегда? Это действие нельзя отменить.',
     loadError: 'Не удалось загрузить подписки. Попробуй позже.',
     saveError: 'Не удалось сохранить подписку. Проверь соединение.',
     disabledSection: 'Отключённые (в базе остаются)',
@@ -1408,6 +1417,7 @@ const en: Dict = {
     name: 'Name',
     amount: 'Amount',
     cycle: 'Cycle',
+    category: 'Category',
     monthly: 'Monthly',
     yearly: 'Yearly',
     yearlyForItem: 'Per year',
@@ -1418,6 +1428,8 @@ const en: Dict = {
     saveChanges: 'Save changes',
     cancelEdit: 'Cancel editing',
     disable: 'Disable',
+    delete: 'Delete',
+    deleteConfirm: 'Delete this subscription permanently? This cannot be undone.',
     loadError: 'Could not load subscriptions. Try again later.',
     saveError: 'Could not save subscription. Check your connection.',
     disabledSection: 'Disabled (still in database)',

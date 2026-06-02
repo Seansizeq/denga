@@ -357,7 +357,7 @@ const runSubscriptionAutopayForUser = async (userId) => {
   if (!todayIso) return;
 
   const dueSubs = await db.all(
-    `SELECT id, name, amount, currency, cycle, nextChargeDate, note
+    `SELECT id, name, amount, currency, categoryId, cycle, nextChargeDate, note
      FROM subscriptions
      WHERE user_id = ? AND active = 1 AND nextChargeDate <= ?
      ORDER BY nextChargeDate ASC`,
@@ -379,12 +379,15 @@ const runSubscriptionAutopayForUser = async (userId) => {
       while (toIsoDate(nextDue) <= todayIso) {
         const txDate = `${toIsoDate(nextDue)}T12:00:00.000Z`;
         const note = buildSubscriptionChargeNote(sub);
+        const subCategoryId = typeof sub.categoryId === 'string' && sub.categoryId.trim()
+          ? sub.categoryId
+          : 'other_expense';
         const tx = {
           id: uuidv4(),
           user_id: userId,
           amount,
           currency: subCurrency,
-          categoryId: 'other_expense',
+          categoryId: subCategoryId,
           type: 'expense',
           date: txDate,
           note: note || undefined,
@@ -3183,6 +3186,31 @@ if (bot) {
   }, 60 * 1000);
 }
 
+async function runSubscriptionsAutopayTick() {
+  const users = await db.all('SELECT DISTINCT user_id AS userId FROM subscriptions WHERE active = 1');
+  if (!Array.isArray(users) || users.length === 0) return;
+  for (const u of users) {
+    const userId = String(u.userId ?? '');
+    if (!userId) continue;
+    try {
+      await runSubscriptionAutopayForUser(userId);
+    } catch (e) {
+      console.error('[subscriptions] autopay tick failed for user', userId, e);
+    }
+  }
+}
+
+setTimeout(() => {
+  runSubscriptionsAutopayTick().catch((e) => {
+    console.error('[subscriptions] autopay initial tick failed', e);
+  });
+}, 8000);
+setInterval(() => {
+  runSubscriptionsAutopayTick().catch((e) => {
+    console.error('[subscriptions] autopay tick failed', e);
+  });
+}, 60 * 60 * 1000);
+
 // --- Shortcuts / automation (personal token, no Telegram initData) ---
 app.get('/api/automation/shift/start', async (req, res) => {
   const userId = await resolveAutomationUserId(db, req);
@@ -4657,7 +4685,7 @@ app.get('/api/subscriptions', async (req, res) => {
   const userId = req.authUserId;
   await runSubscriptionAutopayForUser(userId);
   const rows = await db.all(
-    `SELECT id, name, amount, currency, cycle, nextChargeDate, note, active, createdAt, updatedAt
+    `SELECT id, name, amount, currency, categoryId, cycle, nextChargeDate, note, active, createdAt, updatedAt
      FROM subscriptions
      WHERE user_id = ?
      ORDER BY active DESC, nextChargeDate ASC, createdAt DESC`
@@ -4669,6 +4697,7 @@ app.get('/api/subscriptions', async (req, res) => {
       ...row,
       amount: Number(row.amount) || 0,
       currency: normalizeCurrency(row.currency),
+      categoryId: typeof row.categoryId === 'string' && row.categoryId.trim() ? row.categoryId : 'other_expense',
       active: Boolean(row.active),
     }))
   );
@@ -4679,6 +4708,9 @@ app.post('/api/subscriptions', async (req, res) => {
   const name = typeof req.body?.name === 'string' ? req.body.name.trim().replace(/\s+/g, ' ') : '';
   const amount = Number(req.body?.amount);
   const currency = normalizeCurrency(req.body?.currency);
+  const categoryId = typeof req.body?.categoryId === 'string' && req.body.categoryId.trim()
+    ? req.body.categoryId.trim()
+    : 'other_expense';
   const cycle = req.body?.cycle === 'yearly' ? 'yearly' : 'monthly';
   const nextChargeDate = typeof req.body?.nextChargeDate === 'string' ? req.body.nextChargeDate : '';
   const note = typeof req.body?.note === 'string' ? req.body.note.trim() : '';
@@ -4699,9 +4731,9 @@ app.post('/api/subscriptions', async (req, res) => {
   const id = uuidv4();
   const now = new Date().toISOString();
   await db.run(
-    `INSERT INTO subscriptions (id, user_id, name, amount, currency, cycle, nextChargeDate, note, active, createdAt, updatedAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
-    [id, userId, name, amount, currency, cycle, nextChargeDate, note, now, now]
+    `INSERT INTO subscriptions (id, user_id, name, amount, currency, categoryId, cycle, nextChargeDate, note, active, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+    [id, userId, name, amount, currency, categoryId, cycle, nextChargeDate, note, now, now]
   );
 
   res.status(201).json({
@@ -4709,6 +4741,7 @@ app.post('/api/subscriptions', async (req, res) => {
     name,
     amount,
     currency,
+    categoryId,
     cycle,
     nextChargeDate,
     note,
@@ -4734,6 +4767,9 @@ app.patch('/api/subscriptions/:id', async (req, res) => {
   const currency = req.body?.currency === undefined
     ? normalizeCurrency(current.currency)
     : normalizeCurrency(req.body.currency);
+  const categoryId = req.body?.categoryId === undefined
+    ? (typeof current.categoryId === 'string' && current.categoryId.trim() ? current.categoryId : 'other_expense')
+    : (typeof req.body.categoryId === 'string' && req.body.categoryId.trim() ? req.body.categoryId.trim() : 'other_expense');
   const cycle = req.body?.cycle === undefined
     ? current.cycle
     : (req.body.cycle === 'yearly' ? 'yearly' : 'monthly');
@@ -4759,21 +4795,33 @@ app.patch('/api/subscriptions/:id', async (req, res) => {
   const now = new Date().toISOString();
   await db.run(
     `UPDATE subscriptions
-     SET name = ?, amount = ?, currency = ?, cycle = ?, nextChargeDate = ?, note = ?, active = ?, updatedAt = ?
+     SET name = ?, amount = ?, currency = ?, categoryId = ?, cycle = ?, nextChargeDate = ?, note = ?, active = ?, updatedAt = ?
      WHERE user_id = ? AND id = ?`,
-    [name, amount, currency, cycle, nextChargeDate, note, active ? 1 : 0, now, userId, id]
+    [name, amount, currency, categoryId, cycle, nextChargeDate, note, active ? 1 : 0, now, userId, id]
   );
   res.json({
     ...current,
     name,
     amount,
     currency,
+    categoryId,
     cycle,
     nextChargeDate,
     note,
     active,
     updatedAt: now,
   });
+});
+
+app.delete('/api/subscriptions/:id', async (req, res) => {
+  const userId = req.authUserId;
+  const { id } = req.params;
+  const result = await db.run('DELETE FROM subscriptions WHERE user_id = ? AND id = ?', [userId, id]);
+  if (!result || result.changes === 0) {
+    res.status(404).json({ error: 'Subscription not found' });
+    return;
+  }
+  res.json({ id, deleted: true });
 });
 
 app.get('/api/planner', async (req, res) => {
