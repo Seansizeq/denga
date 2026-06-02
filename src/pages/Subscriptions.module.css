@@ -258,14 +258,18 @@
   backdrop-filter: blur(2px);
   z-index: 1300;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: center;
-  padding: 20px 14px calc(var(--bottom-nav-height) + var(--safe-area-inset-bottom) + 18px);
+  overflow-y: auto;
+  padding: calc(16px + var(--safe-area-inset-top)) 14px calc(16px + var(--safe-area-inset-bottom));
 }
 
 .modalCard {
   width: 100%;
   max-width: 520px;
+  max-height: calc(100dvh - 32px - var(--safe-area-inset-top) - var(--safe-area-inset-bottom));
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   background: #15131f;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 18px;
