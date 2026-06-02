@@ -1,16 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useTranslation } from '../i18n/LanguageContext';
 import { formatPlannerMoney, type PlannerCurrency } from '../utils/formatters';
 import type { RangeFilter } from '../components/ui/RecentTransactions';
 import {
   apiFetch,
-  getPlannerAutomation,
   getPlannerSettings,
-  rotatePlannerAutomationToken,
-  updatePlannerSettings,
-  type PlannerAutomation,
 } from '../api/client';
-import { hapticLight, showAppAlert } from '../utils/notify';
+import { hapticLight } from '../utils/notify';
 import { buildPastDays, isWithinLastDays } from '../utils/dateRanges';
 import styles from './CalendarPlanner.module.css';
 
@@ -137,6 +134,31 @@ const parseMoneyInput = (raw: string): number => {
   return Number.isFinite(n) ? Math.max(0, n) : 0;
 };
 
+const shiftMonthValue = (value: string, delta: number): string => {
+  const [year, month] = value.split('-').map(Number);
+  const d = new Date(year, month - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+};
+
+const hueFromString = (input: string): number => {
+  let hash = 0;
+  for (let i = 0; i < input.length; i += 1) {
+    hash = (hash * 31 + input.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash) % 360;
+};
+
+const dayTintStyle = (note: string): React.CSSProperties | undefined => {
+  const { name, symbol } = parseNoteToNameSymbol(note);
+  const key = `${name}|${symbol}`.trim();
+  if (!key || key === '|') return undefined;
+  const hue = hueFromString(key);
+  return {
+    background: `hsla(${hue}, 70%, 55%, 0.16)`,
+    borderColor: `hsla(${hue}, 70%, 60%, 0.4)`,
+  };
+};
+
 const normalizeTemplateKey = (name: string, symbol: string, currency: PlannerCurrency): string =>
   `${name.trim().toLowerCase()}::${symbol.trim().toLowerCase()}::${currency === 'PLN' ? 'PLN' : 'UAH'}`;
 
@@ -200,7 +222,6 @@ const CalendarPlanner: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [chooserOpen, setChooserOpen] = useState(false);
   const [startShiftChooserOpen, setStartShiftChooserOpen] = useState(false);
-  const [defaultTemplatePickerOpen, setDefaultTemplatePickerOpen] = useState(false);
   const [editorOpened, setEditorOpened] = useState(false);
   const [shiftName, setShiftName] = useState('');
   const [shiftSymbol, setShiftSymbol] = useState('');
@@ -210,9 +231,6 @@ const CalendarPlanner: React.FC = () => {
   const [, setVvRev] = useState(0);
   const [shiftTemplates, setShiftTemplates] = useState<ShiftTemplate[]>([]);
   const [defaultShiftTemplateId, setDefaultShiftTemplateId] = useState<string | null>(null);
-  const [plannerSettingsSaving, setPlannerSettingsSaving] = useState(false);
-  const [automation, setAutomation] = useState<PlannerAutomation | null>(null);
-  const [automationLoading, setAutomationLoading] = useState(false);
   const [salaryRateInput, setSalaryRateInput] = useState('');
   const [salaryAmountInput, setSalaryAmountInput] = useState('');
   const [salaryCurrency, setSalaryCurrency] = useState<PlannerCurrency>('UAH');
@@ -224,9 +242,12 @@ const CalendarPlanner: React.FC = () => {
   const [reportShiftEntries, setReportShiftEntries] = useState<ShiftEntry[]>([]);
   const [reportShiftEntriesLoading, setReportShiftEntriesLoading] = useState(false);
   const monthInputRef = useRef<HTMLInputElement | null>(null);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressFiredRef = useRef(false);
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const [shiftElapsedText, setShiftElapsedText] = useState('0г 0хв');
 
-  const modalAnyOpen = chooserOpen || editorOpened || startShiftChooserOpen || defaultTemplatePickerOpen;
+  const modalAnyOpen = chooserOpen || editorOpened || startShiftChooserOpen;
 
   const overlayBox = modalAnyOpen ? readVisualOverlayBox() : null;
 
@@ -495,67 +516,6 @@ const CalendarPlanner: React.FC = () => {
     void loadPlannerSettings();
   }, []);
 
-  const loadPlannerAutomation = async () => {
-    setAutomationLoading(true);
-    try {
-      const data = await getPlannerAutomation();
-      setAutomation(data);
-    } catch (error) {
-      console.error('Failed to load planner automation:', error);
-    } finally {
-      setAutomationLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void loadPlannerAutomation();
-  }, []);
-
-  const copyAutomationUrl = async (url: string) => {
-    try {
-      await navigator.clipboard.writeText(url);
-    } catch {
-      /* ignore */
-    }
-  };
-
-  const formatTemplateLabel = (tpl: ShiftTemplate): string =>
-    tpl.name.trim() && tpl.symbol.trim()
-      ? `${tpl.name.trim()} · ${tpl.symbol.trim()}`
-      : tpl.name.trim() || tpl.symbol.trim() || tpl.id;
-
-  const defaultShiftTemplateLabel = useMemo(() => {
-    if (!defaultShiftTemplateId) return t('planner', 'defaultShiftTemplateAsk');
-    if (defaultShiftTemplateId === 'none') return t('planner', 'defaultShiftTemplateWithout');
-    const tpl = shiftTemplates.find((item) => item.id === defaultShiftTemplateId);
-    return tpl ? formatTemplateLabel(tpl) : t('planner', 'defaultShiftTemplateAsk');
-  }, [defaultShiftTemplateId, shiftTemplates, t]);
-
-  const persistDefaultShiftTemplate = async (value: string) => {
-    setPlannerSettingsSaving(true);
-    try {
-      const next =
-        value === ''
-          ? null
-          : value === 'none'
-            ? 'none'
-            : value;
-      const settings = await updatePlannerSettings({ defaultShiftTemplateId: next });
-      setDefaultShiftTemplateId(settings.defaultShiftTemplateId ?? null);
-      setDefaultTemplatePickerOpen(false);
-      hapticLight();
-      showAppAlert(t('planner', 'defaultShiftTemplateSaved'));
-    } catch (error) {
-      console.error('Failed to save default shift template:', error);
-      const msg = error instanceof Error && error.message.includes(':')
-        ? error.message.split(':').slice(1).join(':').trim()
-        : '';
-      showAppAlert(msg ? `${t('planner', 'defaultShiftTemplateSaveFailed')} (${msg})` : t('planner', 'defaultShiftTemplateSaveFailed'));
-    } finally {
-      setPlannerSettingsSaving(false);
-    }
-  };
-
   const resolveDefaultStartTemplate = (): ShiftTemplate | null | undefined => {
     if (!defaultShiftTemplateId) return undefined;
     if (defaultShiftTemplateId === 'none') return null;
@@ -569,6 +529,62 @@ const CalendarPlanner: React.FC = () => {
       return;
     }
     void handleStartShift(preset);
+  };
+
+  const selectDay = (dayIso: string) => {
+    setSelectedDay(dayIso);
+    setReportRange('day');
+  };
+
+  const openDaySheet = (dayIso: string) => {
+    setSelectedDay(dayIso);
+    setReportRange('day');
+    setChooserOpen(true);
+  };
+
+  const handleDayTouchStart = (dayIso: string, e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    touchStartRef.current = touch ? { x: touch.clientX, y: touch.clientY } : null;
+    longPressFiredRef.current = false;
+    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = setTimeout(() => {
+      longPressFiredRef.current = true;
+      hapticLight();
+      openDaySheet(dayIso);
+    }, 500);
+  };
+
+  const cancelLongPress = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  const handleDayClick = (dayIso: string) => {
+    if (longPressFiredRef.current) {
+      longPressFiredRef.current = false;
+      return;
+    }
+    selectDay(dayIso);
+  };
+
+  const handleGridTouchStart = (e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    if (touch) touchStartRef.current = { x: touch.clientX, y: touch.clientY };
+  };
+
+  const handleGridTouchEnd = (e: React.TouchEvent) => {
+    const start = touchStartRef.current;
+    touchStartRef.current = null;
+    if (!start) return;
+    const touch = e.changedTouches[0];
+    if (!touch) return;
+    const dx = touch.clientX - start.x;
+    const dy = touch.clientY - start.y;
+    if (Math.abs(dx) < 50 || Math.abs(dx) <= Math.abs(dy)) return;
+    cancelLongPress();
+    setMonth((prev) => shiftMonthValue(prev, dx < 0 ? 1 : -1));
   };
 
   const loadDayShiftEntries = useCallback(async (dayIso: string) => {
@@ -856,6 +872,12 @@ const CalendarPlanner: React.FC = () => {
 
   const todayIsoStr = todayIso();
   const currentMonthLabel = monthLabel(month, locale);
+  const selectedDayLabel = parseIsoLocal(selectedDay).toLocaleDateString(locale, {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'long',
+  });
+  const selectedDayPay = expectedPayForDay(current);
 
   return (
     <div className={styles.container}>
@@ -866,6 +888,14 @@ const CalendarPlanner: React.FC = () => {
 
       <section className={styles.panel}>
         <div className={styles.monthRow}>
+          <button
+            type="button"
+            className={styles.monthNavBtn}
+            onClick={() => setMonth((prev) => shiftMonthValue(prev, -1))}
+            aria-label={t('planner', 'prevMonth')}
+          >
+            <ChevronLeft size={18} />
+          </button>
           <div className={styles.monthPickerWrap}>
             <button
               type="button"
@@ -892,57 +922,82 @@ const CalendarPlanner: React.FC = () => {
               onChange={(e) => setMonth(e.target.value)}
             />
           </div>
+          <button
+            type="button"
+            className={styles.monthNavBtn}
+            onClick={() => setMonth((prev) => shiftMonthValue(prev, 1))}
+            aria-label={t('planner', 'nextMonth')}
+          >
+            <ChevronRight size={18} />
+          </button>
         </div>
 
         <div className={styles.weekdays}>
           {weekdays.map((dayName) => <span key={dayName} className={styles.weekday}>{dayName}</span>)}
         </div>
 
-        <div className={styles.grid}>
+        <div
+          className={styles.grid}
+          onTouchStart={handleGridTouchStart}
+          onTouchEnd={handleGridTouchEnd}
+        >
           {calendarCells.map((dayIso, idx) => {
             if (!dayIso) return <span key={`empty-${idx}`} className={styles.emptyDay} aria-hidden="true" />;
             const dayNum = Number(dayIso.slice(-2));
             const isToday = dayIso === todayIsoStr;
             const isSelected = dayIso === selectedDay;
-            const hasData = Boolean(store[dayIso]?.hasShift || store[dayIso]?.salaryAmount || store[dayIso]?.note);
+            const note = store[dayIso]?.note ?? '';
+            const hasShift = Boolean(store[dayIso]?.hasShift);
+            const hasData = Boolean(hasShift || store[dayIso]?.salaryAmount || note);
+            const daySymbol = parseNoteToNameSymbol(note).symbol;
+            const tintStyle = hasShift ? dayTintStyle(note) : undefined;
             return (
               <button
                 key={dayIso}
                 type="button"
+                style={tintStyle}
                 className={`${styles.day} ${isSelected ? styles.dayActive : ''} ${isToday ? styles.dayToday : ''}`}
                 aria-current={isToday ? 'date' : undefined}
-                onClick={() => {
-                  setSelectedDay(dayIso);
-                  setReportRange('day');
-                  setChooserOpen(true);
-                }}
+                onClick={() => handleDayClick(dayIso)}
+                onTouchStart={(e) => handleDayTouchStart(dayIso, e)}
+                onTouchEnd={cancelLongPress}
+                onTouchMove={cancelLongPress}
               >
-                {dayNum}
+                <span className={styles.dayNum}>{dayNum}</span>
+                {daySymbol ? <span className={styles.daySymbol}>{daySymbol}</span> : null}
                 {hasData && <span className={styles.dot} />}
               </button>
             );
           })}
         </div>
 
-        {activeShift ? (
-          <div className={styles.activeShiftCard}>
-            <h3 className={styles.activeShiftTitle}>
-              <span className={styles.activeShiftTitleDot} />
-              {t('planner', 'shiftTitle')}
-            </h3>
-            <p className={styles.activeShiftTimer}>
-              {t('planner', 'shiftElapsed')}: <strong>{shiftElapsedText}</strong>
-            </p>
-            <button
-              type="button"
-              className={styles.endShiftBtn}
-              disabled={activeShiftLoading}
-              onClick={handleEndShift}
-            >
-              {activeShiftLoading ? '...' : t('planner', 'endShift')}
-            </button>
+        <div className={styles.dayCard}>
+          <div className={styles.dayCardHeader}>
+            <span className={styles.dayCardDate}>{selectedDayLabel}</span>
+            {dayHasShift ? (
+              <span className={styles.dayCardSummary}>
+                {formatDecimalHoursAsHoursMinutes(current.workedHours, {
+                  hours: t('planner', 'hoursShort'),
+                  minutes: t('planner', 'minutesShort'),
+                })}
+                {selectedDayPay > 0
+                  ? ` · ${formatPlannerMoney(selectedDayPay, locale, current.salaryCurrency)}`
+                  : ''}
+              </span>
+            ) : (
+              <span className={styles.dayCardEmpty}>{t('planner', 'dayShiftsEmpty')}</span>
+            )}
           </div>
-        ) : (
+          <button
+            type="button"
+            className={styles.dayCardBtn}
+            onClick={() => setChooserOpen(true)}
+          >
+            {dayHasShift ? t('planner', 'editShift') : t('planner', 'addShift')}
+          </button>
+        </div>
+
+        {!activeShift ? (
           <button
             type="button"
             className={styles.startShiftBtn}
@@ -951,80 +1006,7 @@ const CalendarPlanner: React.FC = () => {
           >
             {activeShiftLoading ? '...' : t('planner', 'startShift')}
           </button>
-        )}
-
-        <div className={styles.defaultTemplateCard}>
-          <p className={styles.defaultTemplateLabel}>{t('planner', 'defaultShiftTemplate')}</p>
-          <button
-            type="button"
-            className={styles.defaultTemplatePickerBtn}
-            disabled={plannerSettingsSaving}
-            onClick={() => {
-              hapticLight();
-              setDefaultTemplatePickerOpen(true);
-            }}
-          >
-            <span className={styles.defaultTemplatePickerValue}>{defaultShiftTemplateLabel}</span>
-            <span className={styles.defaultTemplatePickerChevron} aria-hidden>
-              ▾
-            </span>
-          </button>
-          <p className={styles.defaultTemplateHint}>{t('planner', 'defaultShiftTemplateTap')}</p>
-          {shiftTemplates.length === 0 ? (
-            <p className={styles.defaultTemplateHint}>{t('planner', 'defaultShiftTemplateNoTemplates')}</p>
-          ) : null}
-          <p className={styles.defaultTemplateHint}>{t('planner', 'defaultShiftTemplateHint')}</p>
-        </div>
-
-        <div className={styles.defaultTemplateCard}>
-          <p className={styles.defaultTemplateLabel}>{t('planner', 'shortcutsTitle')}</p>
-          <p className={styles.defaultTemplateHint}>{t('planner', 'shortcutsHint')}</p>
-          {automationLoading && !automation ? (
-            <p className={styles.defaultTemplateHint}>{t('planner', 'loading')}</p>
-          ) : automation ? (
-            <>
-              <div className={styles.shortcutUrlRow}>
-                <span className={styles.shortcutUrlLabel}>{t('planner', 'shortcutsStartUrl')}</span>
-                <button
-                  type="button"
-                  className={styles.shortcutCopyBtn}
-                  onClick={() => void copyAutomationUrl(automation.startUrl)}
-                >
-                  {t('planner', 'shortcutsCopyUrl')}
-                </button>
-              </div>
-              <code className={styles.shortcutUrlCode}>{automation.startUrl}</code>
-              <div className={styles.shortcutUrlRow}>
-                <span className={styles.shortcutUrlLabel}>{t('planner', 'shortcutsEndUrl')}</span>
-                <button
-                  type="button"
-                  className={styles.shortcutCopyBtn}
-                  onClick={() => void copyAutomationUrl(automation.endUrl)}
-                >
-                  {t('planner', 'shortcutsCopyUrl')}
-                </button>
-              </div>
-              <code className={styles.shortcutUrlCode}>{automation.endUrl}</code>
-              <button
-                type="button"
-                className={styles.shortcutRotateBtn}
-                disabled={automationLoading}
-                onClick={async () => {
-                  setAutomationLoading(true);
-                  try {
-                    setAutomation(await rotatePlannerAutomationToken());
-                  } catch (error) {
-                    console.error('Failed to rotate automation token:', error);
-                  } finally {
-                    setAutomationLoading(false);
-                  }
-                }}
-              >
-                {t('planner', 'shortcutsRotateToken')}
-              </button>
-            </>
-          ) : null}
-        </div>
+        ) : null}
 
         <div className={styles.reportCard}>
           <div className={styles.reportHeader}>
@@ -1144,52 +1126,22 @@ const CalendarPlanner: React.FC = () => {
         {loading && <p className={styles.loading}>{t('planner', 'loading')}</p>}
       </section>
 
-      {defaultTemplatePickerOpen && overlayBox ? (
-        <div
-          className={`${styles.modalOverlay} ${overlayBox.keyboardOpen ? styles.modalOverlayKeyboard : ''}`}
-          style={{ top: overlayBox.top, height: overlayBox.height }}
-          onClick={() => setDefaultTemplatePickerOpen(false)}
-        >
-          <div className={styles.modalSheet} onClick={(e) => e.stopPropagation()}>
-            <p className={styles.templateSectionLabel}>{t('planner', 'defaultShiftTemplate')}</p>
-            <button
-              type="button"
-              className={styles.addShiftBtn}
-              disabled={plannerSettingsSaving}
-              onClick={() => void persistDefaultShiftTemplate('')}
-            >
-              {t('planner', 'defaultShiftTemplateAsk')}
-            </button>
-            <button
-              type="button"
-              className={styles.templateBtn}
-              disabled={plannerSettingsSaving}
-              onClick={() => void persistDefaultShiftTemplate('none')}
-            >
-              {t('planner', 'defaultShiftTemplateWithout')}
-            </button>
-            {shiftTemplates.length > 0 ? (
-              <ul className={styles.templateList} role="list">
-                {shiftTemplates.map((tpl) => (
-                  <li key={`default-${tpl.id}`} className={styles.templateRow}>
-                    <button
-                      type="button"
-                      className={styles.templateBtn}
-                      disabled={plannerSettingsSaving}
-                      onClick={() => void persistDefaultShiftTemplate(tpl.id)}
-                    >
-                      {formatTemplateLabel(tpl)}
-                      <span className={styles.templateCurrencyTag}>
-                        {tpl.salaryCurrency === 'PLN' ? 'zł' : '₴'}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className={styles.dayShiftsEmpty}>{t('planner', 'defaultShiftTemplateNoTemplates')}</p>
-            )}
+      {activeShift ? (
+        <div className={styles.activeShiftSticky}>
+          <div className={styles.activeShiftStickyInfo}>
+            <span className={styles.activeShiftTitleDot} />
+            <span className={styles.activeShiftStickyTimer}>
+              {t('planner', 'shiftElapsed')}: <strong>{shiftElapsedText}</strong>
+            </span>
           </div>
+          <button
+            type="button"
+            className={styles.activeShiftStickyBtn}
+            disabled={activeShiftLoading}
+            onClick={handleEndShift}
+          >
+            {activeShiftLoading ? '...' : t('planner', 'endShift')}
+          </button>
         </div>
       ) : null}
 

@@ -6,12 +6,15 @@ import type { DisplayCurrency } from '../utils/formatters';
 import { useTelegramFullscreen } from '../hooks/useTelegramFullscreen';
 import type { TelegramWindow } from '../types/telegram';
 import {
+  apiFetch,
   getReportSettings,
   updateReportSettings,
   sendWeeklyReportNow,
   sendMonthlyReportNow,
   getReminders,
   updateReminder,
+  getPlannerSettings,
+  updatePlannerSettings,
   type ReportSettings,
   type Reminder,
   type ReminderKind,
@@ -21,6 +24,18 @@ import styles from './Settings.module.css';
 
 const APP_VERSION = (import.meta.env.VITE_APP_VERSION as string | undefined) ?? 'dev';
 const DISPLAY_CURRENCIES: DisplayCurrency[] = ['UAH', 'PLN', 'USD'];
+
+type PlannerShiftTemplate = {
+  id: string;
+  name: string;
+  symbol: string;
+  salaryCurrency: 'UAH' | 'PLN';
+};
+
+const formatTemplateLabel = (tpl: PlannerShiftTemplate): string =>
+  tpl.name.trim() && tpl.symbol.trim()
+    ? `${tpl.name.trim()} · ${tpl.symbol.trim()}`
+    : tpl.name.trim() || tpl.symbol.trim() || tpl.id;
 
 const reminderTitleKey = (kind: ReminderKind) => {
   switch (kind) {
@@ -55,6 +70,9 @@ const Settings: React.FC = () => {
   const [reports, setReports] = useState<ReportSettings>({ autoWeekly: true, autoMonthly: true, reportCurrency: 'UAH', sendTime: '21:00' });
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [loadingAutomation, setLoadingAutomation] = useState(false);
+  const [shiftTemplates, setShiftTemplates] = useState<PlannerShiftTemplate[]>([]);
+  const [defaultShiftTemplateId, setDefaultShiftTemplateId] = useState<string | null>(null);
+  const [savingTemplate, setSavingTemplate] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -73,6 +91,44 @@ const Settings: React.FC = () => {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadPlanner = async () => {
+      try {
+        const [settings, res] = await Promise.all([
+          getPlannerSettings(),
+          apiFetch('/api/planner/shift-templates'),
+        ]);
+        if (cancelled) return;
+        setDefaultShiftTemplateId(settings.defaultShiftTemplateId ?? null);
+        if (res.ok) {
+          const rows = (await res.json()) as PlannerShiftTemplate[];
+          setShiftTemplates(Array.isArray(rows) ? rows : []);
+        }
+      } catch {
+        // ignore temporary network issues
+      }
+    };
+    void loadPlanner();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const saveDefaultShiftTemplate = async (value: string) => {
+    setSavingTemplate(true);
+    try {
+      const next = value === '' ? null : value;
+      const settings = await updatePlannerSettings({ defaultShiftTemplateId: next });
+      setDefaultShiftTemplateId(settings.defaultShiftTemplateId ?? null);
+      hapticLight();
+    } catch {
+      showAppAlert(t('planner', 'defaultShiftTemplateSaveFailed'));
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
 
   const setReportPatch = useCallback(async (patch: Partial<typeof reports>) => {
     setLoadingAutomation(true);
@@ -333,6 +389,55 @@ const Settings: React.FC = () => {
             </div>
           ))}
         </div>
+      </section>
+
+      <section className={styles.section}>
+        <div className={styles.sectionLabel}>{t('planner', 'defaultShiftTemplate')}</div>
+        <div className={styles.card}>
+          <button
+            type="button"
+            className={styles.row}
+            disabled={savingTemplate}
+            onClick={() => void saveDefaultShiftTemplate('')}
+          >
+            <div className={styles.rowLeft}>
+              <span className={styles.rowLabel}>{t('planner', 'defaultShiftTemplateAsk')}</span>
+            </div>
+            {defaultShiftTemplateId === null && <span className={styles.check}>✓</span>}
+          </button>
+          <button
+            type="button"
+            className={styles.row}
+            disabled={savingTemplate}
+            onClick={() => void saveDefaultShiftTemplate('none')}
+          >
+            <div className={styles.rowLeft}>
+              <span className={styles.rowLabel}>{t('planner', 'defaultShiftTemplateWithout')}</span>
+            </div>
+            {defaultShiftTemplateId === 'none' && <span className={styles.check}>✓</span>}
+          </button>
+          {shiftTemplates.map((tpl) => (
+            <button
+              key={tpl.id}
+              type="button"
+              className={styles.row}
+              disabled={savingTemplate}
+              onClick={() => void saveDefaultShiftTemplate(tpl.id)}
+            >
+              <div className={styles.rowLeft}>
+                <span className={styles.rowLabel}>
+                  {formatTemplateLabel(tpl)} {tpl.salaryCurrency === 'PLN' ? 'zł' : '₴'}
+                </span>
+              </div>
+              {defaultShiftTemplateId === tpl.id && <span className={styles.check}>✓</span>}
+            </button>
+          ))}
+        </div>
+        <p className={styles.sectionDescription}>
+          {shiftTemplates.length === 0
+            ? t('planner', 'defaultShiftTemplateNoTemplates')
+            : t('planner', 'defaultShiftTemplateHint')}
+        </p>
       </section>
 
       <section className={styles.section}>

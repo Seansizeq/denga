@@ -480,34 +480,6 @@ const AddTransaction: React.FC = () => {
 
       {type === 'transfer' ? (
         <>
-          <div className={styles.metaList}>
-            <button
-              type="button"
-              className={styles.metaRow}
-              onClick={() => setTransferAccountSheet('from')}
-            >
-              <span className={styles.metaLabel}>{t('addTx', 'transferFrom')}</span>
-              <span className={styles.metaValue}>
-                {transferFromAccount
-                  ? `${transferFromAccount.name} (${transferFromAccount.currency})`
-                  : t('addTx', 'paymentAccountNone')}
-                <ChevronRight size={18} strokeWidth={2} className={styles.metaChevron} />
-              </span>
-            </button>
-            <button
-              type="button"
-              className={styles.metaRow}
-              onClick={() => setTransferAccountSheet('to')}
-            >
-              <span className={styles.metaLabel}>{t('addTx', 'transferTo')}</span>
-              <span className={styles.metaValue}>
-                {transferToAccount
-                  ? `${transferToAccount.name} (${transferToAccount.currency})`
-                  : t('addTx', 'paymentAccountNone')}
-                <ChevronRight size={18} strokeWidth={2} className={styles.metaChevron} />
-              </span>
-            </button>
-          </div>
           {transferUsesExchange ? (
             <div className={styles.transferAmounts}>
               <div className={styles.transferAmountBlock}>
@@ -585,6 +557,35 @@ const AddTransaction: React.FC = () => {
               className={styles.dateInlineInput}
               aria-label={t('addTx', 'date')}
             />
+          </div>
+
+          <div className={styles.metaList}>
+            <button
+              type="button"
+              className={styles.metaRow}
+              onClick={() => setTransferAccountSheet('from')}
+            >
+              <span className={styles.metaLabel}>{t('addTx', 'transferFrom')}</span>
+              <span className={styles.metaValue}>
+                {transferFromAccount
+                  ? `${transferFromAccount.name} (${transferFromAccount.currency})`
+                  : t('addTx', 'paymentAccountNone')}
+                <ChevronRight size={18} strokeWidth={2} className={styles.metaChevron} />
+              </span>
+            </button>
+            <button
+              type="button"
+              className={styles.metaRow}
+              onClick={() => setTransferAccountSheet('to')}
+            >
+              <span className={styles.metaLabel}>{t('addTx', 'transferTo')}</span>
+              <span className={styles.metaValue}>
+                {transferToAccount
+                  ? `${transferToAccount.name} (${transferToAccount.currency})`
+                  : t('addTx', 'paymentAccountNone')}
+                <ChevronRight size={18} strokeWidth={2} className={styles.metaChevron} />
+              </span>
+            </button>
           </div>
         </>
       ) : (

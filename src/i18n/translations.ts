@@ -172,12 +172,6 @@ type Dict = {
     defaultShiftTemplateNoTemplates: string;
     defaultShiftTemplateSaved: string;
     defaultShiftTemplateSaveFailed: string;
-    shortcutsTitle: string;
-    shortcutsHint: string;
-    shortcutsStartUrl: string;
-    shortcutsEndUrl: string;
-    shortcutsRotateToken: string;
-    shortcutsCopyUrl: string;
     dayShifts: string;
     dayShiftsEmpty: string;
     reportShiftBanners: string;
@@ -536,17 +530,11 @@ const uk: Dict = {
     defaultShiftTemplateNone: 'Не задано',
     defaultShiftTemplateAsk: 'Питати щоразу',
     defaultShiftTemplateWithout: 'Без шаблону',
-    defaultShiftTemplateHint: 'Для Telegram і Shortcuts: «почати зміну» стартує одразу з цим шаблоном.',
+    defaultShiftTemplateHint: 'Для Telegram: «почати зміну» стартує одразу з цим шаблоном.',
     defaultShiftTemplateTap: 'Натисніть, щоб обрати',
     defaultShiftTemplateNoTemplates: 'Спочатку збережіть шаблон: день у календарі → додати зміну → заповнити й зберегти.',
     defaultShiftTemplateSaved: 'Шаблон за замовчуванням збережено',
     defaultShiftTemplateSaveFailed: 'Не вдалося зберегти. Перевірте інтернет або оновіть застосунок.',
-    shortcutsTitle: 'iPhone Shortcuts (без вибору бота)',
-    shortcutsHint: 'У «Отримати вміст URL» вставте посилання нижче. Спочатку задайте шаблон за замовчуванням.',
-    shortcutsStartUrl: 'Почати зміну',
-    shortcutsEndUrl: 'Завершити зміну',
-    shortcutsRotateToken: 'Новий ключ',
-    shortcutsCopyUrl: 'Копіювати',
     dayShifts: 'Зміни за день',
     dayShiftsEmpty: 'Ще немає завершених змін за цей день',
     reportShiftBanners: 'Кожна зміна',
@@ -911,17 +899,11 @@ const ru: Dict = {
     defaultShiftTemplateNone: 'Не задан',
     defaultShiftTemplateAsk: 'Спрашивать каждый раз',
     defaultShiftTemplateWithout: 'Без шаблона',
-    defaultShiftTemplateHint: 'Для Telegram и Shortcuts: «начать смену» сразу стартует с этим шаблоном.',
+    defaultShiftTemplateHint: 'Для Telegram: «начать смену» сразу стартует с этим шаблоном.',
     defaultShiftTemplateTap: 'Нажмите, чтобы выбрать',
     defaultShiftTemplateNoTemplates: 'Сначала сохраните шаблон: день в календаре → добавить смену → заполнить и сохранить.',
     defaultShiftTemplateSaved: 'Шаблон по умолчанию сохранён',
     defaultShiftTemplateSaveFailed: 'Не удалось сохранить. Проверьте интернет или обновите приложение.',
-    shortcutsTitle: 'iPhone Shortcuts (без выбора бота)',
-    shortcutsHint: 'В действии «Получить содержимое URL» вставьте ссылку ниже. Сначала выберите шаблон по умолчанию.',
-    shortcutsStartUrl: 'Начать смену',
-    shortcutsEndUrl: 'Завершить смену',
-    shortcutsRotateToken: 'Новый ключ',
-    shortcutsCopyUrl: 'Копировать',
     dayShifts: 'Смены за день',
     dayShiftsEmpty: 'За этот день пока нет завершённых смен',
     reportShiftBanners: 'Каждая смена',
@@ -1286,17 +1268,11 @@ const en: Dict = {
     defaultShiftTemplateNone: 'Not set',
     defaultShiftTemplateAsk: 'Ask every time',
     defaultShiftTemplateWithout: 'Without template',
-    defaultShiftTemplateHint: 'For Telegram and Shortcuts: "start shift" begins immediately with this template.',
+    defaultShiftTemplateHint: 'For Telegram: "start shift" begins immediately with this template.',
     defaultShiftTemplateTap: 'Tap to choose',
     defaultShiftTemplateNoTemplates: 'Save a template first: pick a day → add shift → fill in and save.',
     defaultShiftTemplateSaved: 'Default template saved',
     defaultShiftTemplateSaveFailed: 'Could not save. Check your connection or update the app.',
-    shortcutsTitle: 'iPhone Shortcuts (no bot picker)',
-    shortcutsHint: 'Use "Get Contents of URL" with the links below. Set a default template first.',
-    shortcutsStartUrl: 'Start shift',
-    shortcutsEndUrl: 'End shift',
-    shortcutsRotateToken: 'New key',
-    shortcutsCopyUrl: 'Copy',
     dayShifts: 'Shifts for this day',
     dayShiftsEmpty: 'No completed shifts for this day yet',
     reportShiftBanners: 'Each shift',
