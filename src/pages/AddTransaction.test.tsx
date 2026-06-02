@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import AddTransaction from './AddTransaction';
 
@@ -87,14 +87,12 @@ describe('AddTransaction', () => {
 
   it('prefills payment account from note query param', () => {
     renderAdd('/add?note=Shop%20Account%3A%20privat24');
-    const privatChip = screen.getByRole('button', { name: 'Privat24' });
-    expect(privatChip.className).toMatch(/paymentChipActive/);
+    expect(screen.getByText('Privat24')).toBeTruthy();
   });
 
   it('prefills payment account from account query param', () => {
     renderAdd('/add?account=wallet');
-    const walletChip = screen.getByRole('button', { name: 'Готівка' });
-    expect(walletChip.className).toMatch(/paymentChipActive/);
+    expect(screen.getByText('Готівка')).toBeTruthy();
   });
 
   it('shows not-found banner for missing edit id', () => {
@@ -107,6 +105,11 @@ describe('AddTransaction', () => {
     renderAdd('/add?type=transfer');
     expect(screen.getByText('addTx.transferFrom')).toBeTruthy();
     expect(screen.getByText('addTx.transferTo')).toBeTruthy();
-    expect(screen.getByText('addTx.transferSection')).toBeTruthy();
+  });
+
+  it('opens account picker sheet on row tap', () => {
+    renderAdd('/add');
+    fireEvent.click(screen.getByText('addTx.paymentAccount'));
+    expect(screen.getByRole('dialog')).toBeTruthy();
   });
 });

@@ -1,19 +1,23 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import * as LucideIcons from 'lucide-react';
-import { X } from 'lucide-react';
+import { X, ChevronRight, Check } from 'lucide-react';
 import { useTransactions } from '../context/TransactionContext';
 import { usePortfolio } from '../context/PortfolioContext';
 import CategoryGrid from '../components/ui/CategoryGrid';
+import BottomSheet from '../components/ui/BottomSheet';
 import {
   createCustomCategoryId,
   CUSTOM_CATEGORY_COLORS,
   CUSTOM_CATEGORY_ICONS,
   inferCustomCategoryColor,
   inferCustomCategoryIcon,
+  getCustomCategoryData,
+  CATEGORIES,
   type CustomCategoryIcon,
 } from '../constants/categories';
 import { useTranslation } from '../i18n/LanguageContext';
+import type { CategoryKey } from '../i18n/translations';
 import type { TransactionType } from '../types';
 import {
   getAccountSlugFromNote,
@@ -103,6 +107,9 @@ const AddTransaction: React.FC = () => {
     return '';
   });
   const [paymentAccount, setPaymentAccount] = useState<string>(initialPaymentAccount);
+  const [accountSheetOpen, setAccountSheetOpen] = useState(false);
+  const [categorySheetOpen, setCategorySheetOpen] = useState(false);
+  const [transferAccountSheet, setTransferAccountSheet] = useState<'from' | 'to' | null>(null);
   const [saveError, setSaveError] = useState('');
   const hydratedEditRef = useRef<string>('');
   const [customCategories, setCustomCategories] = useState<
@@ -292,16 +299,26 @@ const AddTransaction: React.FC = () => {
     [customCategoryIds],
   );
 
-  const handleRepeatLast = useCallback(() => {
-    const last = transactions.find((tx) => tx.type === type);
-    if (!last || type === 'transfer') return;
-    setAmount(String(last.amount));
-    setCurrency(normalizeCurrency(last.currency));
-    setCategoryId(last.categoryId);
-    setNote(stripAccountFromNote(last.note ?? ''));
-    setPaymentAccount(getAccountSlugFromNote(last.note) ?? '');
-    setDate(last.date.slice(0, 10));
-  }, [transactions, type]);
+  const getCategoryDisplayName = useCallback(
+    (id: string): string => {
+      if (!id) return '';
+      const custom = customCategories.find((c) => c.id === id);
+      if (custom) return custom.name;
+      const customData = getCustomCategoryData(id);
+      if (customData) return customData.name;
+      const override = categoryOverrides[id];
+      if (override?.name?.trim()) return override.name.trim();
+      const builtIn = CATEGORIES.find((c) => c.id === id);
+      if (builtIn) return t('categories', id as CategoryKey);
+      return id;
+    },
+    [customCategories, categoryOverrides, t],
+  );
+
+  const accountDisplayLabel = useMemo(() => {
+    if (!paymentAccount) return t('addTx', 'paymentAccountNone');
+    return paymentChipOptions.find((o) => o.key === paymentAccount)?.label ?? paymentAccount;
+  }, [paymentAccount, paymentChipOptions, t]);
 
   const setQuickDate = useCallback((offsetDays: number) => {
     const d = new Date();
@@ -392,7 +409,7 @@ const AddTransaction: React.FC = () => {
   const validationHint = useMemo(() => {
     if (editNotFound) return t('addTx', 'editNotFound');
     const parsedAmount = parseFloat(amount.replace(',', '.'));
-    if (!(parsedAmount > 0)) return t('addTx', 'hintAmount');
+    if (!(parsedAmount > 0)) return '';
     if (type !== 'transfer') return '';
     if (!transferFromAccountKey || !transferToAccountKey) return t('addTx', 'hintTransferAccounts');
     if (transferFromAccountKey === transferToAccountKey) return t('addTx', 'hintTransferDifferent');
@@ -408,8 +425,6 @@ const AddTransaction: React.FC = () => {
     transferToAmount,
     t,
   ]);
-
-  const canRepeatLast = !isEditing && type !== 'transfer' && transactions.some((tx) => tx.type === type);
 
   const amountKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && isValid && !editNotFound) {
@@ -471,46 +486,39 @@ const AddTransaction: React.FC = () => {
 
       {type === 'transfer' ? (
         <>
-          <section className={styles.noteSection}>
-            <h3 className={styles.sectionTitle}>{t('addTx', 'transferSection')}</h3>
-            <div className={styles.transferGrid}>
-              <label className={styles.transferField}>
-                <span className={styles.transferLabel}>{t('addTx', 'transferFrom')}</span>
-                <select
-                  className={styles.noteInput}
-                  value={transferFromAccountKey}
-                  onChange={(e) => setTransferFromAccountKey(e.target.value)}
-                >
-                  <option value="">{t('addTx', 'paymentAccountNone')}</option>
-                  {portfolioAccounts.map((account) => (
-                    <option key={account.key} value={account.key}>
-                      {account.name} ({account.currency})
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className={styles.transferField}>
-                <span className={styles.transferLabel}>{t('addTx', 'transferTo')}</span>
-                <select
-                  className={styles.noteInput}
-                  value={transferToAccountKey}
-                  onChange={(e) => setTransferToAccountKey(e.target.value)}
-                >
-                  <option value="">{t('addTx', 'paymentAccountNone')}</option>
-                  {portfolioAccounts.map((account) => (
-                    <option key={account.key} value={account.key}>
-                      {account.name} ({account.currency})
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            {transferUsesExchange ? (
-              <p className={styles.paymentHint}>
-                {`${transferFromAccount?.currency ?? currency} -> ${transferToAccount?.currency ?? currency}`}
-              </p>
-            ) : null}
-          </section>
+          <div className={styles.metaList}>
+            <button
+              type="button"
+              className={styles.metaRow}
+              onClick={() => setTransferAccountSheet('from')}
+            >
+              <span className={styles.metaLabel}>{t('addTx', 'transferFrom')}</span>
+              <span className={styles.metaValue}>
+                {transferFromAccount
+                  ? `${transferFromAccount.name} (${transferFromAccount.currency})`
+                  : t('addTx', 'paymentAccountNone')}
+                <ChevronRight size={18} strokeWidth={2} className={styles.metaChevron} />
+              </span>
+            </button>
+            <button
+              type="button"
+              className={styles.metaRow}
+              onClick={() => setTransferAccountSheet('to')}
+            >
+              <span className={styles.metaLabel}>{t('addTx', 'transferTo')}</span>
+              <span className={styles.metaValue}>
+                {transferToAccount
+                  ? `${transferToAccount.name} (${transferToAccount.currency})`
+                  : t('addTx', 'paymentAccountNone')}
+                <ChevronRight size={18} strokeWidth={2} className={styles.metaChevron} />
+              </span>
+            </button>
+          </div>
+          {transferUsesExchange ? (
+            <p className={styles.paymentHint}>
+              {`${transferFromAccount?.currency ?? currency} -> ${transferToAccount?.currency ?? currency}`}
+            </p>
+          ) : null}
 
           <div className={styles.transferAmounts}>
             <div className={styles.amountContainer}>
@@ -548,16 +556,38 @@ const AddTransaction: React.FC = () => {
               <div className={styles.currencySelect}>{transferToAccount?.currency ?? transferFromAccount?.currency ?? currency}</div>
             </div>
           </div>
+
+          <div className={styles.dateInline}>
+            <button type="button" className={styles.dateQuickBtn} onClick={() => setQuickDate(0)}>
+              {t('addTx', 'dateToday')}
+            </button>
+            <button type="button" className={styles.dateQuickBtn} onClick={() => setQuickDate(-1)}>
+              {t('addTx', 'dateYesterday')}
+            </button>
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className={styles.dateInlineInput}
+              aria-label={t('addTx', 'date')}
+            />
+          </div>
         </>
       ) : (
         <>
-          {canRepeatLast ? (
-            <button type="button" className={styles.repeatLastBtn} onClick={handleRepeatLast}>
-              {t('addTx', 'repeatLast')}
-            </button>
-          ) : null}
-
-          <div className={styles.amountContainer}>
+          <div className={styles.amountRow}>
+            <select
+              className={styles.currencySelect}
+              value={currency}
+              onChange={(e) => setCurrency(normalizeCurrency(e.target.value))}
+              aria-label={t('settings', 'currency')}
+            >
+              {SUPPORTED_CURRENCIES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
             <input
               type="text"
               inputMode="decimal"
@@ -572,18 +602,22 @@ const AddTransaction: React.FC = () => {
               autoFocus
               onKeyDown={amountKeyDown}
             />
-            <select
-              className={styles.currencySelect}
-              value={currency}
-              onChange={(e) => setCurrency(normalizeCurrency(e.target.value))}
-              aria-label={t('settings', 'currency')}
-            >
-              {SUPPORTED_CURRENCIES.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
+          </div>
+
+          <div className={styles.dateInline}>
+            <button type="button" className={styles.dateQuickBtn} onClick={() => setQuickDate(0)}>
+              {t('addTx', 'dateToday')}
+            </button>
+            <button type="button" className={styles.dateQuickBtn} onClick={() => setQuickDate(-1)}>
+              {t('addTx', 'dateYesterday')}
+            </button>
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className={styles.dateInlineInput}
+              aria-label={t('addTx', 'date')}
+            />
           </div>
 
           <ExpenseTemplateBar
@@ -604,35 +638,161 @@ const AddTransaction: React.FC = () => {
             }}
           />
 
-          <section className={styles.paymentSection} aria-label={t('addTx', 'paymentAccount')}>
-            <h3 className={styles.sectionTitle}>{t('addTx', 'paymentAccount')}</h3>
-            <p className={styles.paymentHint}>{t('addTx', 'paymentAccountHint')}</p>
-            <div className={styles.paymentChips}>
+          <div className={styles.metaList}>
+            <button
+              type="button"
+              className={styles.metaRow}
+              onClick={() => setAccountSheetOpen(true)}
+            >
+              <span className={styles.metaLabel}>{t('addTx', 'paymentAccount')}</span>
+              <span className={styles.metaValue}>
+                {accountDisplayLabel}
+                <ChevronRight size={18} strokeWidth={2} className={styles.metaChevron} />
+              </span>
+            </button>
+            <button
+              type="button"
+              className={styles.metaRow}
+              onClick={() => setCategorySheetOpen(true)}
+            >
+              <span className={styles.metaLabel}>{t('addTx', 'category')}</span>
+              <span className={styles.metaValue}>
+                {getCategoryDisplayName(categoryId)}
+                <ChevronRight size={18} strokeWidth={2} className={styles.metaChevron} />
+              </span>
+            </button>
+          </div>
+        </>
+      )}
+
+      <section className={styles.noteSection}>
+        <h3 className={styles.sectionTitle}>{t('addTx', 'note')}</h3>
+        <input
+          type="text"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder={t('addTx', 'notePlaceholder')}
+          className={styles.noteInput}
+          maxLength={120}
+        />
+      </section>
+
+      <div className={styles.saveBarSpacer} aria-hidden="true" />
+
+      <div className={styles.saveBar}>
+        {!isValid && validationHint ? (
+          <p className={styles.validationHint} role="status">
+            {validationHint}
+          </p>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => void handleSave()}
+          className={styles.saveBtn}
+          disabled={!isValid}
+        >
+          {isEditing ? t('addTx', 'saveChanges') : t('addTx', 'save')}
+        </button>
+      </div>
+
+      <BottomSheet
+        open={accountSheetOpen}
+        title={t('addTx', 'paymentAccount')}
+        onClose={() => setAccountSheetOpen(false)}
+        closeLabel={t('addTx', 'cancel')}
+      >
+        <ul className={styles.pickerList}>
+          <li>
+            <button
+              type="button"
+              className={`${styles.pickerItem} ${paymentAccount === '' ? styles.pickerItemActive : ''}`}
+              onClick={() => {
+                setPaymentAccount('');
+                setAccountSheetOpen(false);
+              }}
+            >
+              <span>{t('addTx', 'paymentAccountNone')}</span>
+              {paymentAccount === '' ? <Check size={18} strokeWidth={2.5} className={styles.pickerCheck} /> : null}
+            </button>
+          </li>
+          {paymentChipOptions.map(({ key, label }) => (
+            <li key={key}>
               <button
                 type="button"
-                className={`${styles.paymentChip} ${paymentAccount === '' ? styles.paymentChipActive : ''}`}
-                onClick={() => setPaymentAccount('')}
+                className={`${styles.pickerItem} ${paymentAccount === key ? styles.pickerItemActive : ''}`}
+                onClick={() => {
+                  setPaymentAccount(key);
+                  setAccountSheetOpen(false);
+                }}
               >
-                {t('addTx', 'paymentAccountNone')}
+                <span>{label}</span>
+                {paymentAccount === key ? <Check size={18} strokeWidth={2.5} className={styles.pickerCheck} /> : null}
               </button>
-              {paymentChipOptions.map(({ key, label }) => (
+            </li>
+          ))}
+        </ul>
+      </BottomSheet>
+
+      <BottomSheet
+        open={transferAccountSheet !== null}
+        title={transferAccountSheet === 'to' ? t('addTx', 'transferTo') : t('addTx', 'transferFrom')}
+        onClose={() => setTransferAccountSheet(null)}
+        closeLabel={t('addTx', 'cancel')}
+      >
+        <ul className={styles.pickerList}>
+          <li>
+            <button
+              type="button"
+              className={`${styles.pickerItem} ${
+                (transferAccountSheet === 'to' ? transferToAccountKey : transferFromAccountKey) === ''
+                  ? styles.pickerItemActive
+                  : ''
+              }`}
+              onClick={() => {
+                if (transferAccountSheet === 'to') setTransferToAccountKey('');
+                else setTransferFromAccountKey('');
+                setTransferAccountSheet(null);
+              }}
+            >
+              <span>{t('addTx', 'paymentAccountNone')}</span>
+            </button>
+          </li>
+          {portfolioAccounts.map((account) => {
+            const activeKey = transferAccountSheet === 'to' ? transferToAccountKey : transferFromAccountKey;
+            return (
+              <li key={account.key}>
                 <button
-                  key={key}
                   type="button"
-                  className={`${styles.paymentChip} ${paymentAccount === key ? styles.paymentChipActive : ''}`}
-                  onClick={() => setPaymentAccount(paymentAccount === key ? '' : key)}
+                  className={`${styles.pickerItem} ${activeKey === account.key ? styles.pickerItemActive : ''}`}
+                  onClick={() => {
+                    if (transferAccountSheet === 'to') setTransferToAccountKey(account.key);
+                    else setTransferFromAccountKey(account.key);
+                    setTransferAccountSheet(null);
+                  }}
                 >
-                  {label}
+                  <span>
+                    {account.name} ({account.currency})
+                  </span>
+                  {activeKey === account.key ? <Check size={18} strokeWidth={2.5} className={styles.pickerCheck} /> : null}
                 </button>
-              ))}
-            </div>
-          </section>
+              </li>
+            );
+          })}
+        </ul>
+      </BottomSheet>
 
-          <section className={styles.categorySection}>
-        <h3 className={styles.sectionTitle}>{t('addTx', 'category')}</h3>
-
+      <BottomSheet
+        open={categorySheetOpen}
+        title={t('addTx', 'category')}
+        onClose={() => {
+          setCategorySheetOpen(false);
+          setIsCreatingCustom(false);
+          setManagingCustom(null);
+        }}
+        closeLabel={t('addTx', 'cancel')}
+      >
         <CategoryGrid
-          type={type}
+          type={type === 'income' ? 'income' : 'expense'}
           selectedId={categoryId}
           customCategories={customCategories}
           categoryOverrides={categoryOverrides}
@@ -647,6 +807,8 @@ const AddTransaction: React.FC = () => {
           onSelect={(id) => {
             setCategoryId(id);
             setIsCreatingCustom(false);
+            setManagingCustom(null);
+            setCategorySheetOpen(false);
           }}
           onManageCategory={(category) => {
             setManagingCustom(category);
@@ -664,6 +826,7 @@ const AddTransaction: React.FC = () => {
                 onClick={() => {
                   setCategoryId(managingCustom.id);
                   setManagingCustom(null);
+                  setCategorySheetOpen(false);
                 }}
               >
                 {t('addTx', 'categoryTabSelect')}
@@ -840,6 +1003,7 @@ const AddTransaction: React.FC = () => {
                   setManagingCustom(null);
                   setEditingCustomId(null);
                   setCreatingCategory(false);
+                  setCategorySheetOpen(false);
                 }}
               >
                 {editingCustomId ? t('addTx', 'saveChanges') : t('addTx', 'create')}
@@ -847,57 +1011,7 @@ const AddTransaction: React.FC = () => {
             </div>
           </div>
         ) : null}
-          </section>
-        </>
-      )}
-
-      <section className={styles.noteSection}>
-        <h3 className={styles.sectionTitle}>{t('addTx', 'date')}</h3>
-        <input
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          className={styles.noteInput}
-        />
-        <div className={styles.dateQuickRow}>
-          <button type="button" className={styles.dateQuickBtn} onClick={() => setQuickDate(0)}>
-            {t('addTx', 'dateToday')}
-          </button>
-          <button type="button" className={styles.dateQuickBtn} onClick={() => setQuickDate(-1)}>
-            {t('addTx', 'dateYesterday')}
-          </button>
-        </div>
-      </section>
-
-      <section className={styles.noteSection}>
-        <h3 className={styles.sectionTitle}>{t('addTx', 'note')}</h3>
-        <input
-          type="text"
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          placeholder={t('addTx', 'notePlaceholder')}
-          className={styles.noteInput}
-          maxLength={120}
-        />
-      </section>
-
-      <div className={styles.saveBarSpacer} aria-hidden="true" />
-
-      <div className={styles.saveBar}>
-        {!isValid && validationHint ? (
-          <p className={styles.validationHint} role="status">
-            {validationHint}
-          </p>
-        ) : null}
-        <button
-          type="button"
-          onClick={() => void handleSave()}
-          className={styles.saveBtn}
-          disabled={!isValid}
-        >
-          {isEditing ? t('addTx', 'saveChanges') : t('addTx', 'save')}
-        </button>
-      </div>
+      </BottomSheet>
     </div>
   );
 };

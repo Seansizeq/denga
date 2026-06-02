@@ -1,0 +1,76 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 40;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
+  overflow: hidden;
+  overscroll-behavior: contain;
+  animation: overlayFade 0.16s ease;
+}
+
+@keyframes overlayFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.sheet {
+  width: min(100%, var(--app-max-width, 460px));
+  max-height: calc(100dvh - var(--safe-area-inset-top) - 24px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  background: var(--bg-card);
+  border-radius: 20px 20px 0 0;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: none;
+  padding: 14px 16px calc(20px + var(--safe-area-inset-bottom));
+  animation: sheetUp 0.2s ease;
+}
+
+@keyframes sheetUp {
+  from { transform: translateY(12px); opacity: 0.6; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.closeBtn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  cursor: pointer;
+  line-height: 0;
+}
+
+.closeBtn:active {
+  transform: scale(0.94);
+}
+
+.body {
+  min-width: 0;
+}
