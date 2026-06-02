@@ -112,20 +112,6 @@ const Stats: React.FC = () => {
         previousNet={aggregates.previousNet}
       />
 
-      {chartType === 'expense' && (
-        <section className={styles.section}>
-          <h2 className={styles.sectionTitle}>{t('stats', 'insightsTitle')}</h2>
-          <StatsInsightsGrid
-            insights={aggregates.insights}
-            onCategoryClick={(categoryId) => openHistory({ categoryId })}
-          />
-        </section>
-      )}
-
-      {range !== 'today' && hasCategoryData && (
-        <StatsTrendChart buckets={trendBuckets} onBucketClick={handleBucketClick} />
-      )}
-
       <section className={styles.section}>
         <div className={styles.sectionHeaderWithToggle}>
           <h2 className={styles.sectionTitle}>{t('stats', 'byCategory')}</h2>
@@ -167,6 +153,20 @@ const Stats: React.FC = () => {
           </div>
         )}
       </section>
+
+      {chartType === 'expense' && (
+        <section className={styles.section}>
+          <h2 className={styles.sectionTitle}>{t('stats', 'insightsTitle')}</h2>
+          <StatsInsightsGrid
+            insights={aggregates.insights}
+            onCategoryClick={(categoryId) => openHistory({ categoryId })}
+          />
+        </section>
+      )}
+
+      {range !== 'today' && hasCategoryData && (
+        <StatsTrendChart buckets={trendBuckets} onBucketClick={handleBucketClick} />
+      )}
     </div>
   );
 };
