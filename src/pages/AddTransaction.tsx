@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import * as LucideIcons from 'lucide-react';
-import { X, ChevronRight, Check } from 'lucide-react';
+import { X, ChevronRight } from 'lucide-react';
 import { useTransactions } from '../context/TransactionContext';
 import { usePortfolio } from '../context/PortfolioContext';
 import CategoryGrid from '../components/ui/CategoryGrid';
 import BottomSheet from '../components/ui/BottomSheet';
+import OptionPickerSheet from '../components/ui/OptionPickerSheet';
 import {
   createCustomCategoryId,
   CUSTOM_CATEGORY_COLORS,
@@ -704,91 +705,41 @@ const AddTransaction: React.FC = () => {
         </button>
       </div>
 
-      <BottomSheet
+      <OptionPickerSheet
         open={accountSheetOpen}
         title={t('addTx', 'paymentAccount')}
         onClose={() => setAccountSheetOpen(false)}
         closeLabel={t('addTx', 'cancel')}
-      >
-        <ul className={styles.pickerList}>
-          <li>
-            <button
-              type="button"
-              className={`${styles.pickerItem} ${paymentAccount === '' ? styles.pickerItemActive : ''}`}
-              onClick={() => {
-                setPaymentAccount('');
-                setAccountSheetOpen(false);
-              }}
-            >
-              <span>{t('addTx', 'paymentAccountNone')}</span>
-              {paymentAccount === '' ? <Check size={18} strokeWidth={2.5} className={styles.pickerCheck} /> : null}
-            </button>
-          </li>
-          {paymentChipOptions.map(({ key, label }) => (
-            <li key={key}>
-              <button
-                type="button"
-                className={`${styles.pickerItem} ${paymentAccount === key ? styles.pickerItemActive : ''}`}
-                onClick={() => {
-                  setPaymentAccount(key);
-                  setAccountSheetOpen(false);
-                }}
-              >
-                <span>{label}</span>
-                {paymentAccount === key ? <Check size={18} strokeWidth={2.5} className={styles.pickerCheck} /> : null}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </BottomSheet>
+        selectedId={paymentAccount}
+        options={[
+          { id: '', label: t('addTx', 'paymentAccountNone') },
+          ...paymentChipOptions.map(({ key, label }) => ({ id: key, label })),
+        ]}
+        onSelect={(id) => {
+          setPaymentAccount(id);
+          setAccountSheetOpen(false);
+        }}
+      />
 
-      <BottomSheet
+      <OptionPickerSheet
         open={transferAccountSheet !== null}
         title={transferAccountSheet === 'to' ? t('addTx', 'transferTo') : t('addTx', 'transferFrom')}
         onClose={() => setTransferAccountSheet(null)}
         closeLabel={t('addTx', 'cancel')}
-      >
-        <ul className={styles.pickerList}>
-          <li>
-            <button
-              type="button"
-              className={`${styles.pickerItem} ${
-                (transferAccountSheet === 'to' ? transferToAccountKey : transferFromAccountKey) === ''
-                  ? styles.pickerItemActive
-                  : ''
-              }`}
-              onClick={() => {
-                if (transferAccountSheet === 'to') setTransferToAccountKey('');
-                else setTransferFromAccountKey('');
-                setTransferAccountSheet(null);
-              }}
-            >
-              <span>{t('addTx', 'paymentAccountNone')}</span>
-            </button>
-          </li>
-          {portfolioAccounts.map((account) => {
-            const activeKey = transferAccountSheet === 'to' ? transferToAccountKey : transferFromAccountKey;
-            return (
-              <li key={account.key}>
-                <button
-                  type="button"
-                  className={`${styles.pickerItem} ${activeKey === account.key ? styles.pickerItemActive : ''}`}
-                  onClick={() => {
-                    if (transferAccountSheet === 'to') setTransferToAccountKey(account.key);
-                    else setTransferFromAccountKey(account.key);
-                    setTransferAccountSheet(null);
-                  }}
-                >
-                  <span>
-                    {account.name} ({account.currency})
-                  </span>
-                  {activeKey === account.key ? <Check size={18} strokeWidth={2.5} className={styles.pickerCheck} /> : null}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      </BottomSheet>
+        selectedId={transferAccountSheet === 'to' ? transferToAccountKey : transferFromAccountKey}
+        options={[
+          { id: '', label: t('addTx', 'paymentAccountNone') },
+          ...portfolioAccounts.map((account) => ({
+            id: account.key,
+            label: `${account.name} (${account.currency})`,
+          })),
+        ]}
+        onSelect={(id) => {
+          if (transferAccountSheet === 'to') setTransferToAccountKey(id);
+          else setTransferFromAccountKey(id);
+          setTransferAccountSheet(null);
+        }}
+      />
 
       <BottomSheet
         open={categorySheetOpen}

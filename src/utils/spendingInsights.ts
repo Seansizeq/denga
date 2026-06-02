@@ -1,7 +1,14 @@
 import type { Transaction } from '../types';
 import { stripAccountFromNote } from './transactionAccount';
+import {
+  getPeriodBounds,
+  getPreviousPeriodBounds,
+  isInPeriod,
+  type PeriodAnchors,
+  type StatsRange,
+} from './statsPeriod';
 
-export type SpendingInsightsRange = 'week' | 'month' | 'year';
+export type SpendingInsightsRange = StatsRange;
 
 export type SpendingInsights = {
   currentExpense: number;
@@ -37,65 +44,7 @@ export type SpendingInsights = {
     | null;
 };
 
-type Window = {
-  start: Date;
-  end: Date;
-};
-
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-const startOfDay = (input: Date): Date => {
-  const next = new Date(input);
-  next.setHours(0, 0, 0, 0);
-  return next;
-};
-
-const shiftDays = (input: Date, days: number): Date => {
-  const next = new Date(input);
-  next.setDate(next.getDate() + days);
-  return next;
-};
-
-const buildWindows = (
-  range: SpendingInsightsRange,
-  selectedMonth: Date,
-  now: Date
-): { current: Window; previous: Window } => {
-  if (range === 'month') {
-    const currentStart = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth(), 1);
-    const currentEnd = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() + 1, 1);
-    const previousStart = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() - 1, 1);
-    return {
-      current: { start: currentStart, end: currentEnd },
-      previous: { start: previousStart, end: currentStart },
-    };
-  }
-
-  if (range === 'year') {
-    const currentStart = new Date(now.getFullYear(), 0, 1);
-    const currentEnd = new Date(now.getFullYear() + 1, 0, 1);
-    const previousStart = new Date(now.getFullYear() - 1, 0, 1);
-    return {
-      current: { start: currentStart, end: currentEnd },
-      previous: { start: previousStart, end: currentStart },
-    };
-  }
-
-  const currentEnd = shiftDays(startOfDay(now), 1);
-  const currentStart = shiftDays(currentEnd, -7);
-  const previousEnd = currentStart;
-  const previousStart = shiftDays(previousEnd, -7);
-  return {
-    current: { start: currentStart, end: currentEnd },
-    previous: { start: previousStart, end: previousEnd },
-  };
-};
-
-const isInWindow = (dateIso: string, window: Window): boolean => {
-  const date = new Date(dateIso);
-  const time = date.getTime();
-  return Number.isFinite(time) && time >= window.start.getTime() && time < window.end.getTime();
-};
 
 const extractRecurringLabel = (note?: string): string | null => {
   const clean = stripAccountFromNote(note?.trim() ?? '');
@@ -124,14 +73,14 @@ export const buildSpendingInsights = (params: {
   transactions: readonly Transaction[];
   convertAmount: (amount: number, from: Transaction['currency']) => number;
   range: SpendingInsightsRange;
-  selectedMonth: Date;
-  now?: Date;
+  anchors: PeriodAnchors;
 }): SpendingInsights => {
-  const { transactions, convertAmount, range, selectedMonth, now = new Date() } = params;
-  const { current, previous } = buildWindows(range, selectedMonth, now);
+  const { transactions, convertAmount, range, anchors } = params;
+  const current = getPeriodBounds(range, anchors);
+  const previous = getPreviousPeriodBounds(range, anchors);
 
-  const currentExpenses = transactions.filter((tx) => tx.type === 'expense' && isInWindow(tx.date, current));
-  const previousExpenses = transactions.filter((tx) => tx.type === 'expense' && isInWindow(tx.date, previous));
+  const currentExpenses = transactions.filter((tx) => tx.type === 'expense' && isInPeriod(tx.date, current));
+  const previousExpenses = transactions.filter((tx) => tx.type === 'expense' && isInPeriod(tx.date, previous));
 
   const currentExpense = currentExpenses.reduce((sum, tx) => sum + convertAmount(tx.amount, tx.currency), 0);
   const previousExpense = previousExpenses.reduce((sum, tx) => sum + convertAmount(tx.amount, tx.currency), 0);

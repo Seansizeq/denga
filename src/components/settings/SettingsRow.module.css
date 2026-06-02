@@ -1,0 +1,98 @@
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.rowStatic {
+  cursor: default;
+}
+
+.row:not(:last-child) {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+button.row:not(.rowStatic):active {
+  background-color: var(--bg-card-light);
+}
+
+.row:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.leading {
+  font-size: 24px;
+  line-height: 1;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+}
+
+.labels {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.label {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.labelEmphasis {
+  color: var(--accent-primary-strong);
+  font-weight: 600;
+}
+
+.sublabel {
+  font-size: 13px;
+  color: var(--text-tertiary);
+  line-height: 1.35;
+}
+
+.right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.value {
+  font-size: 15px;
+  color: var(--text-secondary);
+  text-align: right;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.check {
+  color: var(--accent-primary-strong);
+  flex-shrink: 0;
+}
+
+.chevron {
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}

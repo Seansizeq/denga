@@ -1,229 +1,130 @@
-import React, { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Eye, EyeOff } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { PieChart } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useTransactions } from '../context/TransactionContext';
 import { useTranslation } from '../i18n/LanguageContext';
-import { formatCurrency, isSameMonth, isInIsoWeek, getIsoWeekRange } from '../utils/formatters';
-import { findCategory, getCustomCategoryData } from '../constants/categories';
-import type { CategoryKey } from '../i18n/translations';
+import { getBudgets, type CategoryBudget } from '../api/client';
+import { useStatsPeriod } from '../hooks/useStatsPeriod';
+import { useStatsAggregates } from '../hooks/useStatsAggregates';
+import { buildTrendBuckets, type TrendBucket } from '../utils/statsTrendBuckets';
+import { toIsoDateParam, type StatsRange } from '../utils/statsPeriod';
+import StatsPeriodNav from '../components/stats/StatsPeriodNav';
+import StatsSummaryStrip from '../components/stats/StatsSummaryStrip';
+import StatsInsightsGrid from '../components/stats/StatsInsightsGrid';
+import StatsTrendChart from '../components/stats/StatsTrendChart';
+import StatsCategoryChart from '../components/stats/StatsCategoryChart';
 import styles from './Stats.module.css';
 
-type StatsRange = 'week' | 'month' | 'year';
+const RANGE_OPTIONS: StatsRange[] = ['today', 'week', 'month', 'year'];
 
 const Stats: React.FC = () => {
   const navigate = useNavigate();
-  const { t, locale, displayCurrency, convertAmount } = useTranslation();
+  const { t, locale, convertAmount } = useTranslation();
   const { transactions } = useTransactions();
-  const [range, setRange] = useState<StatsRange>('month');
+
+  const { range, setRange, anchors, bounds, previousBounds, periodLabel, isCurrent, goPrev, goNext, goToCurrent } =
+    useStatsPeriod();
   const [chartType, setChartType] = useState<'expense' | 'income'>('expense');
-  const [selectedMonth, setSelectedMonth] = useState(() => new Date());
-  const [selectedWeek, setSelectedWeek] = useState(() => new Date());
-  const [hiddenCategoryIds, setHiddenCategoryIds] = useState<string[]>([]);
+  const [budgets, setBudgets] = useState<CategoryBudget[]>([]);
 
-  const inRange = useMemo(() => {
-    const now = new Date();
-    return (iso: string) => {
-      const d = new Date(iso);
-      if (range === 'week') return isInIsoWeek(iso, selectedWeek);
-      if (range === 'month') return isSameMonth(iso, selectedMonth);
-      if (range === 'year') return d.getFullYear() === now.getFullYear();
-      return true;
-    };
-  }, [range, selectedMonth, selectedWeek]);
-
-  const filtered = useMemo(
-    () => transactions.filter((tx) => inRange(tx.date)),
-    [transactions, inRange]
-  );
-
-  const income = filtered
-    .filter((tx) => tx.type === 'income')
-    .reduce((sum, tx) => sum + convertAmount(tx.amount, tx.currency), 0);
-
-  const expense = filtered
-    .filter((tx) => tx.type === 'expense')
-    .reduce((sum, tx) => sum + convertAmount(tx.amount, tx.currency), 0);
-
-  const net = income - expense;
-
-  const byCategory = useMemo(() => {
-    const map = new Map<string, { id: string; total: number; count: number }>();
-    for (const tx of filtered) {
-      if (tx.type !== chartType) continue;
-      const existing = map.get(tx.categoryId) ?? { id: tx.categoryId, total: 0, count: 0 };
-      existing.total += convertAmount(tx.amount, tx.currency);
-      existing.count += 1;
-      map.set(tx.categoryId, existing);
-    }
-    return Array.from(map.values()).sort((a, b) => b.total - a.total);
-  }, [filtered, convertAmount, chartType]);
-
-  const rangeOptions: StatsRange[] = ['week', 'month', 'year'];
-  const monthLabel = useMemo(
-    () => selectedMonth.toLocaleDateString(locale, { month: 'long', year: 'numeric' }),
-    [selectedMonth, locale]
-  );
-
-  const weekLabel = useMemo(() => {
-    const { start, end } = getIsoWeekRange(selectedWeek);
-    const sameMonth = start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear();
-    const startStr = start.toLocaleDateString(locale, {
-      day: 'numeric',
-      month: sameMonth ? undefined : 'short',
-    });
-    const endStr = end.toLocaleDateString(locale, {
-      day: 'numeric',
-      month: 'short',
-      year: start.getFullYear() === end.getFullYear() ? undefined : 'numeric',
-    });
-    return `${startStr} – ${endStr}`;
-  }, [selectedWeek, locale]);
-
-  const shiftSelectedMonth = (delta: number) => {
-    setSelectedMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + delta, 1));
-  };
-
-  const shiftSelectedWeek = (delta: number) => {
-    setSelectedWeek((prev) => {
-      const next = new Date(prev);
-      next.setDate(prev.getDate() + delta * 7);
-      return next;
-    });
-  };
-
-  const categoryRows = useMemo(
-    () =>
-      byCategory.map((row) => {
-        const customCategory = getCustomCategoryData(row.id);
-        const category = customCategory
-          ? findCategory(chartType === 'expense' ? 'other_expense' : 'other_income')
-          : findCategory(row.id);
-        return {
-          ...row,
-          color: customCategory?.color ?? category.color,
-          name: customCategory?.name ?? t('categories', category.id as CategoryKey),
-        };
-      }),
-    [byCategory, chartType, t]
-  );
-
-  const totalByCategories = categoryRows.reduce((sum, row) => sum + row.total, 0);
-  const visibleCategoryRows = useMemo(
-    () => categoryRows.filter((row) => !hiddenCategoryIds.includes(row.id)),
-    [categoryRows, hiddenCategoryIds]
-  );
-  const visibleTotal = visibleCategoryRows.reduce((sum, row) => sum + row.total, 0);
-
-  const donutBackground = useMemo(() => {
-    if (!visibleTotal) {
-      return 'conic-gradient(var(--bg-card-light) 0deg 360deg)';
-    }
-    if (visibleCategoryRows.length === 1) {
-      return `conic-gradient(${visibleCategoryRows[0].color} 0deg 360deg)`;
-    }
-    let acc = 0;
-    const segments = visibleCategoryRows
-      .map((row) => {
-        const rawStart = (acc / visibleTotal) * 360;
-        acc += row.total;
-        const rawEnd = (acc / visibleTotal) * 360;
-        return `${row.color} ${rawStart.toFixed(2)}deg ${rawEnd.toFixed(2)}deg`;
+  useEffect(() => {
+    let cancelled = false;
+    getBudgets()
+      .then((rows) => {
+        if (!cancelled) setBudgets(rows);
       })
-      .join(', ');
-    return `conic-gradient(${segments})`;
-  }, [visibleCategoryRows, visibleTotal]);
+      .catch(() => {
+        /* budgets are optional decoration */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const aggregates = useStatsAggregates({
+    transactions,
+    convertAmount,
+    range,
+    anchors,
+    bounds,
+    previousBounds,
+    chartType,
+  });
+
+  const trendBuckets = useMemo(
+    () => buildTrendBuckets({ transactions, convertAmount, type: chartType, range, anchors, locale }),
+    [transactions, convertAmount, chartType, range, anchors, locale],
+  );
+
+  const openHistory = useCallback(
+    (opts: { categoryId?: string; from?: Date; to?: Date }) => {
+      const sp = new URLSearchParams();
+      sp.set('type', chartType);
+      if (opts.categoryId) sp.set('categoryId', opts.categoryId);
+      sp.set('from', toIsoDateParam(opts.from ?? bounds.start));
+      sp.set('to', toIsoDateParam(opts.to ?? bounds.end));
+      navigate(`/history?${sp.toString()}`);
+    },
+    [chartType, bounds, navigate],
+  );
+
+  const handleBucketClick = useCallback(
+    (bucket: TrendBucket) => openHistory({ from: bucket.from, to: bucket.to }),
+    [openHistory],
+  );
+
+  const showBudgets = chartType === 'expense' && range === 'month';
+  const hasCategoryData = aggregates.byCategory.length > 0;
 
   return (
     <div className={styles.container}>
       <header className={styles.header}>
         <h1 className={styles.title}>{t('stats', 'title')}</h1>
       </header>
-      <div className={styles.rangeRow}>
-        <div className={styles.rangeTabs} role="tablist" aria-label="Stats range">
-          {rangeOptions.map((opt) => (
-            <button
-              key={opt}
-              type="button"
-              role="tab"
-              aria-selected={range === opt}
-              className={`${styles.rangeTabBtn} ${range === opt ? styles.rangeTabBtnActive : ''}`}
-              onClick={() => setRange(opt)}
-            >
-              {t('range', opt)}
-            </button>
-          ))}
-        </div>
-        <button type="button" className={styles.budgetsBtn} onClick={() => navigate('/budgets')}>
-          Бюджет
-        </button>
-      </div>
-      {range === 'month' && (
-        <div className={styles.monthNav}>
-          <button
-            type="button"
-            className={styles.monthNavBtn}
-            onClick={() => shiftSelectedMonth(-1)}
-            aria-label={t('planner', 'prevMonth')}
-          >
-            <ChevronLeft size={16} />
-          </button>
-          <span className={styles.monthNavLabel}>{monthLabel}</span>
-          <button
-            type="button"
-            className={styles.monthNavBtn}
-            onClick={() => shiftSelectedMonth(1)}
-            aria-label={t('planner', 'nextMonth')}
-          >
-            <ChevronRight size={16} />
-          </button>
-        </div>
-      )}
-      {range === 'week' && (
-        <div className={styles.monthNav}>
-          <button
-            type="button"
-            className={styles.monthNavBtn}
-            onClick={() => shiftSelectedWeek(-1)}
-            aria-label={t('planner', 'prevMonth')}
-          >
-            <ChevronLeft size={16} />
-          </button>
-          <span className={styles.monthNavLabel}>{weekLabel}</span>
-          <button
-            type="button"
-            className={styles.monthNavBtn}
-            onClick={() => shiftSelectedWeek(1)}
-            aria-label={t('planner', 'nextMonth')}
-          >
-            <ChevronRight size={16} />
-          </button>
-        </div>
-      )}
 
-      <div className={styles.summaryGrid}>
-        <div className={styles.summaryCard}>
-          <span className={styles.summaryLabel}>{t('stats', 'totalIncome')}</span>
-          <span className={`${styles.summaryValue} ${styles.income}`}>
-            {formatCurrency(income, locale, displayCurrency)}
-          </span>
-        </div>
-        <div className={styles.summaryCard}>
-          <span className={styles.summaryLabel}>{t('stats', 'totalExpense')}</span>
-          <span className={`${styles.summaryValue} ${styles.expense}`}>
-            {formatCurrency(expense, locale, displayCurrency)}
-          </span>
-        </div>
+      <div className={styles.rangeTabs} role="tablist" aria-label="Stats range">
+        {RANGE_OPTIONS.map((opt) => (
+          <button
+            key={opt}
+            type="button"
+            role="tab"
+            aria-selected={range === opt}
+            className={`${styles.rangeTabBtn} ${range === opt ? styles.rangeTabBtnActive : ''}`}
+            onClick={() => setRange(opt)}
+          >
+            {t('range', opt)}
+          </button>
+        ))}
       </div>
 
-      <div className={styles.netCard}>
-        <span className={styles.summaryLabel}>{t('stats', 'net')}</span>
-        <span
-          className={`${styles.netValue} ${net < 0 ? styles.negative : styles.positive}`}
-        >
-          {net < 0 ? '−' : '+'}
-          {formatCurrency(net, locale, displayCurrency)}
-        </span>
-      </div>
+      <StatsPeriodNav
+        label={periodLabel}
+        isCurrent={isCurrent}
+        onPrev={goPrev}
+        onNext={goNext}
+        onReset={goToCurrent}
+      />
+
+      <StatsSummaryStrip
+        income={aggregates.income}
+        expense={aggregates.expense}
+        net={aggregates.net}
+        previousNet={aggregates.previousNet}
+      />
+
+      {chartType === 'expense' && (
+        <section className={styles.section}>
+          <h2 className={styles.sectionTitle}>{t('stats', 'insightsTitle')}</h2>
+          <StatsInsightsGrid
+            insights={aggregates.insights}
+            onCategoryClick={(categoryId) => openHistory({ categoryId })}
+          />
+        </section>
+      )}
+
+      {range !== 'today' && hasCategoryData && (
+        <StatsTrendChart buckets={trendBuckets} onBucketClick={handleBucketClick} />
+      )}
 
       <section className={styles.section}>
         <div className={styles.sectionHeaderWithToggle}>
@@ -234,10 +135,7 @@ const Stats: React.FC = () => {
               role="tab"
               aria-selected={chartType === 'expense'}
               className={`${styles.chartTypeBtn} ${chartType === 'expense' ? styles.chartTypeBtnActive : ''}`}
-              onClick={() => {
-                setChartType('expense');
-                setHiddenCategoryIds([]);
-              }}
+              onClick={() => setChartType('expense')}
             >
               {t('balance', 'expense')}
             </button>
@@ -246,80 +144,26 @@ const Stats: React.FC = () => {
               role="tab"
               aria-selected={chartType === 'income'}
               className={`${styles.chartTypeBtn} ${chartType === 'income' ? styles.chartTypeBtnActive : ''}`}
-              onClick={() => {
-                setChartType('income');
-                setHiddenCategoryIds([]);
-              }}
+              onClick={() => setChartType('income')}
             >
               {t('balance', 'income')}
             </button>
           </div>
         </div>
 
-        {byCategory.length === 0 ? (
-          <div className={styles.emptyState}>
-            <span className={styles.emptyIcon}>📊</span>
-            <p className={styles.emptyText}>{t('stats', 'noData')}</p>
-          </div>
+        {hasCategoryData ? (
+          <StatsCategoryChart
+            byCategory={aggregates.byCategory}
+            transactionCount={aggregates.transactionCount}
+            budgets={budgets}
+            showBudgets={showBudgets}
+            onCategoryClick={(categoryId) => openHistory({ categoryId })}
+            onManageBudgets={() => navigate('/budgets')}
+          />
         ) : (
-          <div className={styles.chartCard}>
-            <div className={styles.donutWrap}>
-              <div className={styles.donutGlow} style={{ background: donutBackground }} aria-hidden="true" />
-              <div className={styles.donut} style={{ background: donutBackground }}>
-                <div className={styles.donutInner}>
-                  <span className={styles.donutLabel}>
-                    {chartType === 'expense' ? t('stats', 'totalExpense') : t('stats', 'totalIncome')}
-                  </span>
-                  <span className={styles.donutValue}>{formatCurrency(visibleTotal, locale, displayCurrency)}</span>
-                  <span className={styles.donutSubLabel}>
-                    {visibleCategoryRows.length} {t('stats', 'byCategory').toLowerCase()}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <ul className={styles.legendList}>
-              {categoryRows.map((row) => (
-                <li
-                  key={row.id}
-                  className={`${styles.legendItem} ${hiddenCategoryIds.includes(row.id) ? styles.legendItemHidden : ''}`}
-                >
-                  <span className={styles.legendLeft}>
-                    <span className={styles.legendDot} style={{ backgroundColor: row.color }} />
-                    <span className={styles.legendName}>{row.name}</span>
-                  </span>
-                  <span className={styles.legendRight}>
-                    <span className={styles.legendPercent}>
-                      {totalByCategories
-                        ? `${Math.round((row.total / totalByCategories) * 100)}%`
-                        : '0%'}
-                    </span>
-                    <span className={styles.legendValue}>{formatCurrency(row.total, locale, displayCurrency)}</span>
-                    <button
-                      type="button"
-                      className={styles.legendToggleBtn}
-                      onClick={() =>
-                        setHiddenCategoryIds((prev) =>
-                          prev.includes(row.id) ? prev.filter((id) => id !== row.id) : [...prev, row.id]
-                        )
-                      }
-                      aria-label={
-                        hiddenCategoryIds.includes(row.id)
-                          ? t('stats', 'showCategory')
-                          : t('stats', 'hideCategory')
-                      }
-                      title={
-                        hiddenCategoryIds.includes(row.id)
-                          ? t('stats', 'showCategory')
-                          : t('stats', 'hideCategory')
-                      }
-                    >
-                      {hiddenCategoryIds.includes(row.id) ? <EyeOff size={14} /> : <Eye size={14} />}
-                    </button>
-                  </span>
-                </li>
-              ))}
-            </ul>
+          <div className={styles.emptyState}>
+            <PieChart size={36} className={styles.emptyIcon} aria-hidden="true" />
+            <p className={styles.emptyText}>{t('stats', 'noData')}</p>
           </div>
         )}
       </section>

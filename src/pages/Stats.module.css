@@ -17,35 +17,9 @@
   margin: 0;
 }
 
-.budgetsBtn {
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--text-primary);
-  border-radius: 999px;
-  height: 40px;
-  padding: 0 18px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  flex-shrink: 0;
-}
-
-.rangeRow {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  height: 40px;
-  margin-bottom: 12px;
-}
-
+/* Range tabs */
 .rangeTabs {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 2px;
   padding: 3px;
@@ -54,14 +28,16 @@
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 999px;
   box-sizing: border-box;
+  margin-bottom: 12px;
 }
 
 .rangeTabBtn {
+  flex: 1;
   border: none;
   background: transparent;
   color: var(--text-secondary);
   border-radius: 999px;
-  padding: 6px 14px;
+  padding: 6px 8px;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
@@ -74,15 +50,17 @@
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
 }
 
-.monthNav {
+/* Period navigation */
+.periodNav {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 10px;
-  margin-bottom: 18px;
+  margin-bottom: 16px;
 }
 
-.monthNavBtn {
+.periodNavBtn,
+.periodResetBtn {
   width: 30px;
   height: 30px;
   border-radius: 999px;
@@ -94,14 +72,16 @@
   justify-content: center;
   cursor: pointer;
   padding: 0;
+  flex-shrink: 0;
 }
 
-.monthNavBtn:active {
+.periodNavBtn:active,
+.periodResetBtn:active {
   background: rgba(255, 255, 255, 0.11);
 }
 
-.monthNavLabel {
-  min-width: 160px;
+.periodNavLabel {
+  min-width: 150px;
   text-align: center;
   font-size: 13px;
   font-weight: 600;
@@ -109,35 +89,52 @@
   text-transform: capitalize;
 }
 
-.summaryGrid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.summaryCard {
+/* Summary strip */
+.summaryStrip {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
   background-color: var(--bg-card);
   border: 1px solid rgba(255, 255, 255, 0.04);
   border-radius: 20px;
-  padding: 16px;
+  padding: 14px 12px;
+  margin-bottom: 22px;
+}
+
+.summaryCol {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
+  min-width: 0;
+}
+
+.summaryDivider {
+  width: 1px;
+  align-self: stretch;
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .summaryLabel {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-tertiary);
   text-transform: uppercase;
-  letter-spacing: 0.4px;
+  letter-spacing: 0.3px;
   font-weight: 600;
 }
 
 .summaryValue {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
   letter-spacing: -0.3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.summaryChange {
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .income {
@@ -148,67 +145,20 @@
   color: var(--accent-red);
 }
 
-.netCard {
-  background: linear-gradient(135deg, var(--bg-card-light) 0%, var(--bg-card) 100%);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-lg);
-  padding: 16px 18px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 28px;
+.positive {
+  color: var(--accent-green);
 }
 
-.netValue {
-  font-size: 20px;
-  font-weight: 700;
-  letter-spacing: -0.4px;
+.negative {
+  color: var(--accent-red);
 }
 
-.positive { color: var(--accent-green); }
-.negative { color: var(--accent-red); }
-
+/* Sections */
 .section {
   display: flex;
   flex-direction: column;
   gap: 14px;
-}
-
-.insightsGrid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-
-.insightCard {
-  background: linear-gradient(160deg, rgba(24, 23, 39, 0.98) 0%, rgba(18, 17, 31, 0.98) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 18px;
-  padding: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.insightTitle {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--text-tertiary);
-  font-weight: 700;
-}
-
-.insightValue {
-  font-size: 18px;
-  line-height: 1.15;
-  color: var(--text-primary);
-}
-
-.insightMeta {
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--text-secondary);
+  margin-bottom: 22px;
 }
 
 .sectionTitle {
@@ -222,13 +172,128 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 14px;
+  gap: 12px;
 }
 
-.sectionHeaderWithToggle .sectionTitle {
-  margin-bottom: 0;
+/* Insights */
+.insightsGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
 }
 
+.insightsEmpty {
+  background: linear-gradient(160deg, rgba(24, 23, 39, 0.98) 0%, rgba(18, 17, 31, 0.98) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 18px;
+  padding: 18px;
+  text-align: center;
+}
+
+.insightCard {
+  background: linear-gradient(160deg, rgba(24, 23, 39, 0.98) 0%, rgba(18, 17, 31, 0.98) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 18px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+  color: var(--text-primary);
+}
+
+.insightCardClickable {
+  cursor: pointer;
+}
+
+.insightCardClickable:active {
+  background: linear-gradient(160deg, rgba(32, 31, 49, 0.98) 0%, rgba(24, 23, 37, 0.98) 100%);
+}
+
+.insightTitle {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-tertiary);
+  font-weight: 700;
+}
+
+.insightValue {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.insightMeta {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+/* Trend chart */
+.trendCard {
+  background: linear-gradient(165deg, rgba(22, 20, 35, 0.98) 0%, rgba(16, 15, 28, 0.98) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 22px;
+  padding: 16px 14px 12px;
+}
+
+.trendBars {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  height: 132px;
+}
+
+.trendBarColumn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.trendBarColumn:disabled {
+  cursor: default;
+}
+
+.trendBarTrack {
+  flex: 1;
+  width: 100%;
+  max-width: 36px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.trendBarFill {
+  width: 100%;
+  min-height: 2px;
+  border-radius: 8px 8px 4px 4px;
+  background: linear-gradient(180deg, rgba(94, 92, 230, 0.95) 0%, rgba(94, 92, 230, 0.5) 100%);
+  transition: height 0.25s ease;
+}
+
+.trendBarLabel {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* Chart type toggle */
 .chartTypeTabs {
   display: inline-flex;
   align-items: center;
@@ -239,6 +304,7 @@
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 999px;
   box-sizing: border-box;
+  flex-shrink: 0;
 }
 
 .chartTypeBtn {
@@ -263,6 +329,7 @@
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
 }
 
+/* Category chart */
 .chartCard {
   background: linear-gradient(165deg, rgba(22, 20, 35, 0.98) 0%, rgba(16, 15, 28, 0.98) 100%);
   border: 1px solid rgba(255, 255, 255, 0.06);
@@ -277,7 +344,6 @@
   display: flex;
   justify-content: center;
   margin-bottom: 16px;
-  position: relative;
 }
 
 .donut {
@@ -299,10 +365,6 @@
   pointer-events: none;
 }
 
-.donutGlow {
-  display: none;
-}
-
 .donutInner {
   position: absolute;
   inset: 28px;
@@ -313,31 +375,36 @@
   align-items: center;
   justify-content: center;
   gap: 4px;
+  padding: 0 16px;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.05),
     0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
-.donutLabel {
-  font-size: 10px;
-  color: var(--text-tertiary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  font-weight: 700;
-}
-
 .donutValue {
-  font-size: 30px;
+  font-size: 34px;
   font-weight: 700;
   letter-spacing: -0.5px;
   color: var(--text-primary);
   line-height: 1.05;
 }
 
+.donutLabel {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 600;
+  text-align: center;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .donutSubLabel {
   font-size: 11px;
-  color: var(--text-secondary);
+  color: var(--text-tertiary);
   font-weight: 500;
+  text-align: center;
 }
 
 .legendList {
@@ -350,19 +417,28 @@
 }
 
 .legendItem {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 10px;
+}
+
+.legendRow {
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
   min-width: 0;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.04);
-  border-radius: 10px;
   padding: 8px 10px;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
 }
 
-.legendItemHidden {
-  opacity: 0.45;
+.legendRow:disabled {
+  cursor: default;
 }
 
 .legendLeft {
@@ -389,13 +465,6 @@
   text-overflow: ellipsis;
 }
 
-.legendValue {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
-  white-space: nowrap;
-}
-
 .legendRight {
   display: inline-flex;
   align-items: center;
@@ -410,32 +479,80 @@
   text-align: right;
 }
 
-.legendToggleBtn {
-  width: 22px;
-  height: 22px;
+.legendValue {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.legendChevron {
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+/* Budget progress */
+.budgetRow {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 10px 9px;
+}
+
+.budgetTrack {
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.budgetFill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: #0a84ff;
+  transition: width 0.25s ease;
+}
+
+.budgetNear {
+  background: #ff9f0a;
+}
+
+.budgetOver {
+  background: var(--accent-red);
+}
+
+.budgetText {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.budgetOverText {
+  color: var(--accent-red);
+}
+
+.manageBudgetsBtn {
+  margin-top: 14px;
+  width: 100%;
+  height: 40px;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 7px;
   background: rgba(255, 255, 255, 0.04);
-  color: var(--text-secondary);
+  color: var(--text-primary);
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
-  padding: 0;
+  gap: 4px;
 }
 
-.legendToggleBtn:active {
-  background: rgba(255, 255, 255, 0.1);
+.manageBudgetsBtn:active {
+  background: rgba(255, 255, 255, 0.09);
 }
 
-@media (min-width: 560px) {
-  .legendList {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px 14px;
-  }
-}
-
+/* Empty state */
 .emptyState {
   display: flex;
   flex-direction: column;
@@ -450,10 +567,18 @@
 }
 
 .emptyIcon {
-  font-size: 36px;
+  color: var(--text-tertiary);
 }
 
 .emptyText {
   font-size: 14px;
   margin: 0;
+}
+
+@media (min-width: 560px) {
+  .legendList {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 14px;
+  }
 }

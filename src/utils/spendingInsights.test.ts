@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Transaction } from '../types';
 import { buildSpendingInsights } from './spendingInsights';
+import { createDefaultAnchors } from './statsPeriod';
 
 const convertAmount = (amount: number) => amount;
 
@@ -67,8 +68,7 @@ describe('spendingInsights', () => {
       transactions,
       convertAmount,
       range: 'month',
-      selectedMonth: new Date('2026-05-01T00:00:00.000Z'),
-      now: new Date('2026-05-25T12:00:00.000Z'),
+      anchors: createDefaultAnchors(new Date(2026, 4, 15)),
     });
 
     expect(result.currentExpense).toBe(950);
@@ -86,5 +86,72 @@ describe('spendingInsights', () => {
       label: 'Netflix',
       count: 3,
     });
+  });
+
+  it('computes the trend against the previous ISO week', () => {
+    const transactions: Transaction[] = [
+      {
+        id: 'prev-week',
+        amount: 100,
+        currency: 'UAH',
+        categoryId: 'food',
+        type: 'expense',
+        date: '2026-05-27T10:00:00',
+        note: 'Shop',
+      },
+      {
+        id: 'cur-week',
+        amount: 250,
+        currency: 'UAH',
+        categoryId: 'food',
+        type: 'expense',
+        date: '2026-06-03T10:00:00',
+        note: 'Shop',
+      },
+    ];
+
+    const result = buildSpendingInsights({
+      transactions,
+      convertAmount,
+      range: 'week',
+      anchors: createDefaultAnchors(new Date(2026, 5, 3)),
+    });
+
+    expect(result.currentExpense).toBe(250);
+    expect(result.previousExpense).toBe(100);
+    expect(result.trend?.percent).toBeCloseTo(150, 3);
+  });
+
+  it('uses the selected year anchor for the year range', () => {
+    const transactions: Transaction[] = [
+      {
+        id: 'y2025',
+        amount: 400,
+        currency: 'UAH',
+        categoryId: 'food',
+        type: 'expense',
+        date: '2025-08-10T10:00:00',
+        note: 'Shop',
+      },
+      {
+        id: 'y2026',
+        amount: 900,
+        currency: 'UAH',
+        categoryId: 'food',
+        type: 'expense',
+        date: '2026-02-10T10:00:00',
+        note: 'Shop',
+      },
+    ];
+
+    const result = buildSpendingInsights({
+      transactions,
+      convertAmount,
+      range: 'year',
+      anchors: createDefaultAnchors(new Date(2026, 1, 15)),
+    });
+
+    expect(result.currentExpense).toBe(900);
+    expect(result.previousExpense).toBe(400);
   });
 });

@@ -1,0 +1,26 @@
+.section {
+  margin-bottom: 28px;
+}
+
+.label {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-secondary);
+  margin: 0 4px 10px;
+}
+
+.card {
+  background-color: var(--bg-card);
+  border-radius: 20px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.description {
+  font-size: 13px;
+  color: var(--text-tertiary);
+  margin: 10px 4px 0;
+  line-height: 1.45;
+}

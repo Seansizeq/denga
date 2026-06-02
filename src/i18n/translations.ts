@@ -94,7 +94,16 @@ type Dict = {
     saveTemplate: string;
     deleteTemplate: string;
   };
-  history: { title: string; empty: string; deleteConfirm: string; edit: string; delete: string; back: string };
+  history: {
+    title: string;
+    empty: string;
+    deleteConfirm: string;
+    edit: string;
+    delete: string;
+    back: string;
+    filteredTitle: string;
+    clearFilter: string;
+  };
   planner: {
     title: string;
     subtitle: string;
@@ -217,10 +226,10 @@ type Dict = {
   };
   stats: {
     title: string;
-    thisMonth: string;
     totalIncome: string;
     totalExpense: string;
     net: string;
+    vsPrevious: string;
     insightsTitle: string;
     noInsights: string;
     insightTrend: string;
@@ -228,11 +237,18 @@ type Dict = {
     insightAnomaly: string;
     insightRecurring: string;
     previousPeriod: string;
+    trendTitle: string;
     byCategory: string;
+    categoriesWord: string;
+    daysShort: string;
     noData: string;
     transactions: string;
-    hideCategory: string;
+    manageBudgets: string;
+    prevPeriod: string;
+    nextPeriod: string;
+    goToToday: string;
     showCategory: string;
+    hideCategory: string;
   };
   settings: {
     title: string;
@@ -276,6 +292,30 @@ type Dict = {
     leadDaysLabel: string;
     fxThresholdLabel: string;
     budgetsLink: string;
+    sectionGeneral: string;
+    sectionFinance: string;
+    sectionReports: string;
+    sectionReminders: string;
+    sectionPlanner: string;
+    goalsLink: string;
+    financeDescription: string;
+    reportsActionsTitle: string;
+    reminderGroupExpenses: string;
+    reminderGroupPlanner: string;
+    reminderGroupFx: string;
+    reminderDescDaily: string;
+    reminderDescSubscriptions: string;
+    reminderDescInactivity: string;
+    reminderDescShiftEvening: string;
+    reminderDescShiftUnclosed: string;
+    reminderDescFxChange: string;
+    paramDaysBefore: string;
+    paramInactivityDays: string;
+    paramFxThreshold: string;
+    fxSummaryTitle: string;
+    fxRefreshFailed: string;
+    saved: string;
+    saveFailed: string;
   };
   budgets: {
     title: string;
@@ -457,6 +497,8 @@ const uk: Dict = {
     edit: 'Редагувати',
     delete: 'Видалити',
     back: 'На головну',
+    filteredTitle: 'Відібрані операції',
+    clearFilter: 'Показати всі',
   },
   planner: {
     title: 'Календар',
@@ -580,10 +622,10 @@ const uk: Dict = {
   },
   stats: {
     title: 'Статистика',
-    thisMonth: 'Цей місяць',
     totalIncome: 'Усього доходів',
     totalExpense: 'Усього витрат',
     net: 'Чистий результат',
+    vsPrevious: 'до минулого періоду',
     insightsTitle: 'Інсайти',
     noInsights: 'Ще недостатньо даних для висновків',
     insightTrend: 'Тренд витрат',
@@ -591,11 +633,18 @@ const uk: Dict = {
     insightAnomaly: 'Аномальна витрата',
     insightRecurring: 'Повторюється',
     previousPeriod: 'До минулого періоду',
+    trendTitle: 'Динаміка',
     byCategory: 'За категоріями',
+    categoriesWord: 'категорій',
+    daysShort: 'дн',
     noData: 'Немає даних для цього періоду',
     transactions: 'операцій',
-    hideCategory: 'Сховати категорію',
+    manageBudgets: 'Налаштувати бюджети',
+    prevPeriod: 'Попередній період',
+    nextPeriod: 'Наступний період',
+    goToToday: 'До поточного періоду',
     showCategory: 'Показати категорію',
+    hideCategory: 'Сховати категорію',
   },
   settings: {
     title: 'Налаштування',
@@ -639,6 +688,30 @@ const uk: Dict = {
     leadDaysLabel: 'Днів / параметр',
     fxThresholdLabel: 'Поріг, % (для курсу)',
     budgetsLink: 'Бюджети по категоріях',
+    sectionGeneral: 'Основне',
+    sectionFinance: 'Фінанси',
+    sectionReports: 'Звіти Telegram',
+    sectionReminders: 'Нагадування',
+    sectionPlanner: 'Планер',
+    goalsLink: 'Фінансові цілі',
+    financeDescription: 'Ліміти витрат і накопичення — швидкий перехід до розділів.',
+    reportsActionsTitle: 'Надіслати зараз',
+    reminderGroupExpenses: 'Витрати',
+    reminderGroupPlanner: 'Планер змін',
+    reminderGroupFx: 'Курс валют',
+    reminderDescDaily: 'Нагадає ввечері внести витрати за день.',
+    reminderDescSubscriptions: 'Попередить за кілька днів до списання підписки.',
+    reminderDescInactivity: 'Напише, якщо кілька днів поспіль немає записів витрат.',
+    reminderDescShiftEvening: 'Нагадає напередодні про заплановану зміну в планері.',
+    reminderDescShiftUnclosed: 'Попередить, якщо зміна відкрита довше ніж 8 годин.',
+    reminderDescFxChange: 'Повідомить, коли курс зміниться більше за поріг.',
+    paramDaysBefore: 'Днів заздалегідь',
+    paramInactivityDays: 'Днів без витрат',
+    paramFxThreshold: 'Поріг, %',
+    fxSummaryTitle: 'Поточні курси',
+    fxRefreshFailed: 'Не вдалося оновити курси. Спробуйте пізніше.',
+    saved: 'Збережено',
+    saveFailed: 'Не вдалося зберегти. Спробуйте ще раз.',
   },
   budgets: {
     title: 'Бюджети',
@@ -826,6 +899,8 @@ const ru: Dict = {
     edit: 'Редактировать',
     delete: 'Удалить',
     back: 'На главную',
+    filteredTitle: 'Отобранные операции',
+    clearFilter: 'Показать все',
   },
   planner: {
     title: 'Календарь',
@@ -949,10 +1024,10 @@ const ru: Dict = {
   },
   stats: {
     title: 'Статистика',
-    thisMonth: 'Этот месяц',
     totalIncome: 'Всего доходов',
     totalExpense: 'Всего расходов',
     net: 'Чистый результат',
+    vsPrevious: 'к прошлому периоду',
     insightsTitle: 'Инсайты',
     noInsights: 'Пока недостаточно данных для выводов',
     insightTrend: 'Тренд расходов',
@@ -960,11 +1035,18 @@ const ru: Dict = {
     insightAnomaly: 'Аномальная трата',
     insightRecurring: 'Повторяется',
     previousPeriod: 'К прошлому периоду',
+    trendTitle: 'Динамика',
     byCategory: 'По категориям',
+    categoriesWord: 'категорий',
+    daysShort: 'дн',
     noData: 'Нет данных за этот период',
     transactions: 'операций',
-    hideCategory: 'Скрыть категорию',
+    manageBudgets: 'Настроить бюджеты',
+    prevPeriod: 'Предыдущий период',
+    nextPeriod: 'Следующий период',
+    goToToday: 'К текущему периоду',
     showCategory: 'Показать категорию',
+    hideCategory: 'Скрыть категорию',
   },
   settings: {
     title: 'Настройки',
@@ -1008,6 +1090,30 @@ const ru: Dict = {
     leadDaysLabel: 'Дней / параметр',
     fxThresholdLabel: 'Порог, %',
     budgetsLink: 'Бюджеты по категориям',
+    sectionGeneral: 'Основное',
+    sectionFinance: 'Финансы',
+    sectionReports: 'Отчёты Telegram',
+    sectionReminders: 'Напоминания',
+    sectionPlanner: 'Планер',
+    goalsLink: 'Финансовые цели',
+    financeDescription: 'Лимиты расходов и накопления — быстрый переход к разделам.',
+    reportsActionsTitle: 'Отправить сейчас',
+    reminderGroupExpenses: 'Расходы',
+    reminderGroupPlanner: 'Планер смен',
+    reminderGroupFx: 'Курс валют',
+    reminderDescDaily: 'Напомнит вечером записать расходы за день.',
+    reminderDescSubscriptions: 'Предупредит за несколько дней до списания подписки.',
+    reminderDescInactivity: 'Напишет, если несколько дней подряд нет записей расходов.',
+    reminderDescShiftEvening: 'Напомнит накануне о запланированной смене в планере.',
+    reminderDescShiftUnclosed: 'Предупредит, если смена открыта дольше 8 часов.',
+    reminderDescFxChange: 'Сообщит, когда курс изменится больше порога.',
+    paramDaysBefore: 'Дней заранее',
+    paramInactivityDays: 'Дней без расходов',
+    paramFxThreshold: 'Порог, %',
+    fxSummaryTitle: 'Текущие курсы',
+    fxRefreshFailed: 'Не удалось обновить курсы. Попробуйте позже.',
+    saved: 'Сохранено',
+    saveFailed: 'Не удалось сохранить. Попробуйте ещё раз.',
   },
   budgets: {
     title: 'Бюджеты',
@@ -1195,6 +1301,8 @@ const en: Dict = {
     edit: 'Edit',
     delete: 'Delete',
     back: 'Home',
+    filteredTitle: 'Filtered transactions',
+    clearFilter: 'Show all',
   },
   planner: {
     title: 'Calendar',
@@ -1318,10 +1426,10 @@ const en: Dict = {
   },
   stats: {
     title: 'Stats',
-    thisMonth: 'This month',
     totalIncome: 'Total income',
     totalExpense: 'Total expenses',
     net: 'Net',
+    vsPrevious: 'vs previous period',
     insightsTitle: 'Insights',
     noInsights: 'Not enough data for insights yet',
     insightTrend: 'Spending trend',
@@ -1329,11 +1437,18 @@ const en: Dict = {
     insightAnomaly: 'Anomalous spend',
     insightRecurring: 'Recurring hint',
     previousPeriod: 'Vs previous period',
+    trendTitle: 'Trend',
     byCategory: 'By category',
+    categoriesWord: 'categories',
+    daysShort: 'd',
     noData: 'No data for this period',
     transactions: 'transactions',
-    hideCategory: 'Hide category',
+    manageBudgets: 'Manage budgets',
+    prevPeriod: 'Previous period',
+    nextPeriod: 'Next period',
+    goToToday: 'Go to current period',
     showCategory: 'Show category',
+    hideCategory: 'Hide category',
   },
   settings: {
     title: 'Settings',
@@ -1377,6 +1492,30 @@ const en: Dict = {
     leadDaysLabel: 'Days / parameter',
     fxThresholdLabel: 'Threshold, %',
     budgetsLink: 'Category budgets',
+    sectionGeneral: 'General',
+    sectionFinance: 'Finance',
+    sectionReports: 'Telegram reports',
+    sectionReminders: 'Reminders',
+    sectionPlanner: 'Planner',
+    goalsLink: 'Financial goals',
+    financeDescription: 'Spending limits and savings — quick access to these sections.',
+    reportsActionsTitle: 'Send now',
+    reminderGroupExpenses: 'Expenses',
+    reminderGroupPlanner: 'Shift planner',
+    reminderGroupFx: 'FX rate',
+    reminderDescDaily: 'Reminds you in the evening to log the day\u2019s expenses.',
+    reminderDescSubscriptions: 'Warns you a few days before a subscription is charged.',
+    reminderDescInactivity: 'Pings you if there are no expense entries for several days in a row.',
+    reminderDescShiftEvening: 'Reminds you the day before a shift planned in the planner.',
+    reminderDescShiftUnclosed: 'Warns you if a shift stays open longer than 8 hours.',
+    reminderDescFxChange: 'Notifies you when the rate moves more than the threshold.',
+    paramDaysBefore: 'Days ahead',
+    paramInactivityDays: 'Days without expenses',
+    paramFxThreshold: 'Threshold, %',
+    fxSummaryTitle: 'Current rates',
+    fxRefreshFailed: 'Could not refresh rates. Try again later.',
+    saved: 'Saved',
+    saveFailed: 'Could not save. Please try again.',
   },
   budgets: {
     title: 'Budgets',

@@ -1,0 +1,38 @@
+.switch {
+  width: 48px;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--bg-card-light);
+  position: relative;
+  transition: background-color 0.2s ease;
+  flex-shrink: 0;
+  border: 1px solid var(--border-light);
+  padding: 0;
+  cursor: pointer;
+}
+
+.thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  transition: transform 0.2s ease;
+}
+
+.switchOn {
+  background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-primary-strong) 100%);
+  border-color: transparent;
+}
+
+.switchOn .thumb {
+  transform: translateX(20px);
+}
+
+.switchDisabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
