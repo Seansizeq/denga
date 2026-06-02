@@ -112,20 +112,18 @@
   min-width: 0;
 }
 
-.amountRow .currencySelect {
-  flex-shrink: 0;
-}
-
 .amountRow .amountInput {
   flex: 1;
   min-width: 0;
+  text-align: left;
+}
+
+.amountRow .currencySelect {
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 .dateInline {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
   margin-bottom: 28px;
 }
 
@@ -492,29 +490,6 @@
 
 .noteInput::placeholder {
   color: var(--text-tertiary);
-}
-
-.dateQuickRow {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.dateQuickBtn {
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--text-secondary);
-  font-size: 13px;
-  font-weight: 600;
-  padding: 8px 12px;
-  border-radius: 999px;
-  cursor: pointer;
-  font-family: inherit;
-}
-
-.dateQuickBtn:active {
-  transform: scale(0.97);
 }
 
 .validationHint {

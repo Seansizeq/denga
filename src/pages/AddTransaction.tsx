@@ -320,12 +320,6 @@ const AddTransaction: React.FC = () => {
     return paymentChipOptions.find((o) => o.key === paymentAccount)?.label ?? paymentAccount;
   }, [paymentAccount, paymentChipOptions, t]);
 
-  const setQuickDate = useCallback((offsetDays: number) => {
-    const d = new Date();
-    d.setDate(d.getDate() + offsetDays);
-    setDate(d.toISOString().slice(0, 10));
-  }, []);
-
   const handleSave = async () => {
     if (editNotFound) return;
     setSaveError('');
@@ -558,12 +552,6 @@ const AddTransaction: React.FC = () => {
           </div>
 
           <div className={styles.dateInline}>
-            <button type="button" className={styles.dateQuickBtn} onClick={() => setQuickDate(0)}>
-              {t('addTx', 'dateToday')}
-            </button>
-            <button type="button" className={styles.dateQuickBtn} onClick={() => setQuickDate(-1)}>
-              {t('addTx', 'dateYesterday')}
-            </button>
             <input
               type="date"
               value={date}
@@ -576,18 +564,6 @@ const AddTransaction: React.FC = () => {
       ) : (
         <>
           <div className={styles.amountRow}>
-            <select
-              className={styles.currencySelect}
-              value={currency}
-              onChange={(e) => setCurrency(normalizeCurrency(e.target.value))}
-              aria-label={t('settings', 'currency')}
-            >
-              {SUPPORTED_CURRENCIES.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
             <input
               type="text"
               inputMode="decimal"
@@ -602,15 +578,21 @@ const AddTransaction: React.FC = () => {
               autoFocus
               onKeyDown={amountKeyDown}
             />
+            <select
+              className={styles.currencySelect}
+              value={currency}
+              onChange={(e) => setCurrency(normalizeCurrency(e.target.value))}
+              aria-label={t('settings', 'currency')}
+            >
+              {SUPPORTED_CURRENCIES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div className={styles.dateInline}>
-            <button type="button" className={styles.dateQuickBtn} onClick={() => setQuickDate(0)}>
-              {t('addTx', 'dateToday')}
-            </button>
-            <button type="button" className={styles.dateQuickBtn} onClick={() => setQuickDate(-1)}>
-              {t('addTx', 'dateYesterday')}
-            </button>
             <input
               type="date"
               value={date}
