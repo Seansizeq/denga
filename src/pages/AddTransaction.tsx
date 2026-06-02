@@ -509,47 +509,73 @@ const AddTransaction: React.FC = () => {
             </button>
           </div>
           {transferUsesExchange ? (
-            <p className={styles.paymentHint}>
-              {`${transferFromAccount?.currency ?? currency} -> ${transferToAccount?.currency ?? currency}`}
-            </p>
-          ) : null}
-
-          <div className={styles.transferAmounts}>
-            <div className={styles.amountContainer}>
-              <input
-                type="text"
-                inputMode="decimal"
-                pattern="[0-9]*[.,]?[0-9]*"
-                placeholder={t('addTx', 'amountPlaceholder')}
-                value={amount}
-                onChange={(e) => {
-                  const v = e.target.value.replace(/[^0-9.,]/g, '');
-                  setAmount(v);
-                }}
-                className={styles.amountInput}
-                autoFocus
-                onKeyDown={amountKeyDown}
-              />
-              <div className={styles.currencySelect}>{transferFromAccount?.currency ?? currency}</div>
+            <div className={styles.transferAmounts}>
+              <div className={styles.transferAmountBlock}>
+                <span className={styles.transferAmountLabel}>{t('addTx', 'transferFrom')}</span>
+                <div className={styles.amountRow}>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    pattern="[0-9]*[.,]?[0-9]*"
+                    placeholder={t('addTx', 'amountPlaceholder')}
+                    value={amount}
+                    onChange={(e) => {
+                      const v = e.target.value.replace(/[^0-9.,]/g, '');
+                      setAmount(v);
+                    }}
+                    className={styles.amountInput}
+                    autoFocus
+                    onKeyDown={amountKeyDown}
+                  />
+                  <span className={styles.currencyBadge}>{transferFromAccount?.currency ?? currency}</span>
+                </div>
+              </div>
+              <div className={styles.transferArrow} aria-hidden="true">
+                ↓
+              </div>
+              <div className={styles.transferAmountBlock}>
+                <span className={styles.transferAmountLabel}>{t('addTx', 'transferTo')}</span>
+                <div className={styles.amountRow}>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    pattern="[0-9]*[.,]?[0-9]*"
+                    placeholder={t('addTx', 'amountPlaceholder')}
+                    value={transferToAmount}
+                    onChange={(e) => {
+                      const v = e.target.value.replace(/[^0-9.,]/g, '');
+                      setTransferToAmount(v);
+                    }}
+                    className={styles.amountInput}
+                    onKeyDown={amountKeyDown}
+                  />
+                  <span className={styles.currencyBadge}>
+                    {transferToAccount?.currency ?? transferFromAccount?.currency ?? currency}
+                  </span>
+                </div>
+              </div>
             </div>
-
-            <div className={styles.amountContainer}>
-              <input
-                type="text"
-                inputMode="decimal"
-                pattern="[0-9]*[.,]?[0-9]*"
-                placeholder={t('addTx', 'amountPlaceholder')}
-                value={transferToAmount}
-                onChange={(e) => {
-                  const v = e.target.value.replace(/[^0-9.,]/g, '');
-                  setTransferToAmount(v);
-                }}
-                className={styles.amountInput}
-                onKeyDown={amountKeyDown}
-              />
-              <div className={styles.currencySelect}>{transferToAccount?.currency ?? transferFromAccount?.currency ?? currency}</div>
+          ) : (
+            <div className={styles.transferAmountBlock}>
+              <div className={styles.amountRow}>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  pattern="[0-9]*[.,]?[0-9]*"
+                  placeholder={t('addTx', 'amountPlaceholder')}
+                  value={amount}
+                  onChange={(e) => {
+                    const v = e.target.value.replace(/[^0-9.,]/g, '');
+                    setAmount(v);
+                  }}
+                  className={styles.amountInput}
+                  autoFocus
+                  onKeyDown={amountKeyDown}
+                />
+                <span className={styles.currencyBadge}>{transferFromAccount?.currency ?? currency}</span>
+              </div>
             </div>
-          </div>
+          )}
 
           <div className={styles.dateInline}>
             <input

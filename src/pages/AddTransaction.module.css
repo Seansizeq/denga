@@ -256,7 +256,48 @@
 .transferAmounts {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.transferAmountBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.transferAmountLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding-left: 4px;
+}
+
+.transferArrow {
+  text-align: center;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--text-tertiary);
+  margin: 4px 0;
+}
+
+.amountRow .currencyBadge {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 700;
+  padding: 8px 10px;
+  border-radius: 10px;
+  line-height: 1;
 }
 
 .amountInput {
