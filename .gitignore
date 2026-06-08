@@ -30,6 +30,7 @@ database.sqlite
 database.sqlite-wal
 database.sqlite-shm
 database.*.sqlite
+database-*.sqlite
 backups/
 pass.txt
 
@@ -38,4 +39,5 @@ denga.zip
 
 # Ad-hoc helper scripts
 _*.js
+_*.mjs
 _*.ps1
