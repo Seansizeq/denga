@@ -4394,11 +4394,6 @@ app.delete('/api/transactions/:id', async (req, res) => {
     }
   }
   await applyTransactionEffects(db, userId, current, -1);
-  // debt_return transactions update the balance directly (not via applyTransactionEffects),
-  // so reverse the balance change manually on delete
-  if (current.categoryId === 'debt_return' && current.fromAccountKey) {
-    await applyAccountDelta(db, userId, current.fromAccountKey, Number(current.amount));
-  }
   await db.run('DELETE FROM transactions WHERE user_id = ? AND id = ?', [userId, id]);
   res.status(204).send();
 });

@@ -36,7 +36,12 @@ export const getTransactionAccountEffects = (tx) => {
     ].filter(Boolean);
   }
 
-  const accountKey = getAccountSlugFromNote(tx?.note);
+  const fromKey = normalizeAccountKey(tx?.fromAccountKey);
+  // debt_return: payment reduces the debt balance (negative delta)
+  if (tx?.categoryId === 'debt_return' && fromKey) {
+    return [{ accountKey: fromKey, delta: -amount, currency: tx?.currency }];
+  }
+  const accountKey = fromKey || getAccountSlugFromNote(tx?.note);
   if (!accountKey) return [];
   if (tx?.type === 'income') return [{ accountKey, delta: amount, currency: tx?.currency }];
   if (tx?.type === 'expense') return [{ accountKey, delta: -amount, currency: tx?.currency }];
