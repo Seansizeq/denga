@@ -1751,25 +1751,16 @@ const buildReportText = (reportType, periodLabel, txs, comparison, extra = {}) =
     const sign = withSign ? (value >= 0 ? '+' : '-') : '';
     return `${sign}${Math.abs(value).toLocaleString('uk-UA', { maximumFractionDigits: 2 })}`;
   };
+  const TECHNICAL_CATEGORY_IDS = new Set(['other_income', 'other_expense']);
   if (reportType === 'weekly') {
-    const dayNet = new Map();
-    for (const tx of txs || []) {
-      const amount = Math.max(
-        0,
-        convertCurrencyServer(
-          Number(tx.amount) || 0,
-          normalizeCurrency(tx.currency),
-          reportCurrencyCode,
-          extra.fxPayload ?? FX_FALLBACK
-        )
-      );
-      const day = dayFromIsoInZone(tx.date, DEFAULT_BOT_TIMEZONE) || String(tx.date || '').slice(0, 10);
-      const curNet = dayNet.get(day) ?? 0;
-      dayNet.set(day, tx.type === 'income' ? curNet + amount : curNet - amount);
-    }
-    const topExpenseCategories = (summary.topExpenses || []).slice(0, 5);
-    const bestDayEntry = Array.from(dayNet.entries()).sort((a, b) => b[1] - a[1])[0] ?? null;
+    const topExpenseCategories = (summary.topExpenses || [])
+      .filter((item) => !TECHNICAL_CATEGORY_IDS.has(item.categoryId))
+      .slice(0, 5);
     const workedHours = Math.max(0, Number(extra.workedHours) || 0);
+    const prevIncome = Number(extra.previousIncome) || 0;
+    const prevExpense = Number(extra.previousExpense) || 0;
+    const incomePct = percentChange(summary.income, prevIncome);
+    const expensePct = percentChange(summary.expense, prevExpense);
     const lines = [
       '📊 *ФІНАНСОВИЙ ЗВІТ*',
       '━━━━━━━━━━━━━━━━━━━━',
@@ -1779,9 +1770,15 @@ const buildReportText = (reportType, periodLabel, txs, comparison, extra = {}) =
       `├ Дохід: *+${formatAmount(summary.income)} ${sign}*`,
       `├ Витрати: *-${formatAmount(summary.expense)} ${sign}*`,
       `└ Баланс: \`${formatAmount(summary.net, true)} ${sign}\``,
-      '',
-      '📈 *Категорії витрат:*',
     ];
+    if (prevIncome > 0 || prevExpense > 0) {
+      lines.push('');
+      lines.push('🔁 *ПОРІВНЯННЯ З МИНУЛИМ ТИЖНЕМ*');
+      lines.push(`├ Дохід: \`${incomePct >= 0 ? '+' : ''}${incomePct.toLocaleString('uk-UA', { maximumFractionDigits: 0 })}%\` ${incomePct >= 0 ? '⬆️' : '⬇️'}`);
+      lines.push(`└ Витрати: \`${expensePct >= 0 ? '+' : ''}${expensePct.toLocaleString('uk-UA', { maximumFractionDigits: 0 })}%\` ${expensePct >= 0 ? '⬆️' : '⬇️'}`);
+    }
+    lines.push('');
+    lines.push('📈 *Категорії витрат:*');
     if (topExpenseCategories.length > 0) {
       for (const item of topExpenseCategories) {
         lines.push(`${CATEGORY_EMOJI[item.categoryId] ?? '•'} ${categoryNameById(item.categoryId)}: ${formatAmount(item.amount)} ${sign}`);
@@ -1789,27 +1786,18 @@ const buildReportText = (reportType, periodLabel, txs, comparison, extra = {}) =
     } else {
       lines.push('• Немає витрат за період');
     }
-    lines.push('');
-    lines.push('⏰ *РОБОЧИЙ ЧАС*');
-    lines.push(`├ Відпрацьовано: *${formatHoursAsHoursMinutes(workedHours)}*`);
-    lines.push('└ Деталі — у вебапі');
-    const achievementLines = Array.isArray(extra.achievementLines) ? extra.achievementLines : [];
-    if (achievementLines.length > 0) {
+    if (workedHours > 0) {
       lines.push('');
-      lines.push('🎯 *ДОСЯГНЕННЯ*');
-      achievementLines.forEach((line) => lines.push(line));
-    }
-    const recommendationLines = Array.isArray(extra.recommendationLines) ? extra.recommendationLines : [];
-    if (recommendationLines.length > 0) {
-      lines.push('');
-      lines.push('💡 *РЕКОМЕНДАЦІЇ*');
-      recommendationLines.forEach((line) => lines.push(line));
+      lines.push('⏰ *РОБОЧИЙ ЧАС*');
+      lines.push(`└ Відпрацьовано: *${formatHoursAsHoursMinutes(workedHours)}*`);
     }
     return lines.join('\n');
   }
   if (reportType === 'monthly') {
-    const topExpenseCategories = (summary.topExpenses || []).slice(0, 5);
-    const totalExpense = Math.max(0, Number(summary.expense) || 0);
+    const topExpenseCategories = (summary.topExpenses || [])
+      .filter((item) => !TECHNICAL_CATEGORY_IDS.has(item.categoryId))
+      .slice(0, 5);
+    const totalExpense = topExpenseCategories.reduce((a, item) => a + item.amount, 0);
     const workedHours = Math.max(0, Number(extra.workedHours) || 0);
     const workingDays = Math.max(0, Number(extra.workingDays) || 0);
     const avgPerDay = Math.max(0, Number(extra.avgPerDay) || 0);
@@ -1839,26 +1827,16 @@ const buildReportText = (reportType, periodLabel, txs, comparison, extra = {}) =
       lines.push('• Немає витрат за період');
     }
     lines.push('');
-    lines.push('⏰ *РОБОЧИЙ ЧАС*');
-    lines.push(`├ Всього відпрацьовано: *${formatHoursAsHoursMinutes(workedHours)}*`);
-    lines.push(`├ Робочих днів: ${workingDays}`);
-    lines.push(`└ Середньо/день: ${formatHoursAsHoursMinutes(avgPerDay)}`);
-    lines.push('');
     lines.push('📈 *ПОРІВНЯННЯ З МИНУЛИМ МІСЯЦЕМ*');
     lines.push(`├ Дохід: \`${incomePct >= 0 ? '+' : ''}${incomePct.toLocaleString('uk-UA', { maximumFractionDigits: 0 })}%\` ${incomePct >= 0 ? '⬆️' : '⬇️'}`);
     lines.push(`├ Витрати: \`${expensePct >= 0 ? '+' : ''}${expensePct.toLocaleString('uk-UA', { maximumFractionDigits: 0 })}%\` ${expensePct >= 0 ? '⬆️' : '⬇️'}`);
     lines.push(`└ Баланс: \`${netPct >= 0 ? '+' : ''}${netPct.toLocaleString('uk-UA', { maximumFractionDigits: 0 })}%\` ${netPct >= 0 ? '⬆️' : '⬇️'}`);
-    const achievementLines = Array.isArray(extra.achievementLines) ? extra.achievementLines : [];
-    if (achievementLines.length > 0) {
+    if (workedHours > 0) {
       lines.push('');
-      lines.push('🎯 *ДОСЯГНЕННЯ*');
-      achievementLines.forEach((line) => lines.push(line));
-    }
-    const recommendationLines = Array.isArray(extra.recommendationLines) ? extra.recommendationLines : [];
-    if (recommendationLines.length > 0) {
-      lines.push('');
-      lines.push('💡 *РЕКОМЕНДАЦІЇ*');
-      recommendationLines.forEach((line) => lines.push(line));
+      lines.push('⏰ *РОБОЧИЙ ЧАС*');
+      lines.push(`├ Всього відпрацьовано: *${formatHoursAsHoursMinutes(workedHours)}*`);
+      lines.push(`├ Робочих днів: ${workingDays}`);
+      lines.push(`└ Середньо/день: ${formatHoursAsHoursMinutes(avgPerDay)}`);
     }
     return lines.join('\n');
   }
