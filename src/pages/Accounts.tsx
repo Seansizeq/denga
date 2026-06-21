@@ -312,7 +312,7 @@ const Accounts: React.FC = () => {
             <p className={styles.emptyHint}>Натисніть + щоб додати перший рахунок</p>
           </div>
         ) : (
-          <AccountsSnapshot sections={sections} onRowPress={handleRowPress} />
+          <AccountsSnapshot sections={sections.filter((s) => s.rows.length > 0)} onRowPress={handleRowPress} />
         )}
         <div className={styles.spacer} />
       </div>
