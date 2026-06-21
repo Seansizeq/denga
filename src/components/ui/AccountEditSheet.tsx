@@ -64,6 +64,14 @@ const SECTION_LABELS: Record<EditableAccount['section'], string> = {
   debt:   'Борг',
 };
 
+const SECTION_PLACEHOLDER: Record<EditableAccount['section'], string> = {
+  bank:   'ПриватБанк, Монобанк...',
+  cash:   'Гаманець, Каса...',
+  crypto: 'Bitcoin, ETH-гаманець...',
+  stocks: 'Акції США, Monobank...',
+  debt:   'Михайло, Оренда...',
+};
+
 const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, onSave, onDelete }) => {
   const { t } = useTranslation();
   const [name, setName] = useState(() => initial.name);
@@ -175,7 +183,7 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
               value={name}
               onChange={(e) => setName(e.target.value)}
               maxLength={40}
-              placeholder="ПриватБанк, Готівка..."
+              placeholder={SECTION_PLACEHOLDER[section]}
               // eslint-disable-next-line jsx-a11y/no-autofocus
               autoFocus={isCreateMode}
             />
