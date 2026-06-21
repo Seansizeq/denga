@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { ChevronDown, ChevronUp, Sparkles, X } from 'lucide-react';
 import { useTranslation } from '../../i18n/LanguageContext';
 import { AccountIconGlyph, type AccountIconKey } from '../../utils/accountIcons';
-import { parseCryptoPosition } from '../../utils/cryptoPosition';
+import { parseCryptoPosition, type CryptoSymbol } from '../../utils/cryptoPosition';
 import { AccountRowAvatar } from './AccountRowAvatar';
 import styles from './AccountEditSheet.module.css';
 
@@ -81,6 +81,14 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
   const [iconKey, setIconKey] = useState(() => (initial.iconKey ?? '').trim());
   const [debtPhrase, setDebtPhrase] = useState(() => initial.debtPhrase);
   const [iconTone, setIconTone] = useState<EditableAccount['iconTone']>(() => initial.iconTone);
+  const [cryptoQty, setCryptoQty] = useState(() => {
+    const pos = parseCryptoPosition(initial.subText);
+    return pos ? String(pos.amount) : '';
+  });
+  const [cryptoSymbol, setCryptoSymbol] = useState<CryptoSymbol | ''>(() => {
+    const pos = parseCryptoPosition(initial.subText);
+    return pos ? pos.symbol : '';
+  });
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -96,8 +104,9 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
 
   const previewCryptoSymbol = useMemo(() => {
     if (section !== 'crypto') return null;
+    if (cryptoSymbol) return cryptoSymbol;
     return parseCryptoPosition(initial.subText)?.symbol ?? null;
-  }, [section, initial.subText]);
+  }, [section, cryptoSymbol, initial.subText]);
 
   const handleSave = async () => {
     const n = parseMoney(amount);
@@ -105,13 +114,16 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
     setError('');
     setSaving(true);
     try {
+      const qty = cryptoQty.replace(',', '.').trim();
+      const builtSubText =
+        section === 'crypto' && qty && cryptoSymbol ? `${qty} ${cryptoSymbol}` : initial.subText;
       await onSave({
         ...initial,
         section,
         name: name.trim(),
         primaryAmount: n,
         primaryCurrency: currency,
-        subText: initial.subText,
+        subText: builtSubText,
         badge: initial.badge,
         iconKey: iconKey.trim(),
         debtPhrase: debtPhrase.trim(),
@@ -212,6 +224,37 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
               </select>
             </label>
           </div>
+
+          {/* Crypto fields — shown only for crypto section */}
+          {section === 'crypto' ? (
+            <div className={styles.row2}>
+              <label className={styles.label}>
+                Кількість
+                <input
+                  className={styles.input}
+                  value={cryptoQty}
+                  onChange={(e) => setCryptoQty(e.target.value)}
+                  inputMode="decimal"
+                  placeholder="0.05"
+                />
+              </label>
+              <label className={styles.label}>
+                Монета
+                <select
+                  className={styles.select}
+                  value={cryptoSymbol}
+                  onChange={(e) => setCryptoSymbol(e.target.value as CryptoSymbol | '')}
+                >
+                  <option value="">—</option>
+                  <option value="BTC">BTC</option>
+                  <option value="ETH">ETH</option>
+                  <option value="SOL">SOL</option>
+                  <option value="TON">TON</option>
+                  <option value="USDT">USDT</option>
+                </select>
+              </label>
+            </div>
+          ) : null}
 
           {/* Compact color circles */}
           <div className={styles.colorSection}>
