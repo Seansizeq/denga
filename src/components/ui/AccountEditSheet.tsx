@@ -139,7 +139,7 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
           <button type="button" className={styles.iconBtn} onClick={onClose} aria-label={t('addTx', 'cancel')}>
             <X size={18} strokeWidth={2.4} />
           </button>
-          <h2 className={styles.title}>{isCreateMode ? t('addTx', 'createCategory') : t('history', 'edit')}</h2>
+          <h2 className={styles.title}>{isCreateMode ? 'Новий рахунок' : 'Редагування рахунку'}</h2>
           <span className={styles.headerSpacer} />
         </div>
         {error ? <p className={styles.errorText}>{error}</p> : null}
@@ -162,7 +162,14 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
 
           <label className={styles.label}>
             Назва
-            <input className={styles.input} value={name} onChange={(e) => setName(e.target.value)} maxLength={40} />
+            <input
+              className={styles.input}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              maxLength={40}
+              placeholder="Наприклад: ПриватБанк, Готівка..."
+              autoFocus={isCreateMode}
+            />
           </label>
 
           <div className={styles.row2}>

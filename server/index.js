@@ -2381,141 +2381,6 @@ startScheduledDatabaseBackups(db, getDatabasePath(), {
   telegramChatId: Number.isFinite(backupChatId) ? backupChatId : null,
 });
 
-const seedAccountPortfolioIfEmpty = async () => {
-  const row = await db.get('SELECT COUNT(*) AS c FROM account_portfolio');
-  const count = Number(row?.c ?? 0);
-  if (count > 0) return;
-
-  const now = new Date().toISOString();
-  const rows = [
-    {
-      account_key: 'pumb',
-      section: 'bank',
-      sort_index: 10,
-      name: 'pumb',
-      primary_amount: 2410,
-      primary_currency: 'UAH',
-      sub_text: null,
-      icon_tone: 'bank',
-      badge: 'P',
-      debt_phrase: null,
-    },
-    {
-      account_key: 'privat24',
-      section: 'bank',
-      sort_index: 20,
-      name: 'Privat24',
-      primary_amount: 2,
-      primary_currency: 'UAH',
-      sub_text: null,
-      icon_tone: 'bank',
-      badge: 'PB',
-      debt_phrase: null,
-    },
-    {
-      account_key: 'wallet',
-      section: 'cash',
-      sort_index: 30,
-      name: 'Wallet',
-      primary_amount: 15342,
-      primary_currency: 'PLN',
-      sub_text: null,
-      icon_tone: 'cash',
-      badge: 'W',
-      debt_phrase: null,
-    },
-    {
-      account_key: 'crypto',
-      section: 'crypto',
-      sort_index: 40,
-      name: 'crypto',
-      primary_amount: 192,
-      primary_currency: 'PLN',
-      sub_text: '0,02294019 ETH',
-      icon_tone: 'crypto',
-      badge: 'ETH',
-      debt_phrase: null,
-    },
-    {
-      account_key: 'sol',
-      section: 'crypto',
-      sort_index: 50,
-      name: 'sol',
-      primary_amount: 1263,
-      primary_currency: 'PLN',
-      sub_text: '4,07 SOL',
-      icon_tone: 'crypto',
-      badge: 'S',
-      debt_phrase: null,
-    },
-    {
-      account_key: 'ton',
-      section: 'crypto',
-      sort_index: 60,
-      name: 'Ton',
-      primary_amount: 4,
-      primary_currency: 'PLN',
-      sub_text: '0,92 TON',
-      icon_tone: 'crypto',
-      badge: 'T',
-      debt_phrase: null,
-    },
-    {
-      account_key: 'usdt',
-      section: 'crypto',
-      sort_index: 70,
-      name: 'usdt',
-      primary_amount: 4500,
-      primary_currency: 'PLN',
-      sub_text: '1 247 USDT',
-      icon_tone: 'crypto',
-      badge: 'U',
-      debt_phrase: null,
-    },
-    {
-      account_key: 'misha',
-      section: 'debt',
-      sort_index: 80,
-      name: 'Misha',
-      primary_amount: 1655,
-      primary_currency: 'PLN',
-      sub_text: null,
-      icon_tone: 'debt',
-      badge: 'M',
-      debt_phrase: 'мені винні',
-    },
-  ];
-
-  await db.run('BEGIN');
-  try {
-    for (const r of rows) {
-      await db.run(
-        `INSERT INTO account_portfolio
-         (account_key, section, sort_index, name, primary_amount, primary_currency, sub_text, icon_tone, badge, debt_phrase, updatedAt)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          r.account_key,
-          r.section,
-          r.sort_index,
-          r.name,
-          r.primary_amount,
-          r.primary_currency,
-          r.sub_text,
-          r.icon_tone,
-          r.badge,
-          r.debt_phrase,
-          now,
-        ]
-      );
-    }
-    await db.run('COMMIT');
-  } catch (e) {
-    await db.run('ROLLBACK');
-    throw e;
-  }
-};
-
-await seedAccountPortfolioIfEmpty();
 
 // --- Bot Logic ---
 
@@ -4032,10 +3897,11 @@ app.post('/api/accounts', async (req, res) => {
   }
 
   const normalizedBase = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'account';
-  let accountKey = normalizedBase;
+  const userSlug = String(userId).replace(/[^a-z0-9]/gi, '');
+  let accountKey = `${userSlug}_${normalizedBase}`;
   let suffix = 2;
-  while (await db.get('SELECT 1 FROM account_portfolio WHERE user_id = ? AND account_key = ? LIMIT 1', [userId, accountKey])) {
-    accountKey = `${normalizedBase}_${suffix}`;
+  while (await db.get('SELECT 1 FROM account_portfolio WHERE account_key = ? LIMIT 1', [accountKey])) {
+    accountKey = `${userSlug}_${normalizedBase}_${suffix}`;
     suffix += 1;
   }
 

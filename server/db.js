@@ -370,6 +370,8 @@ export async function initDb() {
   } catch {
     /* already exists */
   }
+  // Remove legacy seed rows (user_id='') that block real users from creating accounts with matching keys
+  await db.run(`DELETE FROM account_portfolio WHERE user_id = ''`);
   try {
     await db.exec(`ALTER TABLE users ADD COLUMN fx_baseline_json TEXT`);
   } catch {
