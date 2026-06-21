@@ -5,6 +5,7 @@ import AccountsSnapshot from '../components/ui/AccountsSnapshot';
 import AccountEditSheet, { type EditableAccount } from '../components/ui/AccountEditSheet';
 import DebtDetailSheet from '../components/ui/DebtDetailSheet';
 import SectionPickerSheet, { type PickableSection } from '../components/ui/SectionPickerSheet';
+import AssetRing from '../components/ui/AssetRing';
 import { usePortfolio } from '../context/PortfolioContext';
 import { useTranslation } from '../i18n/LanguageContext';
 import { apiFetch } from '../api/client';
@@ -240,6 +241,41 @@ const Accounts: React.FC = () => {
     ];
   }, [portfolio, t, convertAmount, displayCurrency, cryptoUsdPrices]);
 
+  const SECTION_COLORS: Record<string, string> = {
+    bank: '#FF9F0A',
+    cash: '#7C5CFF',
+    crypto: '#4CA8FF',
+    stocks: '#34C759',
+    debt: '#E84848',
+  };
+
+  const ringSegments = useMemo(() => {
+    const sumNumeric = (key: PortfolioSection): number =>
+      portfolio
+        .filter((r) => r.section === key)
+        .reduce((a, r) => {
+          const position = r.section === 'crypto' ? parseCryptoPosition(r.subText) : null;
+          const marketUsd = position ? (cryptoUsdPrices[position.symbol] ?? 0) * position.amount : 0;
+          const dynamicPrimary =
+            position && marketUsd > 0
+              ? convertAmount(marketUsd, 'USD', r.primaryCurrency)
+              : r.primaryAmount;
+          return a + convertAmount(dynamicPrimary, r.primaryCurrency, displayCurrency);
+        }, 0);
+
+    return sections
+      .map((s) => ({
+        id: s.id,
+        label: s.title,
+        amount: sumNumeric(s.id as PortfolioSection),
+        color: SECTION_COLORS[s.id] ?? '#8E8E93',
+      }))
+      .filter((s) => s.amount > 0)
+      .sort((a, b) => b.amount - a.amount);
+  }, [portfolio, sections, convertAmount, displayCurrency, cryptoUsdPrices]);
+
+  const ringTotal = ringSegments.reduce((a, s) => a + s.amount, 0);
+
   const handleRowPress = useCallback(
     (id: string) => {
       const row = portfolio.find((r) => r.accountKey === id);
@@ -331,7 +367,12 @@ const Accounts: React.FC = () => {
             <p className={styles.emptyHint}>Натисніть + щоб додати перший рахунок</p>
           </div>
         ) : (
-          <AccountsSnapshot sections={sections.filter((s) => s.rows.length > 0)} onRowPress={handleRowPress} />
+          <>
+            {ringSegments.length > 0 && (
+              <AssetRing segments={ringSegments} total={ringTotal} />
+            )}
+            <AccountsSnapshot sections={sections.filter((s) => s.rows.length > 0)} onRowPress={handleRowPress} />
+          </>
         )}
         <div className={styles.spacer} />
       </div>
