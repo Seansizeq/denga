@@ -20,7 +20,7 @@
   position: relative;
   width: 100%;
   max-width: 520px;
-  max-height: min(78vh, 760px);
+  max-height: min(82vh, 760px);
   border-radius: 18px;
   background: #111113;
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -82,9 +82,54 @@
   padding: 12px 12px 10px 12px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   overflow-y: auto;
 }
+
+/* ── Preview card ─────────────────────────────── */
+
+.previewCard {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.previewAvatarWrap {
+  flex-shrink: 0;
+  transform: scale(1.35);
+  transform-origin: center;
+}
+
+.previewInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding-left: 6px;
+}
+
+.previewName {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.previewSection {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.4);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* ── Form fields ──────────────────────────────── */
 
 .label {
   display: flex;
@@ -95,47 +140,6 @@
   color: rgba(255, 255, 255, 0.5);
   text-transform: uppercase;
   letter-spacing: 0.04em;
-}
-
-.colorFieldset {
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-
-.colorGrid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.colorButton {
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: #1c1c1e;
-  color: #fff;
-  border-radius: 12px;
-  min-height: 40px;
-  padding: 8px 10px;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.84rem;
-  font-weight: 700;
-  cursor: pointer;
-  text-align: left;
-}
-
-.colorButtonActive {
-  border-color: rgba(255, 255, 255, 0.35);
-  background: #2a2a2e;
-}
-
-.colorSwatch {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  border: 1px solid rgba(0, 0, 0, 0.3);
-  flex: 0 0 auto;
 }
 
 .input,
@@ -162,6 +166,131 @@
   gap: 10px;
   align-items: end;
 }
+
+/* ── Compact color circles ────────────────────── */
+
+.colorSection {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.colorLabel {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.5);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.colorRow {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.colorDot {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 2.5px solid transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+  outline: none;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+  transition: transform 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.colorDot:active {
+  transform: scale(0.9);
+}
+
+.colorDotActive {
+  border-color: #fff;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.18), 0 1px 4px rgba(0, 0, 0, 0.45);
+  transform: scale(1.1);
+}
+
+/* ── Collapsible advanced section ─────────────── */
+
+.expandSection {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.expandBtn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px 14px;
+  background: #1c1c1e;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 0.84rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: left;
+}
+
+.expandBtn:active {
+  background: #242426;
+}
+
+.expandContent {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 2px 0 4px;
+}
+
+/* ── Icon picker (inside expandContent) ──────── */
+
+.colorFieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.iconGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.iconOption {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #1c1c1e;
+  border-radius: 12px;
+  padding: 8px 4px 9px;
+  color: rgba(255, 255, 255, 0.88);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1.15;
+  text-align: center;
+}
+
+.iconOptionActive {
+  border-color: rgba(124, 92, 255, 0.65);
+  background: rgba(124, 92, 255, 0.14);
+}
+
+.iconOptionWide {
+  grid-column: span 2;
+}
+
+/* ── Footer ───────────────────────────────────── */
 
 .footer {
   display: flex;
@@ -202,82 +331,12 @@
 .primary:disabled,
 .secondary:disabled,
 .danger:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
-.previewRow {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 12px 14px;
-  background: rgba(255, 255, 255, 0.04);
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.previewMeta {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.previewTitle {
-  font-size: 0.72rem;
-  font-weight: 800;
-  color: rgba(255, 255, 255, 0.45);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.previewName {
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: #fff;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.iconGrid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.iconOption {
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: #1c1c1e;
-  border-radius: 12px;
-  padding: 8px 4px 10px;
-  color: rgba(255, 255, 255, 0.88);
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.62rem;
-  font-weight: 700;
-  line-height: 1.15;
-  text-align: center;
-}
-
-.iconOptionActive {
-  border-color: rgba(124, 92, 255, 0.65);
-  background: rgba(124, 92, 255, 0.14);
-}
-
-.iconOptionWide {
-  grid-column: span 2;
-}
-
 @media (min-width: 700px) {
-  .overlay {
-    padding: calc(10px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom));
-  }
-
   .sheet {
-    max-height: min(86vh, 760px);
+    max-height: min(88vh, 760px);
   }
 }

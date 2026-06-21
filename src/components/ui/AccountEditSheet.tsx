@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Sparkles, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, Sparkles, X } from 'lucide-react';
 import { useTranslation } from '../../i18n/LanguageContext';
 import { AccountIconGlyph, type AccountIconKey } from '../../utils/accountIcons';
 import { parseCryptoPosition } from '../../utils/cryptoPosition';
@@ -56,30 +56,33 @@ const LUCIDE_PICKS: Array<{ key: Exclude<AccountIconKey, 'auto'>; label: string 
   { key: 'HandCoins',        label: 'Борг'     },
 ];
 
+const SECTION_LABELS: Record<EditableAccount['section'], string> = {
+  bank:   'Карти',
+  cash:   'Готівка',
+  crypto: 'Крипта',
+  stocks: 'Акції',
+  debt:   'Борг',
+};
+
 const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, onSave, onDelete }) => {
   const { t } = useTranslation();
   const [name, setName] = useState(() => initial.name);
   const [amount, setAmount] = useState(() => String(initial.primaryAmount));
   const [currency, setCurrency] = useState<'UAH' | 'PLN'>(() => initial.primaryCurrency);
   const [section, setSection] = useState<EditableAccount['section']>(() => initial.section);
-  const [badge, setBadge] = useState(() => initial.badge);
   const [iconKey, setIconKey] = useState(() => (initial.iconKey ?? '').trim());
   const [debtPhrase, setDebtPhrase] = useState(() => initial.debtPhrase);
   const [iconTone, setIconTone] = useState<EditableAccount['iconTone']>(() => initial.iconTone);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const canEditDebtPhrase = useMemo(() => section === 'debt', [section]);
   const isCreateMode = useMemo(() => !initial.accountKey.trim(), [initial.accountKey]);
 
   const previewAccountKey = useMemo(() => {
     const k = initial.accountKey.trim();
     if (k) return k;
-    const slug = name
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '_')
-      .replace(/^_+|_+$/g, '');
+    const slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
     return slug || 'account';
   }, [initial.accountKey, name]);
 
@@ -101,7 +104,7 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
         primaryAmount: n,
         primaryCurrency: currency,
         subText: initial.subText,
-        badge: badge.replace(/[^\p{L}\p{N}]/gu, '').slice(0, 3).toUpperCase(),
+        badge: initial.badge,
         iconKey: iconKey.trim(),
         debtPhrase: debtPhrase.trim(),
         iconTone,
@@ -142,24 +145,29 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
           <h2 className={styles.title}>{isCreateMode ? 'Новий рахунок' : 'Редагування рахунку'}</h2>
           <span className={styles.headerSpacer} />
         </div>
+
         {error ? <p className={styles.errorText}>{error}</p> : null}
 
         <div className={styles.body}>
-          <div className={styles.previewRow}>
-            <AccountRowAvatar
-              accountKey={previewAccountKey}
-              iconTone={iconTone}
-              section={section}
-              iconKey={iconKey || null}
-              cryptoSymbol={previewCryptoSymbol}
-              glyphSize={22}
-            />
-            <div className={styles.previewMeta}>
-              <span className={styles.previewTitle}>Перегляд іконки</span>
-              <span className={styles.previewName}>{name.trim() || '—'}</span>
+          {/* Big preview card */}
+          <div className={styles.previewCard}>
+            <div className={styles.previewAvatarWrap}>
+              <AccountRowAvatar
+                accountKey={previewAccountKey}
+                iconTone={iconTone}
+                section={section}
+                iconKey={iconKey || null}
+                cryptoSymbol={previewCryptoSymbol}
+                glyphSize={24}
+              />
+            </div>
+            <div className={styles.previewInfo}>
+              <span className={styles.previewName}>{name.trim() || 'Новий рахунок'}</span>
+              <span className={styles.previewSection}>{SECTION_LABELS[section]}</span>
             </div>
           </div>
 
+          {/* Name */}
           <label className={styles.label}>
             Назва
             <input
@@ -167,107 +175,131 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
               value={name}
               onChange={(e) => setName(e.target.value)}
               maxLength={40}
-              placeholder="Наприклад: ПриватБанк, Готівка..."
+              placeholder="ПриватБанк, Готівка..."
+              // eslint-disable-next-line jsx-a11y/no-autofocus
               autoFocus={isCreateMode}
             />
           </label>
 
+          {/* Amount + Currency */}
           <div className={styles.row2}>
             <label className={styles.label}>
               Сума
-              <input className={styles.input} value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" />
+              <input
+                className={styles.input}
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                inputMode="decimal"
+              />
             </label>
             <label className={styles.label}>
               Валюта
-              <select className={styles.select} value={currency} onChange={(e) => setCurrency(e.target.value === 'PLN' ? 'PLN' : 'UAH')}>
+              <select
+                className={styles.select}
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value === 'PLN' ? 'PLN' : 'UAH')}
+              >
                 <option value="UAH">UAH (₴)</option>
                 <option value="PLN">PLN (zł)</option>
               </select>
             </label>
           </div>
 
-          <div className={styles.row2}>
-            <label className={styles.label}>
-              Ініціали (до 3 симв.)
-              <input
-                className={styles.input}
-                value={badge}
-                onChange={(e) => setBadge(e.target.value.replace(/[^\p{L}\p{N}]/gu, '').slice(0, 3))}
-                maxLength={3}
-                inputMode="text"
-                autoCapitalize="characters"
-              />
-            </label>
-            <label className={styles.label}>
-              Розділ
-              <select
-                className={styles.select}
-                value={section}
-                onChange={(e) => setSection((e.target.value as EditableAccount['section']) ?? 'bank')}
-              >
-                <option value="bank">Карти</option>
-                <option value="cash">Готівка</option>
-                <option value="crypto">Крипта</option>
-                <option value="stocks">Акції</option>
-                <option value="debt">Борг</option>
-              </select>
-            </label>
-          </div>
-
-          <fieldset className={styles.colorFieldset}>
-            <legend className={styles.label}>Іконка</legend>
-            <div className={styles.iconGrid}>
-              <button
-                type="button"
-                className={`${styles.iconOption} ${styles.iconOptionWide} ${!iconKey ? styles.iconOptionActive : ''}`}
-                onClick={() => setIconKey('')}
-                aria-pressed={!iconKey}
-              >
-                <Sparkles size={20} strokeWidth={2.2} />
-                Авто
-              </button>
-              {LUCIDE_PICKS.map((opt) => {
-                const active = iconKey === opt.key;
-                return (
-                  <button
-                    key={opt.key}
-                    type="button"
-                    className={`${styles.iconOption} ${active ? styles.iconOptionActive : ''}`}
-                    onClick={() => setIconKey(opt.key)}
-                    aria-pressed={active}
-                  >
-                    <AccountIconGlyph iconKey={opt.key} size={20} strokeWidth={2.2} />
-                    {opt.label}
-                  </button>
-                );
-              })}
-            </div>
-          </fieldset>
-
-          <fieldset className={styles.colorFieldset}>
-            <legend className={styles.label}>Колір</legend>
-            <div className={styles.colorGrid}>
-              {COLOR_OPTIONS.map((option) => (
+          {/* Compact color circles */}
+          <div className={styles.colorSection}>
+            <span className={styles.colorLabel}>Колір</span>
+            <div className={styles.colorRow}>
+              {COLOR_OPTIONS.map((opt) => (
                 <button
-                  key={option.tone}
+                  key={opt.tone}
                   type="button"
-                  className={`${styles.colorButton} ${iconTone === option.tone ? styles.colorButtonActive : ''}`}
-                  onClick={() => setIconTone(option.tone)}
-                  aria-pressed={iconTone === option.tone}
-                >
-                  <span className={styles.colorSwatch} style={{ backgroundColor: option.swatch }} />
-                  <span>{option.label}</span>
-                </button>
+                  className={`${styles.colorDot} ${iconTone === opt.tone ? styles.colorDotActive : ''}`}
+                  style={{ backgroundColor: opt.swatch }}
+                  onClick={() => setIconTone(opt.tone)}
+                  aria-label={opt.label}
+                  title={opt.label}
+                />
               ))}
             </div>
-          </fieldset>
+          </div>
 
-          {canEditDebtPhrase ? (
+          {/* Debt phrase — only for debt section */}
+          {section === 'debt' ? (
             <label className={styles.label}>
               Фраза боргу
-              <input className={styles.input} value={debtPhrase} onChange={(e) => setDebtPhrase(e.target.value)} maxLength={40} />
+              <input
+                className={styles.input}
+                value={debtPhrase}
+                onChange={(e) => setDebtPhrase(e.target.value)}
+                maxLength={40}
+              />
             </label>
           ) : null}
+
+          {/* Collapsible: icon + section */}
+          <div className={styles.expandSection}>
+            <button
+              type="button"
+              className={styles.expandBtn}
+              onClick={() => setAdvancedOpen((v) => !v)}
+            >
+              <span>Іконка та розділ</span>
+              {advancedOpen ? (
+                <ChevronUp size={15} strokeWidth={2.4} />
+              ) : (
+                <ChevronDown size={15} strokeWidth={2.4} />
+              )}
+            </button>
+
+            {advancedOpen ? (
+              <div className={styles.expandContent}>
+                <fieldset className={styles.colorFieldset}>
+                  <legend className={styles.label}>Іконка</legend>
+                  <div className={styles.iconGrid}>
+                    <button
+                      type="button"
+                      className={`${styles.iconOption} ${styles.iconOptionWide} ${!iconKey ? styles.iconOptionActive : ''}`}
+                      onClick={() => setIconKey('')}
+                      aria-pressed={!iconKey}
+                    >
+                      <Sparkles size={18} strokeWidth={2.2} />
+                      Авто
+                    </button>
+                    {LUCIDE_PICKS.map((opt) => {
+                      const active = iconKey === opt.key;
+                      return (
+                        <button
+                          key={opt.key}
+                          type="button"
+                          className={`${styles.iconOption} ${active ? styles.iconOptionActive : ''}`}
+                          onClick={() => setIconKey(opt.key)}
+                          aria-pressed={active}
+                        >
+                          <AccountIconGlyph iconKey={opt.key} size={18} strokeWidth={2.2} />
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </fieldset>
+
+                <label className={styles.label}>
+                  Розділ
+                  <select
+                    className={styles.select}
+                    value={section}
+                    onChange={(e) => setSection(e.target.value as EditableAccount['section'])}
+                  >
+                    <option value="bank">Карти</option>
+                    <option value="cash">Готівка</option>
+                    <option value="crypto">Крипта</option>
+                    <option value="stocks">Акції</option>
+                    <option value="debt">Борг</option>
+                  </select>
+                </label>
+              </div>
+            ) : null}
+          </div>
         </div>
 
         <div className={styles.footer}>
@@ -279,7 +311,12 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
           <button type="button" className={styles.secondary} onClick={onClose} disabled={saving}>
             {t('addTx', 'cancel')}
           </button>
-          <button type="button" className={styles.primary} onClick={handleSave} disabled={saving || !name.trim() || parseMoney(amount) === null}>
+          <button
+            type="button"
+            className={styles.primary}
+            onClick={handleSave}
+            disabled={saving || !name.trim() || parseMoney(amount) === null}
+          >
             {saving ? `${t('addTx', 'save')}...` : isCreateMode ? t('addTx', 'create') : t('addTx', 'save')}
           </button>
         </div>
