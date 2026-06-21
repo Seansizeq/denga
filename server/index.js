@@ -5474,6 +5474,41 @@ app.post('/api/planner/active-shift/end', async (req, res) => {
   res.json({ success: true, roundedHours, totalHours: Number(dayTotals?.total_hours) || roundedHours, day });
 });
 
+app.delete('/api/me', authMiddleware, async (req, res) => {
+  const userId = req.authUserId;
+  const USER_TABLES = [
+    'transactions',
+    'custom_categories',
+    'subscriptions',
+    'planner_days',
+    'planner_shift_entries',
+    'planner_shift_templates',
+    'planner_user_settings',
+    'account_portfolio',
+    'bot_active_shifts',
+    'bot_report_settings',
+    'bot_report_deliveries',
+    'user_reminders',
+    'reminder_deliveries',
+    'category_budgets',
+    'budget_alerts',
+    'goals',
+    'goal_contributions',
+  ];
+  await db.run('BEGIN IMMEDIATE');
+  try {
+    for (const table of USER_TABLES) {
+      await db.run(`DELETE FROM ${table} WHERE user_id = ?`, [userId]);
+    }
+    await db.run('DELETE FROM users WHERE telegram_id = ?', [Number(userId)]);
+    await db.run('COMMIT');
+  } catch (e) {
+    await db.run('ROLLBACK');
+    throw e;
+  }
+  res.status(204).end();
+});
+
 app.use((err, _req, res, next) => {
   if (res.headersSent) {
     next(err);

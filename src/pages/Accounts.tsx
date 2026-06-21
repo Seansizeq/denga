@@ -3,14 +3,11 @@ import { Plus } from 'lucide-react';
 import Header from '../components/ui/Header';
 import AccountsSnapshot from '../components/ui/AccountsSnapshot';
 import AccountEditSheet, { type EditableAccount } from '../components/ui/AccountEditSheet';
-import { useTransactions } from '../context/TransactionContext';
 import { usePortfolio } from '../context/PortfolioContext';
-import { getCustomCategoryName } from '../constants/categories';
 import { useTranslation } from '../i18n/LanguageContext';
 import { apiFetch } from '../api/client';
 import { sanitizeAccountBadge } from '../utils/accountIcons';
 import { parseCryptoPosition } from '../utils/cryptoPosition';
-import { getTransactionAccountEffects } from '../utils/transactionUtils';
 import styles from './Accounts.module.css';
 
 type PortfolioSection = 'bank' | 'cash' | 'crypto' | 'debt';
@@ -99,6 +96,44 @@ const createEmptyAccount = (section: PortfolioSection, existing: readonly Portfo
   };
 };
 
+const ACCOUNT_TEMPLATES: Array<{
+  label: string;
+  section: PortfolioSection;
+  iconTone: IconTone;
+  badge: string;
+  iconKey: string;
+  primaryCurrency: 'UAH' | 'PLN';
+}> = [
+  { label: 'Monobank', section: 'bank', iconTone: 'bank', badge: 'MB', iconKey: 'CreditCard', primaryCurrency: 'UAH' },
+  { label: 'PrivatBank', section: 'bank', iconTone: 'bank', badge: 'PB', iconKey: 'Landmark', primaryCurrency: 'UAH' },
+  { label: 'Готівка', section: 'cash', iconTone: 'cash', badge: 'KSH', iconKey: 'Wallet', primaryCurrency: 'UAH' },
+  { label: 'Готівка PLN', section: 'cash', iconTone: 'cash', badge: 'PLN', iconKey: 'Banknote', primaryCurrency: 'PLN' },
+  { label: 'USDT', section: 'crypto', iconTone: 'crypto', badge: 'USDT', iconKey: 'CircleDollarSign', primaryCurrency: 'UAH' },
+  { label: 'Bitcoin', section: 'crypto', iconTone: 'crypto', badge: 'BTC', iconKey: 'Coins', primaryCurrency: 'UAH' },
+];
+
+const createFromTemplate = (
+  tmpl: (typeof ACCOUNT_TEMPLATES)[number],
+  existing: readonly PortfolioAccountRow[],
+): EditableAccount => {
+  const maxSort = existing
+    .filter((r) => r.section === tmpl.section)
+    .reduce((max, r) => Math.max(max, r.sortIndex), 0);
+  return {
+    accountKey: '',
+    section: tmpl.section,
+    sortIndex: maxSort + 10,
+    name: tmpl.label,
+    primaryAmount: 0,
+    primaryCurrency: tmpl.primaryCurrency,
+    subText: '',
+    iconTone: tmpl.iconTone,
+    badge: tmpl.badge,
+    iconKey: tmpl.iconKey,
+    debtPhrase: '',
+  };
+};
+
 const formatGroupAmount = (amount: number, currency: string) => {
   const normalized = Number.isFinite(amount) ? amount : 0;
   const abs = Math.abs(normalized).toLocaleString('ru-RU', {
@@ -110,11 +145,8 @@ const formatGroupAmount = (amount: number, currency: string) => {
   return `${sign}${abs} ${suffix}`;
 };
 
-const normalizeLabel = (value: string) => value.trim().toLowerCase().replace(/\s+/g, ' ');
-
 const Accounts: React.FC = () => {
   const { t, displayCurrency, convertAmount } = useTranslation();
-  const { transactions } = useTransactions();
   const { accounts, cryptoPrices, refreshAccounts } = usePortfolio();
   const [editing, setEditing] = useState<EditableAccount | null>(null);
 
@@ -125,289 +157,7 @@ const Accounts: React.FC = () => {
 
   const cryptoUsdPrices = cryptoPrices;
 
-  const txSections = useMemo(() => {
-    const base = {
-      bank: {
-        id: 'bank',
-        title: t('balance', 'sectionBank'),
-        total: '',
-        variant: 'strip' as const,
-        collapsible: true,
-        defaultOpen: true,
-        rows: [] as Array<{
-          id: string;
-          name: string;
-          amount: string;
-          badge: string;
-          subAmount?: string;
-          iconTone: 'bank' | 'cash' | 'crypto' | 'debt' | 'neutral';
-          section: PortfolioSection;
-          iconKey?: string | null;
-          cryptoSymbol?: string | null;
-        }>,
-      },
-      cash: {
-        id: 'cash',
-        title: t('balance', 'sectionCash'),
-        total: '',
-        variant: 'strip' as const,
-        collapsible: true,
-        defaultOpen: true,
-        rows: [] as Array<{
-          id: string;
-          name: string;
-          amount: string;
-          badge: string;
-          subAmount?: string;
-          iconTone: 'bank' | 'cash' | 'crypto' | 'debt' | 'neutral';
-          section: PortfolioSection;
-          iconKey?: string | null;
-          cryptoSymbol?: string | null;
-        }>,
-      },
-      crypto: {
-        id: 'crypto',
-        title: t('balance', 'sectionCrypto'),
-        total: '',
-        variant: 'strip' as const,
-        collapsible: true,
-        defaultOpen: true,
-        rows: [] as Array<{
-          id: string;
-          name: string;
-          amount: string;
-          badge: string;
-          subAmount?: string;
-          iconTone: 'bank' | 'cash' | 'crypto' | 'debt' | 'neutral';
-          section: PortfolioSection;
-          iconKey?: string | null;
-          cryptoSymbol?: string | null;
-        }>,
-      },
-      debt: {
-        id: 'debt',
-        title: t('balance', 'sectionDebt'),
-        total: '',
-        variant: 'strip' as const,
-        collapsible: true,
-        defaultOpen: true,
-        rows: [] as Array<{
-          id: string;
-          name: string;
-          amount: string;
-          badge: string;
-          subAmount?: string;
-          iconTone: 'bank' | 'cash' | 'crypto' | 'debt' | 'neutral';
-          section: PortfolioSection;
-          iconKey?: string | null;
-          cryptoSymbol?: string | null;
-        }>,
-      },
-    };
-
-    const accountMeta: Record<
-      string,
-      {
-        section: 'bank' | 'cash' | 'crypto' | 'debt';
-        label: string;
-        badge: string;
-        iconKey?: string | null;
-        debtPhrase?: string;
-        aliases?: string[];
-      }
-    > = {
-      pumb: { section: 'bank', label: 'pumb', badge: 'P', aliases: ['pumb uah', 'пумб'] },
-      privat24: { section: 'bank', label: 'Privat24', badge: 'PB', aliases: ['privat', 'приват24', 'приват'] },
-      wallet: { section: 'cash', label: 'Wallet', badge: 'W', aliases: ['готівка', 'кеш'] },
-      crypto: { section: 'crypto', label: 'crypto', badge: 'ETH' },
-      sol: { section: 'crypto', label: 'sol', badge: 'S' },
-      ton: { section: 'crypto', label: 'Ton', badge: 'T' },
-      usdt: { section: 'crypto', label: 'usdt', badge: 'U', aliases: ['tether', 'usdc'] },
-      misha: { section: 'debt', label: 'Misha', badge: 'M', debtPhrase: 'мені винні', aliases: ['миша'] },
-    };
-
-    for (const row of portfolio) {
-      const k = row.accountKey.trim().toLowerCase();
-      if (!k) continue;
-      const badgeRaw = (row.badge ?? '').trim();
-      const nameRaw = row.name.trim() || k;
-      const badge =
-        badgeRaw.slice(0, 2).toUpperCase() ||
-        nameRaw.replace(/[^a-zA-Zа-яА-ЯіІїЇєЄґҐ0-9]/g, '').slice(0, 2).toUpperCase() ||
-        k.slice(0, 2).toUpperCase();
-      const prev = accountMeta[k];
-      accountMeta[k] = {
-        section: row.section,
-        label: nameRaw,
-        badge: badge.slice(0, 2),
-        iconKey: row.iconKey ?? prev?.iconKey ?? null,
-        debtPhrase:
-          row.section === 'debt' && row.debtPhrase?.trim()
-            ? row.debtPhrase.trim()
-            : prev?.debtPhrase,
-        aliases: prev?.aliases,
-      };
-    }
-
-    transactions.forEach((tx) => {
-      for (const effect of getTransactionAccountEffects(tx)) {
-        const slug = effect.accountKey;
-        if (!slug || accountMeta[slug]) continue;
-        accountMeta[slug] = {
-          section: 'bank',
-          label: slug,
-          badge: slug.slice(0, 2).toUpperCase(),
-        };
-      }
-    });
-
-    const aliasToKey = new Map<string, string>();
-    (Object.keys(accountMeta) as string[]).forEach((k) => {
-      const meta = accountMeta[k];
-      aliasToKey.set(normalizeLabel(String(k)), k);
-      aliasToKey.set(normalizeLabel(meta.label), k);
-      for (const a of meta.aliases ?? []) {
-        aliasToKey.set(normalizeLabel(a), k);
-      }
-    });
-
-    type AccountTotals = {
-      uah: number;
-      pln: number;
-      byCurrency: Map<string, number>;
-    };
-
-    const emptyTotals = (): AccountTotals => ({
-      uah: 0,
-      pln: 0,
-      byCurrency: new Map<string, number>(),
-    });
-
-    const pickPrimaryFiat = (totals: AccountTotals): { amount: number; currency: 'UAH' | 'PLN' } => {
-      const aU = Math.abs(totals.uah);
-      const aP = Math.abs(totals.pln);
-      if (aU === 0 && aP === 0) return { amount: 0, currency: 'PLN' };
-      if (aP >= aU) return { amount: totals.pln, currency: 'PLN' };
-      return { amount: totals.uah, currency: 'UAH' };
-    };
-
-    const accountTotals = new Map<string, AccountTotals>();
-
-    const resolveAccountKey = (rawCategoryId: string): string | null => {
-      const id = rawCategoryId.trim();
-      if (!id) return null;
-
-      const direct = id.toLowerCase();
-      if (accountMeta[direct]) {
-        return direct;
-      }
-
-      const fromCustomName = getCustomCategoryName(id);
-      if (fromCustomName) {
-        const hit = aliasToKey.get(normalizeLabel(fromCustomName));
-        if (hit) return hit;
-      }
-
-      const hay = normalizeLabel(`${fromCustomName ?? ''} ${id}`);
-      for (const [alias, k] of aliasToKey.entries()) {
-        if (!alias) continue;
-        if (hay.includes(alias)) return k;
-      }
-
-      return null;
-    };
-
-    (Object.keys(accountMeta) as string[]).forEach((k) => {
-      accountTotals.set(String(k), emptyTotals());
-    });
-
-    transactions.forEach((tx) => {
-      const fallbackKey = resolveAccountKey(tx.categoryId);
-      const effects = getTransactionAccountEffects(tx);
-      if (effects.length === 0 && fallbackKey) {
-        const meta = accountMeta[fallbackKey];
-        if (!meta) return;
-        const sign = tx.type === 'income' ? 1 : -1;
-        const txCurrency = tx.currency;
-        const current = accountTotals.get(String(fallbackKey)) ?? emptyTotals();
-        current.byCurrency.set(txCurrency, (current.byCurrency.get(txCurrency) ?? 0) + sign * tx.amount);
-        if (txCurrency === 'PLN') current.pln += sign * tx.amount;
-        else if (txCurrency === 'UAH') current.uah += sign * tx.amount;
-        accountTotals.set(String(fallbackKey), current);
-        return;
-      }
-
-      for (const effect of effects) {
-        const key = String(effect.accountKey ?? '').trim().toLowerCase();
-        if (!key) continue;
-        const meta = accountMeta[key];
-        if (!meta) continue;
-        const current = accountTotals.get(String(key)) ?? emptyTotals();
-        current.byCurrency.set(effect.currency, (current.byCurrency.get(effect.currency) ?? 0) + effect.delta);
-        if (effect.currency === 'PLN') current.pln += effect.delta;
-        else if (effect.currency === 'UAH') current.uah += effect.delta;
-        accountTotals.set(String(key), current);
-      }
-    });
-
-    const pushAccount = (key: string) => {
-      const meta = accountMeta[key];
-      const total = accountTotals.get(String(key)) ?? emptyTotals();
-      const primary = pickPrimaryFiat(total);
-      const amountText = formatGroupAmount(primary.amount, primary.currency);
-      const firstNonFiat = Array.from(total.byCurrency.entries()).find(
-        ([currency, amount]) => currency !== 'UAH' && currency !== 'PLN' && amount > 0
-      );
-      const iconTone: 'bank' | 'cash' | 'crypto' | 'debt' | 'neutral' =
-        meta.section === 'debt' ? 'debt' : meta.section === 'bank' ? 'bank' : meta.section;
-      const cur = firstNonFiat?.[0]?.toUpperCase() ?? '';
-      const cryptoFromFiat =
-        meta.section === 'crypto' && ['BTC', 'ETH', 'SOL', 'TON', 'USDT'].includes(cur) ? cur : null;
-      base[meta.section].rows.push({
-        id: String(key),
-        name: meta.label,
-        amount: meta.debtPhrase ? `${meta.debtPhrase} ${amountText}` : amountText,
-        badge: meta.badge,
-        iconTone,
-        section: meta.section,
-        iconKey: meta.iconKey ?? null,
-        cryptoSymbol: cryptoFromFiat,
-        subAmount: firstNonFiat
-          ? `${Math.abs(firstNonFiat[1]).toLocaleString('ru-RU', { maximumFractionDigits: 8 })} ${firstNonFiat[0]}`
-          : undefined,
-      });
-    };
-
-    const ROW_KEY_ORDER = ['pumb', 'privat24', 'wallet', 'crypto', 'sol', 'ton', 'usdt', 'misha'];
-    const orderedAccountKeys = [
-      ...ROW_KEY_ORDER.filter((k) => accountMeta[k]),
-      ...Object.keys(accountMeta)
-        .filter((k) => !ROW_KEY_ORDER.includes(k))
-        .sort((a, b) => a.localeCompare(b)),
-    ];
-    orderedAccountKeys.forEach((k) => pushAccount(k));
-
-    const calculateSectionTotal = (rows: Array<{ id: string }>) => {
-      if (!rows.length) return formatGroupAmount(0, displayCurrency);
-      const sumDisplay = rows.reduce((acc, row) => {
-        const totals = accountTotals.get(row.id) ?? emptyTotals();
-        for (const [currency, amount] of totals.byCurrency.entries()) {
-          acc += convertAmount(amount, currency as 'UAH' | 'PLN' | 'USD', displayCurrency);
-        }
-        return acc;
-      }, 0);
-      return formatGroupAmount(sumDisplay, displayCurrency);
-    };
-
-    base.bank.total = calculateSectionTotal(base.bank.rows);
-    base.cash.total = calculateSectionTotal(base.cash.rows);
-    base.crypto.total = calculateSectionTotal(base.crypto.rows);
-    base.debt.total = calculateSectionTotal(base.debt.rows);
-
-    return [base.bank, base.cash, base.crypto, base.debt];
-  }, [transactions, t, portfolio, convertAmount, displayCurrency]);
-
-  const portfolioSnapshotSections = useMemo(() => {
+  const sections = useMemo(() => {
     type Row = {
       id: string;
       name: string;
@@ -456,25 +206,18 @@ const Accounts: React.FC = () => {
 
     const sumSectionFiat = (key: PortfolioSection) => {
       const list = portfolio.filter((r) => r.section === key);
-      if (!list.length) {
-        return formatGroupAmount(0, displayCurrency);
-      }
+      if (!list.length) return formatGroupAmount(0, displayCurrency);
       const sumDisplay = list.reduce((a, r) => {
-          const position = r.section === 'crypto' ? parseCryptoPosition(r.subText) : null;
-          const marketUsd = position ? (cryptoUsdPrices[position.symbol] ?? 0) * position.amount : 0;
-          const dynamicPrimary =
-            position && marketUsd > 0
-              ? convertAmount(marketUsd, 'USD', r.primaryCurrency)
-              : r.primaryAmount;
-          return a + convertAmount(dynamicPrimary, r.primaryCurrency, displayCurrency);
-        }, 0);
+        const position = r.section === 'crypto' ? parseCryptoPosition(r.subText) : null;
+        const marketUsd = position ? (cryptoUsdPrices[position.symbol] ?? 0) * position.amount : 0;
+        const dynamicPrimary =
+          position && marketUsd > 0
+            ? convertAmount(marketUsd, 'USD', r.primaryCurrency)
+            : r.primaryAmount;
+        return a + convertAmount(dynamicPrimary, r.primaryCurrency, displayCurrency);
+      }, 0);
       return formatGroupAmount(sumDisplay, displayCurrency);
     };
-
-    const bankRows = rowsFor('bank');
-    const cashRows = rowsFor('cash');
-    const cryptoRows = rowsFor('crypto');
-    const debtRows = rowsFor('debt');
 
     return [
       {
@@ -484,7 +227,7 @@ const Accounts: React.FC = () => {
         variant: 'strip' as const,
         collapsible: true,
         defaultOpen: true,
-        rows: bankRows,
+        rows: rowsFor('bank'),
       },
       {
         id: 'cash',
@@ -493,7 +236,7 @@ const Accounts: React.FC = () => {
         variant: 'strip' as const,
         collapsible: true,
         defaultOpen: true,
-        rows: cashRows,
+        rows: rowsFor('cash'),
       },
       {
         id: 'crypto',
@@ -502,7 +245,7 @@ const Accounts: React.FC = () => {
         variant: 'strip' as const,
         collapsible: true,
         defaultOpen: true,
-        rows: cryptoRows,
+        rows: rowsFor('crypto'),
       },
       {
         id: 'debt',
@@ -511,12 +254,10 @@ const Accounts: React.FC = () => {
         variant: 'strip' as const,
         collapsible: true,
         defaultOpen: true,
-        rows: debtRows,
+        rows: rowsFor('debt'),
       },
     ];
   }, [portfolio, t, convertAmount, displayCurrency, cryptoUsdPrices]);
-
-  const sections = portfolio.length > 0 ? portfolioSnapshotSections : txSections;
 
   const handleRowPress = useCallback(
     (id: string) => {
@@ -524,7 +265,7 @@ const Accounts: React.FC = () => {
       if (!row) return;
       setEditing(mapPortfolioToEditable(row));
     },
-    [portfolio]
+    [portfolio],
   );
 
   const handleSaveAccount = useCallback(
@@ -555,7 +296,7 @@ const Accounts: React.FC = () => {
       }
       await refreshAccounts();
     },
-    [refreshAccounts]
+    [refreshAccounts],
   );
 
   const handleDeleteAccount = useCallback(
@@ -570,25 +311,44 @@ const Accounts: React.FC = () => {
       }
       await refreshAccounts();
     },
-    [refreshAccounts]
+    [refreshAccounts],
   );
+
+  const isEmpty = portfolio.length === 0;
 
   return (
     <div className={styles.container}>
       <div className={styles.content}>
         <Header />
-        {portfolio.length > 0 ? (
-          <button
-            type="button"
-            className={styles.addButton}
-            onClick={() => setEditing(createEmptyAccount('bank', portfolio))}
-            aria-label="Додати акаунт"
-          >
-            <Plus size={18} strokeWidth={2.6} />
-            <span>Додати рахунок</span>
-          </button>
-        ) : null}
-        <AccountsSnapshot sections={sections} onRowPress={portfolio.length > 0 ? handleRowPress : undefined} />
+        <button
+          type="button"
+          className={styles.addButton}
+          onClick={() => setEditing(createEmptyAccount('bank', portfolio))}
+          aria-label="Додати акаунт"
+        >
+          <Plus size={18} strokeWidth={2.6} />
+          <span>Додати рахунок</span>
+        </button>
+        {isEmpty ? (
+          <div className={styles.emptyState}>
+            <p className={styles.emptyTitle}>Рахунків ще немає</p>
+            <p className={styles.emptyHint}>Натисніть + або оберіть шаблон</p>
+            <div className={styles.templateGrid}>
+              {ACCOUNT_TEMPLATES.map((tmpl) => (
+                <button
+                  key={tmpl.label}
+                  type="button"
+                  className={styles.templateBtn}
+                  onClick={() => setEditing(createFromTemplate(tmpl, portfolio))}
+                >
+                  {tmpl.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <AccountsSnapshot sections={sections} onRowPress={handleRowPress} />
+        )}
         <div className={styles.spacer} />
       </div>
       {editing ? (

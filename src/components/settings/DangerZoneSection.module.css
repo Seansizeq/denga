@@ -1,0 +1,96 @@
+.deleteRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px;
+  background: transparent;
+  border: none;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.deleteRow:active {
+  background-color: rgba(255, 80, 80, 0.06);
+}
+
+.icon {
+  color: var(--accent-red, #ff5f5f);
+  flex-shrink: 0;
+}
+
+.deleteLabel {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--accent-red, #ff5f5f);
+}
+
+.confirmBox {
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.warning {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.error {
+  font-size: 13px;
+  color: var(--accent-red, #ff5f5f);
+  margin: 0;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+.cancelBtn {
+  flex: 1;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.cancelBtn:active {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.cancelBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dangerBtn {
+  flex: 1;
+  padding: 12px;
+  border-radius: 14px;
+  border: none;
+  background: rgba(255, 80, 80, 0.18);
+  color: var(--accent-red, #ff5f5f);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.dangerBtn:active {
+  background: rgba(255, 80, 80, 0.28);
+}
+
+.dangerBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
