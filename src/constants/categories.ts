@@ -18,6 +18,7 @@ export const CATEGORIES: CategoryDef[] = [
 
   { id: 'salary', icon: 'Wallet', color: '#32D74B', type: 'income' },
   { id: 'other_income', icon: 'Coins', color: '#30B0C7', type: 'income' },
+  { id: 'debt_return', icon: 'HandCoins', color: '#ff8a8a', type: 'income' },
 ];
 
 const CUSTOM_CATEGORY_PREFIX = 'custom:';

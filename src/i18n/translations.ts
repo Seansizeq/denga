@@ -374,6 +374,7 @@ type Dict = {
     transfer: string;
     other_income: string;
     other_expense: string;
+    debt_return: string;
   };
   scan: {
     title: string;
@@ -774,6 +775,7 @@ const uk: Dict = {
     transfer: 'Переказ',
     other_income: 'Корекція балансу',
     other_expense: 'Інше',
+    debt_return: 'Повернення боргу',
   },
   scan: {
     title: 'Сканер чека',
@@ -1179,6 +1181,7 @@ const ru: Dict = {
     transfer: 'Перевод',
     other_income: 'Корекція балансу',
     other_expense: 'Другое',
+    debt_return: 'Возврат долга',
   },
   scan: {
     title: 'Сканер чека',
@@ -1584,6 +1587,7 @@ const en: Dict = {
     transfer: 'Transfer',
     other_income: 'Корекція балансу',
     other_expense: 'Other',
+    debt_return: 'Debt return',
   },
   scan: {
     title: 'Receipt Scan',

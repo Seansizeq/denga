@@ -4113,7 +4113,7 @@ app.post('/api/accounts/:key/payment', authMiddleware, async (req, res) => {
     );
     await db.run(
       `INSERT INTO transactions (id, user_id, type, amount, currency, categoryId, date, note, fromAccountKey, toAccountKey)
-       VALUES (?, ?, 'income', ?, ?, 'other_income', ?, ?, ?, NULL)`,
+       VALUES (?, ?, 'income', ?, ?, 'debt_return', ?, ?, ?, NULL)`,
       [txId, userId, amount, currency, today,
        note || `Повернення: ${account.name}`, accountKey]
     );
