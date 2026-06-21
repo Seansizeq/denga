@@ -115,14 +115,14 @@ const Accounts: React.FC = () => {
   const [picking, setPicking] = useState(false);
   const [editing, setEditing] = useState<EditableAccount | null>(null);
 
-  const handlePickSection = useCallback(
-    (section: PickableSection) => setEditing(createEmptyAccount(section, portfolio)),
-    [portfolio],
-  );
-
   const portfolio = useMemo<readonly PortfolioAccountRow[]>(
     () => accounts.map(parsePortfolioRow).filter((r): r is PortfolioAccountRow => Boolean(r)),
     [accounts],
+  );
+
+  const handlePickSection = useCallback(
+    (section: PickableSection) => setEditing(createEmptyAccount(section, portfolio)),
+    [portfolio],
   );
 
   const cryptoUsdPrices = cryptoPrices;
@@ -134,7 +134,7 @@ const Accounts: React.FC = () => {
       amount: string;
       badge: string;
       subAmount?: string;
-      iconTone: 'bank' | 'cash' | 'crypto' | 'debt' | 'neutral';
+      iconTone: 'bank' | 'cash' | 'crypto' | 'stocks' | 'debt' | 'neutral';
       section: PortfolioSection;
       iconKey: string | null;
       cryptoSymbol: string | null;
