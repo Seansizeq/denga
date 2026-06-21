@@ -7,6 +7,7 @@ import {
   HandCoins,
   Landmark,
   PiggyBank,
+  TrendingUp,
   Wallet,
 } from 'lucide-react';
 
@@ -20,6 +21,7 @@ export const ACCOUNT_ICON_KEYS = [
   'Coins',
   'CircleDollarSign',
   'HandCoins',
+  'TrendingUp',
 ] as const;
 
 export type AccountIconKey = (typeof ACCOUNT_ICON_KEYS)[number];
@@ -33,6 +35,7 @@ const ICON_MAP: Record<Exclude<AccountIconKey, 'auto'>, LucideIcon> = {
   Coins,
   CircleDollarSign,
   HandCoins,
+  TrendingUp,
 };
 
 const isAccountIconKey = (v: string): v is AccountIconKey =>
@@ -44,7 +47,7 @@ export function parseStoredIconKey(raw: string | null | undefined): AccountIconK
   return isAccountIconKey(s) ? s : null;
 }
 
-type AccountSection = 'bank' | 'cash' | 'crypto' | 'debt';
+type AccountSection = 'bank' | 'cash' | 'crypto' | 'stocks' | 'debt';
 
 export function defaultAccountIconKey(
   accountKey: string,
@@ -65,6 +68,7 @@ export function defaultAccountIconKey(
     if (sym === 'USDT' || sym === 'USDC') return 'CircleDollarSign';
     return 'Coins';
   }
+  if (section === 'stocks') return 'TrendingUp';
   if (section === 'debt') return 'HandCoins';
   return 'CreditCard';
 }

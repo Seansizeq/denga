@@ -119,6 +119,11 @@
   color: #021018;
 }
 
+.iconStocks {
+  background: linear-gradient(180deg, rgba(100, 230, 150, 0.95) 0%, rgba(52, 199, 89, 0.9) 100%);
+  color: #022210;
+}
+
 .iconDebt {
   background: linear-gradient(180deg, rgba(255, 132, 132, 0.95) 0%, rgba(232, 72, 72, 0.9) 100%);
   color: #220607;

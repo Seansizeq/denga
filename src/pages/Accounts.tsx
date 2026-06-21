@@ -3,6 +3,7 @@ import { Plus } from 'lucide-react';
 import Header from '../components/ui/Header';
 import AccountsSnapshot from '../components/ui/AccountsSnapshot';
 import AccountEditSheet, { type EditableAccount } from '../components/ui/AccountEditSheet';
+import SectionPickerSheet, { type PickableSection } from '../components/ui/SectionPickerSheet';
 import { usePortfolio } from '../context/PortfolioContext';
 import { useTranslation } from '../i18n/LanguageContext';
 import { apiFetch } from '../api/client';
@@ -10,8 +11,8 @@ import { sanitizeAccountBadge } from '../utils/accountIcons';
 import { parseCryptoPosition } from '../utils/cryptoPosition';
 import styles from './Accounts.module.css';
 
-type PortfolioSection = 'bank' | 'cash' | 'crypto' | 'debt';
-type IconTone = 'bank' | 'cash' | 'crypto' | 'debt' | 'neutral';
+type PortfolioSection = 'bank' | 'cash' | 'crypto' | 'stocks' | 'debt';
+type IconTone = 'bank' | 'cash' | 'crypto' | 'stocks' | 'debt' | 'neutral';
 
 type PortfolioAccountRow = {
   accountKey: string;
@@ -27,7 +28,7 @@ type PortfolioAccountRow = {
   debtPhrase: string | null;
 };
 
-const isPortfolioSection = (v: string): v is PortfolioSection => ['bank', 'cash', 'crypto', 'debt'].includes(v);
+const isPortfolioSection = (v: string): v is PortfolioSection => ['bank', 'cash', 'crypto', 'stocks', 'debt'].includes(v);
 
 const parsePortfolioRow = (raw: unknown): PortfolioAccountRow | null => {
   if (!raw || typeof raw !== 'object') return null;
@@ -45,7 +46,7 @@ const parsePortfolioRow = (raw: unknown): PortfolioAccountRow | null => {
   const badge = typeof r.badge === 'string' ? r.badge : null;
   const iconKey = typeof r.iconKey === 'string' && r.iconKey.trim() ? r.iconKey.trim() : null;
   const iconRaw = typeof r.iconTone === 'string' ? r.iconTone.trim() : 'neutral';
-  const iconTone: IconTone = ['bank', 'cash', 'crypto', 'debt', 'neutral'].includes(iconRaw)
+  const iconTone: IconTone = ['bank', 'cash', 'crypto', 'stocks', 'debt', 'neutral'].includes(iconRaw)
     ? (iconRaw as IconTone)
     : 'neutral';
   return {
@@ -96,43 +97,6 @@ const createEmptyAccount = (section: PortfolioSection, existing: readonly Portfo
   };
 };
 
-const ACCOUNT_TEMPLATES: Array<{
-  label: string;
-  section: PortfolioSection;
-  iconTone: IconTone;
-  badge: string;
-  iconKey: string;
-  primaryCurrency: 'UAH' | 'PLN';
-}> = [
-  { label: 'Monobank', section: 'bank', iconTone: 'bank', badge: 'MB', iconKey: 'CreditCard', primaryCurrency: 'UAH' },
-  { label: 'PrivatBank', section: 'bank', iconTone: 'bank', badge: 'PB', iconKey: 'Landmark', primaryCurrency: 'UAH' },
-  { label: 'Готівка', section: 'cash', iconTone: 'cash', badge: 'KSH', iconKey: 'Wallet', primaryCurrency: 'UAH' },
-  { label: 'Готівка PLN', section: 'cash', iconTone: 'cash', badge: 'PLN', iconKey: 'Banknote', primaryCurrency: 'PLN' },
-  { label: 'USDT', section: 'crypto', iconTone: 'crypto', badge: 'USDT', iconKey: 'CircleDollarSign', primaryCurrency: 'UAH' },
-  { label: 'Bitcoin', section: 'crypto', iconTone: 'crypto', badge: 'BTC', iconKey: 'Coins', primaryCurrency: 'UAH' },
-];
-
-const createFromTemplate = (
-  tmpl: (typeof ACCOUNT_TEMPLATES)[number],
-  existing: readonly PortfolioAccountRow[],
-): EditableAccount => {
-  const maxSort = existing
-    .filter((r) => r.section === tmpl.section)
-    .reduce((max, r) => Math.max(max, r.sortIndex), 0);
-  return {
-    accountKey: '',
-    section: tmpl.section,
-    sortIndex: maxSort + 10,
-    name: tmpl.label,
-    primaryAmount: 0,
-    primaryCurrency: tmpl.primaryCurrency,
-    subText: '',
-    iconTone: tmpl.iconTone,
-    badge: tmpl.badge,
-    iconKey: tmpl.iconKey,
-    debtPhrase: '',
-  };
-};
 
 const formatGroupAmount = (amount: number, currency: string) => {
   const normalized = Number.isFinite(amount) ? amount : 0;
@@ -148,7 +112,13 @@ const formatGroupAmount = (amount: number, currency: string) => {
 const Accounts: React.FC = () => {
   const { t, displayCurrency, convertAmount } = useTranslation();
   const { accounts, cryptoPrices, refreshAccounts } = usePortfolio();
+  const [picking, setPicking] = useState(false);
   const [editing, setEditing] = useState<EditableAccount | null>(null);
+
+  const handlePickSection = useCallback(
+    (section: PickableSection) => setEditing(createEmptyAccount(section, portfolio)),
+    [portfolio],
+  );
 
   const portfolio = useMemo<readonly PortfolioAccountRow[]>(
     () => accounts.map(parsePortfolioRow).filter((r): r is PortfolioAccountRow => Boolean(r)),
@@ -248,6 +218,15 @@ const Accounts: React.FC = () => {
         rows: rowsFor('crypto'),
       },
       {
+        id: 'stocks',
+        title: 'Акції',
+        total: sumSectionFiat('stocks'),
+        variant: 'strip' as const,
+        collapsible: true,
+        defaultOpen: true,
+        rows: rowsFor('stocks'),
+      },
+      {
         id: 'debt',
         title: t('balance', 'sectionDebt'),
         total: sumSectionFiat('debt'),
@@ -314,8 +293,6 @@ const Accounts: React.FC = () => {
     [refreshAccounts],
   );
 
-  const isEmpty = portfolio.length === 0;
-
   return (
     <div className={styles.container}>
       <div className={styles.content}>
@@ -323,34 +300,27 @@ const Accounts: React.FC = () => {
         <button
           type="button"
           className={styles.addButton}
-          onClick={() => setEditing(createEmptyAccount('bank', portfolio))}
-          aria-label="Додати акаунт"
+          onClick={() => setPicking(true)}
+          aria-label="Додати рахунок"
         >
           <Plus size={18} strokeWidth={2.6} />
           <span>Додати рахунок</span>
         </button>
-        {isEmpty ? (
+        {portfolio.length === 0 ? (
           <div className={styles.emptyState}>
             <p className={styles.emptyTitle}>Рахунків ще немає</p>
-            <p className={styles.emptyHint}>Натисніть + або оберіть шаблон</p>
-            <div className={styles.templateGrid}>
-              {ACCOUNT_TEMPLATES.map((tmpl) => (
-                <button
-                  key={tmpl.label}
-                  type="button"
-                  className={styles.templateBtn}
-                  onClick={() => setEditing(createFromTemplate(tmpl, portfolio))}
-                >
-                  {tmpl.label}
-                </button>
-              ))}
-            </div>
+            <p className={styles.emptyHint}>Натисніть + щоб додати перший рахунок</p>
           </div>
         ) : (
           <AccountsSnapshot sections={sections} onRowPress={handleRowPress} />
         )}
         <div className={styles.spacer} />
       </div>
+      <SectionPickerSheet
+        open={picking}
+        onClose={() => setPicking(false)}
+        onSelect={handlePickSection}
+      />
       {editing ? (
         <AccountEditSheet
           key={editing.accountKey}

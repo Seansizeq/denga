@@ -8,13 +8,13 @@ import styles from './AccountEditSheet.module.css';
 
 export type EditableAccount = {
   accountKey: string;
-  section: 'bank' | 'cash' | 'crypto' | 'debt';
+  section: 'bank' | 'cash' | 'crypto' | 'stocks' | 'debt';
   sortIndex: number;
   name: string;
   primaryAmount: number;
   primaryCurrency: 'UAH' | 'PLN';
   subText: string;
-  iconTone: 'bank' | 'cash' | 'crypto' | 'debt' | 'neutral';
+  iconTone: 'bank' | 'cash' | 'crypto' | 'stocks' | 'debt' | 'neutral';
   badge: string;
   /** Empty string = automatic icon from section / account key. */
   iconKey: string;
@@ -36,22 +36,24 @@ const parseMoney = (raw: string): number | null => {
 };
 
 const COLOR_OPTIONS: Array<{ tone: EditableAccount['iconTone']; label: string; swatch: string }> = [
-  { tone: 'bank', label: 'Жовтий', swatch: '#ffb020' },
-  { tone: 'cash', label: 'Фіолетовий', swatch: '#8f74ff' },
-  { tone: 'crypto', label: 'Блакитний', swatch: '#58b7ff' },
-  { tone: 'debt', label: 'Червоний', swatch: '#ff6b6b' },
+  { tone: 'bank',    label: 'Жовтий',      swatch: '#ffb020' },
+  { tone: 'cash',    label: 'Фіолетовий',  swatch: '#8f74ff' },
+  { tone: 'crypto',  label: 'Блакитний',   swatch: '#58b7ff' },
+  { tone: 'stocks',  label: 'Зелений',     swatch: '#4ade80' },
+  { tone: 'debt',    label: 'Червоний',    swatch: '#ff6b6b' },
   { tone: 'neutral', label: 'Нейтральний', swatch: '#73737c' },
 ];
 
 const LUCIDE_PICKS: Array<{ key: Exclude<AccountIconKey, 'auto'>; label: string }> = [
-  { key: 'CreditCard', label: 'Картка' },
-  { key: 'Landmark', label: 'Банк' },
-  { key: 'Wallet', label: 'Гаманець' },
-  { key: 'Banknote', label: 'Готівка' },
-  { key: 'PiggyBank', label: 'Заощад.' },
-  { key: 'Coins', label: 'Крипта' },
-  { key: 'CircleDollarSign', label: 'Стейбл' },
-  { key: 'HandCoins', label: 'Борг' },
+  { key: 'CreditCard',       label: 'Картка'   },
+  { key: 'Landmark',         label: 'Банк'     },
+  { key: 'Wallet',           label: 'Гаманець' },
+  { key: 'Banknote',         label: 'Готівка'  },
+  { key: 'PiggyBank',        label: 'Заощад.'  },
+  { key: 'Coins',            label: 'Крипта'   },
+  { key: 'TrendingUp',       label: 'Акції'    },
+  { key: 'CircleDollarSign', label: 'Стейбл'   },
+  { key: 'HandCoins',        label: 'Борг'     },
 ];
 
 const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, onSave, onDelete }) => {
@@ -199,6 +201,7 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
                 <option value="bank">Карти</option>
                 <option value="cash">Готівка</option>
                 <option value="crypto">Крипта</option>
+                <option value="stocks">Акції</option>
                 <option value="debt">Борг</option>
               </select>
             </label>

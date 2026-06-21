@@ -4018,16 +4018,16 @@ app.post('/api/accounts', async (req, res) => {
     res.status(400).json({ error: 'primaryAmount must be a number' });
     return;
   }
-  if (!['bank', 'cash', 'crypto', 'debt'].includes(section)) {
-    res.status(400).json({ error: 'section must be bank, cash, crypto, or debt' });
+  if (!['bank', 'cash', 'crypto', 'stocks', 'debt'].includes(section)) {
+    res.status(400).json({ error: 'section must be bank, cash, crypto, stocks, or debt' });
     return;
   }
   if (!Number.isFinite(sortIndex)) {
     res.status(400).json({ error: 'sortIndex must be a number' });
     return;
   }
-  if (!['bank', 'cash', 'crypto', 'debt', 'neutral'].includes(iconTone)) {
-    res.status(400).json({ error: 'iconTone must be bank, cash, crypto, debt, or neutral' });
+  if (!['bank', 'cash', 'crypto', 'stocks', 'debt', 'neutral'].includes(iconTone)) {
+    res.status(400).json({ error: 'iconTone must be bank, cash, crypto, stocks, debt, or neutral' });
     return;
   }
 
@@ -4111,16 +4111,16 @@ app.put('/api/accounts/:key', async (req, res) => {
     res.status(400).json({ error: 'primaryAmount must be a number' });
     return;
   }
-  if (!['bank', 'cash', 'crypto', 'debt'].includes(section)) {
-    res.status(400).json({ error: 'section must be bank, cash, crypto, or debt' });
+  if (!['bank', 'cash', 'crypto', 'stocks', 'debt'].includes(section)) {
+    res.status(400).json({ error: 'section must be bank, cash, crypto, stocks, or debt' });
     return;
   }
   if (!Number.isFinite(sortIndex)) {
     res.status(400).json({ error: 'sortIndex must be a number' });
     return;
   }
-  if (!['bank', 'cash', 'crypto', 'debt', 'neutral'].includes(iconTone)) {
-    res.status(400).json({ error: 'iconTone must be bank, cash, crypto, debt, or neutral' });
+  if (!['bank', 'cash', 'crypto', 'stocks', 'debt', 'neutral'].includes(iconTone)) {
+    res.status(400).json({ error: 'iconTone must be bank, cash, crypto, stocks, debt, or neutral' });
     return;
   }
 
