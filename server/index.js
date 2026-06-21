@@ -4083,6 +4083,48 @@ app.put('/api/accounts/:key', async (req, res) => {
   res.json(row);
 });
 
+app.post('/api/accounts/:key/payment', authMiddleware, async (req, res) => {
+  const userId = req.authUserId;
+  const accountKey = String(req.params.key ?? '').trim();
+  const amount = Number(req.body?.amount);
+  const note = typeof req.body?.note === 'string' ? req.body.note.trim() : '';
+
+  if (!accountKey) { res.status(400).json({ error: 'invalid key' }); return; }
+  if (!Number.isFinite(amount) || amount <= 0) { res.status(400).json({ error: 'amount must be positive' }); return; }
+
+  const account = await db.get(
+    `SELECT primary_amount, primary_currency, name FROM account_portfolio
+     WHERE user_id = ? AND account_key = ? AND section = 'debt' LIMIT 1`,
+    [userId, accountKey]
+  );
+  if (!account) { res.status(404).json({ error: 'debt account not found' }); return; }
+
+  const newAmount = Math.max(0, Number(account.primary_amount) - amount);
+  const now = new Date().toISOString();
+  const today = now.slice(0, 10);
+  const txId = uuidv4();
+  const currency = account.primary_currency === 'PLN' ? 'PLN' : 'UAH';
+
+  await db.run('BEGIN IMMEDIATE');
+  try {
+    await db.run(
+      'UPDATE account_portfolio SET primary_amount = ?, updatedAt = ? WHERE user_id = ? AND account_key = ?',
+      [newAmount, now, userId, accountKey]
+    );
+    await db.run(
+      `INSERT INTO transactions (id, user_id, type, amount, currency, categoryId, date, note, fromAccountKey, toAccountKey)
+       VALUES (?, ?, 'income', ?, ?, 'other_income', ?, ?, ?, NULL)`,
+      [txId, userId, amount, currency, today,
+       note || `Повернення: ${account.name}`, accountKey]
+    );
+    await db.run('COMMIT');
+  } catch (e) {
+    await db.run('ROLLBACK');
+    throw e;
+  }
+  res.json({ newAmount, transactionId: txId });
+});
+
 app.delete('/api/accounts/:key', async (req, res) => {
   const userId = req.authUserId;
   const accountKey = String(req.params.key ?? '').trim();

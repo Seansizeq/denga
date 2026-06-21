@@ -3,6 +3,7 @@ import { Plus } from 'lucide-react';
 import Header from '../components/ui/Header';
 import AccountsSnapshot from '../components/ui/AccountsSnapshot';
 import AccountEditSheet, { type EditableAccount } from '../components/ui/AccountEditSheet';
+import DebtDetailSheet from '../components/ui/DebtDetailSheet';
 import SectionPickerSheet, { type PickableSection } from '../components/ui/SectionPickerSheet';
 import { usePortfolio } from '../context/PortfolioContext';
 import { useTranslation } from '../i18n/LanguageContext';
@@ -114,6 +115,7 @@ const Accounts: React.FC = () => {
   const { accounts, cryptoPrices, refreshAccounts } = usePortfolio();
   const [picking, setPicking] = useState(false);
   const [editing, setEditing] = useState<EditableAccount | null>(null);
+  const [debtDetail, setDebtDetail] = useState<PortfolioAccountRow | null>(null);
 
   const portfolio = useMemo<readonly PortfolioAccountRow[]>(
     () => accounts.map(parsePortfolioRow).filter((r): r is PortfolioAccountRow => Boolean(r)),
@@ -242,9 +244,26 @@ const Accounts: React.FC = () => {
     (id: string) => {
       const row = portfolio.find((r) => r.accountKey === id);
       if (!row) return;
-      setEditing(mapPortfolioToEditable(row));
+      if (row.section === 'debt') {
+        setDebtDetail(row);
+      } else {
+        setEditing(mapPortfolioToEditable(row));
+      }
     },
     [portfolio],
+  );
+
+  const handleDebtPayment = useCallback(
+    async (accountKey: string, amount: number, note: string) => {
+      const res = await apiFetch(`/api/accounts/${encodeURIComponent(accountKey)}/payment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount, note }),
+      });
+      if (!res.ok) throw new Error('payment failed');
+      await refreshAccounts();
+    },
+    [refreshAccounts],
   );
 
   const handleSaveAccount = useCallback(
@@ -321,6 +340,17 @@ const Accounts: React.FC = () => {
         onClose={() => setPicking(false)}
         onSelect={handlePickSection}
       />
+      {debtDetail ? (
+        <DebtDetailSheet
+          account={debtDetail}
+          onClose={() => setDebtDetail(null)}
+          onPayment={handleDebtPayment}
+          onEdit={() => {
+            setEditing(mapPortfolioToEditable(debtDetail));
+            setDebtDetail(null);
+          }}
+        />
+      ) : null}
       {editing ? (
         <AccountEditSheet
           key={editing.accountKey}
