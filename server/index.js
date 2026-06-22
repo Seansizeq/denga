@@ -404,7 +404,7 @@ const runSubscriptionAutopayForUser = async (userId) => {
             try {
               await bot.sendMessage(
                 cid,
-                `💳 Списано підписку: ${sub.name} — ${Number(amount).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} ${tx.currency}`
+                `${CATEGORY_EMOJI[subCategoryId] ?? '💳'} ${sub.name} −${Number(amount).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} ${tx.currency} · підписка`
               );
             } catch (e) {
               console.error('[subscriptions] autopay telegram notify failed', e);
@@ -4124,7 +4124,7 @@ app.delete('/api/accounts/:key', async (req, res) => {
 app.get('/api/transactions', async (req, res) => {
   const userId = req.authUserId;
   await runSubscriptionAutopayForUser(userId);
-  const transactions = await db.all('SELECT * FROM transactions WHERE user_id = ? ORDER BY date DESC', [userId]);
+  const transactions = await db.all('SELECT * FROM transactions WHERE user_id = ? ORDER BY date DESC, rowid DESC', [userId]);
   res.json(transactions);
 });
 
