@@ -2460,7 +2460,6 @@ if (bot) {
         }
       }
     );
-    await sendBotMainMenu(msg.chat.id);
   });
   bot.onText(/\/menu/i, async (msg) => {
     if (!msg.chat?.id) return;
