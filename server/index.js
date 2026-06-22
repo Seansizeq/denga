@@ -2449,10 +2449,18 @@ if (bot) {
   bot.onText(/\/start/, async (msg) => {
     await upsertBotUser(db, msg.from.id, msg.chat.id);
     await ensureReportSettings(db, String(msg.from.id));
-    await sendBotMainMenu(
+    await bot.sendMessage(
       msg.chat.id,
-      'Привіт 👋 Це Denga.\nКористуйся кнопками нижче для звітів і змін.\nЩоб швидко додати транзакцію — просто надішли суму (наприклад, 100).'
+      '👋 Привіт!\n\nDenga — особистий фінансовий трекер.\nРахунки, витрати, звіти — все в одному місці.\n\nВідкрий застосунок щоб почати 👇',
+      {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🚀 Відкрити Denga', web_app: { url: 'https://denga.vibelearn.site' } }
+          ]]
+        }
+      }
     );
+    await sendBotMainMenu(msg.chat.id);
   });
   bot.onText(/\/menu/i, async (msg) => {
     if (!msg.chat?.id) return;
