@@ -821,10 +821,11 @@ const dispatchReminder = async (dbConn, userId, reminder, timeZone, chatId, slot
         [userId, target]
       );
       if (!Array.isArray(due) || due.length === 0) return;
-      const lines = [`🔔 ${String(reminder.title || 'Нагадування про підписки')} (${target})`];
-      due.slice(0, 10).forEach((sub, idx) => {
+      const headerVerb = due.length === 1 ? 'списується' : 'списуються';
+      const lines = [`Завтра ${headerVerb}:`];
+      due.slice(0, 10).forEach((sub) => {
         const cur = normalizeCurrency(sub.currency);
-        lines.push(`${idx + 1}. ${sub.name} — ${Number(sub.amount || 0).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} ${cur}`);
+        lines.push(`💳 ${sub.name} — ${Number(sub.amount || 0).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} ${cur}`);
       });
       await sendTracked(lines.join('\n'));
       return;
