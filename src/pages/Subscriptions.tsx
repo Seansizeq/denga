@@ -14,7 +14,7 @@ const SUBSCRIPTIONS_STORAGE_KEY = 'denga_subscriptions_v1';
 type BillingCycle = 'monthly' | 'yearly';
 type SubscriptionCurrency = PlannerCurrency;
 
-const EXPENSE_CATEGORIES = CATEGORIES.filter((c) => c.type === 'expense');
+const BUILTIN_EXPENSE_CATEGORIES = CATEGORIES.filter((c) => c.type === 'expense');
 const DEFAULT_CATEGORY_ID = 'other_expense';
 
 interface Subscription {
@@ -65,6 +65,7 @@ const Subscriptions: React.FC = () => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [listError, setListError] = useState('');
   const [actionError, setActionError] = useState('');
+  const [customCategories, setCustomCategories] = useState<Array<{ id: string; name: string }>>([]);
 
   const load = useCallback(async () => {
     setListError('');
@@ -94,6 +95,14 @@ const Subscriptions: React.FC = () => {
 
   useEffect(() => {
     void load();
+    apiFetch('/api/custom-categories?type=expense')
+      .then((r) => r.ok ? r.json() : [])
+      .then((data: unknown) => {
+        if (Array.isArray(data)) {
+          setCustomCategories(data.map((c: { id: string; name: string }) => ({ id: c.id, name: c.name })));
+        }
+      })
+      .catch(() => {});
   }, [load]);
 
   const activeItems = useMemo(() => items.filter((s) => s.active), [items]);
@@ -119,14 +128,16 @@ const Subscriptions: React.FC = () => {
 
   const categoryLabel = useCallback(
     (id: string): string => {
-      const custom = getCustomCategoryName(id);
-      if (custom) return custom;
-      if (EXPENSE_CATEGORIES.some((c) => c.id === id)) {
+      const fromLoaded = customCategories.find((c) => c.id === id);
+      if (fromLoaded) return fromLoaded.name;
+      const fromLegacy = getCustomCategoryName(id);
+      if (fromLegacy) return fromLegacy;
+      if (BUILTIN_EXPENSE_CATEGORIES.some((c) => c.id === id)) {
         return t('categories', id as CategoryKey);
       }
       return t('categories', DEFAULT_CATEGORY_ID);
     },
-    [t],
+    [t, customCategories],
   );
 
   const resetForm = useCallback(() => {
@@ -445,13 +456,18 @@ const Subscriptions: React.FC = () => {
                 </button>
               </div>
               <select
-                value={EXPENSE_CATEGORIES.some((c) => c.id === categoryId) ? categoryId : DEFAULT_CATEGORY_ID}
+                value={categoryId}
                 onChange={(e) => setCategoryId(e.target.value)}
                 aria-label={t('subscriptions', 'category')}
               >
-                {EXPENSE_CATEGORIES.map((c) => (
+                {BUILTIN_EXPENSE_CATEGORIES.map((c) => (
                   <option key={c.id} value={c.id}>
                     {t('categories', c.id as CategoryKey)}
+                  </option>
+                ))}
+                {customCategories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
                   </option>
                 ))}
               </select>
