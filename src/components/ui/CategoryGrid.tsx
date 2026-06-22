@@ -98,13 +98,15 @@ const CategoryGrid: React.FC<CategoryGridProps> = ({
   const { t } = useTranslation();
   const filtered = CATEGORIES.filter((c) => c.type === type);
   const normalizeName = (value: string): string => value.trim().toLocaleLowerCase();
-  const builtInNameSet = new Set(
-    filtered.map((category) => {
-      const override = categoryOverrides[category.id] ?? {};
-      const displayName = override.name?.trim() || t('categories', category.id as CategoryKey);
-      return normalizeName(displayName);
-    })
-  );
+  const builtInNameSet = new Set<string>();
+  for (const category of filtered) {
+    const override = categoryOverrides[category.id] ?? {};
+    const displayName = override.name?.trim() || t('categories', category.id as CategoryKey);
+    builtInNameSet.add(normalizeName(displayName));
+    for (const alias of category.aliases ?? []) {
+      builtInNameSet.add(normalizeName(alias));
+    }
+  }
   const seenCustomNames = new Set<string>();
 
   return (

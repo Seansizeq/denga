@@ -5,20 +5,21 @@ export interface CategoryDef {
   icon: string;
   color: string;
   type: 'income' | 'expense' | 'transfer';
+  aliases?: readonly string[];
 }
 
 export const CATEGORIES: CategoryDef[] = [
-  { id: 'food', icon: 'Utensils', color: '#FF9F0A', type: 'expense' },
-  { id: 'transport', icon: 'Car', color: '#0A84FF', type: 'expense' },
-  { id: 'home', icon: 'Home', color: '#5E5CE6', type: 'expense' },
-  { id: 'entertainment', icon: 'Gamepad2', color: '#AF52DE', type: 'expense' },
-  { id: 'health', icon: 'Pill', color: '#FF2D55', type: 'expense' },
-  { id: 'other_expense', icon: 'Receipt', color: '#8E8E93', type: 'expense' },
+  { id: 'food', icon: 'Utensils', color: '#FF9F0A', type: 'expense', aliases: ['food', 'groceries', 'продукты', 'еда'] },
+  { id: 'transport', icon: 'Car', color: '#0A84FF', type: 'expense', aliases: ['transport', 'transportation', 'транспорт'] },
+  { id: 'home', icon: 'Home', color: '#5E5CE6', type: 'expense', aliases: ['home', 'housing', 'дом', 'жилье', 'житло'] },
+  { id: 'entertainment', icon: 'Gamepad2', color: '#AF52DE', type: 'expense', aliases: ['entertainment', 'розваги', 'развлечения'] },
+  { id: 'health', icon: 'Pill', color: '#FF2D55', type: 'expense', aliases: ['health', 'healthcare', 'здоровье', 'здоров\'я'] },
+  { id: 'other_expense', icon: 'Receipt', color: '#8E8E93', type: 'expense', aliases: ['other', 'other expense', 'others', 'misc', 'miscellaneous', 'другое', 'прочее', 'інше', 'uncategorised', 'uncategorised expense', 'uncategorized', 'uncategorized expense'] },
   { id: 'transfer', icon: 'ArrowRightLeft', color: '#5AC8FA', type: 'transfer' },
 
-  { id: 'salary', icon: 'Wallet', color: '#32D74B', type: 'income' },
-  { id: 'other_income', icon: 'Coins', color: '#30B0C7', type: 'income' },
-  { id: 'debt_return', icon: 'HandCoins', color: '#ff8a8a', type: 'income' },
+  { id: 'salary', icon: 'Wallet', color: '#32D74B', type: 'income', aliases: ['salary', 'зарплата'] },
+  { id: 'other_income', icon: 'Coins', color: '#30B0C7', type: 'income', aliases: ['other income', 'other', 'другой доход', 'корекція балансу'] },
+  { id: 'debt_return', icon: 'HandCoins', color: '#ff8a8a', type: 'income', aliases: ['debt return', 'debt', 'возврат долга'] },
 ];
 
 const CUSTOM_CATEGORY_PREFIX = 'custom:';
