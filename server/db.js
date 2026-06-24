@@ -24,6 +24,21 @@ export async function initDb() {
     console.error('[db] PRAGMA setup failed', e);
   }
 
+  // Shift planner feature removed — drop its tables if they still exist from older versions.
+  for (const t of [
+    'planner_days',
+    'planner_shift_entries',
+    'planner_shift_templates',
+    'planner_user_settings',
+    'bot_active_shifts',
+  ]) {
+    try {
+      await db.exec(`DROP TABLE IF EXISTS ${t}`);
+    } catch {
+      /* ignore */
+    }
+  }
+
   await db.exec(`
     CREATE TABLE IF NOT EXISTS transactions (
       id TEXT PRIMARY KEY,
@@ -55,19 +70,6 @@ export async function initDb() {
     /* already exists */
   }
 
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS bot_active_shifts (
-      user_id TEXT PRIMARY KEY,
-      started_at TEXT NOT NULL,
-      started_day TEXT NOT NULL,
-      template_id TEXT,
-      salary_rate REAL NOT NULL DEFAULT 0,
-      salary_amount REAL NOT NULL DEFAULT 0,
-      salary_currency TEXT NOT NULL DEFAULT 'UAH',
-      shift_note TEXT NOT NULL DEFAULT '',
-      updated_at TEXT NOT NULL
-    )
-  `);
   await db.exec(`
     CREATE TABLE IF NOT EXISTS bot_report_settings (
       user_id TEXT PRIMARY KEY,
@@ -105,6 +107,8 @@ export async function initDb() {
       updated_at TEXT NOT NULL
     )
   `);
+  // Shift planner removed — drop its reminder rows so they never appear or fire.
+  await db.exec(`DELETE FROM user_reminders WHERE kind IN ('shift_evening_before', 'shift_unclosed')`);
   await db.exec(`
     CREATE TABLE IF NOT EXISTS reminder_deliveries (
       user_id TEXT NOT NULL,
@@ -114,84 +118,6 @@ export async function initDb() {
       PRIMARY KEY (user_id, reminder_id, slot_key)
     )
   `);
-  try {
-    await db.exec(`ALTER TABLE bot_active_shifts ADD COLUMN template_id TEXT`);
-  } catch {
-    /* already exists */
-  }
-  try {
-    await db.exec(`ALTER TABLE bot_active_shifts ADD COLUMN salary_rate REAL NOT NULL DEFAULT 0`);
-  } catch {
-    /* already exists */
-  }
-  try {
-    await db.exec(`ALTER TABLE bot_active_shifts ADD COLUMN salary_amount REAL NOT NULL DEFAULT 0`);
-  } catch {
-    /* already exists */
-  }
-  try {
-    await db.exec(`ALTER TABLE bot_active_shifts ADD COLUMN salary_currency TEXT NOT NULL DEFAULT 'UAH'`);
-  } catch {
-    /* already exists */
-  }
-  try {
-    await db.exec(`ALTER TABLE bot_active_shifts ADD COLUMN shift_note TEXT NOT NULL DEFAULT ''`);
-  } catch {
-    /* already exists */
-  }
-
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS planner_days (
-      day TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL DEFAULT '',
-      hasShift INTEGER NOT NULL DEFAULT 0,
-      workedHours REAL NOT NULL DEFAULT 0,
-      salaryRate REAL NOT NULL DEFAULT 0,
-      salaryAmount REAL NOT NULL DEFAULT 0,
-      note TEXT NOT NULL DEFAULT '',
-      updatedAt TEXT NOT NULL
-    )
-  `);
-
-  // Backward-compatible migration for existing databases.
-  try {
-    await db.exec('ALTER TABLE planner_days ADD COLUMN workedHours REAL NOT NULL DEFAULT 0');
-  } catch {
-    // Column already exists.
-  }
-
-  try {
-    await db.exec(`ALTER TABLE planner_days ADD COLUMN salary_currency TEXT NOT NULL DEFAULT 'UAH'`);
-  } catch {
-    /* already exists */
-  }
-
-  try {
-    await db.exec(`ALTER TABLE planner_shift_templates ADD COLUMN currency TEXT NOT NULL DEFAULT 'UAH'`);
-  } catch {
-    /* already exists */
-  }
-  try {
-    await db.exec(`ALTER TABLE planner_shift_templates ADD COLUMN salary_rate REAL NOT NULL DEFAULT 0`);
-  } catch {
-    /* already exists */
-  }
-  try {
-    await db.exec(`ALTER TABLE planner_shift_templates ADD COLUMN salary_amount REAL NOT NULL DEFAULT 0`);
-  } catch {
-    /* already exists */
-  }
-
-  try {
-    await db.exec(
-      `UPDATE planner_shift_templates SET normalized_key = normalized_key || '::UAH'
-       WHERE normalized_key NOT LIKE '%::UAH' AND normalized_key NOT LIKE '%::PLN'
-         AND normalized_key LIKE '%::%' AND normalized_key NOT LIKE '%::%::%'`
-    );
-  } catch {
-    /* ignore */
-  }
-
   await db.exec(`
     CREATE TABLE IF NOT EXISTS custom_categories (
       id TEXT PRIMARY KEY,
@@ -237,61 +163,6 @@ export async function initDb() {
   } catch {
     /* already exists */
   }
-
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS planner_user_settings (
-      user_id TEXT PRIMARY KEY,
-      default_shift_template_id TEXT,
-      automation_token TEXT,
-      updated_at TEXT NOT NULL
-    )
-  `);
-  try {
-    await db.exec(`ALTER TABLE planner_user_settings ADD COLUMN automation_token TEXT`);
-  } catch {
-    /* already exists */
-  }
-  try {
-    await db.exec(`ALTER TABLE planner_user_settings ADD COLUMN default_shift_template_id TEXT`);
-  } catch {
-    /* already exists */
-  }
-
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS planner_shift_templates (
-      id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL DEFAULT '',
-      normalized_key TEXT NOT NULL UNIQUE,
-      name TEXT NOT NULL DEFAULT '',
-      symbol TEXT NOT NULL DEFAULT '',
-      is_full_day INTEGER NOT NULL DEFAULT 1,
-      start_time TEXT NOT NULL DEFAULT '09:00',
-      end_time TEXT NOT NULL DEFAULT '17:00',
-      worked_hours REAL NOT NULL DEFAULT 8,
-      salary_rate REAL NOT NULL DEFAULT 0,
-      salary_amount REAL NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    )
-  `);
-
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS planner_shift_entries (
-      id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL DEFAULT '',
-      day TEXT NOT NULL,
-      started_at TEXT NOT NULL,
-      ended_at TEXT NOT NULL,
-      worked_hours REAL NOT NULL DEFAULT 0,
-      salary_rate REAL NOT NULL DEFAULT 0,
-      salary_amount REAL NOT NULL DEFAULT 0,
-      salary_currency TEXT NOT NULL DEFAULT 'UAH',
-      note TEXT NOT NULL DEFAULT '',
-      template_id TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    )
-  `);
 
   await db.exec(`
     CREATE TABLE IF NOT EXISTS account_portfolio (
@@ -347,16 +218,6 @@ export async function initDb() {
   }
   try {
     await db.exec(`ALTER TABLE subscriptions ADD COLUMN user_id TEXT NOT NULL DEFAULT ''`);
-  } catch {
-    /* already exists */
-  }
-  try {
-    await db.exec(`ALTER TABLE planner_days ADD COLUMN user_id TEXT NOT NULL DEFAULT ''`);
-  } catch {
-    /* already exists */
-  }
-  try {
-    await db.exec(`ALTER TABLE planner_shift_templates ADD COLUMN user_id TEXT NOT NULL DEFAULT ''`);
   } catch {
     /* already exists */
   }
@@ -441,18 +302,6 @@ export async function initDb() {
   await db.exec(`
     CREATE INDEX IF NOT EXISTS idx_subscriptions_user_active
     ON subscriptions(user_id, active)
-  `);
-  await db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_planner_days_user_day
-    ON planner_days(user_id, day)
-  `);
-  await db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_planner_shift_templates_user
-    ON planner_shift_templates(user_id, updated_at DESC)
-  `);
-  await db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_planner_shift_entries_user_day
-    ON planner_shift_entries(user_id, day, ended_at DESC)
   `);
   await db.exec(`
     CREATE INDEX IF NOT EXISTS idx_accounts_user_sort

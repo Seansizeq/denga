@@ -96,7 +96,7 @@ const CategoryGrid: React.FC<CategoryGridProps> = ({
   onManageCategory,
 }) => {
   const { t } = useTranslation();
-  const filtered = CATEGORIES.filter((c) => c.type === type);
+  const filtered = CATEGORIES.filter((c) => c.type === type || c.type === 'both');
   const normalizeName = (value: string): string => value.trim().toLocaleLowerCase();
   const builtInNameSet = new Set<string>();
   for (const category of filtered) {

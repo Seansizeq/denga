@@ -13,7 +13,7 @@ export function isCategoryValidForType(
   customCategoryIds: string[],
 ): boolean {
   const builtIn = CATEGORIES.find((c) => c.id === categoryId);
-  if (builtIn) return builtIn.type === type;
+  if (builtIn) return builtIn.type === type || builtIn.type === 'both';
   return customCategoryIds.includes(categoryId);
 }
 

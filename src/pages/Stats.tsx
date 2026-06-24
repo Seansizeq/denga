@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { PieChart } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useTransactions } from '../context/TransactionContext';
@@ -6,12 +6,9 @@ import { useTranslation } from '../i18n/LanguageContext';
 import { getBudgets, type CategoryBudget } from '../api/client';
 import { useStatsPeriod } from '../hooks/useStatsPeriod';
 import { useStatsAggregates } from '../hooks/useStatsAggregates';
-import { buildTrendBuckets, type TrendBucket } from '../utils/statsTrendBuckets';
 import { toIsoDateParam, type StatsRange } from '../utils/statsPeriod';
 import StatsPeriodNav from '../components/stats/StatsPeriodNav';
 import StatsSummaryStrip from '../components/stats/StatsSummaryStrip';
-import StatsInsightsGrid from '../components/stats/StatsInsightsGrid';
-import StatsTrendChart from '../components/stats/StatsTrendChart';
 import StatsCategoryChart from '../components/stats/StatsCategoryChart';
 import styles from './Stats.module.css';
 
@@ -19,7 +16,7 @@ const RANGE_OPTIONS: StatsRange[] = ['today', 'week', 'month', 'year'];
 
 const Stats: React.FC = () => {
   const navigate = useNavigate();
-  const { t, locale, convertAmount } = useTranslation();
+  const { t, convertAmount } = useTranslation();
   const { transactions } = useTransactions();
 
   const { range, setRange, anchors, bounds, previousBounds, periodLabel, isCurrent, goPrev, goNext, goToCurrent } =
@@ -51,11 +48,6 @@ const Stats: React.FC = () => {
     chartType,
   });
 
-  const trendBuckets = useMemo(
-    () => buildTrendBuckets({ transactions, convertAmount, type: chartType, range, anchors, locale }),
-    [transactions, convertAmount, chartType, range, anchors, locale],
-  );
-
   const openHistory = useCallback(
     (opts: { categoryId?: string; from?: Date; to?: Date }) => {
       const sp = new URLSearchParams();
@@ -66,11 +58,6 @@ const Stats: React.FC = () => {
       navigate(`/history?${sp.toString()}`);
     },
     [chartType, bounds, navigate],
-  );
-
-  const handleBucketClick = useCallback(
-    (bucket: TrendBucket) => openHistory({ from: bucket.from, to: bucket.to }),
-    [openHistory],
   );
 
   const showBudgets = chartType === 'expense' && range === 'month';
@@ -154,19 +141,6 @@ const Stats: React.FC = () => {
         )}
       </section>
 
-      {chartType === 'expense' && (
-        <section className={styles.section}>
-          <h2 className={styles.sectionTitle}>{t('stats', 'insightsTitle')}</h2>
-          <StatsInsightsGrid
-            insights={aggregates.insights}
-            onCategoryClick={(categoryId) => openHistory({ categoryId })}
-          />
-        </section>
-      )}
-
-      {range !== 'today' && hasCategoryData && (
-        <StatsTrendChart buckets={trendBuckets} onBucketClick={handleBucketClick} />
-      )}
     </div>
   );
 };

@@ -1,59 +1,37 @@
-import React, { useState } from 'react';
-import { ChevronDown } from 'lucide-react';
+import React from 'react';
 import { useTranslation } from '../../i18n/LanguageContext';
 import type { Reminder } from '../../api/client';
 import { getReminderMeta, clampReminderParam } from '../../utils/settingsReminders';
 import Switch from '../ui/Switch';
 import styles from './ReminderAccordionItem.module.css';
 
-interface ReminderAccordionItemProps {
+interface ReminderItemProps {
   reminder: Reminder;
   saving: boolean;
   onPatch: (patch: Partial<Reminder>) => void;
 }
 
-const ReminderAccordionItem: React.FC<ReminderAccordionItemProps> = ({ reminder, saving, onPatch }) => {
+const ReminderItem: React.FC<ReminderItemProps> = ({ reminder, saving, onPatch }) => {
   const { t } = useTranslation();
   const meta = getReminderMeta(reminder.kind);
-  const [expanded, setExpanded] = useState(reminder.enabled);
-
-  const showBody = reminder.enabled && expanded;
-
-  const handleToggle = (next: boolean) => {
-    if (next) setExpanded(true);
-    onPatch({ enabled: next });
-  };
 
   return (
     <div className={`${styles.item} ${reminder.enabled ? '' : styles.itemMuted}`}>
       <div className={styles.header}>
-        <button
-          type="button"
-          className={styles.headerMain}
-          onClick={() => reminder.enabled && setExpanded((v) => !v)}
-          disabled={!reminder.enabled}
-          aria-expanded={showBody}
-        >
+        <div className={styles.headerMain}>
           <span className={styles.title}>{t('settings', meta.titleKey)}</span>
-          {reminder.enabled ? (
-            <ChevronDown
-              size={18}
-              strokeWidth={2.2}
-              className={`${styles.chevron} ${showBody ? '' : styles.chevronClosed}`}
-            />
-          ) : null}
-        </button>
+          <p className={styles.description}>{t('settings', meta.descriptionKey)}</p>
+        </div>
         <Switch
           checked={reminder.enabled}
           disabled={saving}
-          onChange={handleToggle}
+          onChange={(next) => onPatch({ enabled: next })}
           aria-label={t('settings', meta.titleKey)}
         />
       </div>
 
-      {showBody ? (
+      {reminder.enabled ? (
         <div className={styles.body}>
-          <p className={styles.description}>{t('settings', meta.descriptionKey)}</p>
           {meta.hasTime ? (
             <div className={styles.field}>
               <span className={styles.fieldLabel}>{t('settings', 'reminderTimeLabel')}</span>
@@ -89,4 +67,4 @@ const ReminderAccordionItem: React.FC<ReminderAccordionItemProps> = ({ reminder,
   );
 };
 
-export default ReminderAccordionItem;
+export default ReminderItem;

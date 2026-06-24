@@ -4,7 +4,7 @@ export interface CategoryDef {
   id: CategoryKey;
   icon: string;
   color: string;
-  type: 'income' | 'expense' | 'transfer';
+  type: 'income' | 'expense' | 'transfer' | 'both';
   aliases?: readonly string[];
 }
 
@@ -18,8 +18,9 @@ export const CATEGORIES: CategoryDef[] = [
   { id: 'transfer', icon: 'ArrowRightLeft', color: '#5AC8FA', type: 'transfer' },
 
   { id: 'salary', icon: 'Wallet', color: '#32D74B', type: 'income', aliases: ['salary', 'зарплата'] },
-  { id: 'other_income', icon: 'Coins', color: '#30B0C7', type: 'income', aliases: ['other income', 'other', 'другой доход', 'корекція балансу'] },
+  { id: 'other_income', icon: 'Coins', color: '#30B0C7', type: 'income', aliases: ['other income', 'other', 'другой доход'] },
   { id: 'debt_return', icon: 'HandCoins', color: '#ff8a8a', type: 'income', aliases: ['debt return', 'debt', 'возврат долга'] },
+  { id: 'balance_correction', icon: 'Receipt', color: '#8E8E93', type: 'both', aliases: ['balance', 'correction', 'корекція балансу', 'корректировка', 'adjust', 'корекц'] },
 ];
 
 const CUSTOM_CATEGORY_PREFIX = 'custom:';

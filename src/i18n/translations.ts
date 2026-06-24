@@ -14,7 +14,7 @@ export const LANGUAGE_FLAGS: Record<Language, string> = {
 };
 
 type Dict = {
-  nav: { home: string; calendar: string; stats: string; subscriptions: string; settings: string };
+  nav: { home: string; add: string; stats: string; subscriptions: string; settings: string };
   dashboard: {
     greeting: string;
     recentTitle: string;
@@ -32,6 +32,7 @@ type Dict = {
     subscriptions: string;
     scan: string;
     goals: string;
+    transfer: string;
   };
   range: { day: string; today: string; week: string; month: string; year: string; custom: string };
   balance: {
@@ -105,100 +106,7 @@ type Dict = {
     clearFilter: string;
   };
   planner: {
-    title: string;
-    subtitle: string;
-    tabCalendar: string;
-    tabSettings: string;
-    monthHint: string;
-    prevMonth: string;
-    nextMonth: string;
-    selectedDate: string;
-    hasShift: string;
-    tapAddShift: string;
-    addShift: string;
-    plannerSettings: string;
-    currency: string;
-    currencyUah: string;
-    currencyPln: string;
-    defaultWorkedHours: string;
-    defaultSalaryRate: string;
-    defaultSalaryAmount: string;
-    generalSettings: string;
-    autoCalcSalary: string;
-    defaultValues: string;
-    templates: string;
-    applyTemplate: string;
-    applyDefaults: string;
-    workingDays: string;
-    backupActions: string;
-    exportSettings: string;
-    importSettings: string;
-    resetSettings: string;
-    importSuccess: string;
-    importError: string;
-    datePreview: string;
-    salaryRate: string;
-    salaryAmount: string;
-    note: string;
-    notePlaceholder: string;
-    report: string;
-    today: string;
-    filledDay: string;
-    filledDays: string;
-    workedHours: string;
-    expectedSalary: string;
-    expectedSalaryUah: string;
-    expectedSalaryPln: string;
     loading: string;
-    unsavedConfirm: string;
-    save: string;
-    saved: string;
-    shiftTitle: string;
-    shiftSymbolLabel: string;
-    fullDay: string;
-    timeStart: string;
-    timeEnd: string;
-    dismiss: string;
-    editShift: string;
-    deleteShift: string;
-    deleteShiftConfirm: string;
-    deleteTemplate: string;
-    deleteTemplateConfirm: string;
-    startShift: string;
-    endShift: string;
-    endShiftConfirm: string;
-    shiftElapsed: string;
-    hoursShort: string;
-    minutesShort: string;
-    chooseStartTemplate: string;
-    startWithoutTemplate: string;
-    defaultShiftTemplate: string;
-    defaultShiftTemplateNone: string;
-    defaultShiftTemplateAsk: string;
-    defaultShiftTemplateWithout: string;
-    defaultShiftTemplateHint: string;
-    defaultShiftTemplateTap: string;
-    defaultShiftTemplateNoTemplates: string;
-    defaultShiftTemplateSaved: string;
-    defaultShiftTemplateSaveFailed: string;
-    dayShifts: string;
-    dayShiftsEmpty: string;
-    reportShiftBanners: string;
-    reportShiftBannersEmpty: string;
-    deleteShiftEntryConfirm: string;
-    editShiftHoursPrompt: string;
-    editShiftAmountPrompt: string;
-    editShiftNotePrompt: string;
-    monthReportTitle: string;
-    dayReportTitle: string;
-    yearReportTitle: string;
-    customReportTitle: string;
-    customRangeFrom: string;
-    customRangeTo: string;
-    reportHoursTotal: string;
-    totalShifts: string;
-    salaryForReportHint: string;
-    shiftPayment: string;
   };
   subscriptions: {
     title: string;
@@ -276,24 +184,15 @@ type Dict = {
     dailyReminder: string;
     subscriptionsReminder: string;
     reminderInactivity: string;
-    reminderShiftEveningBefore: string;
-    reminderShiftUnclosed: string;
     reminderFxChange: string;
     reminderTimeLabel: string;
-    leadDaysLabel: string;
-    fxThresholdLabel: string;
+    remindersHint: string;
     sectionGeneral: string;
     sectionReports: string;
     sectionReminders: string;
-    sectionPlanner: string;
-    reminderGroupExpenses: string;
-    reminderGroupPlanner: string;
-    reminderGroupFx: string;
     reminderDescDaily: string;
     reminderDescSubscriptions: string;
     reminderDescInactivity: string;
-    reminderDescShiftEvening: string;
-    reminderDescShiftUnclosed: string;
     reminderDescFxChange: string;
     paramDaysBefore: string;
     paramInactivityDays: string;
@@ -356,6 +255,7 @@ type Dict = {
     other_income: string;
     other_expense: string;
     debt_return: string;
+    balance_correction: string;
   };
   scan: {
     title: string;
@@ -395,7 +295,7 @@ type Dict = {
 };
 
 const uk: Dict = {
-  nav: { home: 'Головна', calendar: 'Календар', stats: 'Статистика', subscriptions: 'Підписки', settings: 'Налаштування' },
+  nav: { home: 'Головна', add: 'Додати', stats: 'Статистика', subscriptions: 'Підписки', settings: 'Налаштування' },
   dashboard: {
     greeting: 'Привіт',
     recentTitle: 'Операції',
@@ -413,6 +313,7 @@ const uk: Dict = {
     subscriptions: 'Підписки',
     scan: 'Сканер чека',
     goals: 'Цілі',
+    transfer: 'Переказ',
   },
   range: { day: 'День', today: 'Сьогодні', week: 'Тиждень', month: 'Місяць', year: 'Рік', custom: 'Період' },
   balance: {
@@ -486,100 +387,7 @@ const uk: Dict = {
     clearFilter: 'Показати всі',
   },
   planner: {
-    title: 'Календар',
-    subtitle: 'Відмічайте зміни, ставку та зарплату по днях',
-    tabCalendar: 'Календар',
-    tabSettings: 'Налаштування',
-    monthHint: 'Оберіть місяць або гортайте стрілками',
-    prevMonth: 'Попередній місяць',
-    nextMonth: 'Наступний місяць',
-    selectedDate: 'Обрана дата',
-    hasShift: 'Є зміна',
-    tapAddShift: 'Натисніть кнопку, щоб додати зміну на обраний день',
-    addShift: 'Додати зміну',
-    plannerSettings: 'Налаштування зміни',
-    currency: 'Валюта',
-    currencyUah: 'Гривня (₴)',
-    currencyPln: 'Злотий (zł)',
-    defaultWorkedHours: 'Години за замовчуванням',
-    defaultSalaryRate: 'Ставка за замовчуванням',
-    defaultSalaryAmount: 'Зарплата за замовчуванням',
-    generalSettings: 'Загальні налаштування',
-    autoCalcSalary: 'Автообчислення зарплати (години x ставка)',
-    defaultValues: 'Значення за замовчуванням',
-    templates: 'Шаблони зміни',
-    applyTemplate: 'Застосувати шаблон',
-    applyDefaults: 'Застосувати дефолт',
-    workingDays: 'Робочі дні',
-    backupActions: 'Резерв і скидання',
-    exportSettings: 'Експорт налаштувань',
-    importSettings: 'Імпорт налаштувань',
-    resetSettings: 'Скинути налаштування',
-    importSuccess: 'Налаштування імпортовано',
-    importError: 'Помилка імпорту файлу',
-    datePreview: 'Превʼю обраної дати',
-    salaryRate: 'Ставка за зміну',
-    salaryAmount: 'Зарплата за день',
-    note: 'Нотатка',
-    notePlaceholder: 'Наприклад: нічна зміна',
-    report: 'Звіт',
-    today: 'Сьогодні',
-    filledDay: 'Заповнений день',
-    filledDays: 'Заповнено днів',
-    workedHours: 'Відпрацьовано годин',
-    expectedSalary: 'Очікувана зарплата',
-    expectedSalaryUah: 'Очікувана зарплата (₴)',
-    expectedSalaryPln: 'Очікувана зарплата (zł)',
     loading: 'Завантаження...',
-    unsavedConfirm: 'Є незбережені зміни. Продовжити без збереження?',
-    save: 'Зберегти',
-    saved: 'Збережено',
-    shiftTitle: 'Зміна',
-    shiftSymbolLabel: 'Символ',
-    fullDay: 'Увесь день',
-    timeStart: 'Початок',
-    timeEnd: 'Кінець',
-    dismiss: 'Закрити',
-    editShift: 'Редагувати зміну',
-    deleteShift: 'Видалити зміну',
-    deleteShiftConfirm: 'Прибрати зміну з цього дня?',
-    deleteTemplate: 'Видалити шаблон',
-    deleteTemplateConfirm: 'Видалити цей шаблон зі списку?',
-    startShift: 'Почати зміну',
-    endShift: 'Завершити зміну',
-    endShiftConfirm: 'Завершити зміну та зберегти години?',
-    shiftElapsed: 'Триває',
-    hoursShort: 'г',
-    minutesShort: 'хв',
-    chooseStartTemplate: 'Оберіть шаблон для старту',
-    startWithoutTemplate: 'Почати без шаблону',
-    defaultShiftTemplate: 'Шаблон за замовчуванням',
-    defaultShiftTemplateNone: 'Не задано',
-    defaultShiftTemplateAsk: 'Питати щоразу',
-    defaultShiftTemplateWithout: 'Без шаблону',
-    defaultShiftTemplateHint: 'Для Telegram: «почати зміну» стартує одразу з цим шаблоном.',
-    defaultShiftTemplateTap: 'Натисніть, щоб обрати',
-    defaultShiftTemplateNoTemplates: 'Спочатку збережіть шаблон: день у календарі → додати зміну → заповнити й зберегти.',
-    defaultShiftTemplateSaved: 'Шаблон за замовчуванням збережено',
-    defaultShiftTemplateSaveFailed: 'Не вдалося зберегти. Перевірте інтернет або оновіть застосунок.',
-    dayShifts: 'Зміни за день',
-    dayShiftsEmpty: 'Ще немає завершених змін за цей день',
-    reportShiftBanners: 'Кожна зміна',
-    reportShiftBannersEmpty: 'За цей період ще немає завершених змін',
-    deleteShiftEntryConfirm: 'Видалити цю зміну зі звіту?',
-    editShiftHoursPrompt: 'Години для зміни',
-    editShiftAmountPrompt: 'Сума для зміни',
-    editShiftNotePrompt: 'Назва/нотатка зміни',
-    monthReportTitle: 'Звіт за місяць',
-    dayReportTitle: 'Звіт за день',
-    yearReportTitle: 'Звіт за рік',
-    customReportTitle: 'Звіт за період',
-    customRangeFrom: 'З',
-    customRangeTo: 'До',
-    reportHoursTotal: 'Відпрацьовано годин',
-    totalShifts: 'Усього змін',
-    salaryForReportHint: 'Для звіту вкажіть ставку за годину або фіксовану суму за зміну. Валюта: гривня або злотий.',
-    shiftPayment: 'Оплата за зміну',
   },
   subscriptions: {
     title: 'Підписки',
@@ -656,29 +464,20 @@ const uk: Dict = {
     reportSendTime: 'Час надсилання звіту',
     dailyReminder: 'Щоденне нагадування',
     subscriptionsReminder: 'Нагадування про підписки',
-    reminderInactivity: 'Немає витрат N днів',
-    reminderShiftEveningBefore: 'Зміна завтра (планер)',
-    reminderShiftUnclosed: 'Відкрита зміна >8 год',
-    reminderFxChange: 'Зміна курсу валют (%)',
-    reminderTimeLabel: 'Час у Telegram',
-    leadDaysLabel: 'Днів / параметр',
-    fxThresholdLabel: 'Поріг, % (для курсу)',
+    reminderInactivity: 'Якщо давно немає витрат',
+    reminderFxChange: 'Зміна курсу валют',
+    reminderTimeLabel: 'О котрій нагадувати',
+    remindersHint: 'Бот у Telegram нагадає про важливе. Увімкни потрібні нагадування й налаштуй час.',
     sectionGeneral: 'Основне',
     sectionReports: 'Звіти Telegram',
     sectionReminders: 'Нагадування',
-    sectionPlanner: 'Планер',
-    reminderGroupExpenses: 'Витрати',
-    reminderGroupPlanner: 'Планер змін',
-    reminderGroupFx: 'Курс валют',
-    reminderDescDaily: 'Нагадає ввечері внести витрати за день.',
-    reminderDescSubscriptions: 'Попередить за кілька днів до списання підписки.',
-    reminderDescInactivity: 'Напише, якщо кілька днів поспіль немає записів витрат.',
-    reminderDescShiftEvening: 'Нагадає напередодні про заплановану зміну в планері.',
-    reminderDescShiftUnclosed: 'Попередить, якщо зміна відкрита довше ніж 8 годин.',
-    reminderDescFxChange: 'Повідомить, коли курс зміниться більше за поріг.',
-    paramDaysBefore: 'Днів заздалегідь',
-    paramInactivityDays: 'Днів без витрат',
-    paramFxThreshold: 'Поріг, %',
+    reminderDescDaily: 'Щовечора нагадаємо записати витрати за день.',
+    reminderDescSubscriptions: 'Попередимо за кілька днів до списання підписки.',
+    reminderDescInactivity: 'Напишемо, якщо кілька днів поспіль немає жодного запису про витрати.',
+    reminderDescFxChange: 'Сповістимо, коли курс валют зміниться більше ніж на заданий відсоток.',
+    paramDaysBefore: 'За скільки днів попереджати',
+    paramInactivityDays: 'Через скільки днів тиші писати',
+    paramFxThreshold: 'На скільки % має змінитися',
     saved: 'Збережено',
     saveFailed: 'Не вдалося зберегти. Спробуйте ще раз.',
   },
@@ -735,9 +534,10 @@ const uk: Dict = {
     health: "Здоров'я",
     salary: 'Зарплата',
     transfer: 'Переказ',
-    other_income: 'Корекція балансу',
+    other_income: 'Інший дохід',
     other_expense: 'Інше',
     debt_return: 'Повернення боргу',
+    balance_correction: 'Корекція балансу',
   },
   scan: {
     title: 'Сканер чека',
@@ -782,7 +582,7 @@ const uk: Dict = {
 };
 
 const ru: Dict = {
-  nav: { home: 'Главная', calendar: 'Календарь', stats: 'Статистика', subscriptions: 'Подписки', settings: 'Настройки' },
+  nav: { home: 'Главная', add: 'Добавить', stats: 'Статистика', subscriptions: 'Подписки', settings: 'Настройки' },
   dashboard: {
     greeting: 'Привет',
     recentTitle: 'Операции',
@@ -800,6 +600,7 @@ const ru: Dict = {
     subscriptions: 'Подписки',
     scan: 'Сканер чека',
     goals: 'Цели',
+    transfer: 'Перевод',
   },
   range: { day: 'День', today: 'Сегодня', week: 'Неделя', month: 'Месяц', year: 'Год', custom: 'Период' },
   balance: {
@@ -873,100 +674,7 @@ const ru: Dict = {
     clearFilter: 'Показать все',
   },
   planner: {
-    title: 'Календарь',
-    subtitle: 'Отмечайте смены, ставку и зарплату по дням',
-    tabCalendar: 'Календарь',
-    tabSettings: 'Настройки',
-    monthHint: 'Выберите месяц или листайте стрелками',
-    prevMonth: 'Предыдущий месяц',
-    nextMonth: 'Следующий месяц',
-    selectedDate: 'Выбранная дата',
-    hasShift: 'Есть смена',
-    tapAddShift: 'Нажмите кнопку, чтобы добавить смену на выбранный день',
-    addShift: 'Добавить смену',
-    plannerSettings: 'Настройки смены',
-    currency: 'Валюта',
-    currencyUah: 'Гривна (₴)',
-    currencyPln: 'Злотый (zł)',
-    defaultWorkedHours: 'Часы по умолчанию',
-    defaultSalaryRate: 'Ставка по умолчанию',
-    defaultSalaryAmount: 'Зарплата по умолчанию',
-    generalSettings: 'Общие настройки',
-    autoCalcSalary: 'Авторасчёт зарплаты (часы x ставка)',
-    defaultValues: 'Значения по умолчанию',
-    templates: 'Шаблоны смены',
-    applyTemplate: 'Применить шаблон',
-    applyDefaults: 'Применить значения по умолчанию',
-    workingDays: 'Рабочие дни',
-    backupActions: 'Резерв и сброс',
-    exportSettings: 'Экспорт настроек',
-    importSettings: 'Импорт настроек',
-    resetSettings: 'Сбросить настройки',
-    importSuccess: 'Настройки импортированы',
-    importError: 'Ошибка импорта файла',
-    datePreview: 'Превью выбранной даты',
-    salaryRate: 'Ставка за смену',
-    salaryAmount: 'Зарплата за день',
-    note: 'Заметка',
-    notePlaceholder: 'Например: ночная смена',
-    report: 'Отчёт',
-    today: 'Сегодня',
-    filledDay: 'Заполненный день',
-    filledDays: 'Заполнено дней',
-    workedHours: 'Отработано часов',
-    expectedSalary: 'Ожидаемая зарплата',
-    expectedSalaryUah: 'Ожидаемая зарплата (₴)',
-    expectedSalaryPln: 'Ожидаемая зарплата (zł)',
     loading: 'Загрузка...',
-    unsavedConfirm: 'Есть несохранённые изменения. Продолжить без сохранения?',
-    save: 'Сохранить',
-    saved: 'Сохранено',
-    shiftTitle: 'Смена',
-    shiftSymbolLabel: 'Символ',
-    fullDay: 'Весь день',
-    timeStart: 'Начало',
-    timeEnd: 'Конец',
-    dismiss: 'Закрыть',
-    editShift: 'Редактировать смену',
-    deleteShift: 'Удалить смену',
-    deleteShiftConfirm: 'Убрать смену с этого дня?',
-    deleteTemplate: 'Удалить шаблон',
-    deleteTemplateConfirm: 'Удалить этот шаблон из списка?',
-    startShift: 'Начать смену',
-    endShift: 'Закончить смену',
-    endShiftConfirm: 'Закончить смену и сохранить часы?',
-    shiftElapsed: 'Длится',
-    hoursShort: 'ч',
-    minutesShort: 'мин',
-    chooseStartTemplate: 'Выберите шаблон для старта',
-    startWithoutTemplate: 'Начать без шаблона',
-    defaultShiftTemplate: 'Шаблон по умолчанию',
-    defaultShiftTemplateNone: 'Не задан',
-    defaultShiftTemplateAsk: 'Спрашивать каждый раз',
-    defaultShiftTemplateWithout: 'Без шаблона',
-    defaultShiftTemplateHint: 'Для Telegram: «начать смену» сразу стартует с этим шаблоном.',
-    defaultShiftTemplateTap: 'Нажмите, чтобы выбрать',
-    defaultShiftTemplateNoTemplates: 'Сначала сохраните шаблон: день в календаре → добавить смену → заполнить и сохранить.',
-    defaultShiftTemplateSaved: 'Шаблон по умолчанию сохранён',
-    defaultShiftTemplateSaveFailed: 'Не удалось сохранить. Проверьте интернет или обновите приложение.',
-    dayShifts: 'Смены за день',
-    dayShiftsEmpty: 'За этот день пока нет завершённых смен',
-    reportShiftBanners: 'Каждая смена',
-    reportShiftBannersEmpty: 'За этот период пока нет завершённых смен',
-    deleteShiftEntryConfirm: 'Удалить эту смену из отчёта?',
-    editShiftHoursPrompt: 'Часы для смены',
-    editShiftAmountPrompt: 'Сумма для смены',
-    editShiftNotePrompt: 'Название/заметка смены',
-    monthReportTitle: 'Отчёт за месяц',
-    dayReportTitle: 'Отчёт за день',
-    yearReportTitle: 'Отчёт за год',
-    customReportTitle: 'Отчёт за период',
-    customRangeFrom: 'С',
-    customRangeTo: 'По',
-    reportHoursTotal: 'Отработано часов',
-    totalShifts: 'Всего смен',
-    salaryForReportHint: 'Для отчёта укажите ставку за час или фиксированную сумму за смену. Валюта: гривна или злотый.',
-    shiftPayment: 'Оплата за смену',
   },
   subscriptions: {
     title: 'Подписки',
@@ -1043,29 +751,20 @@ const ru: Dict = {
     reportSendTime: 'Время отправки отчёта',
     dailyReminder: 'Ежедневное напоминание',
     subscriptionsReminder: 'Напоминание о подписках',
-    reminderInactivity: 'Нет расходов N дней',
-    reminderShiftEveningBefore: 'Смена завтра (планер)',
-    reminderShiftUnclosed: 'Смена открыта >8 ч',
-    reminderFxChange: 'Изменение курса (%)',
-    reminderTimeLabel: 'Время в Telegram',
-    leadDaysLabel: 'Дней / параметр',
-    fxThresholdLabel: 'Порог, %',
+    reminderInactivity: 'Если давно нет расходов',
+    reminderFxChange: 'Изменение курса валют',
+    reminderTimeLabel: 'Во сколько напоминать',
+    remindersHint: 'Бот в Telegram напомнит о важном. Включи нужные напоминания и настрой время.',
     sectionGeneral: 'Основное',
     sectionReports: 'Отчёты Telegram',
     sectionReminders: 'Напоминания',
-    sectionPlanner: 'Планер',
-    reminderGroupExpenses: 'Расходы',
-    reminderGroupPlanner: 'Планер смен',
-    reminderGroupFx: 'Курс валют',
-    reminderDescDaily: 'Напомнит вечером записать расходы за день.',
-    reminderDescSubscriptions: 'Предупредит за несколько дней до списания подписки.',
-    reminderDescInactivity: 'Напишет, если несколько дней подряд нет записей расходов.',
-    reminderDescShiftEvening: 'Напомнит накануне о запланированной смене в планере.',
-    reminderDescShiftUnclosed: 'Предупредит, если смена открыта дольше 8 часов.',
-    reminderDescFxChange: 'Сообщит, когда курс изменится больше порога.',
-    paramDaysBefore: 'Дней заранее',
-    paramInactivityDays: 'Дней без расходов',
-    paramFxThreshold: 'Порог, %',
+    reminderDescDaily: 'Каждый вечер напомним записать расходы за день.',
+    reminderDescSubscriptions: 'Предупредим за несколько дней до списания подписки.',
+    reminderDescInactivity: 'Напишем, если несколько дней подряд нет ни одной записи о расходах.',
+    reminderDescFxChange: 'Сообщим, когда курс валют изменится больше чем на заданный процент.',
+    paramDaysBefore: 'За сколько дней предупреждать',
+    paramInactivityDays: 'Через сколько дней тишины писать',
+    paramFxThreshold: 'На сколько % должен измениться',
     saved: 'Сохранено',
     saveFailed: 'Не удалось сохранить. Попробуйте ещё раз.',
   },
@@ -1122,9 +821,10 @@ const ru: Dict = {
     health: 'Здоровье',
     salary: 'Зарплата',
     transfer: 'Перевод',
-    other_income: 'Корекція балансу',
+    other_income: 'Другой доход',
     other_expense: 'Другое',
     debt_return: 'Возврат долга',
+    balance_correction: 'Корректировка баланса',
   },
   scan: {
     title: 'Сканер чека',
@@ -1169,7 +869,7 @@ const ru: Dict = {
 };
 
 const en: Dict = {
-  nav: { home: 'Home', calendar: 'Calendar', stats: 'Stats', subscriptions: 'Subscriptions', settings: 'Settings' },
+  nav: { home: 'Home', add: 'Add', stats: 'Stats', subscriptions: 'Subscriptions', settings: 'Settings' },
   dashboard: {
     greeting: 'Hello',
     recentTitle: 'Transactions',
@@ -1187,6 +887,7 @@ const en: Dict = {
     subscriptions: 'Subscriptions',
     scan: 'Receipt scan',
     goals: 'Goals',
+    transfer: 'Transfer',
   },
   range: { day: 'Day', today: 'Today', week: 'Week', month: 'Month', year: 'Year', custom: 'Period' },
   balance: {
@@ -1260,100 +961,7 @@ const en: Dict = {
     clearFilter: 'Show all',
   },
   planner: {
-    title: 'Calendar',
-    subtitle: 'Track shifts, salary rate and pay by date',
-    tabCalendar: 'Calendar',
-    tabSettings: 'Settings',
-    monthHint: 'Pick month or use arrows to navigate',
-    prevMonth: 'Previous month',
-    nextMonth: 'Next month',
-    selectedDate: 'Selected date',
-    hasShift: 'Has shift',
-    tapAddShift: 'Tap the button to add a shift for selected day',
-    addShift: 'Add shift',
-    plannerSettings: 'Shift settings',
-    currency: 'Currency',
-    currencyUah: 'Hryvnia (₴)',
-    currencyPln: 'Zloty (zł)',
-    defaultWorkedHours: 'Default worked hours',
-    defaultSalaryRate: 'Default shift rate',
-    defaultSalaryAmount: 'Default daily salary',
-    generalSettings: 'General settings',
-    autoCalcSalary: 'Auto-calculate salary (hours x rate)',
-    defaultValues: 'Default values',
-    templates: 'Shift templates',
-    applyTemplate: 'Apply template',
-    applyDefaults: 'Apply defaults',
-    workingDays: 'Working days',
-    backupActions: 'Backup and reset',
-    exportSettings: 'Export settings',
-    importSettings: 'Import settings',
-    resetSettings: 'Reset settings',
-    importSuccess: 'Settings imported',
-    importError: 'Failed to import file',
-    datePreview: 'Selected date preview',
-    salaryRate: 'Shift rate',
-    salaryAmount: 'Daily salary',
-    note: 'Note',
-    notePlaceholder: 'Example: night shift',
-    report: 'Report',
-    today: 'Today',
-    filledDay: 'Filled day',
-    filledDays: 'Filled days',
-    workedHours: 'Worked hours',
-    expectedSalary: 'Expected salary',
-    expectedSalaryUah: 'Expected salary (₴)',
-    expectedSalaryPln: 'Expected salary (zł)',
     loading: 'Loading...',
-    unsavedConfirm: 'You have unsaved changes. Continue without saving?',
-    save: 'Save',
-    saved: 'Saved',
-    shiftTitle: 'Shift',
-    shiftSymbolLabel: 'Symbol',
-    fullDay: 'All day',
-    timeStart: 'Start',
-    timeEnd: 'End',
-    dismiss: 'Close',
-    editShift: 'Edit shift',
-    deleteShift: 'Remove shift',
-    deleteShiftConfirm: 'Remove the shift from this day?',
-    deleteTemplate: 'Delete template',
-    deleteTemplateConfirm: 'Remove this template from the list?',
-    startShift: 'Start shift',
-    endShift: 'End shift',
-    endShiftConfirm: 'End shift and save worked hours?',
-    shiftElapsed: 'Elapsed',
-    hoursShort: 'h',
-    minutesShort: 'm',
-    chooseStartTemplate: 'Choose a template to start',
-    startWithoutTemplate: 'Start without template',
-    defaultShiftTemplate: 'Default shift template',
-    defaultShiftTemplateNone: 'Not set',
-    defaultShiftTemplateAsk: 'Ask every time',
-    defaultShiftTemplateWithout: 'Without template',
-    defaultShiftTemplateHint: 'For Telegram: "start shift" begins immediately with this template.',
-    defaultShiftTemplateTap: 'Tap to choose',
-    defaultShiftTemplateNoTemplates: 'Save a template first: pick a day → add shift → fill in and save.',
-    defaultShiftTemplateSaved: 'Default template saved',
-    defaultShiftTemplateSaveFailed: 'Could not save. Check your connection or update the app.',
-    dayShifts: 'Shifts for this day',
-    dayShiftsEmpty: 'No completed shifts for this day yet',
-    reportShiftBanners: 'Each shift',
-    reportShiftBannersEmpty: 'No completed shifts in this period yet',
-    deleteShiftEntryConfirm: 'Delete this shift from the report?',
-    editShiftHoursPrompt: 'Hours for this shift',
-    editShiftAmountPrompt: 'Amount for this shift',
-    editShiftNotePrompt: 'Shift name/note',
-    monthReportTitle: 'Monthly summary',
-    dayReportTitle: 'Daily summary',
-    yearReportTitle: 'Yearly summary',
-    customReportTitle: 'Custom period',
-    customRangeFrom: 'From',
-    customRangeTo: 'To',
-    reportHoursTotal: 'Hours worked',
-    totalShifts: 'Total shifts',
-    salaryForReportHint: 'For the report: hourly rate or fixed amount per shift. Currency: hryvnia or zloty.',
-    shiftPayment: 'Pay for this shift',
   },
   subscriptions: {
     title: 'Subscriptions',
@@ -1430,29 +1038,20 @@ const en: Dict = {
     reportSendTime: 'Report send time',
     dailyReminder: 'Daily reminder',
     subscriptionsReminder: 'Subscription reminder',
-    reminderInactivity: 'No expenses for N days',
-    reminderShiftEveningBefore: 'Shift tomorrow (planner)',
-    reminderShiftUnclosed: 'Open shift >8h',
-    reminderFxChange: 'FX rate change (%)',
-    reminderTimeLabel: 'Telegram time',
-    leadDaysLabel: 'Days / parameter',
-    fxThresholdLabel: 'Threshold, %',
+    reminderInactivity: 'When you stop logging',
+    reminderFxChange: 'FX rate change',
+    reminderTimeLabel: 'When to remind',
+    remindersHint: 'The Telegram bot pings you about what matters. Turn on the reminders you want and set the time.',
     sectionGeneral: 'General',
     sectionReports: 'Telegram reports',
     sectionReminders: 'Reminders',
-    sectionPlanner: 'Planner',
-    reminderGroupExpenses: 'Expenses',
-    reminderGroupPlanner: 'Shift planner',
-    reminderGroupFx: 'FX rate',
-    reminderDescDaily: 'Reminds you in the evening to log the day\u2019s expenses.',
+    reminderDescDaily: 'Reminds you every evening to log the day\u2019s expenses.',
     reminderDescSubscriptions: 'Warns you a few days before a subscription is charged.',
     reminderDescInactivity: 'Pings you if there are no expense entries for several days in a row.',
-    reminderDescShiftEvening: 'Reminds you the day before a shift planned in the planner.',
-    reminderDescShiftUnclosed: 'Warns you if a shift stays open longer than 8 hours.',
-    reminderDescFxChange: 'Notifies you when the rate moves more than the threshold.',
-    paramDaysBefore: 'Days ahead',
-    paramInactivityDays: 'Days without expenses',
-    paramFxThreshold: 'Threshold, %',
+    reminderDescFxChange: 'Notifies you when the exchange rate moves more than your set percentage.',
+    paramDaysBefore: 'Days before to warn',
+    paramInactivityDays: 'Days of silence before pinging',
+    paramFxThreshold: 'Percent change to trigger',
     saved: 'Saved',
     saveFailed: 'Could not save. Please try again.',
   },
@@ -1509,9 +1108,10 @@ const en: Dict = {
     health: 'Health',
     salary: 'Salary',
     transfer: 'Transfer',
-    other_income: 'Корекція балансу',
+    other_income: 'Other income',
     other_expense: 'Other',
     debt_return: 'Debt return',
+    balance_correction: 'Balance correction',
   },
   scan: {
     title: 'Receipt Scan',

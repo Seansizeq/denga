@@ -8,22 +8,14 @@
   text-transform: uppercase;
   letter-spacing: 0.4px;
   color: var(--text-secondary);
-  margin: 0 4px 14px;
+  margin: 0 4px 6px;
 }
 
-.group {
-  margin-bottom: 18px;
-}
-
-.group:last-child {
-  margin-bottom: 0;
-}
-
-.groupLabel {
+.sectionHint {
   font-size: 13px;
-  font-weight: 600;
   color: var(--text-tertiary);
-  margin: 0 4px 8px;
+  line-height: 1.45;
+  margin: 0 4px 14px;
 }
 
 .card {
