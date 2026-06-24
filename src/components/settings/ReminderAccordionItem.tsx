@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from '../../i18n/LanguageContext';
 import type { Reminder } from '../../api/client';
 import { getReminderMeta, clampReminderParam } from '../../utils/settingsReminders';
@@ -14,6 +14,28 @@ interface ReminderItemProps {
 const ReminderItem: React.FC<ReminderItemProps> = ({ reminder, saving, onPatch }) => {
   const { t } = useTranslation();
   const meta = getReminderMeta(reminder.kind);
+
+  // Local input state so typing is free — we only save when the field loses focus,
+  // not on every keystroke (which would clamp/save mid-typing and block input).
+  const [leadDaysInput, setLeadDaysInput] = useState(String(reminder.leadDays));
+  const [timeInput, setTimeInput] = useState(reminder.timeHHMM);
+
+  useEffect(() => {
+    setLeadDaysInput(String(reminder.leadDays));
+  }, [reminder.leadDays]);
+  useEffect(() => {
+    setTimeInput(reminder.timeHHMM);
+  }, [reminder.timeHHMM]);
+
+  const commitLeadDays = () => {
+    const next = clampReminderParam(reminder.kind, Number(leadDaysInput));
+    setLeadDaysInput(String(next));
+    if (next !== reminder.leadDays) onPatch({ leadDays: next });
+  };
+
+  const commitTime = () => {
+    if (timeInput && timeInput !== reminder.timeHHMM) onPatch({ timeHHMM: timeInput });
+  };
 
   return (
     <div className={`${styles.item} ${reminder.enabled ? '' : styles.itemMuted}`}>
@@ -38,9 +60,9 @@ const ReminderItem: React.FC<ReminderItemProps> = ({ reminder, saving, onPatch }
               <input
                 className={styles.timeInput}
                 type="time"
-                value={reminder.timeHHMM}
-                disabled={saving}
-                onChange={(e) => onPatch({ timeHHMM: e.target.value })}
+                value={timeInput}
+                onChange={(e) => setTimeInput(e.target.value)}
+                onBlur={commitTime}
               />
             </div>
           ) : null}
@@ -50,14 +72,13 @@ const ReminderItem: React.FC<ReminderItemProps> = ({ reminder, saving, onPatch }
               <input
                 className={styles.numberInput}
                 type="number"
+                inputMode="numeric"
                 min={meta.param.min}
                 max={meta.param.max}
                 step={1}
-                value={reminder.leadDays}
-                disabled={saving}
-                onChange={(e) =>
-                  onPatch({ leadDays: clampReminderParam(reminder.kind, Number(e.target.value)) })
-                }
+                value={leadDaysInput}
+                onChange={(e) => setLeadDaysInput(e.target.value)}
+                onBlur={commitLeadDays}
               />
             </div>
           ) : null}

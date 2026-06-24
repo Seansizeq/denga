@@ -48,6 +48,15 @@ const ReportsSettingsSection: React.FC = () => {
   const patch = (next: Partial<ReportSettings>) =>
     void run(() => updateReportSettings(next), (value) => setReports(value));
 
+  // Local input state so the time field saves on blur, not on every keystroke.
+  const [sendTimeInput, setSendTimeInput] = useState(reports.sendTime);
+  useEffect(() => {
+    setSendTimeInput(reports.sendTime);
+  }, [reports.sendTime]);
+  const commitSendTime = () => {
+    if (sendTimeInput && sendTimeInput !== reports.sendTime) patch({ sendTime: sendTimeInput });
+  };
+
   return (
     <SettingsSection label={t('settings', 'sectionReports')}>
       <SettingsRow
@@ -78,9 +87,9 @@ const ReportsSettingsSection: React.FC = () => {
           <input
             className={styles.timeInput}
             type="time"
-            value={reports.sendTime}
-            disabled={saving}
-            onChange={(e) => patch({ sendTime: e.target.value })}
+            value={sendTimeInput}
+            onChange={(e) => setSendTimeInput(e.target.value)}
+            onBlur={commitSendTime}
           />
         }
       />
