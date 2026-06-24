@@ -1,68 +1,68 @@
-import React, { useState } from 'react';
-import { ChevronDown } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from '../../i18n/LanguageContext';
 import type { Reminder } from '../../api/client';
 import { getReminderMeta, clampReminderParam } from '../../utils/settingsReminders';
 import Switch from '../ui/Switch';
 import styles from './ReminderAccordionItem.module.css';
 
-interface ReminderAccordionItemProps {
+interface ReminderItemProps {
   reminder: Reminder;
   saving: boolean;
   onPatch: (patch: Partial<Reminder>) => void;
 }
 
-const ReminderAccordionItem: React.FC<ReminderAccordionItemProps> = ({ reminder, saving, onPatch }) => {
+const ReminderItem: React.FC<ReminderItemProps> = ({ reminder, saving, onPatch }) => {
   const { t } = useTranslation();
   const meta = getReminderMeta(reminder.kind);
-  const [expanded, setExpanded] = useState(reminder.enabled);
 
-  const showBody = reminder.enabled && expanded;
+  // Local input state so typing is free — we only save when the field loses focus,
+  // not on every keystroke (which would clamp/save mid-typing and block input).
+  const [leadDaysInput, setLeadDaysInput] = useState(String(reminder.leadDays));
+  const [timeInput, setTimeInput] = useState(reminder.timeHHMM);
 
-  const handleToggle = (next: boolean) => {
-    if (next) setExpanded(true);
-    onPatch({ enabled: next });
+  useEffect(() => {
+    setLeadDaysInput(String(reminder.leadDays));
+  }, [reminder.leadDays]);
+  useEffect(() => {
+    setTimeInput(reminder.timeHHMM);
+  }, [reminder.timeHHMM]);
+
+  const commitLeadDays = () => {
+    const next = clampReminderParam(reminder.kind, Number(leadDaysInput));
+    setLeadDaysInput(String(next));
+    if (next !== reminder.leadDays) onPatch({ leadDays: next });
+  };
+
+  const commitTime = () => {
+    if (timeInput && timeInput !== reminder.timeHHMM) onPatch({ timeHHMM: timeInput });
   };
 
   return (
     <div className={`${styles.item} ${reminder.enabled ? '' : styles.itemMuted}`}>
       <div className={styles.header}>
-        <button
-          type="button"
-          className={styles.headerMain}
-          onClick={() => reminder.enabled && setExpanded((v) => !v)}
-          disabled={!reminder.enabled}
-          aria-expanded={showBody}
-        >
+        <div className={styles.headerMain}>
           <span className={styles.title}>{t('settings', meta.titleKey)}</span>
-          {reminder.enabled ? (
-            <ChevronDown
-              size={18}
-              strokeWidth={2.2}
-              className={`${styles.chevron} ${showBody ? '' : styles.chevronClosed}`}
-            />
-          ) : null}
-        </button>
+          <p className={styles.description}>{t('settings', meta.descriptionKey)}</p>
+        </div>
         <Switch
           checked={reminder.enabled}
           disabled={saving}
-          onChange={handleToggle}
+          onChange={(next) => onPatch({ enabled: next })}
           aria-label={t('settings', meta.titleKey)}
         />
       </div>
 
-      {showBody ? (
+      {reminder.enabled ? (
         <div className={styles.body}>
-          <p className={styles.description}>{t('settings', meta.descriptionKey)}</p>
           {meta.hasTime ? (
             <div className={styles.field}>
               <span className={styles.fieldLabel}>{t('settings', 'reminderTimeLabel')}</span>
               <input
                 className={styles.timeInput}
                 type="time"
-                value={reminder.timeHHMM}
-                disabled={saving}
-                onChange={(e) => onPatch({ timeHHMM: e.target.value })}
+                value={timeInput}
+                onChange={(e) => setTimeInput(e.target.value)}
+                onBlur={commitTime}
               />
             </div>
           ) : null}
@@ -72,14 +72,13 @@ const ReminderAccordionItem: React.FC<ReminderAccordionItemProps> = ({ reminder,
               <input
                 className={styles.numberInput}
                 type="number"
+                inputMode="numeric"
                 min={meta.param.min}
                 max={meta.param.max}
                 step={1}
-                value={reminder.leadDays}
-                disabled={saving}
-                onChange={(e) =>
-                  onPatch({ leadDays: clampReminderParam(reminder.kind, Number(e.target.value)) })
-                }
+                value={leadDaysInput}
+                onChange={(e) => setLeadDaysInput(e.target.value)}
+                onBlur={commitLeadDays}
               />
             </div>
           ) : null}
@@ -89,4 +88,4 @@ const ReminderAccordionItem: React.FC<ReminderAccordionItemProps> = ({ reminder,
   );
 };
 
-export default ReminderAccordionItem;
+export default ReminderItem;
