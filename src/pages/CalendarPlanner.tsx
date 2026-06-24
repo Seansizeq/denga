@@ -38,7 +38,7 @@ interface ShiftTemplate {
   salaryCurrency: PlannerCurrency;
 }
 
-type PlannerReportRange = RangeFilter | 'day';
+type PlannerReportRange = RangeFilter | 'day' | 'custom';
 interface ActiveShift {
   startedAt: string;
   startedDay: string;
@@ -84,6 +84,21 @@ const buildDaysForMonth = (monthValue: string): string[] => {
   const [year, month] = monthValue.split('-').map(Number);
   const count = new Date(year, month, 0).getDate();
   return Array.from({ length: count }, (_, i) => `${year}-${String(month).padStart(2, '0')}-${String(i + 1).padStart(2, '0')}`);
+};
+
+/** Усі дні в довільному діапазоні [from, to] включно (YYYY-MM-DD). */
+const buildDaysBetween = (from: string, to: string): string[] => {
+  if (!from || !to || from > to) return [];
+  const out: string[] = [];
+  const end = parseIsoLocal(to);
+  const cursor = parseIsoLocal(from);
+  let guard = 0;
+  while (cursor <= end && guard < 1500) {
+    out.push(toIsoLocal(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+    guard += 1;
+  }
+  return out;
 };
 
 /** Усі дні календарного року (рік = рік вибраного місяця в планеру). */
@@ -235,6 +250,8 @@ const CalendarPlanner: React.FC = () => {
   const [salaryAmountInput, setSalaryAmountInput] = useState('');
   const [salaryCurrency, setSalaryCurrency] = useState<PlannerCurrency>('UAH');
   const [reportRange, setReportRange] = useState<PlannerReportRange>('month');
+  const [customFrom, setCustomFrom] = useState(() => `${todayIso().slice(0, 7)}-01`);
+  const [customTo, setCustomTo] = useState(() => todayIso());
   const [activeShift, setActiveShift] = useState<ActiveShift | null>(null);
   const [activeShiftLoading, setActiveShiftLoading] = useState(false);
   const [dayShiftEntries, setDayShiftEntries] = useState<ShiftEntry[]>([]);
@@ -268,7 +285,11 @@ const CalendarPlanner: React.FC = () => {
     try {
       const yearQ = month.slice(0, 4);
       const q =
-        reportRange === 'year' ? `year=${encodeURIComponent(yearQ)}` : `month=${encodeURIComponent(month)}`;
+        reportRange === 'custom' && customFrom && customTo && customFrom <= customTo
+          ? `from=${encodeURIComponent(customFrom)}&to=${encodeURIComponent(customTo)}`
+          : reportRange === 'year'
+            ? `year=${encodeURIComponent(yearQ)}`
+            : `month=${encodeURIComponent(month)}`;
       const response = await apiFetch(`/api/planner?${q}`);
       if (!response.ok) throw new Error(`Planner load failed: ${response.status}`);
       const rows = (await response.json()) as Array<DayPlan & { day: string }>;
@@ -293,7 +314,7 @@ const CalendarPlanner: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [month, reportRange]);
+  }, [month, reportRange, customFrom, customTo]);
 
   useEffect(() => {
     void loadActiveShift();
@@ -407,7 +428,9 @@ const CalendarPlanner: React.FC = () => {
     const now = new Date();
     const reportYear = Number(month.split('-')[0]);
     const baseDays =
-      reportRange === 'year'
+      reportRange === 'custom'
+        ? buildDaysBetween(customFrom, customTo)
+        : reportRange === 'year'
         ? buildDaysForYear(reportYear)
         : reportRange === 'day'
           ? [selectedDay]
@@ -418,6 +441,7 @@ const CalendarPlanner: React.FC = () => {
             : buildDaysForMonth(month);
     const days = baseDays.filter((iso) => {
       const d = parseIsoLocal(iso);
+      if (reportRange === 'custom') return true;
       if (reportRange === 'year') return true;
       if (reportRange === 'day') return iso === selectedDay;
       if (reportRange === 'today') return d.toDateString() === now.toDateString();
@@ -428,7 +452,7 @@ const CalendarPlanner: React.FC = () => {
       return false;
     });
     return days.join('|');
-  }, [month, reportRange, selectedDay]);
+  }, [month, reportRange, selectedDay, customFrom, customTo]);
   const reportDays = reportDaysKey ? reportDaysKey.split('|') : [];
 
   const monthReport = useMemo(() => {
@@ -1015,10 +1039,12 @@ const CalendarPlanner: React.FC = () => {
                 ? t('planner', 'dayReportTitle')
                 : reportRange === 'year'
                   ? t('planner', 'yearReportTitle')
-                  : t('planner', 'monthReportTitle')}
+                  : reportRange === 'custom'
+                    ? t('planner', 'customReportTitle')
+                    : t('planner', 'monthReportTitle')}
             </h3>
             <div className={styles.reportRangeTabs} role="tablist" aria-label={t('planner', 'report')}>
-              {(['day', 'week', 'month', 'year'] as const).map((opt) => (
+              {(['day', 'week', 'month', 'year', 'custom'] as const).map((opt) => (
                 <button
                   key={opt}
                   type="button"
@@ -1034,6 +1060,40 @@ const CalendarPlanner: React.FC = () => {
               ))}
             </div>
           </div>
+          {reportRange === 'custom' ? (
+            <div className={styles.customRangeRow}>
+              <label className={styles.customRangeField}>
+                <span className={styles.customRangeLabel}>{t('planner', 'customRangeFrom')}</span>
+                <input
+                  type="date"
+                  className={styles.customRangeInput}
+                  value={customFrom}
+                  max={customTo || undefined}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    if (!next) return;
+                    setCustomFrom(next);
+                    if (customTo && next > customTo) setCustomTo(next);
+                  }}
+                />
+              </label>
+              <label className={styles.customRangeField}>
+                <span className={styles.customRangeLabel}>{t('planner', 'customRangeTo')}</span>
+                <input
+                  type="date"
+                  className={styles.customRangeInput}
+                  value={customTo}
+                  min={customFrom || undefined}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    if (!next) return;
+                    setCustomTo(next);
+                    if (customFrom && next < customFrom) setCustomFrom(next);
+                  }}
+                />
+              </label>
+            </div>
+          ) : null}
           <div className={styles.reportStatsGrid}>
             <div className={styles.reportStatItem}>
               <span className={styles.reportLabel}>{t('planner', 'filledDays')}</span>

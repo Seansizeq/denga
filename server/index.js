@@ -3208,44 +3208,6 @@ app.put('/api/reports/settings', async (req, res) => {
   res.json(settings);
 });
 
-app.post('/api/reports/weekly/send-now', async (req, res) => {
-  const userId = String(req.authUserId ?? '');
-  if (!userId) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-  const user = await db.get('SELECT chat_id AS chatId, timezone FROM users WHERE telegram_id = ? LIMIT 1', [Number(userId)]);
-  if (!user?.chatId) {
-    res.status(400).json({ error: 'Telegram chat is not linked yet' });
-    return;
-  }
-  const sent = await sendUserReport(db, userId, Number(user.chatId), 'weekly', user.timezone);
-  if (!sent) {
-    res.status(503).json({ error: 'Telegram report could not be sent', code: 'TELEGRAM_REPORT_FAILED' });
-    return;
-  }
-  res.json({ ok: true });
-});
-
-app.post('/api/reports/monthly/send-now', async (req, res) => {
-  const userId = String(req.authUserId ?? '');
-  if (!userId) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-  const user = await db.get('SELECT chat_id AS chatId, timezone FROM users WHERE telegram_id = ? LIMIT 1', [Number(userId)]);
-  if (!user?.chatId) {
-    res.status(400).json({ error: 'Telegram chat is not linked yet' });
-    return;
-  }
-  const sent = await sendUserReport(db, userId, Number(user.chatId), 'monthly', user.timezone);
-  if (!sent) {
-    res.status(503).json({ error: 'Telegram report could not be sent', code: 'TELEGRAM_REPORT_FAILED' });
-    return;
-  }
-  res.json({ ok: true });
-});
-
 app.get('/api/reminders', async (req, res) => {
   const userId = String(req.authUserId ?? '');
   if (!userId) {
@@ -4722,30 +4684,50 @@ app.get('/api/planner', async (req, res) => {
   const userId = req.authUserId;
   const yearQ = String(req.query.year ?? '');
   const month = String(req.query.month ?? '');
+  const from = String(req.query.from ?? '');
+  const to = String(req.query.to ?? '');
 
   let likePattern;
-  if (yearQ && /^\d{4}$/.test(yearQ)) {
+  let rangeFrom;
+  let rangeTo;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(from) && /^\d{4}-\d{2}-\d{2}$/.test(to) && from <= to) {
+    rangeFrom = from;
+    rangeTo = to;
+  } else if (yearQ && /^\d{4}$/.test(yearQ)) {
     likePattern = `${yearQ}-%`;
   } else if (/^\d{4}-\d{2}$/.test(month)) {
     likePattern = `${month}-%`;
   } else {
     res
       .status(400)
-      .json({ error: 'Query month=YYYY-MM or year=YYYY' });
+      .json({ error: 'Query month=YYYY-MM, year=YYYY, or from/to=YYYY-MM-DD' });
     return;
   }
 
-  const days = await db.all(
-    'SELECT day, hasShift, workedHours, salaryRate, salaryAmount, salary_currency, note, updatedAt FROM planner_days WHERE day LIKE ? ORDER BY day ASC',
-    [plannerDayKey(userId, likePattern)]
-  );
-  const entries = await db.all(
-    `SELECT day, worked_hours, salary_amount, salary_currency, note, ended_at
-     FROM planner_shift_entries
-     WHERE user_id = ? AND day LIKE ?
-     ORDER BY ended_at DESC`,
-    [userId, likePattern]
-  );
+  const days = rangeFrom
+    ? await db.all(
+        'SELECT day, hasShift, workedHours, salaryRate, salaryAmount, salary_currency, note, updatedAt FROM planner_days WHERE day >= ? AND day <= ? ORDER BY day ASC',
+        [plannerDayKey(userId, rangeFrom), plannerDayKey(userId, rangeTo)]
+      )
+    : await db.all(
+        'SELECT day, hasShift, workedHours, salaryRate, salaryAmount, salary_currency, note, updatedAt FROM planner_days WHERE day LIKE ? ORDER BY day ASC',
+        [plannerDayKey(userId, likePattern)]
+      );
+  const entries = rangeFrom
+    ? await db.all(
+        `SELECT day, worked_hours, salary_amount, salary_currency, note, ended_at
+         FROM planner_shift_entries
+         WHERE user_id = ? AND day >= ? AND day <= ?
+         ORDER BY ended_at DESC`,
+        [userId, rangeFrom, rangeTo]
+      )
+    : await db.all(
+        `SELECT day, worked_hours, salary_amount, salary_currency, note, ended_at
+         FROM planner_shift_entries
+         WHERE user_id = ? AND day LIKE ?
+         ORDER BY ended_at DESC`,
+        [userId, likePattern]
+      );
 
   const entriesByDay = new Map();
   for (const row of entries) {

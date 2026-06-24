@@ -3,8 +3,6 @@ import { useTranslation } from '../../i18n/LanguageContext';
 import {
   getReportSettings,
   updateReportSettings,
-  sendWeeklyReportNow,
-  sendMonthlyReportNow,
   type ReportSettings,
 } from '../../api/client';
 import Switch from '../ui/Switch';
@@ -50,66 +48,43 @@ const ReportsSettingsSection: React.FC = () => {
   const patch = (next: Partial<ReportSettings>) =>
     void run(() => updateReportSettings(next), (value) => setReports(value));
 
-  const sendReport = (kind: 'weekly' | 'monthly') =>
-    void run(kind === 'weekly' ? sendWeeklyReportNow : sendMonthlyReportNow, undefined, {
-      silent: true,
-      errorMessage: t('settings', 'reportSendFailed'),
-    });
-
   return (
-    <>
-      <SettingsSection label={t('settings', 'sectionReports')}>
-        <SettingsRow
-          label={t('settings', 'weeklyAutoReport')}
-          trailing={
-            <Switch
-              checked={reports.autoWeekly}
-              disabled={saving}
-              onChange={(v) => patch({ autoWeekly: v })}
-              aria-label={t('settings', 'weeklyAutoReport')}
-            />
-          }
-        />
-        <SettingsRow
-          label={t('settings', 'monthlyAutoReport')}
-          trailing={
-            <Switch
-              checked={reports.autoMonthly}
-              disabled={saving}
-              onChange={(v) => patch({ autoMonthly: v })}
-              aria-label={t('settings', 'monthlyAutoReport')}
-            />
-          }
-        />
-        <SettingsRow
-          label={t('settings', 'reportSendTime')}
-          trailing={
-            <input
-              className={styles.timeInput}
-              type="time"
-              value={reports.sendTime}
-              disabled={saving}
-              onChange={(e) => patch({ sendTime: e.target.value })}
-            />
-          }
-        />
-      </SettingsSection>
-
-      <SettingsSection label={t('settings', 'reportsActionsTitle')}>
-        <SettingsRow
-          label={t('settings', 'sendWeeklyNow')}
-          emphasis
-          disabled={saving}
-          onClick={() => sendReport('weekly')}
-        />
-        <SettingsRow
-          label={t('settings', 'sendMonthlyNow')}
-          emphasis
-          disabled={saving}
-          onClick={() => sendReport('monthly')}
-        />
-      </SettingsSection>
-    </>
+    <SettingsSection label={t('settings', 'sectionReports')}>
+      <SettingsRow
+        label={t('settings', 'weeklyAutoReport')}
+        trailing={
+          <Switch
+            checked={reports.autoWeekly}
+            disabled={saving}
+            onChange={(v) => patch({ autoWeekly: v })}
+            aria-label={t('settings', 'weeklyAutoReport')}
+          />
+        }
+      />
+      <SettingsRow
+        label={t('settings', 'monthlyAutoReport')}
+        trailing={
+          <Switch
+            checked={reports.autoMonthly}
+            disabled={saving}
+            onChange={(v) => patch({ autoMonthly: v })}
+            aria-label={t('settings', 'monthlyAutoReport')}
+          />
+        }
+      />
+      <SettingsRow
+        label={t('settings', 'reportSendTime')}
+        trailing={
+          <input
+            className={styles.timeInput}
+            type="time"
+            value={reports.sendTime}
+            disabled={saving}
+            onChange={(e) => patch({ sendTime: e.target.value })}
+          />
+        }
+      />
+    </SettingsSection>
   );
 };
 

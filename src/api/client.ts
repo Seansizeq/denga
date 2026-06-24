@@ -120,16 +120,6 @@ export const updateReportSettings = async (patch: Partial<ReportSettings>): Prom
   return res.json();
 };
 
-export const sendWeeklyReportNow = async (): Promise<void> => {
-  const res = await apiFetch('/api/reports/weekly/send-now', { method: 'POST' });
-  if (!res.ok) throw new Error('failed to send weekly report');
-};
-
-export const sendMonthlyReportNow = async (): Promise<void> => {
-  const res = await apiFetch('/api/reports/monthly/send-now', { method: 'POST' });
-  if (!res.ok) throw new Error('failed to send monthly report');
-};
-
 export const getReminders = async (): Promise<Reminder[]> => {
   const res = await apiFetch('/api/reminders');
   if (!res.ok) throw new Error('failed to load reminders');

@@ -33,7 +33,7 @@ type Dict = {
     scan: string;
     goals: string;
   };
-  range: { day: string; today: string; week: string; month: string; year: string };
+  range: { day: string; today: string; week: string; month: string; year: string; custom: string };
   balance: {
     label: string;
     income: string;
@@ -192,6 +192,9 @@ type Dict = {
     monthReportTitle: string;
     dayReportTitle: string;
     yearReportTitle: string;
+    customReportTitle: string;
+    customRangeFrom: string;
+    customRangeTo: string;
     reportHoursTotal: string;
     totalShifts: string;
     salaryForReportHint: string;
@@ -266,25 +269,10 @@ type Dict = {
     fullscreen: string;
     fullscreenDescription: string;
     fullscreenUnsupported: string;
-    about: string;
-    version: string;
-    openedFrom: string;
-    telegram: string;
-    browser: string;
-    fxRates: string;
-    fxUpdatedAt: string;
-    fxStatus: string;
-    fxLive: string;
-    fxCache: string;
-    fxFallback: string;
-    fxRefresh: string;
     automationTitle: string;
     weeklyAutoReport: string;
     monthlyAutoReport: string;
     reportSendTime: string;
-    sendWeeklyNow: string;
-    sendMonthlyNow: string;
-    reportSendFailed: string;
     dailyReminder: string;
     subscriptionsReminder: string;
     reminderInactivity: string;
@@ -294,15 +282,10 @@ type Dict = {
     reminderTimeLabel: string;
     leadDaysLabel: string;
     fxThresholdLabel: string;
-    budgetsLink: string;
     sectionGeneral: string;
-    sectionFinance: string;
     sectionReports: string;
     sectionReminders: string;
     sectionPlanner: string;
-    goalsLink: string;
-    financeDescription: string;
-    reportsActionsTitle: string;
     reminderGroupExpenses: string;
     reminderGroupPlanner: string;
     reminderGroupFx: string;
@@ -315,8 +298,6 @@ type Dict = {
     paramDaysBefore: string;
     paramInactivityDays: string;
     paramFxThreshold: string;
-    fxSummaryTitle: string;
-    fxRefreshFailed: string;
     saved: string;
     saveFailed: string;
   };
@@ -433,7 +414,7 @@ const uk: Dict = {
     scan: 'Сканер чека',
     goals: 'Цілі',
   },
-  range: { day: 'День', today: 'Сьогодні', week: 'Тиждень', month: 'Місяць', year: 'Рік' },
+  range: { day: 'День', today: 'Сьогодні', week: 'Тиждень', month: 'Місяць', year: 'Рік', custom: 'Період' },
   balance: {
     label: 'Баланс цього місяця',
     income: 'Доходи',
@@ -592,6 +573,9 @@ const uk: Dict = {
     monthReportTitle: 'Звіт за місяць',
     dayReportTitle: 'Звіт за день',
     yearReportTitle: 'Звіт за рік',
+    customReportTitle: 'Звіт за період',
+    customRangeFrom: 'З',
+    customRangeTo: 'До',
     reportHoursTotal: 'Відпрацьовано годин',
     totalShifts: 'Усього змін',
     salaryForReportHint: 'Для звіту вкажіть ставку за годину або фіксовану суму за зміну. Валюта: гривня або злотий.',
@@ -666,25 +650,10 @@ const uk: Dict = {
     fullscreen: 'Повноекранний режим',
     fullscreenDescription: 'Розгортає застосунок на весь екран і приховує шапку Telegram',
     fullscreenUnsupported: 'Недоступно у вашій версії Telegram',
-    about: 'Про застосунок',
-    version: 'Версія',
-    openedFrom: 'Відкрито з',
-    telegram: 'Telegram',
-    browser: 'Браузера',
-    fxRates: 'Курси валют',
-    fxUpdatedAt: 'Оновлено',
-    fxStatus: 'Джерело',
-    fxLive: 'Онлайн',
-    fxCache: 'Кеш',
-    fxFallback: 'Резервні',
-    fxRefresh: 'Оновити курси',
     automationTitle: 'Автоматизація Telegram',
     weeklyAutoReport: 'Авто тижневий звіт',
     monthlyAutoReport: 'Авто місячний звіт',
     reportSendTime: 'Час надсилання звіту',
-    sendWeeklyNow: 'Надіслати тижневий звіт зараз',
-    sendMonthlyNow: 'Надіслати місячний звіт зараз',
-    reportSendFailed: 'Не вдалося надіслати звіт. Перевірте зв’язок із Telegram або налаштування бота.',
     dailyReminder: 'Щоденне нагадування',
     subscriptionsReminder: 'Нагадування про підписки',
     reminderInactivity: 'Немає витрат N днів',
@@ -694,15 +663,10 @@ const uk: Dict = {
     reminderTimeLabel: 'Час у Telegram',
     leadDaysLabel: 'Днів / параметр',
     fxThresholdLabel: 'Поріг, % (для курсу)',
-    budgetsLink: 'Бюджети по категоріях',
     sectionGeneral: 'Основне',
-    sectionFinance: 'Фінанси',
     sectionReports: 'Звіти Telegram',
     sectionReminders: 'Нагадування',
     sectionPlanner: 'Планер',
-    goalsLink: 'Фінансові цілі',
-    financeDescription: 'Ліміти витрат і накопичення — швидкий перехід до розділів.',
-    reportsActionsTitle: 'Надіслати зараз',
     reminderGroupExpenses: 'Витрати',
     reminderGroupPlanner: 'Планер змін',
     reminderGroupFx: 'Курс валют',
@@ -715,8 +679,6 @@ const uk: Dict = {
     paramDaysBefore: 'Днів заздалегідь',
     paramInactivityDays: 'Днів без витрат',
     paramFxThreshold: 'Поріг, %',
-    fxSummaryTitle: 'Поточні курси',
-    fxRefreshFailed: 'Не вдалося оновити курси. Спробуйте пізніше.',
     saved: 'Збережено',
     saveFailed: 'Не вдалося зберегти. Спробуйте ще раз.',
   },
@@ -839,7 +801,7 @@ const ru: Dict = {
     scan: 'Сканер чека',
     goals: 'Цели',
   },
-  range: { day: 'День', today: 'Сегодня', week: 'Неделя', month: 'Месяц', year: 'Год' },
+  range: { day: 'День', today: 'Сегодня', week: 'Неделя', month: 'Месяц', year: 'Год', custom: 'Период' },
   balance: {
     label: 'Баланс за этот месяц',
     income: 'Доходы',
@@ -998,6 +960,9 @@ const ru: Dict = {
     monthReportTitle: 'Отчёт за месяц',
     dayReportTitle: 'Отчёт за день',
     yearReportTitle: 'Отчёт за год',
+    customReportTitle: 'Отчёт за период',
+    customRangeFrom: 'С',
+    customRangeTo: 'По',
     reportHoursTotal: 'Отработано часов',
     totalShifts: 'Всего смен',
     salaryForReportHint: 'Для отчёта укажите ставку за час или фиксированную сумму за смену. Валюта: гривна или злотый.',
@@ -1072,25 +1037,10 @@ const ru: Dict = {
     fullscreen: 'Полноэкранный режим',
     fullscreenDescription: 'Разворачивает приложение на весь экран и скрывает шапку Telegram',
     fullscreenUnsupported: 'Недоступно в вашей версии Telegram',
-    about: 'О приложении',
-    version: 'Версия',
-    openedFrom: 'Открыто из',
-    telegram: 'Telegram',
-    browser: 'Браузера',
-    fxRates: 'Курсы валют',
-    fxUpdatedAt: 'Обновлено',
-    fxStatus: 'Источник',
-    fxLive: 'Онлайн',
-    fxCache: 'Кэш',
-    fxFallback: 'Резервные',
-    fxRefresh: 'Обновить курсы',
     automationTitle: 'Автоматизация Telegram',
     weeklyAutoReport: 'Авто недельный отчёт',
     monthlyAutoReport: 'Авто месячный отчёт',
     reportSendTime: 'Время отправки отчёта',
-    sendWeeklyNow: 'Отправить недельный отчёт сейчас',
-    sendMonthlyNow: 'Отправить месячный отчёт сейчас',
-    reportSendFailed: 'Не удалось отправить отчёт. Проверьте связь с Telegram или настройки бота.',
     dailyReminder: 'Ежедневное напоминание',
     subscriptionsReminder: 'Напоминание о подписках',
     reminderInactivity: 'Нет расходов N дней',
@@ -1100,15 +1050,10 @@ const ru: Dict = {
     reminderTimeLabel: 'Время в Telegram',
     leadDaysLabel: 'Дней / параметр',
     fxThresholdLabel: 'Порог, %',
-    budgetsLink: 'Бюджеты по категориям',
     sectionGeneral: 'Основное',
-    sectionFinance: 'Финансы',
     sectionReports: 'Отчёты Telegram',
     sectionReminders: 'Напоминания',
     sectionPlanner: 'Планер',
-    goalsLink: 'Финансовые цели',
-    financeDescription: 'Лимиты расходов и накопления — быстрый переход к разделам.',
-    reportsActionsTitle: 'Отправить сейчас',
     reminderGroupExpenses: 'Расходы',
     reminderGroupPlanner: 'Планер смен',
     reminderGroupFx: 'Курс валют',
@@ -1121,8 +1066,6 @@ const ru: Dict = {
     paramDaysBefore: 'Дней заранее',
     paramInactivityDays: 'Дней без расходов',
     paramFxThreshold: 'Порог, %',
-    fxSummaryTitle: 'Текущие курсы',
-    fxRefreshFailed: 'Не удалось обновить курсы. Попробуйте позже.',
     saved: 'Сохранено',
     saveFailed: 'Не удалось сохранить. Попробуйте ещё раз.',
   },
@@ -1245,7 +1188,7 @@ const en: Dict = {
     scan: 'Receipt scan',
     goals: 'Goals',
   },
-  range: { day: 'Day', today: 'Today', week: 'Week', month: 'Month', year: 'Year' },
+  range: { day: 'Day', today: 'Today', week: 'Week', month: 'Month', year: 'Year', custom: 'Period' },
   balance: {
     label: 'This month',
     income: 'Income',
@@ -1404,6 +1347,9 @@ const en: Dict = {
     monthReportTitle: 'Monthly summary',
     dayReportTitle: 'Daily summary',
     yearReportTitle: 'Yearly summary',
+    customReportTitle: 'Custom period',
+    customRangeFrom: 'From',
+    customRangeTo: 'To',
     reportHoursTotal: 'Hours worked',
     totalShifts: 'Total shifts',
     salaryForReportHint: 'For the report: hourly rate or fixed amount per shift. Currency: hryvnia or zloty.',
@@ -1478,25 +1424,10 @@ const en: Dict = {
     fullscreen: 'Fullscreen mode',
     fullscreenDescription: 'Expands the app to the whole screen and hides the Telegram header',
     fullscreenUnsupported: 'Not available in your version of Telegram',
-    about: 'About',
-    version: 'Version',
-    openedFrom: 'Opened from',
-    telegram: 'Telegram',
-    browser: 'Browser',
-    fxRates: 'FX rates',
-    fxUpdatedAt: 'Updated',
-    fxStatus: 'Source',
-    fxLive: 'Live',
-    fxCache: 'Cache',
-    fxFallback: 'Fallback',
-    fxRefresh: 'Refresh rates',
     automationTitle: 'Telegram automation',
     weeklyAutoReport: 'Weekly auto report',
     monthlyAutoReport: 'Monthly auto report',
     reportSendTime: 'Report send time',
-    sendWeeklyNow: 'Send weekly report now',
-    sendMonthlyNow: 'Send monthly report now',
-    reportSendFailed: 'Could not send the report. Check your Telegram link and bot availability.',
     dailyReminder: 'Daily reminder',
     subscriptionsReminder: 'Subscription reminder',
     reminderInactivity: 'No expenses for N days',
@@ -1506,15 +1437,10 @@ const en: Dict = {
     reminderTimeLabel: 'Telegram time',
     leadDaysLabel: 'Days / parameter',
     fxThresholdLabel: 'Threshold, %',
-    budgetsLink: 'Category budgets',
     sectionGeneral: 'General',
-    sectionFinance: 'Finance',
     sectionReports: 'Telegram reports',
     sectionReminders: 'Reminders',
     sectionPlanner: 'Planner',
-    goalsLink: 'Financial goals',
-    financeDescription: 'Spending limits and savings — quick access to these sections.',
-    reportsActionsTitle: 'Send now',
     reminderGroupExpenses: 'Expenses',
     reminderGroupPlanner: 'Shift planner',
     reminderGroupFx: 'FX rate',
@@ -1527,8 +1453,6 @@ const en: Dict = {
     paramDaysBefore: 'Days ahead',
     paramInactivityDays: 'Days without expenses',
     paramFxThreshold: 'Threshold, %',
-    fxSummaryTitle: 'Current rates',
-    fxRefreshFailed: 'Could not refresh rates. Try again later.',
     saved: 'Saved',
     saveFailed: 'Could not save. Please try again.',
   },

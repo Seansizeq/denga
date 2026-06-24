@@ -114,6 +114,38 @@
   color: var(--text-primary);
 }
 
+.customRangeRow {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.customRangeField {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.customRangeLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.customRangeInput {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  padding: 10px 12px;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 14px;
+}
+
 .reportStatsGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
