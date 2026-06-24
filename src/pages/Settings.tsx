@@ -3,6 +3,7 @@ import { useTranslation } from '../i18n/LanguageContext';
 import GeneralSettingsSection from '../components/settings/GeneralSettingsSection';
 import ReportsSettingsSection from '../components/settings/ReportsSettingsSection';
 import RemindersSettingsSection from '../components/settings/RemindersSettingsSection';
+import PlannerTemplateSection from '../components/settings/PlannerTemplateSection';
 import DangerZoneSection from '../components/settings/DangerZoneSection';
 import styles from './Settings.module.css';
 
@@ -15,6 +16,7 @@ const Settings: React.FC = () => {
       <GeneralSettingsSection />
       <ReportsSettingsSection />
       <RemindersSettingsSection />
+      <PlannerTemplateSection />
       <DangerZoneSection />
     </div>
   );

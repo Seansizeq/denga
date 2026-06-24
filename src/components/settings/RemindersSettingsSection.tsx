@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from '../../i18n/LanguageContext';
 import { getReminders, updateReminder, type Reminder } from '../../api/client';
-import { orderReminders } from '../../utils/settingsReminders';
-import ReminderItem from './ReminderAccordionItem';
+import { groupReminders } from '../../utils/settingsReminders';
+import ReminderAccordionItem from './ReminderAccordionItem';
 import { useSaveSetting } from './useSaveSetting';
 import styles from './RemindersSettingsSection.module.css';
 
@@ -26,7 +26,7 @@ const RemindersSettingsSection: React.FC = () => {
     };
   }, []);
 
-  const ordered = orderReminders(reminders);
+  const groups = useMemo(() => groupReminders(reminders), [reminders]);
 
   const patchReminder = (id: string, patch: Partial<Reminder>) =>
     void run(
@@ -34,22 +34,26 @@ const RemindersSettingsSection: React.FC = () => {
       (next) => setReminders((prev) => prev.map((r) => (r.id === id ? next : r))),
     );
 
-  if (ordered.length === 0) return null;
+  if (reminders.length === 0) return null;
 
   return (
     <section className={styles.section}>
       <div className={styles.sectionLabel}>{t('settings', 'sectionReminders')}</div>
-      <p className={styles.sectionHint}>{t('settings', 'remindersHint')}</p>
-      <div className={styles.card}>
-        {ordered.map((reminder) => (
-          <ReminderItem
-            key={reminder.id}
-            reminder={reminder}
-            saving={saving}
-            onPatch={(patch) => patchReminder(reminder.id, patch)}
-          />
-        ))}
-      </div>
+      {groups.map((group) => (
+        <div key={group.group} className={styles.group}>
+          <div className={styles.groupLabel}>{t('settings', group.titleKey)}</div>
+          <div className={styles.card}>
+            {group.reminders.map((reminder) => (
+              <ReminderAccordionItem
+                key={reminder.id}
+                reminder={reminder}
+                saving={saving}
+                onPatch={(patch) => patchReminder(reminder.id, patch)}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
     </section>
   );
 };

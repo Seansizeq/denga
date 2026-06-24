@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Home, Plus, WalletCards, Settings as SettingsIcon, PieChart } from 'lucide-react';
+import { Home, CalendarDays, WalletCards, Settings as SettingsIcon, PieChart } from 'lucide-react';
 import { useTranslation } from '../i18n/LanguageContext';
 import styles from './BottomNavigation.module.css';
 
@@ -12,7 +12,7 @@ const BottomNavigation: React.FC = () => {
   const indicatorColumn =
     pathname === '/'
       ? 1
-      : pathname.startsWith('/add')
+      : pathname.startsWith('/calendar')
         ? 2
         : pathname.startsWith('/accounts')
           ? 3
@@ -42,13 +42,13 @@ const BottomNavigation: React.FC = () => {
         </NavLink>
 
         <NavLink
-          to="/add"
+          to="/calendar"
           className={({ isActive }) =>
             `${isActive ? styles.active : styles.link} ${styles.roundBtn}`
           }
-          aria-label={t('nav', 'add')}
+          aria-label={t('nav', 'calendar')}
         >
-          <Plus size={26} strokeWidth={2.4} />
+          <CalendarDays size={24} strokeWidth={2} />
         </NavLink>
 
         <NavLink

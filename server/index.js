@@ -428,6 +428,12 @@ const runSubscriptionAutopayForUser = async (userId) => {
     throw error;
   }
 };
+const plannerDayKey = (userId, day) => `${userId}:${day}`;
+const plannerDayFromStored = (userId, storedDay) => {
+  const prefix = `${userId}:`;
+  return String(storedDay).startsWith(prefix) ? String(storedDay).slice(prefix.length) : String(storedDay);
+};
+const scopedTemplateKey = (userId, normalizedKey) => `${userId}::${normalizedKey}`;
 const DEFAULT_BOT_TIMEZONE = (() => {
   const configured = String(process.env.BOT_DEFAULT_TIMEZONE || '').trim();
   if (configured) {
@@ -543,6 +549,13 @@ const formatHoursAsHoursMinutes = (decimalHours, units = { h: 'год', m: 'хв
   return `${hours} ${units.h} ${minutes} ${units.m}`;
 };
 
+const buildBotShiftNote = (startIso, endIso, timeZone = DEFAULT_BOT_TIMEZONE) => {
+  const start = parseTimeFromIso(startIso, timeZone);
+  const end = parseTimeFromIso(endIso, timeZone);
+  if (start && end) return `Зміна через бота ${start}-${end}`;
+  if (start) return `Зміна через бота ${start}`;
+  return 'Зміна через бота';
+};
 const upsertBotUser = async (dbConn, telegramId, chatId) => {
   await dbConn.run(
     `INSERT INTO users (telegram_id, chat_id)
@@ -604,6 +617,8 @@ const reminderKinds = new Set([
   'daily',
   'subscriptions',
   'inactivity',
+  'shift_evening_before',
+  'shift_unclosed',
   'fx_change',
 ]);
 const isValidReminderKind = (value) => reminderKinds.has(String(value || ''));
@@ -629,6 +644,20 @@ const ensureDefaultReminders = async (dbConn, userId) => {
     await dbConn.run(
       `INSERT INTO user_reminders (id, user_id, kind, title, enabled, time_hhmm, lead_days, created_at, updated_at)
        VALUES (?, ?, 'inactivity', 'Нагадування про відсутність витрат', 0, '20:00', 3, ?, ?)`,
+      [uuidv4(), userId, now, now]
+    );
+  }
+  if (!kinds.has('shift_evening_before')) {
+    await dbConn.run(
+      `INSERT INTO user_reminders (id, user_id, kind, title, enabled, time_hhmm, lead_days, created_at, updated_at)
+       VALUES (?, ?, 'shift_evening_before', 'Нагадування: зміна завтра', 0, '21:00', 1, ?, ?)`,
+      [uuidv4(), userId, now, now]
+    );
+  }
+  if (!kinds.has('shift_unclosed')) {
+    await dbConn.run(
+      `INSERT INTO user_reminders (id, user_id, kind, title, enabled, time_hhmm, lead_days, created_at, updated_at)
+       VALUES (?, ?, 'shift_unclosed', 'Нагадування: закрити зміну', 0, '23:00', 0, ?, ?)`,
       [uuidv4(), userId, now, now]
     );
   }
@@ -666,6 +695,86 @@ const markReminderDelivery = async (dbConn, userId, reminderId, slotKey) => {
   } catch {
     return false;
   }
+};
+
+/** ISO string includes Z or a numeric offset — parse as a single UTC instant. */
+const isoHasExplicitOffset = (s) =>
+  /[zZ]$/.test(s) || /[+-]\d{2}:\d{2}$/.test(s) || /[+-]\d{4}$/.test(s);
+
+/**
+ * Calendar date + wall time in `timeZone` → UTC ms. Used when clients send naive ISO without offset.
+ * Bot/web paths that call toISOString() always include Z and skip this.
+ */
+const wallDateTimeInZoneToUtcMs = (ymd, hh, mm, ss, timeZone) => {
+  const tz = normalizeTimeZone(timeZone);
+  const [y, mo, d] = String(ymd).split('-').map((v) => Number(v));
+  if (!Number.isFinite(y) || !Number.isFinite(mo) || !Number.isFinite(d)) return NaN;
+  const wantDay = `${String(y).padStart(4, '0')}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  const pad2 = (n) => String(Math.trunc(Number(n))).padStart(2, '0');
+  const wantTime = `${pad2(hh)}:${pad2(mm)}:${pad2(ss)}`;
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+  const read = (utcMs) => {
+    const parts = Object.fromEntries(
+      fmt.formatToParts(new Date(utcMs)).filter((p) => p.type !== 'literal').map((p) => [p.type, p.value])
+    );
+    return {
+      day: `${parts.year}-${parts.month}-${parts.day}`,
+      time: `${parts.hour}:${parts.minute}:${parts.second}`,
+    };
+  };
+  let t = Date.UTC(y, mo - 1, d, Number(hh), Number(mm), Number(ss), 0);
+  for (let i = 0; i < 48; i++) {
+    const got = read(t);
+    if (got.day === wantDay && got.time === wantTime) return t;
+    const [gy, gm, gd] = got.day.split('-').map(Number);
+    const dayDelta = Math.round((Date.UTC(y, mo - 1, d) - Date.UTC(gy, gm - 1, gd)) / 86400000);
+    const [gh, gmi, gs] = got.time.split(':').map(Number);
+    const wantSec = Number(hh) * 3600 + Number(mm) * 60 + Number(ss);
+    const gotSec = gh * 3600 + gmi * 60 + gs;
+    const secDelta = wantSec - gotSec;
+    const deltaMs = dayDelta * 86400000 + secDelta * 1000;
+    if (deltaMs === 0) break;
+    t += deltaMs;
+  }
+  const verify = read(t);
+  return verify.day === wantDay && verify.time === wantTime ? t : NaN;
+};
+
+/** Interpret stored shift start time: explicit offset = instant; naive YYYY-MM-DDTHH:mm:ss = wall clock in user TZ. */
+const shiftStartedAtToUtcMs = (raw, userTimeZone) => {
+  const s = String(raw ?? '').trim();
+  if (!s) return NaN;
+  if (isoHasExplicitOffset(s)) {
+    const ms = new Date(s).getTime();
+    return Number.isFinite(ms) ? ms : NaN;
+  }
+  const m = s.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/);
+  if (m) {
+    const [, ymd, hh, mm, ss = '00'] = m;
+    return wallDateTimeInZoneToUtcMs(ymd, Number(hh), Number(mm), Number(ss), userTimeZone);
+  }
+  const ms = new Date(s).getTime();
+  return Number.isFinite(ms) ? ms : NaN;
+};
+
+const normalizeClientShiftStartIso = (raw, fallbackIso, userTimeZone) => {
+  const s = typeof raw === 'string' && raw.trim() ? raw.trim() : '';
+  if (!s) return fallbackIso;
+  if (isoHasExplicitOffset(s)) {
+    const ms = new Date(s).getTime();
+    return Number.isFinite(ms) ? new Date(ms).toISOString() : fallbackIso;
+  }
+  const ms = shiftStartedAtToUtcMs(s, userTimeZone);
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : fallbackIso;
 };
 
 const recordReminderDeliveryAfterSend = async (dbConn, userId, reminderId, slotKey) => {
@@ -736,6 +845,37 @@ const dispatchReminder = async (dbConn, userId, reminder, timeZone, chatId, slot
       if (daysSince < n) return;
       await sendTracked(
         `📭 ${String(reminder.title || 'Витрати')}: за останні ${n} д. немає записів витрат. Додай операцію в Denga.`
+      );
+      return;
+    }
+
+    if (kind === 'shift_evening_before') {
+      const offset = Math.max(1, Math.min(30, Number(reminder.leadDays) || 1));
+      const targetDay = shiftIsoDay(today, offset);
+      const plannerKey = plannerDayKey(userId, targetDay);
+      const hit = await dbConn.get(
+        `SELECT 1 AS ok FROM planner_days WHERE day = ? AND hasShift = 1 LIMIT 1`,
+        [plannerKey]
+      );
+      if (!hit?.ok) return;
+      await sendTracked(
+        `📅 ${String(reminder.title || 'Зміна')}: ${offset === 1 ? 'завтра' : `через ${offset} д.`} (${targetDay}) запланована зміна.`
+      );
+      return;
+    }
+
+    if (kind === 'shift_unclosed') {
+      const active = await dbConn.get(
+        `SELECT started_at AS startedAt FROM bot_active_shifts WHERE user_id = ? LIMIT 1`,
+        [userId]
+      );
+      if (!active?.startedAt) return;
+      const startedMs = shiftStartedAtToUtcMs(active.startedAt, tz);
+      if (!Number.isFinite(startedMs)) return;
+      const hoursOpen = (Date.now() - startedMs) / (3600 * 1000);
+      if (hoursOpen < 8) return;
+      await sendTracked(
+        `⏱ ${String(reminder.title || 'Зміна')}: зміна відкрита вже понад 8 год. Не забудь закрити її в Denga або ботом.`
       );
       return;
     }
@@ -1764,6 +1904,18 @@ const sendUserReport = async (dbConn, userId, chatId, reportType, timeZone) => {
   const summary = summarizeTransactions(scoped, reportCurrency, fx);
   const previousSummary = summarizeTransactions(previousScoped, reportCurrency, fx);
   const comparison = buildReportComparison(summary, previousSummary);
+  const shiftRows = await dbConn.all(
+    `SELECT day, worked_hours, salary_amount, salary_currency
+     FROM planner_shift_entries
+     WHERE user_id = ? AND day >= ? AND day <= ?`,
+    [userId, sortedDays[0], sortedDays[sortedDays.length - 1]]
+  );
+  const plannerDayRows = await dbConn.all(
+    `SELECT day, hasShift, workedHours
+     FROM planner_days
+     WHERE day >= ? AND day <= ?`,
+    [plannerDayKey(userId, sortedDays[0]), plannerDayKey(userId, sortedDays[sortedDays.length - 1])]
+  );
   const periodDays = reportType === 'weekly' ? 7 : Math.max(28, sortedDays.length);
   const recommendationItems = await buildRecommendationItems({
     dbConn,
@@ -1777,9 +1929,29 @@ const sendUserReport = async (dbConn, userId, chatId, reportType, timeZone) => {
     reportCurrency,
   });
   const recommendationLines = recommendationItems.map((item) => `• ${item.insight}. ${item.action}`);
-  const workedHours = 0;
-  const workingDays = 0;
-  const avgPerDay = 0;
+  const entryHoursByDay = new Map();
+  for (const row of shiftRows || []) {
+    const day = String(row.day || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
+    entryHoursByDay.set(day, (entryHoursByDay.get(day) ?? 0) + Math.max(0, Number(row.worked_hours) || 0));
+  }
+  const plannerFallbackByDay = new Map();
+  for (const row of plannerDayRows || []) {
+    const dayIso = plannerDayFromStored(userId, String(row.day || ''));
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dayIso)) continue;
+    if (!Boolean(row.hasShift)) continue;
+    if (entryHoursByDay.has(dayIso)) continue;
+    plannerFallbackByDay.set(dayIso, Math.max(0, Number(row.workedHours) || 0));
+  }
+  const workedHours =
+    Array.from(entryHoursByDay.values()).reduce((acc, h) => acc + h, 0) +
+    Array.from(plannerFallbackByDay.values()).reduce((acc, h) => acc + h, 0);
+  const workedDaySet = new Set([
+    ...Array.from(entryHoursByDay.keys()),
+    ...Array.from(plannerFallbackByDay.keys()),
+  ]);
+  const workingDays = workedDaySet.size;
+  const avgPerDay = workingDays > 0 ? workedHours / workingDays : 0;
   const currentExpenseByCategory = sumExpenseByCategory(scoped, reportCurrency, fx);
   const previousExpenseByCategory = sumExpenseByCategory(previousScoped, reportCurrency, fx);
   const achievementLines = await buildAchievementLines({
@@ -1867,6 +2039,266 @@ const getUserTimeZone = async (dbConn, userId) => {
   const row = await dbConn.get('SELECT timezone FROM users WHERE telegram_id = ? LIMIT 1', [Number(userId)]);
   return normalizeTimeZone(row?.timezone);
 };
+const formatShiftTemplateLabel = (tpl) => {
+  const name = String(tpl?.name ?? '').trim();
+  const symbol = String(tpl?.symbol ?? '').trim();
+  const base = [name, symbol].filter(Boolean).join(' • ') || 'Шаблон';
+  const templateCurrency = normalizeCurrency(tpl?.currency);
+  const cur = templateCurrency === 'PLN' ? 'zł' : '₴';
+  return `${base} (${cur})`;
+};
+const upsertPlannerDay = async (dbConn, userId, day, patch) => {
+  const dayKey = plannerDayKey(userId, day);
+  const current = await dbConn.get(
+    'SELECT hasShift, workedHours, salaryRate, salaryAmount, salary_currency, note FROM planner_days WHERE day = ? LIMIT 1',
+    [dayKey]
+  );
+  const hasShift = patch.hasShift === undefined
+    ? Number(current?.hasShift ? 1 : 0)
+    : (patch.hasShift ? 1 : 0);
+  const workedHours = patch.workedHours === undefined
+    ? Number(current?.workedHours) || 0
+    : Math.max(0, Number(patch.workedHours) || 0);
+  const salaryRate = patch.salaryRate === undefined
+    ? Number(current?.salaryRate) || 0
+    : Math.max(0, Number(patch.salaryRate) || 0);
+  const salaryAmount = patch.salaryAmount === undefined
+    ? Number(current?.salaryAmount) || 0
+    : Math.max(0, Number(patch.salaryAmount) || 0);
+  const salaryCurrency = patch.salaryCurrency === 'PLN'
+    ? 'PLN'
+    : (patch.salaryCurrency === 'UAH' ? 'UAH' : (current?.salary_currency === 'PLN' ? 'PLN' : 'UAH'));
+  const note = typeof patch.note === 'string'
+    ? patch.note.trim()
+    : String(current?.note ?? '').trim();
+  const updatedAt = new Date().toISOString();
+  await dbConn.run(
+    `INSERT INTO planner_days (day, user_id, hasShift, workedHours, salaryRate, salaryAmount, salary_currency, note, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(day) DO UPDATE SET
+      user_id = excluded.user_id,
+      hasShift = excluded.hasShift,
+      workedHours = excluded.workedHours,
+      salaryRate = excluded.salaryRate,
+      salaryAmount = excluded.salaryAmount,
+      salary_currency = excluded.salary_currency,
+      note = excluded.note,
+      updatedAt = excluded.updatedAt`,
+    [dayKey, userId, hasShift, workedHours, salaryRate, salaryAmount, salaryCurrency, note, updatedAt]
+  );
+  return {
+    day,
+    hasShift: Boolean(hasShift),
+    workedHours,
+    salaryRate,
+    salaryAmount,
+    salaryCurrency,
+    note,
+    updatedAt,
+  };
+};
+
+const createAutomationToken = () => crypto.randomBytes(24).toString('hex');
+
+const ensurePlannerUserSettings = async (dbConn, userId) => {
+  const now = new Date().toISOString();
+  await dbConn.run(
+    `INSERT INTO planner_user_settings (user_id, default_shift_template_id, automation_token, updated_at)
+     VALUES (?, NULL, ?, ?)
+     ON CONFLICT(user_id) DO NOTHING`,
+    [userId, createAutomationToken(), now]
+  );
+  const row = await dbConn.get(
+    'SELECT automation_token FROM planner_user_settings WHERE user_id = ? LIMIT 1',
+    [userId]
+  );
+  if (!row?.automation_token) {
+    await dbConn.run(
+      `UPDATE planner_user_settings SET automation_token = ?, updated_at = ? WHERE user_id = ?`,
+      [createAutomationToken(), now, userId]
+    );
+  }
+};
+
+const resolveAutomationUserId = async (dbConn, req) => {
+  const bearer = String(req.get('Authorization') ?? '').replace(/^Bearer\s+/i, '').trim();
+  const token = bearer || String(req.query?.token ?? '').trim();
+  if (!token) return null;
+  const row = await dbConn.get(
+    'SELECT user_id FROM planner_user_settings WHERE automation_token = ? LIMIT 1',
+    [token]
+  );
+  return row?.user_id ? String(row.user_id) : null;
+};
+
+const buildAutomationShiftUrls = (req, token) => {
+  const proto = String(req.get('x-forwarded-proto') ?? req.protocol ?? 'https').split(',')[0].trim();
+  const host = String(req.get('x-forwarded-host') ?? req.get('host') ?? '').split(',')[0].trim();
+  const base = host ? `${proto}://${host}` : '';
+  const q = `token=${encodeURIComponent(token)}`;
+  return {
+    startUrl: `${base}/api/automation/shift/start?${q}`,
+    endUrl: `${base}/api/automation/shift/end?${q}`,
+  };
+};
+
+const getPlannerUserSettings = async (dbConn, userId) => {
+  await ensurePlannerUserSettings(dbConn, userId);
+  const row = await dbConn.get(
+    'SELECT default_shift_template_id FROM planner_user_settings WHERE user_id = ? LIMIT 1',
+    [userId]
+  );
+  const raw = row?.default_shift_template_id;
+  if (raw === null || raw === undefined || String(raw).trim() === '') {
+    return { defaultShiftTemplateId: null };
+  }
+  const id = String(raw).trim();
+  if (id === 'none') {
+    return { defaultShiftTemplateId: 'none' };
+  }
+  const tpl = await dbConn.get(
+    'SELECT id FROM planner_shift_templates WHERE user_id = ? AND id = ? LIMIT 1',
+    [userId, id]
+  );
+  if (!tpl?.id) {
+    await dbConn.run(
+      `UPDATE planner_user_settings SET default_shift_template_id = NULL, updated_at = ? WHERE user_id = ?`,
+      [new Date().toISOString(), userId]
+    );
+    return { defaultShiftTemplateId: null };
+  }
+  return { defaultShiftTemplateId: id };
+};
+
+const updatePlannerUserSettings = async (dbConn, userId, patch) => {
+  await ensurePlannerUserSettings(dbConn, userId);
+  if (patch.defaultShiftTemplateId === undefined) {
+    return getPlannerUserSettings(dbConn, userId);
+  }
+  let stored = null;
+  const next = patch.defaultShiftTemplateId;
+  if (next === null || next === '') {
+    stored = null;
+  } else if (next === 'none') {
+    stored = 'none';
+  } else {
+    const tpl = await dbConn.get(
+      'SELECT id FROM planner_shift_templates WHERE user_id = ? AND id = ? LIMIT 1',
+      [userId, String(next)]
+    );
+    if (!tpl?.id) {
+      return { error: 'TEMPLATE_NOT_FOUND' };
+    }
+    stored = String(tpl.id);
+  }
+  const now = new Date().toISOString();
+  await dbConn.run(
+    `UPDATE planner_user_settings SET default_shift_template_id = ?, updated_at = ? WHERE user_id = ?`,
+    [stored, now, userId]
+  );
+  return getPlannerUserSettings(dbConn, userId);
+};
+
+const resolveShiftTemplateFields = async (dbConn, userId, templateId) => {
+  if (!templateId || templateId === 'none') {
+    return {
+      templateId: null,
+      salaryRate: 0,
+      salaryAmount: 0,
+      salaryCurrency: 'UAH',
+      shiftNote: '',
+    };
+  }
+  const tpl = await dbConn.get(
+    `SELECT id, name, symbol, salary_rate, salary_amount, currency
+     FROM planner_shift_templates
+     WHERE user_id = ? AND id = ?
+     LIMIT 1`,
+    [userId, String(templateId)]
+  );
+  if (!tpl?.id) return null;
+  return {
+    templateId: String(tpl.id),
+    salaryRate: Math.max(0, Number(tpl.salary_rate) || 0),
+    salaryAmount: Math.max(0, Number(tpl.salary_amount) || 0),
+    salaryCurrency: normalizeCurrency(tpl.currency) === 'PLN' ? 'PLN' : 'UAH',
+    shiftNote: [String(tpl.name ?? '').trim(), String(tpl.symbol ?? '').trim()].filter(Boolean).join(' • '),
+  };
+};
+
+const startActiveShiftForUser = async (dbConn, userId, options = {}) => {
+  const userTimeZone = normalizeTimeZone(
+    options.userTimeZone ?? (await getUserTimeZone(dbConn, userId))
+  );
+  const active = await dbConn.get(
+    'SELECT started_at FROM bot_active_shifts WHERE user_id = ? LIMIT 1',
+    [userId]
+  );
+  if (active?.started_at) {
+    return { ok: false, code: 'ALREADY_ACTIVE', startedAt: active.started_at, userTimeZone };
+  }
+  const startedAt = options.startedAt ?? new Date().toISOString();
+  const startedDay =
+    options.startedDay ||
+    dayFromIsoInZone(startedAt, userTimeZone) ||
+    String(startedAt).slice(0, 10);
+  const templateKey =
+    options.templateId === undefined || options.templateId === null
+      ? null
+      : options.templateId === 'none'
+        ? 'none'
+        : String(options.templateId);
+  const fields = await resolveShiftTemplateFields(dbConn, userId, templateKey);
+  if (templateKey && templateKey !== 'none' && !fields) {
+    return { ok: false, code: 'TEMPLATE_NOT_FOUND' };
+  }
+  const resolved = fields ?? {
+    templateId: null,
+    salaryRate: 0,
+    salaryAmount: 0,
+    salaryCurrency: 'UAH',
+    shiftNote: '',
+  };
+  await dbConn.run(
+    `INSERT INTO bot_active_shifts
+     (user_id, started_at, started_day, template_id, salary_rate, salary_amount, salary_currency, shift_note, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(user_id) DO UPDATE SET
+      started_at = excluded.started_at,
+      started_day = excluded.started_day,
+      template_id = excluded.template_id,
+      salary_rate = excluded.salary_rate,
+      salary_amount = excluded.salary_amount,
+      salary_currency = excluded.salary_currency,
+      shift_note = excluded.shift_note,
+      updated_at = excluded.updated_at`,
+    [
+      userId,
+      startedAt,
+      startedDay,
+      resolved.templateId,
+      resolved.salaryRate,
+      resolved.salaryAmount,
+      resolved.salaryCurrency,
+      resolved.shiftNote,
+      startedAt,
+    ]
+  );
+  await upsertPlannerDay(dbConn, userId, startedDay, {
+    hasShift: true,
+    salaryRate: resolved.salaryRate,
+    salaryAmount: resolved.salaryAmount,
+    salaryCurrency: resolved.salaryCurrency === 'PLN' ? 'PLN' : 'UAH',
+    note: resolved.shiftNote,
+  });
+  return {
+    ok: true,
+    startedAt,
+    startedDay,
+    userTimeZone,
+    ...resolved,
+  };
+};
 
 const allowedOrigins = (process.env.CORS_ORIGINS ?? '')
   .split(',')
@@ -1944,6 +2376,7 @@ const CATEGORIES = [
 const BOT_CATEGORY_OPTIONS = CATEGORIES.filter((c) => c.id !== 'other_income' && c.id !== 'other_expense');
 
 const pendingTransactions = new Map();
+const pendingShiftStarts = new Map();
 const invalidAmountNoticeAt = new Map();
 const CUSTOM_CATEGORY_PREFIX = 'custom:';
 const CUSTOM_CATEGORY_SEPARATOR = '|';
@@ -1971,6 +2404,8 @@ const parseCustomCategoryId = (id) => {
 const botMainMenuKeyboard = {
   keyboard: [
     [{ text: '📊 Тижневий звіт' }, { text: '📅 Місячний звіт' }],
+    [{ text: '🟢 Почати зміну' }],
+    [{ text: '🔴 Завершити зміну' }],
   ],
   resize_keyboard: true,
   is_persistent: true,
@@ -2088,6 +2523,155 @@ if (bot) {
     const settings = await updateReportSettings(db, userId, { autoMonthly: on });
     bot.sendMessage(msg.chat.id, `✅ Місячний авто-звіт: ${settings.autoMonthly ? 'ON' : 'OFF'}`);
   });
+  const sendBotShiftStartPicker = async (chatId, userId, userTimeZone) => {
+    const templates = await db.all(
+      `SELECT id, name, symbol, salary_rate, salary_amount, currency
+       FROM planner_shift_templates
+       WHERE user_id = ?
+       ORDER BY updated_at DESC
+       LIMIT 20`,
+      [userId]
+    );
+    const startedAt = new Date().toISOString();
+    const startedDay = dayFromIsoInZone(startedAt, userTimeZone) || startedAt.slice(0, 10);
+    pendingShiftStarts.set(chatId, {
+      userId,
+      startedAt,
+      startedDay,
+      userTimeZone,
+      createdAt: Date.now(),
+    });
+    const templateButtons = Array.isArray(templates)
+      ? templates.map((tpl) => [{ text: formatShiftTemplateLabel(tpl).slice(0, 48), callback_data: `shift_tpl_${tpl.id}` }])
+      : [];
+    templateButtons.unshift([{ text: 'Без шаблону', callback_data: 'shift_tpl_none' }]);
+    bot.sendMessage(chatId, 'Оберіть шаблон зміни:', { reply_markup: { inline_keyboard: templateButtons } });
+  };
+
+  const botStartShiftWithDefault = async (msg) => {
+    if (!msg.from?.id || !msg.chat?.id) return;
+    const userId = String(msg.from.id);
+    await upsertBotUser(db, msg.from.id, msg.chat.id);
+    const userTimeZone = await getUserTimeZone(db, userId);
+    const plannerSettings = await getPlannerUserSettings(db, userId);
+    const defaultId = plannerSettings.defaultShiftTemplateId;
+    if (!defaultId) {
+      bot.sendMessage(
+        msg.chat.id,
+        'Шаблон за замовчуванням не заданий. Відкрийте планер у Denga → «Шаблон за замовчуванням», або надішліть /shift_start.'
+      );
+      return;
+    }
+    const result = await startActiveShiftForUser(db, userId, {
+      templateId: defaultId,
+      userTimeZone,
+    });
+    if (!result.ok) {
+      if (result.code === 'ALREADY_ACTIVE') {
+        bot.sendMessage(msg.chat.id, `⚠️ Зміна вже розпочата о ${parseTimeFromIso(result.startedAt, userTimeZone)}.`);
+        return;
+      }
+      if (result.code === 'TEMPLATE_NOT_FOUND') {
+        bot.sendMessage(msg.chat.id, '⚠️ Шаблон за замовчуванням не знайдено. Оновіть налаштування в планері.');
+        return;
+      }
+      return;
+    }
+    bot.sendMessage(
+      msg.chat.id,
+      `🟢 Зміну розпочато (${parseTimeFromIso(result.startedAt, userTimeZone)}). Синхронізовано з календарем.`
+    );
+  };
+
+  bot.onText(/\/shift_start_default/i, async (msg) => {
+    await botStartShiftWithDefault(msg);
+  });
+  bot.onText(/\/shift_start/i, async (msg) => {
+    if (!msg.from?.id || !msg.chat?.id) return;
+    const userId = String(msg.from.id);
+    await upsertBotUser(db, msg.from.id, msg.chat.id);
+    const userTimeZone = await getUserTimeZone(db, userId);
+    const active = await db.get(
+      'SELECT started_at FROM bot_active_shifts WHERE user_id = ? LIMIT 1',
+      [userId]
+    );
+    if (active?.started_at) {
+      bot.sendMessage(msg.chat.id, `⚠️ Зміна вже розпочата о ${parseTimeFromIso(active.started_at, userTimeZone)}.`);
+      return;
+    }
+    await sendBotShiftStartPicker(msg.chat.id, userId, userTimeZone);
+  });
+  bot.onText(/\/shift_end/i, async (msg) => {
+    if (!msg.from?.id || !msg.chat?.id) return;
+    const userId = String(msg.from.id);
+    await upsertBotUser(db, msg.from.id, msg.chat.id);
+    const userTimeZone = await getUserTimeZone(db, userId);
+    const active = await db.get(
+      'SELECT started_at, started_day, template_id, salary_rate, salary_amount, salary_currency, shift_note FROM bot_active_shifts WHERE user_id = ? LIMIT 1',
+      [userId]
+    );
+    if (!active?.started_at) {
+      bot.sendMessage(msg.chat.id, '⚠️ Активної зміни немає. Використайте /shift_start.');
+      return;
+    }
+    const startedMs = shiftStartedAtToUtcMs(active.started_at, userTimeZone);
+    if (!Number.isFinite(startedMs)) {
+      await db.run('DELETE FROM bot_active_shifts WHERE user_id = ?', [userId]);
+      bot.sendMessage(msg.chat.id, '⚠️ Стан зміни був пошкоджений. Почніть нову через /shift_start.');
+      return;
+    }
+    const deleteActive = await db.run(
+      'DELETE FROM bot_active_shifts WHERE user_id = ? AND started_at = ?',
+      [userId, active.started_at]
+    );
+    if (!deleteActive?.changes) {
+      bot.sendMessage(msg.chat.id, '⚠️ Зміну вже завершено. Оновіть календар.');
+      return;
+    }
+    const now = new Date();
+    const diffHours = Math.max(0, (now.getTime() - startedMs) / (1000 * 60 * 60));
+    const roundedHours = Number(diffHours.toFixed(2));
+    const day = String(active.started_day || dayFromIsoInZone(active.started_at, userTimeZone) || active.started_at.slice(0, 10));
+    const shiftSalaryRate = Number(active.salary_rate) || 0;
+    const shiftSalaryAmount = Number(active.salary_amount) || 0;
+    const shiftSalaryCurrency = normalizeCurrency(active.salary_currency) === 'PLN' ? 'PLN' : 'UAH';
+    const baseNote = String(active.shift_note ?? '').trim();
+    let salaryAmount = shiftSalaryAmount;
+    if (salaryAmount <= 0 && shiftSalaryRate > 0 && roundedHours > 0) {
+      salaryAmount = Number((shiftSalaryRate * roundedHours).toFixed(2));
+    }
+    const nowIso = now.toISOString();
+    const entryNote = baseNote || buildBotShiftNote(active.started_at, nowIso, userTimeZone);
+    await db.run(
+      `INSERT INTO planner_shift_entries
+       (id, user_id, day, started_at, ended_at, worked_hours, salary_rate, salary_amount, salary_currency, note, template_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        uuidv4(),
+        userId,
+        day,
+        String(active.started_at),
+        nowIso,
+        roundedHours,
+        Math.max(0, shiftSalaryRate),
+        Math.max(0, salaryAmount),
+        shiftSalaryCurrency,
+        entryNote,
+        active.template_id ? String(active.template_id) : null,
+        nowIso,
+        nowIso,
+      ]
+    );
+    await upsertPlannerDay(db, userId, day, {
+      hasShift: true,
+      note: entryNote,
+    });
+    bot.sendMessage(
+      msg.chat.id,
+      `🔴 Зміну завершено (${parseTimeFromIso(now.toISOString(), userTimeZone)}). Відпрацьовано: ${formatHoursAsHoursMinutes(roundedHours)}.`
+    );
+  });
+
   bot.on('message', async (msg) => {
     if (!msg.from?.id || !msg.chat?.id) return;
     await upsertBotUser(db, msg.from.id, msg.chat.id);
@@ -2098,6 +2682,44 @@ if (bot) {
       .replace(/[^\p{L}\p{N}\s/]/gu, ' ')
       .replace(/\s+/g, ' ')
       .trim();
+    if (
+      /(^| )почати зміну($| )/i.test(normalizedText) ||
+      /(^| )начать смену($| )/i.test(normalizedText) ||
+      /(^| )start shift($| )/i.test(normalizedText) ||
+      normalizedText === 'почати зміну' ||
+      normalizedText === '🟢 почати зміну'
+    ) {
+      const userId = String(msg.from.id);
+      const plannerSettings = await getPlannerUserSettings(db, userId);
+      if (plannerSettings.defaultShiftTemplateId) {
+        await botStartShiftWithDefault(msg);
+        return;
+      }
+      bot.processUpdate({
+        update_id: Date.now(),
+        message: {
+          ...msg,
+          text: '/shift_start',
+        },
+      });
+      return;
+    }
+    if (
+      /(^| )завершити зміну($| )/i.test(normalizedText) ||
+      /(^| )закончить смену($| )/i.test(normalizedText) ||
+      /(^| )end shift($| )/i.test(normalizedText) ||
+      normalizedText === 'завершити зміну' ||
+      normalizedText === '🔴 завершити зміну'
+    ) {
+      bot.processUpdate({
+        update_id: Date.now() + 1,
+        message: {
+          ...msg,
+          text: '/shift_end',
+        },
+      });
+      return;
+    }
     if (
       /(^| )записати транзакції($| )/i.test(normalizedText) ||
       /(^| )записати транзакцію($| )/i.test(normalizedText) ||
@@ -2164,7 +2786,7 @@ if (bot) {
         invalidAmountNoticeAt.set(msg.chat.id, now);
         bot.sendMessage(
           msg.chat.id,
-          'Не зрозумів суму. Надішліть число (наприклад, 100) або використайте /advice.'
+          'Не зрозумів суму. Надішліть число (наприклад, 100) або використайте /shift_start, /shift_end чи /advice.'
         );
       }
       return;
@@ -2236,6 +2858,51 @@ if (bot) {
         return;
       }
       await bot.answerCallbackQuery(callbackQuery.id);
+      return;
+    }
+
+    if (callbackQuery.data.startsWith('shift_tpl_')) {
+      const pendingShift = pendingShiftStarts.get(chatId);
+      if (!pendingShift) {
+        bot.answerCallbackQuery(callbackQuery.id, { text: 'Запит застарів. Запустіть /shift_start ще раз.' });
+        return;
+      }
+      if (pendingShift.userId !== String(callbackQuery.from.id)) {
+        bot.answerCallbackQuery(callbackQuery.id, { text: 'Ця дія не для цього користувача.' });
+        return;
+      }
+      if (Date.now() - Number(pendingShift.createdAt ?? 0) > 10 * 60 * 1000) {
+        pendingShiftStarts.delete(chatId);
+        bot.answerCallbackQuery(callbackQuery.id, { text: 'Запит застарів. Запустіть /shift_start ще раз.' });
+        return;
+      }
+      const picked = callbackQuery.data.replace('shift_tpl_', '');
+      const userTimeZone = normalizeTimeZone(pendingShift.userTimeZone);
+      const result = await startActiveShiftForUser(db, pendingShift.userId, {
+        templateId: picked === 'none' ? 'none' : picked,
+        startedAt: pendingShift.startedAt,
+        startedDay: pendingShift.startedDay,
+        userTimeZone,
+      });
+      if (!result.ok) {
+        if (result.code === 'TEMPLATE_NOT_FOUND') {
+          bot.answerCallbackQuery(callbackQuery.id, { text: 'Шаблон не знайдено.' });
+          return;
+        }
+        if (result.code === 'ALREADY_ACTIVE') {
+          bot.answerCallbackQuery(callbackQuery.id, { text: 'Зміна вже відкрита.' });
+          pendingShiftStarts.delete(chatId);
+          return;
+        }
+        bot.answerCallbackQuery(callbackQuery.id, { text: 'Не вдалося почати зміну.' });
+        return;
+      }
+      pendingShiftStarts.delete(chatId);
+      bot.answerCallbackQuery(callbackQuery.id);
+      bot.sendMessage(
+        chatId,
+        `🟢 Зміну розпочато (${parseTimeFromIso(pendingShift.startedAt, userTimeZone)}). Синхронізовано з календарем.`
+      );
       return;
     }
 
@@ -2396,6 +3063,115 @@ setInterval(() => {
 }, 60 * 60 * 1000);
 
 // --- Shortcuts / automation (personal token, no Telegram initData) ---
+app.get('/api/automation/shift/start', async (req, res) => {
+  const userId = await resolveAutomationUserId(db, req);
+  if (!userId) {
+    res.status(401).json({ error: 'Invalid or missing token' });
+    return;
+  }
+  const plannerSettings = await getPlannerUserSettings(db, userId);
+  if (!plannerSettings.defaultShiftTemplateId) {
+    res.status(400).json({
+      error: 'Default shift template is not set in Denga planner',
+      code: 'DEFAULT_TEMPLATE_MISSING',
+    });
+    return;
+  }
+  const userTimeZone = await getUserTimeZone(db, userId);
+  const result = await startActiveShiftForUser(db, userId, {
+    templateId: plannerSettings.defaultShiftTemplateId,
+    userTimeZone,
+  });
+  if (!result.ok) {
+    if (result.code === 'ALREADY_ACTIVE') {
+      res.status(409).json({ error: 'Shift already active', code: result.code });
+      return;
+    }
+    res.status(400).json({ error: 'Could not start shift', code: result.code ?? 'UNKNOWN' });
+    return;
+  }
+  res.json({
+    ok: true,
+    action: 'start',
+    startedAt: result.startedAt,
+    shiftNote: result.shiftNote,
+  });
+});
+
+app.get('/api/automation/shift/end', async (req, res) => {
+  const userId = await resolveAutomationUserId(db, req);
+  if (!userId) {
+    res.status(401).json({ error: 'Invalid or missing token' });
+    return;
+  }
+  const active = await db.get(
+    'SELECT started_at, started_day, template_id, salary_rate, salary_amount, salary_currency, shift_note FROM bot_active_shifts WHERE user_id = ? LIMIT 1',
+    [userId]
+  );
+  if (!active?.started_at) {
+    res.status(400).json({ error: 'No active shift', code: 'NO_ACTIVE_SHIFT' });
+    return;
+  }
+  const userTimeZone = await getUserTimeZone(db, userId);
+  const startedMs = shiftStartedAtToUtcMs(active.started_at, userTimeZone);
+  if (!Number.isFinite(startedMs)) {
+    await db.run('DELETE FROM bot_active_shifts WHERE user_id = ?', [userId]);
+    res.status(400).json({ error: 'Corrupted shift state', code: 'INVALID_SHIFT' });
+    return;
+  }
+  const deleteActive = await db.run(
+    'DELETE FROM bot_active_shifts WHERE user_id = ? AND started_at = ?',
+    [userId, active.started_at]
+  );
+  if (!deleteActive?.changes) {
+    res.status(409).json({ error: 'Shift already ended', code: 'ALREADY_ENDED' });
+    return;
+  }
+  const now = new Date();
+  const diffHours = Math.max(0, (now.getTime() - startedMs) / (1000 * 60 * 60));
+  const roundedHours = Number(diffHours.toFixed(2));
+  const day = String(active.started_day || dayFromIsoInZone(active.started_at, userTimeZone) || active.started_at.slice(0, 10));
+  const shiftSalaryRate = Number(active.salary_rate) || 0;
+  const shiftSalaryAmount = Number(active.salary_amount) || 0;
+  const shiftSalaryCurrency = normalizeCurrency(active.salary_currency) === 'PLN' ? 'PLN' : 'UAH';
+  const baseNote = String(active.shift_note ?? '').trim();
+  let salaryAmount = shiftSalaryAmount;
+  if (salaryAmount <= 0 && shiftSalaryRate > 0 && roundedHours > 0) {
+    salaryAmount = Number((shiftSalaryRate * roundedHours).toFixed(2));
+  }
+  const nowIso = now.toISOString();
+  const entryNote = baseNote || buildBotShiftNote(active.started_at, nowIso, userTimeZone);
+  await db.run(
+    `INSERT INTO planner_shift_entries
+     (id, user_id, day, started_at, ended_at, worked_hours, salary_rate, salary_amount, salary_currency, note, template_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      uuidv4(),
+      userId,
+      day,
+      String(active.started_at),
+      nowIso,
+      roundedHours,
+      Math.max(0, shiftSalaryRate),
+      Math.max(0, salaryAmount),
+      shiftSalaryCurrency,
+      entryNote,
+      active.template_id ? String(active.template_id) : null,
+      nowIso,
+      nowIso,
+    ]
+  );
+  await upsertPlannerDay(db, userId, day, {
+    hasShift: true,
+    note: entryNote,
+  });
+  res.json({
+    ok: true,
+    action: 'end',
+    workedHours: roundedHours,
+    endedAt: nowIso,
+  });
+});
 
 // --- API Logic ---
 app.use('/api', authMiddleware);
@@ -2475,6 +3251,8 @@ app.patch('/api/reminders/:id', async (req, res) => {
     const raw = Number.isFinite(n) ? Math.trunc(n) : 0;
     if (kind === 'fx_change') leadDays = Math.min(100, Math.max(1, raw));
     else if (kind === 'inactivity') leadDays = Math.min(90, Math.max(1, raw));
+    else if (kind === 'shift_evening_before') leadDays = Math.min(30, Math.max(1, raw));
+    else if (kind === 'shift_unclosed') leadDays = 0;
     else if (kind === 'subscriptions') leadDays = Math.min(31, Math.max(0, raw));
     else leadDays = 0;
   }
@@ -3902,6 +4680,675 @@ app.delete('/api/subscriptions/:id', async (req, res) => {
   res.json({ id, deleted: true });
 });
 
+app.get('/api/planner', async (req, res) => {
+  const userId = req.authUserId;
+  const yearQ = String(req.query.year ?? '');
+  const month = String(req.query.month ?? '');
+  const from = String(req.query.from ?? '');
+  const to = String(req.query.to ?? '');
+
+  let likePattern;
+  let rangeFrom;
+  let rangeTo;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(from) && /^\d{4}-\d{2}-\d{2}$/.test(to) && from <= to) {
+    rangeFrom = from;
+    rangeTo = to;
+  } else if (yearQ && /^\d{4}$/.test(yearQ)) {
+    likePattern = `${yearQ}-%`;
+  } else if (/^\d{4}-\d{2}$/.test(month)) {
+    likePattern = `${month}-%`;
+  } else {
+    res
+      .status(400)
+      .json({ error: 'Query month=YYYY-MM, year=YYYY, or from/to=YYYY-MM-DD' });
+    return;
+  }
+
+  const days = rangeFrom
+    ? await db.all(
+        'SELECT day, hasShift, workedHours, salaryRate, salaryAmount, salary_currency, note, updatedAt FROM planner_days WHERE day >= ? AND day <= ? ORDER BY day ASC',
+        [plannerDayKey(userId, rangeFrom), plannerDayKey(userId, rangeTo)]
+      )
+    : await db.all(
+        'SELECT day, hasShift, workedHours, salaryRate, salaryAmount, salary_currency, note, updatedAt FROM planner_days WHERE day LIKE ? ORDER BY day ASC',
+        [plannerDayKey(userId, likePattern)]
+      );
+  const entries = rangeFrom
+    ? await db.all(
+        `SELECT day, worked_hours, salary_amount, salary_currency, note, ended_at
+         FROM planner_shift_entries
+         WHERE user_id = ? AND day >= ? AND day <= ?
+         ORDER BY ended_at DESC`,
+        [userId, rangeFrom, rangeTo]
+      )
+    : await db.all(
+        `SELECT day, worked_hours, salary_amount, salary_currency, note, ended_at
+         FROM planner_shift_entries
+         WHERE user_id = ? AND day LIKE ?
+         ORDER BY ended_at DESC`,
+        [userId, likePattern]
+      );
+
+  const entriesByDay = new Map();
+  for (const row of entries) {
+    const key = String(row.day || '');
+    if (!key) continue;
+    const current = entriesByDay.get(key) ?? {
+      workedHours: 0,
+      salaryAmountUah: 0,
+      salaryAmountPln: 0,
+      entriesCount: 0,
+      latestEndedAt: '',
+      latestNote: '',
+    };
+    const hours = Math.max(0, Number(row.worked_hours) || 0);
+    const amount = Math.max(0, Number(row.salary_amount) || 0);
+    const currency = normalizeCurrency(row.salary_currency) === 'PLN' ? 'PLN' : 'UAH';
+    current.workedHours += hours;
+    if (currency === 'PLN') current.salaryAmountPln += amount;
+    else current.salaryAmountUah += amount;
+    current.entriesCount += 1;
+    if (!current.latestEndedAt || String(row.ended_at || '') > current.latestEndedAt) {
+      current.latestEndedAt = String(row.ended_at || '');
+      current.latestNote = String(row.note || '').trim();
+    }
+    entriesByDay.set(key, current);
+  }
+
+  const mergedByDay = new Map();
+  for (const row of days) {
+    const dayIso = plannerDayFromStored(userId, row.day);
+    const entryAgg = entriesByDay.get(dayIso);
+    const basePay = Math.max(0, Number(row.salaryAmount) || 0);
+    const baseCurrency = normalizeCurrency(row.salary_currency) === 'PLN' ? 'PLN' : 'UAH';
+    const hasEntries = Boolean((entryAgg?.entriesCount || 0) > 0);
+    const salaryAmountUah = hasEntries ? (entryAgg?.salaryAmountUah || 0) : (baseCurrency === 'UAH' ? basePay : 0);
+    const salaryAmountPln = hasEntries ? (entryAgg?.salaryAmountPln || 0) : (baseCurrency === 'PLN' ? basePay : 0);
+    const workedHours = hasEntries ? (entryAgg?.workedHours || 0) : (Number(row.workedHours) || 0);
+    const merged = {
+      day: dayIso,
+      hasShift: Boolean(row.hasShift) || Boolean(entryAgg),
+      workedHours,
+      salaryRate: Number(row.salaryRate) || 0,
+      salaryAmount: Number(row.salaryAmount) || 0,
+      salaryCurrency: baseCurrency,
+      salaryAmountUah,
+      salaryAmountPln,
+      shiftsCount: (entryAgg?.entriesCount || 0) + (Boolean(row.hasShift) && !(entryAgg?.entriesCount > 0) ? 1 : 0),
+      note: String(row.note ?? '').trim() || String(entryAgg?.latestNote ?? '').trim(),
+      updatedAt: row.updatedAt,
+    };
+    mergedByDay.set(dayIso, merged);
+  }
+  for (const [dayIso, entryAgg] of entriesByDay.entries()) {
+    if (mergedByDay.has(dayIso)) continue;
+    mergedByDay.set(dayIso, {
+      day: dayIso,
+      hasShift: true,
+      workedHours: entryAgg.workedHours,
+      salaryRate: 0,
+      salaryAmount: 0,
+      salaryCurrency: 'UAH',
+      salaryAmountUah: entryAgg.salaryAmountUah,
+      salaryAmountPln: entryAgg.salaryAmountPln,
+      shiftsCount: entryAgg.entriesCount || 0,
+      note: entryAgg.latestNote,
+      updatedAt: entryAgg.latestEndedAt || new Date().toISOString(),
+    });
+  }
+
+  res.json(
+    Array.from(mergedByDay.values()).sort((a, b) => String(a.day).localeCompare(String(b.day)))
+  );
+});
+
+app.get('/api/planner/shift-entries', async (req, res) => {
+  const userId = req.authUserId;
+  const from = String(req.query.from ?? '');
+  const to = String(req.query.to ?? '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) {
+    res.status(400).json({ error: 'Query from/to must be YYYY-MM-DD and from <= to' });
+    return;
+  }
+  const rows = await db.all(
+    `SELECT id, day, started_at, ended_at, worked_hours, salary_rate, salary_amount, salary_currency, note, template_id
+     FROM planner_shift_entries
+     WHERE user_id = ? AND day >= ? AND day <= ?
+     ORDER BY ended_at DESC`,
+    [userId, from, to]
+  );
+  res.json(
+    rows.map((row) => ({
+      id: String(row.id),
+      day: String(row.day),
+      startedAt: String(row.started_at),
+      endedAt: String(row.ended_at),
+      workedHours: Math.max(0, Number(row.worked_hours) || 0),
+      salaryRate: Math.max(0, Number(row.salary_rate) || 0),
+      salaryAmount: Math.max(0, Number(row.salary_amount) || 0),
+      salaryCurrency: normalizeCurrency(row.salary_currency) === 'PLN' ? 'PLN' : 'UAH',
+      note: String(row.note ?? ''),
+      templateId: row.template_id ? String(row.template_id) : null,
+    }))
+  );
+});
+
+app.get('/api/planner/:day/shifts', async (req, res) => {
+  const userId = req.authUserId;
+  const { day } = req.params;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+    res.status(400).json({ error: 'day param must be in YYYY-MM-DD format' });
+    return;
+  }
+  const rows = await db.all(
+    `SELECT id, day, started_at, ended_at, worked_hours, salary_rate, salary_amount, salary_currency, note, template_id
+     FROM planner_shift_entries
+     WHERE user_id = ? AND day = ?
+     ORDER BY ended_at DESC`,
+    [userId, day]
+  );
+  res.json(
+    rows.map((row) => ({
+      id: String(row.id),
+      day: String(row.day),
+      startedAt: String(row.started_at),
+      endedAt: String(row.ended_at),
+      workedHours: Math.max(0, Number(row.worked_hours) || 0),
+      salaryRate: Math.max(0, Number(row.salary_rate) || 0),
+      salaryAmount: Math.max(0, Number(row.salary_amount) || 0),
+      salaryCurrency: normalizeCurrency(row.salary_currency) === 'PLN' ? 'PLN' : 'UAH',
+      note: String(row.note ?? ''),
+      templateId: row.template_id ? String(row.template_id) : null,
+    }))
+  );
+});
+
+app.post('/api/planner/:day/shifts', async (req, res) => {
+  const userId = req.authUserId;
+  const { day } = req.params;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+    res.status(400).json({ error: 'day param must be in YYYY-MM-DD format' });
+    return;
+  }
+  const body = (req.body && typeof req.body === 'object') ? req.body : {};
+  const templateId = typeof body.templateId === 'string' ? body.templateId.trim() : '';
+  let workedHours = Math.max(0, Number(body.workedHours) || 0);
+  let salaryRate = Math.max(0, Number(body.salaryRate) || 0);
+  let salaryAmount = Math.max(0, Number(body.salaryAmount) || 0);
+  let salaryCurrency = normalizeCurrency(body.salaryCurrency) === 'PLN' ? 'PLN' : 'UAH';
+  let note = typeof body.note === 'string' ? body.note.trim() : '';
+  let resolvedTemplateId = null;
+
+  if (templateId) {
+    const tpl = await db.get(
+      `SELECT id, name, symbol, worked_hours, salary_rate, salary_amount, currency
+       FROM planner_shift_templates
+       WHERE user_id = ? AND id = ?
+       LIMIT 1`,
+      [userId, templateId]
+    );
+    if (!tpl?.id) {
+      res.status(404).json({ error: 'Template not found' });
+      return;
+    }
+    resolvedTemplateId = String(tpl.id);
+    workedHours = Math.max(0, Number(tpl.worked_hours) || 0);
+    salaryRate = Math.max(0, Number(tpl.salary_rate) || 0);
+    salaryAmount = Math.max(0, Number(tpl.salary_amount) || 0);
+    salaryCurrency = normalizeCurrency(tpl.currency) === 'PLN' ? 'PLN' : 'UAH';
+    note = [String(tpl.name ?? '').trim(), String(tpl.symbol ?? '').trim()].filter(Boolean).join(' • ');
+  }
+
+  if (salaryAmount <= 0 && salaryRate > 0 && workedHours > 0) {
+    salaryAmount = Number((salaryRate * workedHours).toFixed(2));
+  }
+
+  const nowIso = new Date().toISOString();
+  const startedAt = typeof body.startedAt === 'string' && body.startedAt.trim() ? body.startedAt.trim() : nowIso;
+  const endedAt = typeof body.endedAt === 'string' && body.endedAt.trim() ? body.endedAt.trim() : nowIso;
+  const id = uuidv4();
+
+  await db.run(
+    `INSERT INTO planner_shift_entries
+     (id, user_id, day, started_at, ended_at, worked_hours, salary_rate, salary_amount, salary_currency, note, template_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, userId, day, startedAt, endedAt, workedHours, salaryRate, salaryAmount, salaryCurrency, note, resolvedTemplateId, nowIso, nowIso]
+  );
+
+  await upsertPlannerDay(db, userId, day, {
+    hasShift: true,
+    note: note || '',
+  });
+
+  res.status(201).json({
+    id,
+    day,
+    startedAt,
+    endedAt,
+    workedHours,
+    salaryRate,
+    salaryAmount,
+    salaryCurrency,
+    note,
+    templateId: resolvedTemplateId,
+  });
+});
+
+app.put('/api/planner/shifts/:id', async (req, res) => {
+  const userId = req.authUserId;
+  const id = typeof req.params.id === 'string' ? req.params.id.trim() : '';
+  if (!id) {
+    res.status(400).json({ error: 'invalid id' });
+    return;
+  }
+  const current = await db.get(
+    `SELECT id, day, started_at, ended_at, worked_hours, salary_rate, salary_amount, salary_currency, note
+     FROM planner_shift_entries
+     WHERE user_id = ? AND id = ?
+     LIMIT 1`,
+    [userId, id]
+  );
+  if (!current?.id) {
+    res.status(404).json({ error: 'not found' });
+    return;
+  }
+  const workedHours = req.body.workedHours === undefined
+    ? Math.max(0, Number(current.worked_hours) || 0)
+    : Math.max(0, Number(req.body.workedHours) || 0);
+  const salaryRate = req.body.salaryRate === undefined
+    ? Math.max(0, Number(current.salary_rate) || 0)
+    : Math.max(0, Number(req.body.salaryRate) || 0);
+  let salaryAmount = req.body.salaryAmount === undefined
+    ? Math.max(0, Number(current.salary_amount) || 0)
+    : Math.max(0, Number(req.body.salaryAmount) || 0);
+  if (salaryAmount <= 0 && salaryRate > 0 && workedHours > 0) {
+    salaryAmount = Number((salaryRate * workedHours).toFixed(2));
+  }
+  const salaryCurrency = normalizeCurrency(req.body.salaryCurrency ?? current.salary_currency) === 'PLN' ? 'PLN' : 'UAH';
+  const note = typeof req.body.note === 'string' ? req.body.note.trim() : String(current.note ?? '');
+  const startedAt = typeof req.body.startedAt === 'string' && req.body.startedAt.trim() ? req.body.startedAt.trim() : String(current.started_at);
+  const endedAt = typeof req.body.endedAt === 'string' && req.body.endedAt.trim() ? req.body.endedAt.trim() : String(current.ended_at);
+  const updatedAt = new Date().toISOString();
+  await db.run(
+    `UPDATE planner_shift_entries
+     SET started_at = ?, ended_at = ?, worked_hours = ?, salary_rate = ?, salary_amount = ?, salary_currency = ?, note = ?, updated_at = ?
+     WHERE user_id = ? AND id = ?`,
+    [startedAt, endedAt, workedHours, salaryRate, salaryAmount, salaryCurrency, note, updatedAt, userId, id]
+  );
+  await upsertPlannerDay(db, userId, String(current.day), { hasShift: true, note });
+  res.json({
+    id,
+    day: String(current.day),
+    startedAt,
+    endedAt,
+    workedHours,
+    salaryRate,
+    salaryAmount,
+    salaryCurrency,
+    note,
+    updatedAt,
+  });
+});
+
+app.delete('/api/planner/shifts/:id', async (req, res) => {
+  const userId = req.authUserId;
+  const id = typeof req.params.id === 'string' ? req.params.id.trim() : '';
+  if (!id) {
+    res.status(400).json({ error: 'invalid id' });
+    return;
+  }
+  const current = await db.get(
+    'SELECT day FROM planner_shift_entries WHERE user_id = ? AND id = ? LIMIT 1',
+    [userId, id]
+  );
+  if (!current?.day) {
+    res.status(404).json({ error: 'not found' });
+    return;
+  }
+  await db.run('DELETE FROM planner_shift_entries WHERE user_id = ? AND id = ?', [userId, id]);
+  const remaining = await db.get(
+    'SELECT COUNT(1) AS cnt FROM planner_shift_entries WHERE user_id = ? AND day = ?',
+    [userId, String(current.day)]
+  );
+  if ((Number(remaining?.cnt) || 0) <= 0) {
+    await upsertPlannerDay(db, userId, String(current.day), {
+      hasShift: false,
+      workedHours: 0,
+      salaryRate: 0,
+      salaryAmount: 0,
+      salaryCurrency: 'UAH',
+      note: '',
+    });
+  }
+  res.status(204).end();
+});
+
+app.get('/api/planner/settings', async (req, res) => {
+  const userId = req.authUserId;
+  const settings = await getPlannerUserSettings(db, userId);
+  res.json(settings);
+});
+
+app.put('/api/planner/settings', async (req, res) => {
+  const userId = req.authUserId;
+  if (req.body?.defaultShiftTemplateId !== undefined && req.body.defaultShiftTemplateId !== null) {
+    const v = req.body.defaultShiftTemplateId;
+    if (v !== 'none' && typeof v !== 'string') {
+      res.status(400).json({ error: 'defaultShiftTemplateId must be template id, "none", or null' });
+      return;
+    }
+  }
+  const updated = await updatePlannerUserSettings(db, userId, {
+    defaultShiftTemplateId: req.body?.defaultShiftTemplateId,
+  });
+  if (updated?.error === 'TEMPLATE_NOT_FOUND') {
+    res.status(404).json({ error: 'Template not found' });
+    return;
+  }
+  res.json(updated);
+});
+
+app.get('/api/planner/automation', async (req, res) => {
+  const userId = req.authUserId;
+  await ensurePlannerUserSettings(db, userId);
+  const row = await db.get(
+    'SELECT automation_token FROM planner_user_settings WHERE user_id = ? LIMIT 1',
+    [userId]
+  );
+  const token = String(row?.automation_token ?? '');
+  res.json({
+    token,
+    ...buildAutomationShiftUrls(req, token),
+  });
+});
+
+app.post('/api/planner/automation/rotate-token', async (req, res) => {
+  const userId = req.authUserId;
+  await ensurePlannerUserSettings(db, userId);
+  const token = createAutomationToken();
+  await db.run(
+    `UPDATE planner_user_settings SET automation_token = ?, updated_at = ? WHERE user_id = ?`,
+    [token, new Date().toISOString(), userId]
+  );
+  res.json({
+    token,
+    ...buildAutomationShiftUrls(req, token),
+  });
+});
+
+app.put('/api/planner/:day', async (req, res) => {
+  const userId = req.authUserId;
+  const { day } = req.params;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+    res.status(400).json({ error: 'day param must be in YYYY-MM-DD format' });
+    return;
+  }
+
+  const hasShift = req.body.hasShift ? 1 : 0;
+  const workedHours = Number(req.body.workedHours) || 0;
+  const salaryRate = Number(req.body.salaryRate) || 0;
+  const salaryAmount = Number(req.body.salaryAmount) || 0;
+  const salaryCurrency = req.body.salaryCurrency === 'PLN' ? 'PLN' : 'UAH';
+  const note = typeof req.body.note === 'string' ? req.body.note.trim() : '';
+  const updatedAt = new Date().toISOString();
+  const dayKey = plannerDayKey(userId, day);
+
+  await db.run(
+    `INSERT INTO planner_days (day, user_id, hasShift, workedHours, salaryRate, salaryAmount, salary_currency, note, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(day) DO UPDATE SET
+      user_id = excluded.user_id,
+       hasShift = excluded.hasShift,
+       workedHours = excluded.workedHours,
+       salaryRate = excluded.salaryRate,
+       salaryAmount = excluded.salaryAmount,
+       salary_currency = excluded.salary_currency,
+       note = excluded.note,
+       updatedAt = excluded.updatedAt`,
+    [dayKey, userId, hasShift, workedHours, salaryRate, salaryAmount, salaryCurrency, note, updatedAt]
+  );
+
+  res.json({
+    day,
+    hasShift: Boolean(hasShift),
+    workedHours,
+    salaryRate,
+    salaryAmount,
+    salaryCurrency,
+    note,
+    updatedAt,
+  });
+});
+
+const normalizeShiftTemplateKey = (name, symbol, currency) =>
+  `${String(name).trim().toLowerCase()}::${String(symbol).trim().toLowerCase()}::${currency === 'PLN' ? 'PLN' : 'UAH'}`;
+
+app.get('/api/planner/shift-templates', async (req, res) => {
+  const userId = req.authUserId;
+  const rows = await db.all(
+    `SELECT id, name, symbol, is_full_day, start_time, end_time, worked_hours, salary_rate, salary_amount, currency, updated_at
+     FROM planner_shift_templates
+     WHERE user_id = ?
+     ORDER BY updated_at DESC`
+    ,
+    [userId]
+  );
+  res.json(
+    rows.map((row) => ({
+      id: row.id,
+      name: row.name ?? '',
+      symbol: row.symbol ?? '',
+      isFullDay: Boolean(row.is_full_day),
+      startTime: row.start_time ?? '09:00',
+      endTime: row.end_time ?? '17:00',
+      workedHours: Number(row.worked_hours) || 0,
+      salaryRate: Number(row.salary_rate) || 0,
+      salaryAmount: Number(row.salary_amount) || 0,
+      salaryCurrency: normalizeCurrency(row.currency) === 'PLN' ? 'PLN' : 'UAH',
+      updatedAt: row.updated_at,
+    }))
+  );
+});
+
+app.post('/api/planner/shift-templates', async (req, res) => {
+  const userId = req.authUserId;
+  const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
+  const symbol = typeof req.body.symbol === 'string' ? req.body.symbol.trim() : '';
+  if (!name && !symbol) {
+    res.status(400).json({ error: 'name or symbol required' });
+    return;
+  }
+  const isFullDay = Boolean(req.body.isFullDay);
+  const startTime = typeof req.body.startTime === 'string' && /^\d{2}:\d{2}$/.test(req.body.startTime) ? req.body.startTime : '09:00';
+  const endTime = typeof req.body.endTime === 'string' && /^\d{2}:\d{2}$/.test(req.body.endTime) ? req.body.endTime : '17:00';
+  let workedHours = Number(req.body.workedHours);
+  if (!Number.isFinite(workedHours) || workedHours < 0) workedHours = isFullDay ? 8 : 0;
+  const salaryRate = Number.isFinite(Number(req.body.salaryRate)) ? Math.max(0, Number(req.body.salaryRate)) : 0;
+  const salaryAmount = Number.isFinite(Number(req.body.salaryAmount)) ? Math.max(0, Number(req.body.salaryAmount)) : 0;
+  const salaryCurrency = req.body.salaryCurrency === 'PLN' ? 'PLN' : 'UAH';
+
+  const normalized_key = normalizeShiftTemplateKey(name, symbol, salaryCurrency);
+  const normalizedKeyScoped = scopedTemplateKey(userId, normalized_key);
+  const now = new Date().toISOString();
+  const existing = await db.get('SELECT id FROM planner_shift_templates WHERE user_id = ? AND normalized_key = ?', [userId, normalizedKeyScoped]);
+  const id = existing?.id ?? uuidv4();
+
+  if (existing) {
+    await db.run(
+      `UPDATE planner_shift_templates SET
+        name = ?, symbol = ?, is_full_day = ?, start_time = ?, end_time = ?, worked_hours = ?, salary_rate = ?, salary_amount = ?, currency = ?, updated_at = ?
+       WHERE user_id = ? AND id = ?`,
+      [name, symbol, isFullDay ? 1 : 0, startTime, endTime, workedHours, salaryRate, salaryAmount, salaryCurrency, now, userId, id]
+    );
+  } else {
+    await db.run(
+      `INSERT INTO planner_shift_templates
+        (id, user_id, normalized_key, name, symbol, is_full_day, start_time, end_time, worked_hours, salary_rate, salary_amount, currency, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, userId, normalizedKeyScoped, name, symbol, isFullDay ? 1 : 0, startTime, endTime, workedHours, salaryRate, salaryAmount, salaryCurrency, now, now]
+    );
+  }
+
+  res.json({
+    id,
+    name,
+    symbol,
+    isFullDay,
+    startTime,
+    endTime,
+    workedHours,
+    salaryRate,
+    salaryAmount,
+    salaryCurrency,
+    updatedAt: now,
+  });
+});
+
+app.delete('/api/planner/shift-templates/:id', async (req, res) => {
+  const userId = req.authUserId;
+  const id = typeof req.params.id === 'string' ? req.params.id.trim() : '';
+  if (!id) {
+    res.status(400).json({ error: 'invalid id' });
+    return;
+  }
+  const result = await db.run('DELETE FROM planner_shift_templates WHERE user_id = ? AND id = ?', [userId, id]);
+  if (!result.changes) {
+    res.status(404).json({ error: 'not found' });
+    return;
+  }
+  await db.run(
+    `UPDATE planner_user_settings SET default_shift_template_id = NULL, updated_at = ?
+     WHERE user_id = ? AND default_shift_template_id = ?`,
+    [new Date().toISOString(), userId, id]
+  );
+  res.status(204).end();
+});
+
+app.get('/api/planner/active-shift', async (req, res) => {
+  const userId = req.authUserId;
+  const active = await db.get(
+    'SELECT started_at, started_day, template_id, salary_rate, salary_amount, salary_currency, shift_note FROM bot_active_shifts WHERE user_id = ? LIMIT 1',
+    [userId]
+  );
+  if (!active) {
+    res.json(null);
+    return;
+  }
+  res.json({
+    startedAt: active.started_at,
+    startedDay: active.started_day,
+    templateId: active.template_id,
+    salaryRate: active.salary_rate,
+    salaryAmount: active.salary_amount,
+    salaryCurrency: active.salary_currency,
+    shiftNote: active.shift_note
+  });
+});
+
+app.post('/api/planner/active-shift/start', async (req, res) => {
+  const userId = req.authUserId;
+  const body = (req.body && typeof req.body === 'object') ? req.body : {};
+  const { templateId, startedAt, startedDay } = body;
+  const now = new Date().toISOString();
+  const userTimeZone = await getUserTimeZone(db, userId);
+  const startIso = normalizeClientShiftStartIso(typeof startedAt === 'string' ? startedAt : '', now, userTimeZone);
+  const startDayLocal =
+    (typeof startedDay === 'string' && startedDay.trim()) ||
+    dayFromIsoInZone(startIso, userTimeZone) ||
+    startIso.slice(0, 10);
+  const result = await startActiveShiftForUser(db, userId, {
+    templateId: typeof templateId === 'string' && templateId.trim() ? templateId.trim() : null,
+    startedAt: startIso,
+    startedDay: startDayLocal,
+    userTimeZone,
+  });
+  if (!result.ok) {
+    if (result.code === 'ALREADY_ACTIVE') {
+      res.status(400).json({ error: 'Shift already active' });
+      return;
+    }
+    if (result.code === 'TEMPLATE_NOT_FOUND') {
+      res.status(404).json({ error: 'Template not found' });
+      return;
+    }
+    res.status(400).json({ error: 'Could not start shift' });
+    return;
+  }
+  res.json({ success: true });
+});
+
+app.post('/api/planner/active-shift/end', async (req, res) => {
+  const userId = req.authUserId;
+  const active = await db.get(
+    'SELECT started_at, started_day, template_id, salary_rate, salary_amount, salary_currency, shift_note FROM bot_active_shifts WHERE user_id = ? LIMIT 1',
+    [userId]
+  );
+  if (!active) {
+    res.status(400).json({ error: 'No active shift' });
+    return;
+  }
+  const userTimeZone = await getUserTimeZone(db, userId);
+  const startedMs = shiftStartedAtToUtcMs(active.started_at, userTimeZone);
+  if (!Number.isFinite(startedMs)) {
+    res.status(400).json({ error: 'Invalid shift start timestamp' });
+    return;
+  }
+  const deleteActive = await db.run(
+    'DELETE FROM bot_active_shifts WHERE user_id = ? AND started_at = ?',
+    [userId, active.started_at]
+  );
+  if (!deleteActive?.changes) {
+    res.status(409).json({ error: 'Shift already ended' });
+    return;
+  }
+
+  const now = new Date();
+  const diffHours = Math.max(0, (now.getTime() - startedMs) / (1000 * 60 * 60));
+  const roundedHours = Number(diffHours.toFixed(2));
+  const day = String(active.started_day || dayFromIsoInZone(active.started_at, userTimeZone) || active.started_at.slice(0, 10));
+  const shiftSalaryRate = Number(active.salary_rate) || 0;
+  const shiftSalaryAmount = Number(active.salary_amount) || 0;
+  const shiftSalaryCurrency = normalizeCurrency(active.salary_currency) === 'PLN' ? 'PLN' : 'UAH';
+  const baseNote = String(active.shift_note ?? '').trim();
+  let salaryAmount = shiftSalaryAmount;
+  if (salaryAmount <= 0 && shiftSalaryRate > 0 && roundedHours > 0) {
+    salaryAmount = Number((shiftSalaryRate * roundedHours).toFixed(2));
+  }
+  const entryNote = baseNote || buildBotShiftNote(active.started_at, now.toISOString(), userTimeZone);
+  const nowIso = now.toISOString();
+  await db.run(
+    `INSERT INTO planner_shift_entries
+     (id, user_id, day, started_at, ended_at, worked_hours, salary_rate, salary_amount, salary_currency, note, template_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      uuidv4(),
+      userId,
+      day,
+      String(active.started_at),
+      nowIso,
+      roundedHours,
+      Math.max(0, shiftSalaryRate),
+      Math.max(0, salaryAmount),
+      shiftSalaryCurrency,
+      entryNote,
+      active.template_id ? String(active.template_id) : null,
+      nowIso,
+      nowIso,
+    ]
+  );
+  await upsertPlannerDay(db, userId, day, {
+    hasShift: true,
+    note: entryNote,
+  });
+  
+  const dayTotals = await db.get(
+    `SELECT COALESCE(SUM(worked_hours), 0) AS total_hours
+     FROM planner_shift_entries
+     WHERE user_id = ? AND day = ?`,
+    [userId, day]
+  );
+  res.json({ success: true, roundedHours, totalHours: Number(dayTotals?.total_hours) || roundedHours, day });
+});
 
 app.delete('/api/me', authMiddleware, async (req, res) => {
   const userId = req.authUserId;
@@ -3909,7 +5356,12 @@ app.delete('/api/me', authMiddleware, async (req, res) => {
     'transactions',
     'custom_categories',
     'subscriptions',
+    'planner_days',
+    'planner_shift_entries',
+    'planner_shift_templates',
+    'planner_user_settings',
     'account_portfolio',
+    'bot_active_shifts',
     'bot_report_settings',
     'bot_report_deliveries',
     'user_reminders',

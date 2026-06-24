@@ -9,6 +9,7 @@ import Dashboard from './pages/Dashboard';
 import Accounts from './pages/Accounts';
 import AddTransaction from './pages/AddTransaction';
 import History from './pages/History';
+import CalendarPlanner from './pages/CalendarPlanner';
 import Subscriptions from './pages/Subscriptions';
 import Settings from './pages/Settings';
 import Stats from './pages/Stats';
@@ -103,6 +104,7 @@ const TelegramApp: React.FC<{ onReady: () => void }> = ({ onReady }) => {
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/accounts" element={<Accounts />} />
                 <Route path="/history" element={<History />} />
+                <Route path="/calendar" element={<CalendarPlanner />} />
                 <Route path="/subscriptions" element={<Subscriptions />} />
                 <Route path="/add" element={<AddTransaction />} />
                 <Route path="/scan" element={<ScanReceipt />} />
