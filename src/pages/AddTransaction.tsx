@@ -257,12 +257,13 @@ const AddTransaction: React.FC = () => {
   }, [isEditing, searchParams]);
 
   useEffect(() => {
-    if (type !== 'transfer') return;
-    if (!transferFromAccountKey && portfolioAccounts.length > 0) {
-      setTransferFromAccountKey(portfolioAccounts[0].key);
+    if (type !== 'transfer' || portfolioAccounts.length === 0) return;
+    const resolvedFromKey = transferFromAccountKey || portfolioAccounts[0].key;
+    if (!transferFromAccountKey) {
+      setTransferFromAccountKey(resolvedFromKey);
     }
-    if (!transferToAccountKey && portfolioAccounts.length > 1) {
-      const fallback = portfolioAccounts.find((account) => account.key !== transferFromAccountKey) ?? portfolioAccounts[0];
+    if (!transferToAccountKey) {
+      const fallback = portfolioAccounts.find((a) => a.key !== resolvedFromKey) ?? null;
       if (fallback) setTransferToAccountKey(fallback.key);
     }
   }, [type, portfolioAccounts, transferFromAccountKey, transferToAccountKey]);
@@ -293,6 +294,7 @@ const AddTransaction: React.FC = () => {
       setType(newType);
       setIsCreatingCustom(false);
       setManagingCustom(null);
+      setCategorySheetOpen(false);
       setCategoryId((current) =>
         resolveCategoryForTypeChange(current, newType, customCategoryIds),
       );

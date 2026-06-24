@@ -1,6 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { Plus, ArrowRightLeft } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Plus } from 'lucide-react';
 import Header from '../components/ui/Header';
 import AccountsSnapshot from '../components/ui/AccountsSnapshot';
 import AccountEditSheet, { type EditableAccount } from '../components/ui/AccountEditSheet';
@@ -113,7 +112,6 @@ const formatGroupAmount = (amount: number, currency: string) => {
 };
 
 const Accounts: React.FC = () => {
-  const navigate = useNavigate();
   const { t, displayCurrency, convertAmount } = useTranslation();
   const { accounts, cryptoPrices, refreshAccounts } = usePortfolio();
   const [picking, setPicking] = useState(false);
@@ -354,26 +352,15 @@ const Accounts: React.FC = () => {
     <div className={styles.container}>
       <div className={styles.content}>
         <Header />
-        <div className={styles.accountActions}>
-          <button
-            type="button"
-            className={styles.addButton}
-            onClick={() => setPicking(true)}
-            aria-label="Додати рахунок"
-          >
-            <Plus size={18} strokeWidth={2.6} />
-            <span>Додати рахунок</span>
-          </button>
-          <button
-            type="button"
-            className={styles.transferButton}
-            onClick={() => navigate('/add?type=transfer')}
-            aria-label={t('quickActions', 'transfer')}
-          >
-            <ArrowRightLeft size={18} strokeWidth={2.2} />
-            <span>{t('quickActions', 'transfer')}</span>
-          </button>
-        </div>
+        <button
+          type="button"
+          className={styles.addButton}
+          onClick={() => setPicking(true)}
+          aria-label="Додати рахунок"
+        >
+          <Plus size={18} strokeWidth={2.6} />
+          <span>Додати рахунок</span>
+        </button>
         {portfolio.length === 0 ? (
           <div className={styles.emptyState}>
             <p className={styles.emptyTitle}>Рахунків ще немає</p>

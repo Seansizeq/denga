@@ -1,7 +1,7 @@
 .row {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 8px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
   padding: 4px 0 24px;
 }
 
@@ -58,8 +58,3 @@
   border-color: rgba(255, 255, 255, 0.08);
 }
 
-.transfer .circle {
-  color: var(--text-primary);
-  background: rgba(90, 200, 250, 0.08);
-  border-color: rgba(90, 200, 250, 0.2);
-}
