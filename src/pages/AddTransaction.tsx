@@ -25,7 +25,7 @@ import {
   mergeAccountIntoNoteLimited,
   stripAccountFromNote,
 } from '../utils/transactionAccount';
-import { normalizeCurrency, SUPPORTED_CURRENCIES, type CurrencyCode } from '../utils/currency';
+import { normalizeCurrency, SUPPORTED_CURRENCIES, TRANSFER_FROM_CURRENCIES, type CurrencyCode } from '../utils/currency';
 import { apiFetch } from '../api/client';
 import { useExpenseTemplates, type ExpenseTemplate } from '../hooks/useExpenseTemplates';
 import { usePaymentAccountOptions } from '../hooks/usePaymentAccountOptions';
@@ -336,7 +336,7 @@ const AddTransaction: React.FC = () => {
     const payload = type === 'transfer'
       ? {
           amount: numAmount,
-          currency: effectiveFromCurrency,
+          currency: effectiveFromCurrency as CurrencyCode,
           type,
           categoryId: 'transfer',
           date,
@@ -537,7 +537,7 @@ const AddTransaction: React.FC = () => {
                   onChange={(e) => setTransferFromCurrencyOverride(e.target.value)}
                   aria-label="Валюта переказу"
                 >
-                  {['UAH', 'PLN', 'USD', 'USDT', 'BTC', 'ETH'].map((c) => (
+                  {TRANSFER_FROM_CURRENCIES.map((c) => (
                     <option key={c} value={c}>{c}</option>
                   ))}
                 </select>
