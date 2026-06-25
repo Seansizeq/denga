@@ -152,6 +152,9 @@ const AddTransaction: React.FC = () => {
     if (editingTransaction?.type === 'transfer') return String(editingTransaction.amount);
     return '';
   });
+  const [transferFromCurrencyOverride, setTransferFromCurrencyOverride] = useState<string>(
+    () => editingTransaction?.type === 'transfer' ? (editingTransaction.currency ?? '') : ''
+  );
 
   const { allowedPaymentKeys, paymentChipOptions } = usePaymentAccountOptions(portfolioAccounts, language);
 
@@ -166,11 +169,9 @@ const AddTransaction: React.FC = () => {
     () => portfolioAccounts.find((account) => account.key === transferToAccountKey) ?? null,
     [portfolioAccounts, transferToAccountKey]
   );
-  const transferUsesExchange = Boolean(
-    transferFromAccount &&
-      transferToAccount &&
-      transferFromAccount.currency !== transferToAccount.currency
-  );
+  const effectiveFromCurrencyStr = transferFromCurrencyOverride || transferFromAccount?.currency || currency;
+  const effectiveToCurrencyStr = transferToAccount?.currency ?? transferFromAccount?.currency ?? currency;
+  const transferUsesExchange = effectiveFromCurrencyStr !== effectiveToCurrencyStr;
 
   useEffect(() => {
     let cancelled = false;
@@ -271,6 +272,7 @@ const AddTransaction: React.FC = () => {
   useEffect(() => {
     if (type !== 'transfer' || !transferFromAccount) return;
     setCurrency(transferFromAccount.currency);
+    setTransferFromCurrencyOverride('');
   }, [type, transferFromAccount]);
 
   useEffect(() => {
@@ -330,10 +332,11 @@ const AddTransaction: React.FC = () => {
     if (!numAmount || numAmount <= 0) return;
     const transferDestinationAmount = parseFloat(transferToAmount.replace(',', '.'));
     const mergedNote = mergeAccountIntoNoteLimited(note.trim(), paymentAccount, allowedPaymentKeys);
+    const effectiveFromCurrency = transferFromCurrencyOverride || transferFromAccount?.currency || currency;
     const payload = type === 'transfer'
       ? {
           amount: numAmount,
-          currency: transferFromAccount?.currency ?? currency,
+          currency: effectiveFromCurrency,
           type,
           categoryId: 'transfer',
           date,
@@ -483,85 +486,7 @@ const AddTransaction: React.FC = () => {
 
       {type === 'transfer' ? (
         <>
-          {transferUsesExchange ? (
-            <div className={styles.transferAmounts}>
-              <div className={styles.transferAmountBlock}>
-                <span className={styles.transferAmountLabel}>{t('addTx', 'transferFrom')}</span>
-                <div className={styles.amountRow}>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    pattern="[0-9]*[.,]?[0-9]*"
-                    placeholder={t('addTx', 'amountPlaceholder')}
-                    value={amount}
-                    onChange={(e) => {
-                      const v = e.target.value.replace(/[^0-9.,]/g, '');
-                      setAmount(v);
-                    }}
-                    className={styles.amountInput}
-                    autoFocus
-                    onKeyDown={amountKeyDown}
-                  />
-                  <span className={styles.currencyBadge}>{transferFromAccount?.currency ?? currency}</span>
-                </div>
-              </div>
-              <div className={styles.transferArrow} aria-hidden="true">
-                ↓
-              </div>
-              <div className={styles.transferAmountBlock}>
-                <span className={styles.transferAmountLabel}>{t('addTx', 'transferTo')}</span>
-                <div className={styles.amountRow}>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    pattern="[0-9]*[.,]?[0-9]*"
-                    placeholder={t('addTx', 'amountPlaceholder')}
-                    value={transferToAmount}
-                    onChange={(e) => {
-                      const v = e.target.value.replace(/[^0-9.,]/g, '');
-                      setTransferToAmount(v);
-                    }}
-                    className={styles.amountInput}
-                    onKeyDown={amountKeyDown}
-                  />
-                  <span className={styles.currencyBadge}>
-                    {transferToAccount?.currency ?? transferFromAccount?.currency ?? currency}
-                  </span>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className={styles.transferAmountBlock}>
-              <div className={styles.amountRow}>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  pattern="[0-9]*[.,]?[0-9]*"
-                  placeholder={t('addTx', 'amountPlaceholder')}
-                  value={amount}
-                  onChange={(e) => {
-                    const v = e.target.value.replace(/[^0-9.,]/g, '');
-                    setAmount(v);
-                  }}
-                  className={styles.amountInput}
-                  autoFocus
-                  onKeyDown={amountKeyDown}
-                />
-                <span className={styles.currencyBadge}>{transferFromAccount?.currency ?? currency}</span>
-              </div>
-            </div>
-          )}
-
-          <div className={styles.dateInline}>
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className={styles.dateInlineInput}
-              aria-label={t('addTx', 'date')}
-            />
-          </div>
-
+          {/* Accounts first */}
           <div className={styles.metaList}>
             <button
               type="button"
@@ -589,6 +514,64 @@ const AddTransaction: React.FC = () => {
                 <ChevronRight size={18} strokeWidth={2} className={styles.metaChevron} />
               </span>
             </button>
+          </div>
+
+          {/* Amounts after accounts */}
+          <div className={styles.transferAmounts}>
+            <div className={styles.transferAmountBlock}>
+              <span className={styles.transferAmountLabel}>{t('addTx', 'transferFrom')}</span>
+              <div className={styles.amountRow}>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  pattern="[0-9]*[.,]?[0-9]*"
+                  placeholder={t('addTx', 'amountPlaceholder')}
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value.replace(/[^0-9.,]/g, ''))}
+                  className={styles.amountInput}
+                  onKeyDown={amountKeyDown}
+                />
+                <select
+                  className={styles.currencyBadgeSelect}
+                  value={transferFromCurrencyOverride || transferFromAccount?.currency || currency}
+                  onChange={(e) => setTransferFromCurrencyOverride(e.target.value)}
+                  aria-label="Валюта переказу"
+                >
+                  {['UAH', 'PLN', 'USD', 'USDT', 'BTC', 'ETH'].map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className={styles.transferArrow} aria-hidden="true">↓</div>
+            <div className={styles.transferAmountBlock}>
+              <span className={styles.transferAmountLabel}>{t('addTx', 'transferTo')}</span>
+              <div className={styles.amountRow}>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  pattern="[0-9]*[.,]?[0-9]*"
+                  placeholder={t('addTx', 'amountPlaceholder')}
+                  value={transferToAmount}
+                  onChange={(e) => setTransferToAmount(e.target.value.replace(/[^0-9.,]/g, ''))}
+                  className={styles.amountInput}
+                  onKeyDown={amountKeyDown}
+                />
+                <span className={styles.currencyBadge}>
+                  {transferToAccount?.currency ?? transferFromAccount?.currency ?? currency}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className={styles.dateInline}>
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className={styles.dateInlineInput}
+              aria-label={t('addTx', 'date')}
+            />
           </div>
         </>
       ) : (
