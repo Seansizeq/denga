@@ -1,17 +1,17 @@
-export type FiatCurrencyCode = 'UAH' | 'PLN' | 'USD';
-export type CurrencyCode = FiatCurrencyCode | 'USDT' | 'BTC' | 'ETH';
+export type CurrencyCode = 'UAH' | 'PLN' | 'USD';
 
 export type FxRatesPayload = {
-  base: FiatCurrencyCode;
-  rates: Record<FiatCurrencyCode, number>;
+  base: CurrencyCode;
+  rates: Record<CurrencyCode, number>;
   updatedAt: string;
   source: 'live' | 'fallback' | 'cache';
 };
 
-export const SUPPORTED_CURRENCIES: FiatCurrencyCode[] = ['UAH', 'PLN', 'USD'];
-export const TRANSFER_FROM_CURRENCIES: CurrencyCode[] = ['UAH', 'PLN', 'USD', 'USDT', 'BTC', 'ETH'];
+export const SUPPORTED_CURRENCIES: CurrencyCode[] = ['UAH', 'PLN', 'USD'];
+export const TRANSFER_FROM_CURRENCIES = ['UAH', 'PLN', 'USD', 'USDT', 'BTC', 'ETH'] as const;
+export type TransferFromCurrency = (typeof TRANSFER_FROM_CURRENCIES)[number];
 
-export const normalizeCurrency = (raw?: string | null): FiatCurrencyCode => {
+export const normalizeCurrency = (raw?: string | null): CurrencyCode => {
   const code = String(raw ?? '').toUpperCase();
   return code === 'PLN' || code === 'USD' ? code : 'UAH';
 };

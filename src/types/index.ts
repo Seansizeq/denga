@@ -10,7 +10,7 @@ export interface Category {
 export interface Transaction {
   id: string;
   amount: number;
-  currency: 'UAH' | 'PLN' | 'USD';
+  currency: string;
   categoryId: string;
   type: TransactionType;
   date: string;
@@ -18,12 +18,12 @@ export interface Transaction {
   fromAccountKey?: string;
   toAccountKey?: string;
   transferToAmount?: number;
-  transferToCurrency?: 'UAH' | 'PLN' | 'USD';
+  transferToCurrency?: string;
 }
 
 export interface TransactionDraft {
   amount: number;
-  currency: Transaction['currency'];
+  currency: string;
   categoryId: string;
   type: TransactionType;
   date?: string;
@@ -31,7 +31,7 @@ export interface TransactionDraft {
   fromAccountKey?: string;
   toAccountKey?: string;
   transferToAmount?: number;
-  transferToCurrency?: Transaction['currency'];
+  transferToCurrency?: string;
 }
 
 export interface Balance {

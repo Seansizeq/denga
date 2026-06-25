@@ -25,7 +25,7 @@ import {
   mergeAccountIntoNoteLimited,
   stripAccountFromNote,
 } from '../utils/transactionAccount';
-import { normalizeCurrency, SUPPORTED_CURRENCIES, TRANSFER_FROM_CURRENCIES, type CurrencyCode } from '../utils/currency';
+import { normalizeCurrency, SUPPORTED_CURRENCIES, TRANSFER_FROM_CURRENCIES, type CurrencyCode, type TransferFromCurrency } from '../utils/currency';
 import { apiFetch } from '../api/client';
 import { useExpenseTemplates, type ExpenseTemplate } from '../hooks/useExpenseTemplates';
 import { usePaymentAccountOptions } from '../hooks/usePaymentAccountOptions';
@@ -152,8 +152,12 @@ const AddTransaction: React.FC = () => {
     if (editingTransaction?.type === 'transfer') return String(editingTransaction.amount);
     return '';
   });
-  const [transferFromCurrencyOverride, setTransferFromCurrencyOverride] = useState<string>(
-    () => editingTransaction?.type === 'transfer' ? (editingTransaction.currency ?? '') : ''
+  const [transferFromCurrencyOverride, setTransferFromCurrencyOverride] = useState<TransferFromCurrency | ''>(
+    () => {
+      if (editingTransaction?.type !== 'transfer') return '';
+      const c = editingTransaction.currency ?? '';
+      return (TRANSFER_FROM_CURRENCIES as readonly string[]).includes(c) ? c as TransferFromCurrency : '';
+    }
   );
 
   const { allowedPaymentKeys, paymentChipOptions } = usePaymentAccountOptions(portfolioAccounts, language);
