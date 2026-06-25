@@ -538,7 +538,7 @@ const AddTransaction: React.FC = () => {
                 <select
                   className={styles.currencyBadgeSelect}
                   value={transferFromCurrencyOverride || transferFromAccount?.currency || currency}
-                  onChange={(e) => setTransferFromCurrencyOverride(e.target.value)}
+                  onChange={(e) => setTransferFromCurrencyOverride(e.target.value as TransferFromCurrency)}
                   aria-label="Валюта переказу"
                 >
                   {TRANSFER_FROM_CURRENCIES.map((c) => (
