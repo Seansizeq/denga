@@ -108,7 +108,7 @@ const resolveBalanceCorrectionCategoryId = async (dbConn, userId, type) => {
     [userId, normalizedCandidates[0], normalizedCandidates[1]]
   );
   if (custom?.id) return custom.id;
-  return type === 'income' ? 'other_income' : 'other_expense';
+  return 'balance_correction';
 };
 const getCurrencyFromNote = (note) => {
   if (typeof note !== 'string') return null;
