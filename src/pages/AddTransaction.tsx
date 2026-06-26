@@ -7,6 +7,7 @@ import { usePortfolio } from '../context/PortfolioContext';
 import CategoryGrid from '../components/ui/CategoryGrid';
 import BottomSheet from '../components/ui/BottomSheet';
 import OptionPickerSheet from '../components/ui/OptionPickerSheet';
+import { AccountRowAvatar, type RowIconTone } from '../components/ui/AccountRowAvatar';
 import {
   createCustomCategoryId,
   CUSTOM_CATEGORY_COLORS,
@@ -39,6 +40,15 @@ import ExpenseTemplateBar from '../components/ExpenseTemplateBar';
 import styles from './AddTransaction.module.css';
 
 const iconRegistry = LucideIcons as unknown as Record<string, React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>>;
+
+// Best-effort section guess for built-in account keys that aren't real
+// portfolio rows (so they still get a sensible avatar in the picker).
+const inferAccountSectionFromKey = (key: string): 'bank' | 'cash' | 'crypto' | 'stocks' | 'debt' => {
+  if (key === 'wallet' || key === 'cash') return 'cash';
+  if (['crypto', 'sol', 'ton', 'usdt', 'btc', 'eth'].includes(key)) return 'crypto';
+  if (key === 'misha' || key === 'debt') return 'debt';
+  return 'bank';
+};
 
 const AddTransaction: React.FC = () => {
   const navigate = useNavigate();
@@ -142,6 +152,49 @@ const AddTransaction: React.FC = () => {
       return list;
     },
     [rawAccounts],
+  );
+
+  type AccountSection = 'bank' | 'cash' | 'crypto' | 'stocks' | 'debt';
+  // Icon tone / section / iconKey per account, so the picker can show avatars
+  // matching the rest of the app instead of a bare text list.
+  const accountMetaByKey = useMemo(() => {
+    const map = new Map<string, { iconTone: RowIconTone; section: AccountSection; iconKey: string | null }>();
+    for (const row of rawAccounts) {
+      if (!row || typeof row !== 'object') continue;
+      const r = row as Record<string, unknown>;
+      const key = String(r.accountKey ?? '').trim().toLowerCase();
+      if (!key) continue;
+      const sectionRaw = typeof r.section === 'string' ? r.section.trim() : '';
+      const section = (['bank', 'cash', 'crypto', 'stocks', 'debt'] as const).includes(sectionRaw as AccountSection)
+        ? (sectionRaw as AccountSection)
+        : 'bank';
+      const toneRaw = typeof r.iconTone === 'string' ? r.iconTone.trim() : '';
+      const iconTone = (['bank', 'cash', 'crypto', 'stocks', 'debt', 'neutral'] as const).includes(toneRaw as RowIconTone)
+        ? (toneRaw as RowIconTone)
+        : section;
+      const iconKey = typeof r.iconKey === 'string' && r.iconKey.trim() ? r.iconKey.trim() : null;
+      map.set(key, { iconTone, section, iconKey });
+    }
+    return map;
+  }, [rawAccounts]);
+
+  const renderAccountAvatar = useCallback(
+    (key: string) => {
+      if (!key) return undefined;
+      const meta = accountMetaByKey.get(key);
+      const section: AccountSection = meta?.section ?? inferAccountSectionFromKey(key);
+      const tone: RowIconTone = meta?.iconTone ?? section;
+      return (
+        <AccountRowAvatar
+          accountKey={key}
+          iconTone={tone}
+          section={section}
+          iconKey={meta?.iconKey ?? null}
+          glyphSize={19}
+        />
+      );
+    },
+    [accountMetaByKey],
   );
   const [transferFromAccountKey, setTransferFromAccountKey] = useState(() => editingTransaction?.fromAccountKey ?? '');
   const [transferToAccountKey, setTransferToAccountKey] = useState(() => editingTransaction?.toAccountKey ?? '');
@@ -702,7 +755,15 @@ const AddTransaction: React.FC = () => {
         selectedId={paymentAccount}
         options={[
           { id: '', label: t('addTx', 'paymentAccountNone') },
-          ...paymentChipOptions.map(({ key, label }) => ({ id: key, label })),
+          ...paymentChipOptions.map(({ key, label }) => {
+            const acc = portfolioAccounts.find((a) => a.key === key);
+            return {
+              id: key,
+              label,
+              leading: renderAccountAvatar(key),
+              hint: acc && acc.currency !== 'UAH' ? acc.currency : undefined,
+            };
+          }),
         ]}
         onSelect={(id) => {
           setPaymentAccount(id);
@@ -720,7 +781,9 @@ const AddTransaction: React.FC = () => {
           { id: '', label: t('addTx', 'paymentAccountNone') },
           ...portfolioAccounts.map((account) => ({
             id: account.key,
-            label: `${account.name} (${account.currency})`,
+            label: account.name,
+            hint: account.currency,
+            leading: renderAccountAvatar(account.key),
           })),
         ]}
         onSelect={(id) => {

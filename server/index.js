@@ -9,6 +9,7 @@ import { getDatabasePath, initDb } from './db.js';
 import { startScheduledDatabaseBackups } from './backup.js';
 import { createReceiptScanHandler } from './receipt-scan.js';
 import { getTransactionAccountEffects, validateTransferPayload } from './transaction-effects.js';
+import { parseSmartTransaction, isSmartTransactionEnabled } from './smart-transaction.js';
 import { existsSync } from 'fs';
 import path from 'path';
 import { PassThrough } from 'stream';
@@ -2377,7 +2378,100 @@ const BOT_CATEGORY_OPTIONS = CATEGORIES.filter((c) => c.id !== 'other_income' &&
 
 const pendingTransactions = new Map();
 const pendingShiftStarts = new Map();
+const pendingSmartTransactions = new Map();
 const invalidAmountNoticeAt = new Map();
+
+// Built-in bot categories paired with their transaction type, for smart parsing.
+const BOT_SMART_CATEGORY_TYPES = {
+  food: 'expense',
+  transport: 'expense',
+  home: 'expense',
+  entertainment: 'expense',
+  health: 'expense',
+  salary: 'income',
+};
+
+// Build the category list (built-in + user's custom) passed to the smart parser.
+async function getSmartCategoriesForUser(userId) {
+  const categories = BOT_CATEGORY_OPTIONS.map((c) => ({
+    id: c.id,
+    name: c.name,
+    type: BOT_SMART_CATEGORY_TYPES[c.id] || 'expense',
+  }));
+  try {
+    const custom = await db.all(
+      'SELECT id, name, type FROM custom_categories WHERE user_id = ? ORDER BY updatedAt DESC',
+      [userId]
+    );
+    for (const c of custom) {
+      if (!c?.id) continue;
+      categories.push({
+        id: String(c.id),
+        name: String(c.name ?? c.id),
+        type: c.type === 'income' ? 'income' : 'expense',
+      });
+    }
+  } catch {
+    // ignore — built-in categories are enough to proceed
+  }
+  return categories;
+}
+
+// Attempt AI parsing of a free-text message and, on success, send a
+// confirmation with Save / Cancel buttons. Returns true if a transaction was
+// recognized (and a confirmation shown), false to let the caller fall through.
+async function trySmartTransaction(msg, text) {
+  const userId = String(msg.from.id);
+  const chatId = msg.chat.id;
+  let accounts = [];
+  try {
+    accounts = await db.all(
+      'SELECT account_key AS accountKey, name FROM account_portfolio WHERE user_id = ? ORDER BY sort_index ASC, account_key ASC',
+      [userId]
+    );
+  } catch {
+    accounts = [];
+  }
+  const categories = await getSmartCategoriesForUser(userId);
+  const parsed = await parseSmartTransaction({
+    text,
+    categories,
+    accounts: Array.isArray(accounts) ? accounts : [],
+  });
+  if (!parsed || !parsed.isTransaction) return false;
+
+  pendingSmartTransactions.set(chatId, {
+    userId,
+    amount: parsed.amount,
+    currency: parsed.currency,
+    categoryId: parsed.categoryId,
+    type: parsed.type,
+    accountKey: parsed.accountKey,
+    note: parsed.note,
+    createdAt: Date.now(),
+  });
+
+  const sign = parsed.type === 'income' ? '➕ Дохід' : '➖ Витрата';
+  const lines = [
+    '🤖 Розпізнав транзакцію:',
+    '',
+    `${sign}: ${parsed.amount} ${parsed.currency}`,
+    `🏷 ${parsed.categoryName}`,
+  ];
+  if (parsed.accountName) lines.push(`💳 ${parsed.accountName}`);
+  if (parsed.note) lines.push(`📝 ${parsed.note}`);
+  lines.push('', 'Зберегти?');
+
+  await bot.sendMessage(chatId, lines.join('\n'), {
+    reply_markup: {
+      inline_keyboard: [[
+        { text: '✅ Зберегти', callback_data: 'smart_save' },
+        { text: '❌ Скасувати', callback_data: 'smart_cancel' },
+      ]],
+    },
+  });
+  return true;
+}
 const CUSTOM_CATEGORY_PREFIX = 'custom:';
 const CUSTOM_CATEGORY_SEPARATOR = '|';
 
@@ -2780,6 +2874,11 @@ if (bot) {
     }
     const amount = Number(msg.text.replace(',', '.').trim());
     if (!Number.isFinite(amount) || amount <= 0) {
+      // Free-text with a digit → try smart (AI) parsing before giving up.
+      if (isSmartTransactionEnabled() && /\d/.test(text)) {
+        const handled = await trySmartTransaction(msg, text);
+        if (handled) return;
+      }
       const now = Date.now();
       const last = invalidAmountNoticeAt.get(msg.chat.id) ?? 0;
       if (now - last >= 60_000) {
@@ -2858,6 +2957,52 @@ if (bot) {
         return;
       }
       await bot.answerCallbackQuery(callbackQuery.id);
+      return;
+    }
+
+    if (callbackQuery.data === 'smart_save' || callbackQuery.data === 'smart_cancel') {
+      const pendingSmart = pendingSmartTransactions.get(chatId);
+      if (
+        !pendingSmart ||
+        pendingSmart.userId !== cbUserId ||
+        Date.now() - Number(pendingSmart.createdAt ?? 0) > 10 * 60 * 1000
+      ) {
+        pendingSmartTransactions.delete(chatId);
+        await bot.answerCallbackQuery(callbackQuery.id, { text: 'Запит застарів. Надішліть ще раз.' });
+        return;
+      }
+      pendingSmartTransactions.delete(chatId);
+      if (callbackQuery.data === 'smart_cancel') {
+        await bot.answerCallbackQuery(callbackQuery.id, { text: 'Скасовано' });
+        await bot.sendMessage(chatId, '❌ Транзакцію скасовано.');
+        return;
+      }
+      const accountKey = pendingSmart.accountKey
+        ? String(pendingSmart.accountKey).trim().toLowerCase()
+        : null;
+      const baseNote = pendingSmart.note ? String(pendingSmart.note) : 'Added via Telegram Bot';
+      const note = accountKey ? mergeAccountIntoNote(baseNote, accountKey) : baseNote;
+      const transaction = {
+        id: uuidv4(),
+        user_id: pendingSmart.userId,
+        amount: pendingSmart.amount,
+        currency: normalizeCurrency(pendingSmart.currency) || 'UAH',
+        categoryId: pendingSmart.categoryId,
+        type: pendingSmart.type,
+        date: new Date().toISOString(),
+        note,
+        telegram_user_id: callbackQuery.from.id,
+      };
+      await db.run(
+        'INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, note, telegram_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [transaction.id, transaction.user_id, transaction.amount, transaction.currency, transaction.categoryId, transaction.type, transaction.date, transaction.note, transaction.telegram_user_id]
+      );
+      await applyTransactionEffects(db, transaction.user_id, transaction);
+      await bot.answerCallbackQuery(callbackQuery.id, { text: 'Збережено ✅' });
+      await bot.sendMessage(
+        chatId,
+        `✅ Збережено: ${transaction.amount} ${transaction.currency} (${pendingSmart.note}).`
+      );
       return;
     }
 

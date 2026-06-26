@@ -18,6 +18,22 @@
   margin: 0 4px 14px;
 }
 
+.group {
+  margin-bottom: 18px;
+}
+
+.group:last-child {
+  margin-bottom: 0;
+}
+
+.groupLabel {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.1px;
+  color: var(--text-primary);
+  margin: 0 4px 8px;
+}
+
 .card {
   background-color: var(--bg-card);
   border-radius: 20px;
