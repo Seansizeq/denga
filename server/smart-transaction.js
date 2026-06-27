@@ -8,7 +8,11 @@
 // is used. Configure with GEMINI_MODELS (comma-separated) or GEMINI_MODEL
 // (preferred primary, prepended to the default chain).
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+// Read the key lazily at call time, NOT at module load. ESM imports are
+// evaluated before the importing module's body runs, so a top-level
+// `process.env.GEMINI_API_KEY` would be read before dotenv.config() populates
+// it — leaving the feature permanently disabled in production.
+const getApiKey = () => process.env.GEMINI_API_KEY;
 
 const ALLOWED_CURRENCIES = ['UAH', 'PLN', 'USD'];
 
@@ -29,7 +33,7 @@ const cooldownUntil = new Map();
 const endpointFor = (model) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
-export const isSmartTransactionEnabled = () => Boolean(GEMINI_API_KEY);
+export const isSmartTransactionEnabled = () => Boolean(getApiKey());
 
 const resolveModels = () => {
   const explicit = String(process.env.GEMINI_MODELS || '')
@@ -152,10 +156,10 @@ const cooldownFromRateLimit = (errBody) => {
 
 // Call one model. Returns a discriminated outcome so the caller can decide
 // whether to fall back to the next model.
-const callGeminiModel = async (model, body) => {
+const callGeminiModel = async (model, body, apiKey) => {
   let res;
   try {
-    res = await fetch(`${endpointFor(model)}?key=${encodeURIComponent(GEMINI_API_KEY)}`, {
+    res = await fetch(`${endpointFor(model)}?key=${encodeURIComponent(apiKey)}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
@@ -215,7 +219,8 @@ export async function parseSmartTransaction({
   defaultCurrency = 'UAH',
   today = new Date().toISOString().slice(0, 10),
 }) {
-  if (!GEMINI_API_KEY) return null;
+  const apiKey = getApiKey();
+  if (!apiKey) return null;
   if (!text || !Array.isArray(categories) || categories.length === 0) return null;
 
   const categoryIds = categories.map((c) => c.id);
@@ -239,7 +244,7 @@ export async function parseSmartTransaction({
   if (candidates.length === 0) candidates = models;
 
   for (const model of candidates) {
-    const outcome = await callGeminiModel(model, body);
+    const outcome = await callGeminiModel(model, body, apiKey);
     if (outcome.type === 'ok') {
       cooldownUntil.delete(model);
       return normalizeResult(outcome.parsed, { categories, accounts, defaultCurrency });
