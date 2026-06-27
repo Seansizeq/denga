@@ -2379,7 +2379,6 @@ const BOT_CATEGORY_OPTIONS = CATEGORIES.filter((c) => c.id !== 'other_income' &&
 const pendingTransactions = new Map();
 const pendingShiftStarts = new Map();
 const pendingSmartTransactions = new Map();
-const invalidAmountNoticeAt = new Map();
 
 // Built-in bot categories paired with their transaction type, for smart parsing.
 const BOT_SMART_CATEGORY_TYPES = {
@@ -2874,19 +2873,10 @@ if (bot) {
     }
     const amount = Number(msg.text.replace(',', '.').trim());
     if (!Number.isFinite(amount) || amount <= 0) {
-      // Free-text with a digit → try smart (AI) parsing before giving up.
+      // Free-text with a digit → try smart (AI) parsing. If it isn't a
+      // transaction, stay silent (no "не зрозумів суму" nag).
       if (isSmartTransactionEnabled() && /\d/.test(text)) {
-        const handled = await trySmartTransaction(msg, text);
-        if (handled) return;
-      }
-      const now = Date.now();
-      const last = invalidAmountNoticeAt.get(msg.chat.id) ?? 0;
-      if (now - last >= 60_000) {
-        invalidAmountNoticeAt.set(msg.chat.id, now);
-        bot.sendMessage(
-          msg.chat.id,
-          'Не зрозумів суму. Надішліть число (наприклад, 100) або використайте /shift_start, /shift_end чи /advice.'
-        );
+        await trySmartTransaction(msg, text);
       }
       return;
     }
