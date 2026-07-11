@@ -370,6 +370,29 @@ export async function initDb() {
   } catch {
     /* already exists */
   }
+  try {
+    await db.exec(`ALTER TABLE account_portfolio ADD COLUMN debt_direction TEXT`);
+  } catch {
+    /* already exists */
+  }
+  // Backfill: every debt row without an explicit direction defaults to "owed to me"
+  // (matches the app's previous implicit assumption, so this is a no-op behavior-wise).
+  await db.run(
+    `UPDATE account_portfolio SET debt_direction = 'owed_to_me'
+     WHERE section = 'debt' AND (debt_direction IS NULL OR debt_direction = '')`
+  );
+  // Best-effort reclassification from the legacy free-text debt_phrase (e.g. "я винен"),
+  // since SQLite LIKE isn't reliably case-insensitive for Cyrillic text.
+  {
+    const owedByMeKeywords = ['винен', 'винна', 'винні', 'должен', 'должна', 'должны', 'borrowed', 'i owe'];
+    const debtRows = await db.all(`SELECT account_key, debt_phrase FROM account_portfolio WHERE section = 'debt'`);
+    for (const row of debtRows) {
+      const phrase = String(row.debt_phrase ?? '').toLowerCase();
+      if (owedByMeKeywords.some((kw) => phrase.includes(kw))) {
+        await db.run(`UPDATE account_portfolio SET debt_direction = 'owed_by_me' WHERE account_key = ?`, [row.account_key]);
+      }
+    }
+  }
   // Remove legacy seed rows (user_id='') that block real users from creating accounts with matching keys
   await db.run(`DELETE FROM account_portfolio WHERE user_id = ''`);
   try {

@@ -18,7 +18,7 @@ export type EditableAccount = {
   badge: string;
   /** Empty string = automatic icon from section / account key. */
   iconKey: string;
-  debtPhrase: string;
+  debtDirection: 'owed_to_me' | 'owed_by_me' | null;
 };
 
 interface AccountEditSheetProps {
@@ -79,7 +79,9 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
   const [currency, setCurrency] = useState<'UAH' | 'PLN'>(() => initial.primaryCurrency);
   const [section, setSection] = useState<EditableAccount['section']>(() => initial.section);
   const [iconKey, setIconKey] = useState(() => (initial.iconKey ?? '').trim());
-  const [debtPhrase, setDebtPhrase] = useState(() => initial.debtPhrase);
+  const [debtDirection, setDebtDirection] = useState<'owed_to_me' | 'owed_by_me'>(
+    () => (initial.debtDirection === 'owed_by_me' ? 'owed_by_me' : 'owed_to_me'),
+  );
   const [iconTone, setIconTone] = useState<EditableAccount['iconTone']>(() => initial.iconTone);
   const [cryptoQty, setCryptoQty] = useState(() => {
     const pos = parseCryptoPosition(initial.subText);
@@ -126,7 +128,7 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
         subText: builtSubText,
         badge: initial.badge,
         iconKey: iconKey.trim(),
-        debtPhrase: debtPhrase.trim(),
+        debtDirection: section === 'debt' ? debtDirection : null,
         iconTone,
       });
       onClose();
@@ -140,7 +142,11 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
   const handleDelete = async () => {
     if (!onDelete || isCreateMode) return;
     setError('');
-    const ok = window.confirm(t('addTx', 'deleteConfirm'));
+    const confirmMessage =
+      initial.section === 'debt' && initial.primaryAmount > 0
+        ? t('balance', 'debtDeleteConfirmWithBalance')
+        : t('addTx', 'deleteConfirm');
+    const ok = window.confirm(confirmMessage);
     if (!ok) return;
     setSaving(true);
     try {
@@ -274,17 +280,33 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
             </div>
           </div>
 
-          {/* Debt phrase — only for debt section */}
+          {/* Debt direction — only for debt section */}
           {section === 'debt' ? (
-            <label className={styles.label}>
-              Фраза боргу
-              <input
-                className={styles.input}
-                value={debtPhrase}
-                onChange={(e) => setDebtPhrase(e.target.value)}
-                maxLength={40}
-              />
-            </label>
+            <div className={styles.label}>
+              <span>{t('balance', 'debtDirectionLabel')}</span>
+              <div
+                className={styles.directionSegment}
+                role="group"
+                aria-label={t('balance', 'debtDirectionLabel')}
+              >
+                <button
+                  type="button"
+                  className={styles.directionSegmentBtn}
+                  aria-pressed={debtDirection === 'owed_to_me'}
+                  onClick={() => setDebtDirection('owed_to_me')}
+                >
+                  {t('balance', 'debtDirectionOwedToMe')}
+                </button>
+                <button
+                  type="button"
+                  className={styles.directionSegmentBtn}
+                  aria-pressed={debtDirection === 'owed_by_me'}
+                  onClick={() => setDebtDirection('owed_by_me')}
+                >
+                  {t('balance', 'debtDirectionOwedByMe')}
+                </button>
+              </div>
+            </div>
           ) : null}
 
           {/* Collapsible: icon + section */}

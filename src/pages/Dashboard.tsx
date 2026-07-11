@@ -33,6 +33,7 @@ const normalizeAccountRow = (row: Record<string, unknown>): PortfolioRowInput | 
     primaryAmount,
     primaryCurrency: row.primaryCurrency === 'PLN' ? 'PLN' : 'UAH',
     subText: typeof row.subText === 'string' ? row.subText : null,
+    debtDirection: row.debtDirection === 'owed_by_me' ? 'owed_by_me' : 'owed_to_me',
   };
 };
 
@@ -108,8 +109,11 @@ const Dashboard: React.FC = () => {
           amount = convertAmount(marketUsd, 'USD', primaryCurrency);
         }
       }
-      if (primaryCurrency === 'PLN') pln += amount;
-      else uah += amount;
+      // A debt someone else owes me is a receivable asset; a debt I owe is a liability
+      // and must reduce net worth instead of inflating it.
+      const signedAmount = section === 'debt' && row.debtDirection === 'owed_by_me' ? -amount : amount;
+      if (primaryCurrency === 'PLN') pln += signedAmount;
+      else uah += signedAmount;
     }
     return { uah, pln };
   }, [accounts, cryptoPrices, convertAmount]);

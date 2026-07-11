@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
 import { Pencil, X } from 'lucide-react';
+import { useTranslation } from '../../i18n/LanguageContext';
+import { formatDate } from '../../utils/formatters';
+import type { Transaction } from '../../types';
 import { AccountRowAvatar } from './AccountRowAvatar';
 import styles from './DebtDetailSheet.module.css';
 
@@ -8,13 +11,14 @@ type DebtAccount = {
   name: string;
   primaryAmount: number;
   primaryCurrency: 'UAH' | 'PLN';
-  debtPhrase: string | null;
+  debtDirection: 'owed_to_me' | 'owed_by_me' | null;
   iconTone: 'bank' | 'cash' | 'crypto' | 'stocks' | 'debt' | 'neutral';
   iconKey: string | null;
 };
 
 interface DebtDetailSheetProps {
   account: DebtAccount;
+  repayments: Transaction[];
   onClose: () => void;
   onPayment: (accountKey: string, amount: number, note: string) => Promise<void>;
   onEdit: () => void;
@@ -36,7 +40,8 @@ const formatAmount = (amount: number, currency: string) => {
   return `${abs} ${suffix}`;
 };
 
-const DebtDetailSheet: React.FC<DebtDetailSheetProps> = ({ account, onClose, onPayment, onEdit }) => {
+const DebtDetailSheet: React.FC<DebtDetailSheetProps> = ({ account, repayments, onClose, onPayment, onEdit }) => {
+  const { t, locale } = useTranslation();
   const [mode, setMode] = useState<'view' | 'pay'>('view');
   const [payAmount, setPayAmount] = useState('');
   const [payNote, setPayNote] = useState('');
@@ -44,7 +49,7 @@ const DebtDetailSheet: React.FC<DebtDetailSheetProps> = ({ account, onClose, onP
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
 
-  const phrase = account.debtPhrase?.trim() || 'борг';
+  const phrase = t('balance', account.debtDirection === 'owed_by_me' ? 'debtPhraseOwedByMe' : 'debtPhraseOwedToMe');
   const formattedBalance = formatAmount(account.primaryAmount, account.primaryCurrency);
 
   const handleConfirmPayment = async () => {
@@ -57,7 +62,7 @@ const DebtDetailSheet: React.FC<DebtDetailSheetProps> = ({ account, onClose, onP
       setSuccess(true);
       setTimeout(() => onClose(), 900);
     } catch {
-      setError('Не вдалося зафіксувати. Спробуй ще раз.');
+      setError(t('balance', 'debtPaymentFailed'));
     } finally {
       setSaving(false);
     }
@@ -65,16 +70,16 @@ const DebtDetailSheet: React.FC<DebtDetailSheetProps> = ({ account, onClose, onP
 
   return (
     <div className={styles.overlay} role="dialog" aria-modal="true">
-      <button type="button" className={styles.scrim} onClick={onClose} aria-label="Закрити" />
+      <button type="button" className={styles.scrim} onClick={onClose} aria-label={t('balance', 'close')} />
 
       <div className={styles.sheet}>
         {/* Header */}
         <div className={styles.header}>
-          <button type="button" className={styles.iconBtn} onClick={onClose} aria-label="Закрити">
+          <button type="button" className={styles.iconBtn} onClick={onClose} aria-label={t('balance', 'close')}>
             <X size={18} strokeWidth={2.4} />
           </button>
-          <span className={styles.title}>Борг</span>
-          <button type="button" className={styles.editBtn} onClick={onEdit} aria-label="Редагувати">
+          <span className={styles.title}>{t('balance', 'debtSheetTitle')}</span>
+          <button type="button" className={styles.editBtn} onClick={onEdit} aria-label={t('balance', 'editAriaLabel')}>
             <Pencil size={15} strokeWidth={2.4} />
           </button>
         </div>
@@ -98,7 +103,7 @@ const DebtDetailSheet: React.FC<DebtDetailSheetProps> = ({ account, onClose, onP
           </div>
 
           {success ? (
-            <div className={styles.successMsg}>✓ Зафіксовано</div>
+            <div className={styles.successMsg}>✓ {t('balance', 'debtPaymentRecorded')}</div>
           ) : mode === 'view' ? (
             <button
               type="button"
@@ -106,29 +111,29 @@ const DebtDetailSheet: React.FC<DebtDetailSheetProps> = ({ account, onClose, onP
               onClick={() => setMode('pay')}
               disabled={account.primaryAmount <= 0}
             >
-              Записати повернення
+              {t('balance', 'debtRecordPayment')}
             </button>
           ) : (
             <div className={styles.payForm}>
               <label className={styles.label}>
-                Сума повернення
+                {t('balance', 'debtPaymentAmountLabel')}
                 <input
                   className={styles.input}
                   value={payAmount}
                   onChange={(e) => setPayAmount(e.target.value)}
                   inputMode="decimal"
-                  placeholder={`до ${formattedBalance}`}
+                  placeholder={t('balance', 'debtPaymentAmountPlaceholder').replace('{amount}', formattedBalance)}
                   // eslint-disable-next-line jsx-a11y/no-autofocus
                   autoFocus
                 />
               </label>
               <label className={styles.label}>
-                Нотатка (необов'язково)
+                {t('balance', 'debtPaymentNoteLabel')}
                 <input
                   className={styles.input}
                   value={payNote}
                   onChange={(e) => setPayNote(e.target.value)}
-                  placeholder="Повернув готівкою..."
+                  placeholder={t('balance', 'debtPaymentNotePlaceholder')}
                   maxLength={80}
                 />
               </label>
@@ -140,7 +145,7 @@ const DebtDetailSheet: React.FC<DebtDetailSheetProps> = ({ account, onClose, onP
                   onClick={() => { setMode('view'); setPayAmount(''); setPayNote(''); setError(''); }}
                   disabled={saving}
                 >
-                  Скасувати
+                  {t('addTx', 'cancel')}
                 </button>
                 <button
                   type="button"
@@ -148,11 +153,26 @@ const DebtDetailSheet: React.FC<DebtDetailSheetProps> = ({ account, onClose, onP
                   onClick={handleConfirmPayment}
                   disabled={saving || !parseMoney(payAmount)}
                 >
-                  {saving ? 'Зберігаю...' : 'Підтвердити'}
+                  {saving ? `${t('addTx', 'save')}...` : t('balance', 'confirm')}
                 </button>
               </div>
             </div>
           )}
+
+          {repayments.length > 0 ? (
+            <div className={styles.historySection}>
+              <p className={styles.historyTitle}>{t('balance', 'debtRepaymentHistoryTitle')}</p>
+              <ul className={styles.historyList} role="list">
+                {repayments.map((tx) => (
+                  <li key={tx.id} className={styles.historyItem}>
+                    <span className={styles.historyDate}>{formatDate(tx.date, locale)}</span>
+                    <span className={styles.historyAmount}>{formatAmount(tx.amount, account.primaryCurrency)}</span>
+                    {tx.note ? <span className={styles.historyNote}>{tx.note}</span> : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

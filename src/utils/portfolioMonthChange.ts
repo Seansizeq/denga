@@ -11,6 +11,7 @@ export type PortfolioRowInput = {
   primaryAmount: number;
   primaryCurrency: 'UAH' | 'PLN';
   subText?: string | null;
+  debtDirection?: 'owed_to_me' | 'owed_by_me' | null;
 };
 
 export type CryptoUsdHistory = {
@@ -117,8 +118,9 @@ export const computePortfolioPriorUahPln = (params: {
       amountPrimary = baseAmount - roll;
     }
 
-    if (primaryCurrency === 'PLN') pln += amountPrimary;
-    else uah += amountPrimary;
+    const signedAmountPrimary = section === 'debt' && r.debtDirection === 'owed_by_me' ? -amountPrimary : amountPrimary;
+    if (primaryCurrency === 'PLN') pln += signedAmountPrimary;
+    else uah += signedAmountPrimary;
   }
 
   return { uah, pln };

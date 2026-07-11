@@ -115,6 +115,14 @@
   height: 60px;
 }
 
+.liabilityLine {
+  margin: 4px 0 0;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-red, #ff6b6b);
+}
+
 .emptyState {
   display: flex;
   flex-direction: column;

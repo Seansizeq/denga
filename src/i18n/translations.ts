@@ -49,6 +49,27 @@ type Dict = {
     sectionCash: string;
     sectionCrypto: string;
     sectionDebt: string;
+    sectionDebtOwedToMe: string;
+    sectionDebtOwedByMe: string;
+    debtDirectionLabel: string;
+    debtDirectionOwedToMe: string;
+    debtDirectionOwedByMe: string;
+    debtPhraseOwedToMe: string;
+    debtPhraseOwedByMe: string;
+    debtSheetTitle: string;
+    debtRecordPayment: string;
+    debtPaymentAmountLabel: string;
+    debtPaymentAmountPlaceholder: string;
+    debtPaymentNoteLabel: string;
+    debtPaymentNotePlaceholder: string;
+    debtPaymentFailed: string;
+    debtPaymentRecorded: string;
+    debtDeleteConfirmWithBalance: string;
+    debtRepaymentHistoryTitle: string;
+    liabilityLineLabel: string;
+    close: string;
+    confirm: string;
+    editAriaLabel: string;
   };
   addTx: {
     title: string;
@@ -433,6 +454,27 @@ const uk: Dict = {
     sectionCash: 'Готівка',
     sectionCrypto: 'Акції та крипта',
     sectionDebt: 'Борг',
+    sectionDebtOwedToMe: 'Мені винні',
+    sectionDebtOwedByMe: 'Я винен',
+    debtDirectionLabel: 'Напрямок боргу',
+    debtDirectionOwedToMe: 'Мені винні',
+    debtDirectionOwedByMe: 'Я винен',
+    debtPhraseOwedToMe: 'мені винні',
+    debtPhraseOwedByMe: 'я винен',
+    debtSheetTitle: 'Борг',
+    debtRecordPayment: 'Записати повернення',
+    debtPaymentAmountLabel: 'Сума повернення',
+    debtPaymentAmountPlaceholder: 'до {amount}',
+    debtPaymentNoteLabel: "Нотатка (необов'язково)",
+    debtPaymentNotePlaceholder: 'Повернув готівкою...',
+    debtPaymentFailed: 'Не вдалося зафіксувати. Спробуй ще раз.',
+    debtPaymentRecorded: 'Зафіксовано',
+    debtDeleteConfirmWithBalance: 'Цей борг ще не погашено повністю. Видалити рахунок разом із залишком боргу?',
+    debtRepaymentHistoryTitle: 'Історія повернень',
+    liabilityLineLabel: 'Я винен загалом',
+    close: 'Закрити',
+    confirm: 'Підтвердити',
+    editAriaLabel: 'Редагувати',
   },
   addTx: {
     title: 'Нова операція',
@@ -823,6 +865,27 @@ const ru: Dict = {
     sectionCash: 'Наличные',
     sectionCrypto: 'Акции и крипта',
     sectionDebt: 'Долг',
+    sectionDebtOwedToMe: 'Мне должны',
+    sectionDebtOwedByMe: 'Я должен',
+    debtDirectionLabel: 'Направление долга',
+    debtDirectionOwedToMe: 'Мне должны',
+    debtDirectionOwedByMe: 'Я должен',
+    debtPhraseOwedToMe: 'мне должны',
+    debtPhraseOwedByMe: 'я должен',
+    debtSheetTitle: 'Долг',
+    debtRecordPayment: 'Записать возврат',
+    debtPaymentAmountLabel: 'Сумма возврата',
+    debtPaymentAmountPlaceholder: 'до {amount}',
+    debtPaymentNoteLabel: 'Заметка (необязательно)',
+    debtPaymentNotePlaceholder: 'Вернул наличными...',
+    debtPaymentFailed: 'Не удалось зафиксировать. Попробуй ещё раз.',
+    debtPaymentRecorded: 'Зафиксировано',
+    debtDeleteConfirmWithBalance: 'Этот долг ещё не погашен полностью. Удалить счёт вместе с остатком долга?',
+    debtRepaymentHistoryTitle: 'История возвратов',
+    liabilityLineLabel: 'Я должен всего',
+    close: 'Закрыть',
+    confirm: 'Подтвердить',
+    editAriaLabel: 'Редактировать',
   },
   addTx: {
     title: 'Новая операция',
@@ -1213,6 +1276,27 @@ const en: Dict = {
     sectionCash: 'Cash',
     sectionCrypto: 'Stocks & crypto',
     sectionDebt: 'Debt',
+    sectionDebtOwedToMe: 'Owed to me',
+    sectionDebtOwedByMe: 'I owe',
+    debtDirectionLabel: 'Debt direction',
+    debtDirectionOwedToMe: 'Owed to me',
+    debtDirectionOwedByMe: 'I owe',
+    debtPhraseOwedToMe: 'owed to me',
+    debtPhraseOwedByMe: 'I owe',
+    debtSheetTitle: 'Debt',
+    debtRecordPayment: 'Record repayment',
+    debtPaymentAmountLabel: 'Repayment amount',
+    debtPaymentAmountPlaceholder: 'up to {amount}',
+    debtPaymentNoteLabel: 'Note (optional)',
+    debtPaymentNotePlaceholder: 'Repaid in cash...',
+    debtPaymentFailed: "Couldn't record it. Try again.",
+    debtPaymentRecorded: 'Recorded',
+    debtDeleteConfirmWithBalance: "This debt isn't fully paid off yet. Delete it along with the outstanding balance?",
+    debtRepaymentHistoryTitle: 'Repayment history',
+    liabilityLineLabel: 'Total owed by me',
+    close: 'Close',
+    confirm: 'Confirm',
+    editAriaLabel: 'Edit',
   },
   addTx: {
     title: 'New transaction',

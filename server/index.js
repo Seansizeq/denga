@@ -118,9 +118,13 @@ const getCurrencyFromNote = (note) => {
 };
 const applyAccountDelta = async (dbConn, userId, accountKey, delta) => {
   if (!accountKey || !Number.isFinite(delta) || delta === 0) return;
+  // Debt balances should never go negative, regardless of which transaction type caused the delta.
   await dbConn.run(
-    'UPDATE account_portfolio SET primary_amount = primary_amount + ?, updatedAt = ? WHERE user_id = ? AND account_key = ?',
-    [delta, new Date().toISOString(), userId, accountKey]
+    `UPDATE account_portfolio
+     SET primary_amount = CASE WHEN section = 'debt' THEN MAX(0, primary_amount + ?) ELSE primary_amount + ? END,
+         updatedAt = ?
+     WHERE user_id = ? AND account_key = ?`,
+    [delta, delta, new Date().toISOString(), userId, accountKey]
   );
 };
 const applyTransactionEffects = async (dbConn, userId, tx, multiplier = 1) => {
@@ -3935,7 +3939,7 @@ app.get('/api/accounts', async (req, res) => {
        icon_tone AS iconTone,
        badge,
        icon_key AS iconKey,
-       debt_phrase AS debtPhrase,
+       debt_direction AS debtDirection,
        updatedAt
      FROM account_portfolio
      WHERE user_id = ?
@@ -3954,8 +3958,9 @@ app.post('/api/accounts', async (req, res) => {
   const iconTone = typeof req.body?.iconTone === 'string' ? req.body.iconTone.trim() : '';
   const badge = normalizeAccountBadge(typeof req.body?.badge === 'string' ? req.body.badge : '');
   const iconKey = normalizeAccountIconKey(req.body?.iconKey);
-  const debtPhrase = typeof req.body?.debtPhrase === 'string' ? req.body.debtPhrase.trim() : '';
   const section = typeof req.body?.section === 'string' ? req.body.section.trim() : '';
+  const debtDirectionRaw = typeof req.body?.debtDirection === 'string' ? req.body.debtDirection.trim() : '';
+  const debtDirection = section === 'debt' ? (debtDirectionRaw === 'owed_by_me' ? 'owed_by_me' : 'owed_to_me') : null;
   const sortIndex = req.body?.sortIndex === undefined ? undefined : Number(req.body.sortIndex);
 
   if (!name) {
@@ -3991,7 +3996,7 @@ app.post('/api/accounts', async (req, res) => {
   const now = new Date().toISOString();
   await db.run(
     `INSERT INTO account_portfolio
-     (account_key, user_id, section, sort_index, name, primary_amount, primary_currency, sub_text, icon_tone, badge, icon_key, debt_phrase, updatedAt)
+     (account_key, user_id, section, sort_index, name, primary_amount, primary_currency, sub_text, icon_tone, badge, icon_key, debt_direction, updatedAt)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       accountKey,
@@ -4005,7 +4010,7 @@ app.post('/api/accounts', async (req, res) => {
       iconTone,
       badge ? badge : null,
       iconKey,
-      debtPhrase ? debtPhrase : null,
+      debtDirection,
       now,
     ]
   );
@@ -4022,7 +4027,7 @@ app.post('/api/accounts', async (req, res) => {
        icon_tone AS iconTone,
        badge,
        icon_key AS iconKey,
-       debt_phrase AS debtPhrase,
+       debt_direction AS debtDirection,
        updatedAt
      FROM account_portfolio
      WHERE user_id = ? AND account_key = ?
@@ -4048,8 +4053,9 @@ app.put('/api/accounts/:key', async (req, res) => {
   const iconTone = typeof req.body?.iconTone === 'string' ? req.body.iconTone.trim() : '';
   const badge = normalizeAccountBadge(typeof req.body?.badge === 'string' ? req.body.badge : '');
   const iconKey = normalizeAccountIconKey(req.body?.iconKey);
-  const debtPhrase = typeof req.body?.debtPhrase === 'string' ? req.body.debtPhrase.trim() : '';
   const section = typeof req.body?.section === 'string' ? req.body.section.trim() : '';
+  const debtDirectionRaw = typeof req.body?.debtDirection === 'string' ? req.body.debtDirection.trim() : '';
+  const debtDirection = section === 'debt' ? (debtDirectionRaw === 'owed_by_me' ? 'owed_by_me' : 'owed_to_me') : null;
   const sortIndex = req.body?.sortIndex === undefined ? undefined : Number(req.body.sortIndex);
 
   if (!name) {
@@ -4099,7 +4105,7 @@ app.put('/api/accounts/:key', async (req, res) => {
          icon_tone = ?,
          badge = ?,
          icon_key = ?,
-         debt_phrase = ?,
+         debt_direction = ?,
          updatedAt = ?
      WHERE user_id = ? AND account_key = ?`,
     [
@@ -4112,15 +4118,16 @@ app.put('/api/accounts/:key', async (req, res) => {
       iconTone,
       badge ? badge : null,
       iconKey,
-      debtPhrase ? debtPhrase : null,
+      debtDirection,
       now,
       userId,
       accountKey,
     ]
   );
 
+  // A direct amount edit on a debt row is a manual correction, not a real cash-flow event.
   const delta = primaryAmount - prevPrimaryAmount;
-  if (Number.isFinite(delta) && Math.abs(delta) > 0.000001) {
+  if (section !== 'debt' && Number.isFinite(delta) && Math.abs(delta) > 0.000001) {
     const txType = delta > 0 ? 'income' : 'expense';
     const txAmount = Math.abs(delta);
     const correctionCategoryId = await resolveBalanceCorrectionCategoryId(db, userId, txType);
@@ -4155,7 +4162,7 @@ app.put('/api/accounts/:key', async (req, res) => {
        icon_tone AS iconTone,
        badge,
        icon_key AS iconKey,
-       debt_phrase AS debtPhrase,
+       debt_direction AS debtDirection,
        updatedAt
      FROM account_portfolio
      WHERE user_id = ? AND account_key = ?
