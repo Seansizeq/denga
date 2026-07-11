@@ -123,7 +123,7 @@
 
 .customRangeRow {
   display: flex;
-  gap: 12px;
+  gap: 8px;
   margin-bottom: 16px;
 }
 
@@ -143,14 +143,15 @@
 
 .customRangeInput {
   width: 100%;
+  min-width: 0;
   box-sizing: border-box;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--border-light);
   border-radius: 12px;
-  padding: 10px 12px;
+  padding: 10px 8px;
   color: var(--text-primary);
   font-family: inherit;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .reportStatsGrid {
