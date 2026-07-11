@@ -80,6 +80,23 @@ const monthLabel = (value: string, locale: string): string => {
   return new Date(year, month - 1, 1).toLocaleDateString(locale, { month: 'long', year: 'numeric' });
 };
 
+/** Фіксований формат dd.mm.yyyy — не залежить від локалі пристрою/браузера. */
+const shortDateLabel = (iso: string): string => {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-');
+  return `${d}.${m}.${y}`;
+};
+
+const openNativeDatePicker = (input: (HTMLInputElement & { showPicker?: () => void }) | null): void => {
+  if (!input) return;
+  if (typeof input.showPicker === 'function') {
+    input.showPicker();
+    return;
+  }
+  input.focus();
+  input.click();
+};
+
 const buildDaysForMonth = (monthValue: string): string[] => {
   const [year, month] = monthValue.split('-').map(Number);
   const count = new Date(year, month, 0).getDate();
@@ -259,6 +276,8 @@ const CalendarPlanner: React.FC = () => {
   const [reportShiftEntries, setReportShiftEntries] = useState<ShiftEntry[]>([]);
   const [reportShiftEntriesLoading, setReportShiftEntriesLoading] = useState(false);
   const monthInputRef = useRef<HTMLInputElement | null>(null);
+  const customFromInputRef = useRef<HTMLInputElement | null>(null);
+  const customToInputRef = useRef<HTMLInputElement | null>(null);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressFiredRef = useRef(false);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -924,16 +943,7 @@ const CalendarPlanner: React.FC = () => {
             <button
               type="button"
               className={styles.monthPickerBtn}
-              onClick={() => {
-                const picker = monthInputRef.current as (HTMLInputElement & { showPicker?: () => void }) | null;
-                if (!picker) return;
-                if (typeof picker.showPicker === 'function') {
-                  picker.showPicker();
-                  return;
-                }
-                picker.focus();
-                picker.click();
-              }}
+              onClick={() => openNativeDatePicker(monthInputRef.current)}
             >
               {currentMonthLabel}
             </button>
@@ -1062,46 +1072,69 @@ const CalendarPlanner: React.FC = () => {
           </div>
           {reportRange === 'custom' ? (
             <div className={styles.customRangeRow}>
-              <label className={styles.customRangeField}>
+              <div className={styles.customRangeField}>
                 <span className={styles.customRangeLabel}>{t('planner', 'customRangeFrom')}</span>
-                <input
-                  type="date"
-                  className={styles.customRangeInput}
-                  value={customFrom}
-                  max={customTo || undefined}
-                  onChange={(e) => {
-                    const next = e.target.value;
-                    if (!next) return;
-                    setCustomFrom(next);
-                    if (customTo && next > customTo) setCustomTo(next);
-                  }}
-                />
-              </label>
-              <label className={styles.customRangeField}>
+                <div className={styles.customRangeWrap}>
+                  <button
+                    type="button"
+                    className={styles.customRangeBtn}
+                    onClick={() => openNativeDatePicker(customFromInputRef.current)}
+                  >
+                    {shortDateLabel(customFrom)}
+                  </button>
+                  <input
+                    ref={customFromInputRef}
+                    type="date"
+                    className={styles.customRangeInputNative}
+                    value={customFrom}
+                    max={customTo || undefined}
+                    aria-label={t('planner', 'customRangeFrom')}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      if (!next) return;
+                      setCustomFrom(next);
+                      if (customTo && next > customTo) setCustomTo(next);
+                    }}
+                  />
+                </div>
+              </div>
+              <div className={styles.customRangeField}>
                 <span className={styles.customRangeLabel}>{t('planner', 'customRangeTo')}</span>
-                <input
-                  type="date"
-                  className={styles.customRangeInput}
-                  value={customTo}
-                  min={customFrom || undefined}
-                  onChange={(e) => {
-                    const next = e.target.value;
-                    if (!next) return;
-                    setCustomTo(next);
-                    if (customFrom && next < customFrom) setCustomFrom(next);
-                  }}
-                />
-              </label>
+                <div className={styles.customRangeWrap}>
+                  <button
+                    type="button"
+                    className={styles.customRangeBtn}
+                    onClick={() => openNativeDatePicker(customToInputRef.current)}
+                  >
+                    {shortDateLabel(customTo)}
+                  </button>
+                  <input
+                    ref={customToInputRef}
+                    type="date"
+                    className={styles.customRangeInputNative}
+                    value={customTo}
+                    min={customFrom || undefined}
+                    aria-label={t('planner', 'customRangeTo')}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      if (!next) return;
+                      setCustomTo(next);
+                      if (customFrom && next < customFrom) setCustomFrom(next);
+                    }}
+                  />
+                </div>
+              </div>
             </div>
           ) : null}
           <div className={styles.reportStatsGrid}>
             <div className={styles.reportStatItem}>
               <span className={styles.reportLabel}>{t('planner', 'filledDays')}</span>
               <strong className={styles.reportValue}>{monthReport.filledDays}</strong>
-            </div>
-            <div className={styles.reportStatItem}>
-              <span className={styles.reportLabel}>{t('planner', 'totalShifts')}</span>
-              <strong className={styles.reportValue}>{monthReport.totalShifts}</strong>
+              {monthReport.totalShifts !== monthReport.filledDays ? (
+                <span className={styles.reportValueSub}>
+                  {monthReport.totalShifts} {t('planner', 'shiftsShort')}
+                </span>
+              ) : null}
             </div>
             <div className={styles.reportStatItem}>
               <span className={styles.reportLabel}>{t('planner', 'reportHoursTotal')}</span>

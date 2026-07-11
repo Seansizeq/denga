@@ -198,6 +198,7 @@ type Dict = {
     customRangeTo: string;
     reportHoursTotal: string;
     totalShifts: string;
+    shiftsShort: string;
     salaryForReportHint: string;
     shiftPayment: string;
   };
@@ -581,6 +582,7 @@ const uk: Dict = {
     customRangeTo: 'До',
     reportHoursTotal: 'Відпрацьовано годин',
     totalShifts: 'Усього змін',
+    shiftsShort: 'змін',
     salaryForReportHint: 'Для звіту вкажіть ставку за годину або фіксовану суму за зміну. Валюта: гривня або злотий.',
     shiftPayment: 'Оплата за зміну',
   },
@@ -970,6 +972,7 @@ const ru: Dict = {
     customRangeTo: 'По',
     reportHoursTotal: 'Отработано часов',
     totalShifts: 'Всего смен',
+    shiftsShort: 'смен',
     salaryForReportHint: 'Для отчёта укажите ставку за час или фиксированную сумму за смену. Валюта: гривна или злотый.',
     shiftPayment: 'Оплата за смену',
   },
@@ -1359,6 +1362,7 @@ const en: Dict = {
     customRangeTo: 'To',
     reportHoursTotal: 'Hours worked',
     totalShifts: 'Total shifts',
+    shiftsShort: 'shifts',
     salaryForReportHint: 'For the report: hourly rate or fixed amount per shift. Currency: hryvnia or zloty.',
     shiftPayment: 'Pay for this shift',
   },

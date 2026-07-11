@@ -90,30 +90,36 @@
 }
 
 .reportRangeTabs {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 4px;
   width: 100%;
-  min-width: 0;
   background: transparent;
   border: 1px solid var(--border-light);
-  border-radius: 999px;
-  padding: 2px;
+  border-radius: 16px;
+  padding: 4px;
 }
 
 .reportRangeTabBtn {
-  flex: 1 1 0;
+  grid-column: span 2;
   min-width: 0;
   border: none;
   background: transparent;
   color: var(--text-secondary);
-  border-radius: 999px;
-  padding: 6px 4px;
-  font-size: 12px;
+  border-radius: 11px;
+  padding: 8px 4px;
+  font-size: 13px;
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   cursor: pointer;
   transition: all 0.2s ease;
+}
+
+.reportRangeTabBtn:nth-child(4),
+.reportRangeTabBtn:nth-child(5) {
+  grid-column: span 3;
 }
 
 .reportRangeTabBtnActive {
@@ -141,9 +147,13 @@
   color: var(--text-secondary);
 }
 
-.customRangeInput {
+.customRangeWrap {
+  position: relative;
   width: 100%;
-  min-width: 0;
+}
+
+.customRangeBtn {
+  width: 100%;
   box-sizing: border-box;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--border-light);
@@ -151,7 +161,18 @@
   padding: 10px 8px;
   color: var(--text-primary);
   font-family: inherit;
-  font-size: 13px;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.customRangeInputNative {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: auto;
+  cursor: pointer;
 }
 
 .reportStatsGrid {
@@ -159,12 +180,6 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 16px;
-}
-
-@media (min-width: 560px) {
-  .reportStatsGrid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
 }
 
 .reportStatItem {
@@ -175,6 +190,12 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.reportValueSub {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
 }
 
 .reportRows {
