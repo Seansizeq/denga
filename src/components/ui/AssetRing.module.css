@@ -97,9 +97,21 @@
   background: none;
   border: none;
   color: inherit;
-  cursor: default;
+  cursor: pointer;
   text-align: left;
   gap: 8px;
+}
+
+.legendRow:active {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.legendItemHidden .legendRow {
+  opacity: 0.42;
+}
+
+.legendItemHidden .legendName {
+  text-decoration: line-through;
 }
 
 .legendLeft {
@@ -130,6 +142,11 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  flex-shrink: 0;
+}
+
+.legendRight svg {
+  color: var(--text-secondary);
   flex-shrink: 0;
 }
 

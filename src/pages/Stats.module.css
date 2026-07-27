@@ -436,8 +436,14 @@
   border-radius: 10px;
 }
 
+.legendTopRow {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
 .legendRow {
-  width: 100%;
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -453,6 +459,35 @@
 
 .legendRow:disabled {
   cursor: default;
+}
+
+.legendVisibilityBtn {
+  width: 34px;
+  height: 34px;
+  margin-right: 4px;
+  padding: 0;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.legendVisibilityBtn:active {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.legendItemHidden .legendRow,
+.legendItemHidden .budgetRow {
+  opacity: 0.42;
+}
+
+.legendItemHidden .legendName {
+  text-decoration: line-through;
 }
 
 .legendLeft {

@@ -53,6 +53,7 @@ function renderStats(initialPath = '/stats') {
 describe('Stats page', () => {
   afterEach(() => {
     cleanup();
+    localStorage.clear();
     vi.clearAllMocks();
   });
 
@@ -79,5 +80,17 @@ describe('Stats page', () => {
     fireEvent.click(screen.getByText('categories.transport'));
     expect(mocks.navigate).toHaveBeenCalledWith(expect.stringContaining('/history?'));
     expect(mocks.navigate).toHaveBeenCalledWith(expect.stringContaining('categoryId=transport'));
+  });
+
+  it('hides and restores a category in the chart', () => {
+    renderStats();
+
+    fireEvent.click(screen.getByRole('button', { name: 'stats.hideCategory: categories.food' }));
+
+    expect(screen.getByRole('button', { name: 'stats.showCategory: categories.food' })).toBeTruthy();
+    expect(localStorage.getItem('denga.stats.hiddenCategories.v1')).toBe('["food"]');
+
+    fireEvent.click(screen.getByRole('button', { name: 'stats.showCategory: categories.food' }));
+    expect(screen.getByRole('button', { name: 'stats.hideCategory: categories.food' })).toBeTruthy();
   });
 });

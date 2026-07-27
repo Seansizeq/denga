@@ -1,6 +1,8 @@
 import React, { useMemo } from 'react';
+import { Eye, EyeOff } from 'lucide-react';
 import { useTranslation } from '../../i18n/LanguageContext';
 import { formatCurrency } from '../../utils/formatters';
+import { usePersistedHiddenIds } from '../../hooks/usePersistedHiddenIds';
 import styles from './AssetRing.module.css';
 
 interface AssetSegment {
@@ -12,30 +14,32 @@ interface AssetSegment {
 
 interface AssetRingProps {
   segments: AssetSegment[];
-  total: number;
 }
 
-const AssetRing: React.FC<AssetRingProps> = ({ segments, total }) => {
-  const { locale, displayCurrency } = useTranslation();
+const AssetRing: React.FC<AssetRingProps> = ({ segments }) => {
+  const { t, locale, displayCurrency } = useTranslation();
+  const { hiddenIds, toggleHidden } = usePersistedHiddenIds('denga.accounts.hiddenSections.v1');
+  const visibleSegments = segments.filter((segment) => !hiddenIds.has(segment.id));
+  const visibleTotal = visibleSegments.reduce((sum, segment) => sum + segment.amount, 0);
 
   const donutBackground = useMemo(() => {
-    if (!total || segments.length === 0) {
+    if (!visibleTotal || visibleSegments.length === 0) {
       return 'conic-gradient(var(--bg-card-light) 0deg 360deg)';
     }
-    if (segments.length === 1) {
-      return `conic-gradient(${segments[0].color} 0deg 360deg)`;
+    if (visibleSegments.length === 1) {
+      return `conic-gradient(${visibleSegments[0].color} 0deg 360deg)`;
     }
     let acc = 0;
-    const parts = segments.map((seg) => {
-      const start = (acc / total) * 360;
+    const parts = visibleSegments.map((seg) => {
+      const start = (acc / visibleTotal) * 360;
       acc += seg.amount;
-      const end = (acc / total) * 360;
+      const end = (acc / visibleTotal) * 360;
       return `${seg.color} ${start.toFixed(2)}deg ${end.toFixed(2)}deg`;
     });
     return `conic-gradient(${parts.join(', ')})`;
-  }, [segments, total]);
+  }, [visibleSegments, visibleTotal]);
 
-  const formattedTotal = total > 0 ? formatCurrency(total, locale, displayCurrency) : '—';
+  const formattedTotal = visibleTotal > 0 ? formatCurrency(visibleTotal, locale, displayCurrency) : '—';
 
   return (
     <div className={styles.card}>
@@ -49,24 +53,37 @@ const AssetRing: React.FC<AssetRingProps> = ({ segments, total }) => {
       </div>
 
       <ul className={styles.legendList}>
-        {segments.map((seg) => (
-          <li key={seg.id} className={styles.legendItem}>
-            <div className={styles.legendRow}>
-              <span className={styles.legendLeft}>
-                <span className={styles.legendDot} style={{ backgroundColor: seg.color }} />
-                <span className={styles.legendName}>{seg.label}</span>
-              </span>
-              <span className={styles.legendRight}>
-                <span className={styles.legendPercent}>
-                  {total > 0 ? `${Math.round((seg.amount / total) * 100)}%` : '0%'}
+        {segments.map((seg) => {
+          const isHidden = hiddenIds.has(seg.id);
+          return (
+            <li
+              key={seg.id}
+              className={`${styles.legendItem} ${isHidden ? styles.legendItemHidden : ''}`}
+            >
+              <button
+                type="button"
+                className={styles.legendRow}
+                onClick={() => toggleHidden(seg.id)}
+                aria-label={`${t('stats', isHidden ? 'showCategory' : 'hideCategory')}: ${seg.label}`}
+                title={t('stats', isHidden ? 'showCategory' : 'hideCategory')}
+              >
+                <span className={styles.legendLeft}>
+                  <span className={styles.legendDot} style={{ backgroundColor: seg.color }} />
+                  <span className={styles.legendName}>{seg.label}</span>
                 </span>
-                <span className={styles.legendValue}>
-                  {formatCurrency(seg.amount, locale, displayCurrency)}
+                <span className={styles.legendRight}>
+                  <span className={styles.legendPercent}>
+                    {!isHidden && visibleTotal > 0 ? `${Math.round((seg.amount / visibleTotal) * 100)}%` : '—'}
+                  </span>
+                  <span className={styles.legendValue}>
+                    {formatCurrency(seg.amount, locale, displayCurrency)}
+                  </span>
+                  {isHidden ? <EyeOff size={16} /> : <Eye size={16} />}
                 </span>
-              </span>
-            </div>
-          </li>
-        ))}
+              </button>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

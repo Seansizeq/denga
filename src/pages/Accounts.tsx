@@ -170,10 +170,7 @@ const Accounts: React.FC = () => {
               ? convertAmount(marketUsd, 'USD', r.primaryCurrency)
               : r.primaryAmount;
           const fiat = formatGroupAmount(dynamicPrimary, r.primaryCurrency);
-          const amount =
-            r.section === 'debt' && r.debtDirection
-              ? `${t('balance', r.debtDirection === 'owed_by_me' ? 'debtPhraseOwedByMe' : 'debtPhraseOwedToMe')} ${fiat}`
-              : fiat;
+          const amount = fiat;
           const converted = convertAmount(dynamicPrimary, r.primaryCurrency, displayCurrency);
           const fxSub = r.primaryCurrency === displayCurrency ? '' : formatGroupAmount(converted, displayCurrency);
           const subAmount = [r.subText?.trim() ?? '', fxSub].filter(Boolean).join(' · ') || undefined;
@@ -296,8 +293,6 @@ const Accounts: React.FC = () => {
       .sort((a, b) => b.amount - a.amount);
   }, [portfolio, sections, convertAmount, displayCurrency, cryptoUsdPrices]);
 
-  const ringTotal = ringSegments.reduce((a, s) => a + s.amount, 0);
-
   const owedByMeTotal = useMemo(() => {
     return portfolio
       .filter((r) => r.section === 'debt' && r.debtDirection === 'owed_by_me')
@@ -406,7 +401,7 @@ const Accounts: React.FC = () => {
         ) : (
           <>
             {ringSegments.length > 0 && (
-              <AssetRing segments={ringSegments} total={ringTotal} />
+              <AssetRing segments={ringSegments} />
             )}
             {owedByMeTotal > 0 && (
               <p className={styles.liabilityLine}>
