@@ -310,6 +310,28 @@ type Dict = {
     sectionReports: string;
     sectionReminders: string;
     sectionPlanner: string;
+    sectionBybit: string;
+    bybitDescription: string;
+    bybitLoading: string;
+    bybitConnected: string;
+    bybitNotConnected: string;
+    bybitLoadError: string;
+    bybitConnectError: string;
+    bybitSyncError: string;
+    bybitDisconnectError: string;
+    bybitReadOnly: string;
+    bybitLastSync: string;
+    bybitImported: string;
+    bybitNeverSynced: string;
+    bybitSyncing: string;
+    bybitSyncNow: string;
+    bybitDisconnect: string;
+    bybitDisconnectConfirm: string;
+    bybitApiKeyPlaceholder: string;
+    bybitApiSecretPlaceholder: string;
+    bybitSecurityHint: string;
+    bybitConnecting: string;
+    bybitConnect: string;
     reminderGroupExpenses: string;
     reminderGroupPlanner: string;
     reminderGroupFx: string;
@@ -716,6 +738,28 @@ const uk: Dict = {
     sectionReports: 'Звіти Telegram',
     sectionReminders: 'Нагадування',
     sectionPlanner: 'Планер',
+    sectionBybit: 'Автоматичні витрати',
+    bybitDescription: 'Покупки з Bybit Card автоматично з’являються в історії. Під час першого підключення імпортуються операції за останні 7 днів.',
+    bybitLoading: 'Перевіряємо підключення…',
+    bybitConnected: 'Підключено й синхронізується автоматично',
+    bybitNotConnected: 'Автоматичний імпорт покупок',
+    bybitLoadError: 'Не вдалося завантажити стан Bybit.',
+    bybitConnectError: 'Не вдалося підключити Bybit Card.',
+    bybitSyncError: 'Не вдалося синхронізувати покупки.',
+    bybitDisconnectError: 'Не вдалося відключити Bybit Card.',
+    bybitReadOnly: 'лише читання',
+    bybitLastSync: 'Остання синхронізація',
+    bybitImported: 'Імпортовано',
+    bybitNeverSynced: 'ще не було',
+    bybitSyncing: 'Синхронізація…',
+    bybitSyncNow: 'Синхронізувати',
+    bybitDisconnect: 'Відключити',
+    bybitDisconnectConfirm: 'Відключити Bybit Card? Уже імпортовані витрати залишаться.',
+    bybitApiKeyPlaceholder: 'Вставте API Key',
+    bybitApiSecretPlaceholder: 'Вставте API Secret',
+    bybitSecurityHint: 'Ключ перевіряється як read-only і зберігається на сервері в зашифрованому вигляді.',
+    bybitConnecting: 'Підключення…',
+    bybitConnect: 'Підключити Bybit Card',
     reminderGroupExpenses: 'Витрати',
     reminderGroupPlanner: 'Планер змін',
     reminderGroupFx: 'Курс валют',
@@ -1128,6 +1172,28 @@ const ru: Dict = {
     sectionReports: 'Отчёты Telegram',
     sectionReminders: 'Напоминания',
     sectionPlanner: 'Планер',
+    sectionBybit: 'Автоматические расходы',
+    bybitDescription: 'Покупки с Bybit Card автоматически появляются в истории. При первом подключении импортируются операции за последние 7 дней.',
+    bybitLoading: 'Проверяем подключение…',
+    bybitConnected: 'Подключено и синхронизируется автоматически',
+    bybitNotConnected: 'Автоматический импорт покупок',
+    bybitLoadError: 'Не удалось загрузить состояние Bybit.',
+    bybitConnectError: 'Не удалось подключить Bybit Card.',
+    bybitSyncError: 'Не удалось синхронизировать покупки.',
+    bybitDisconnectError: 'Не удалось отключить Bybit Card.',
+    bybitReadOnly: 'только чтение',
+    bybitLastSync: 'Последняя синхронизация',
+    bybitImported: 'Импортировано',
+    bybitNeverSynced: 'ещё не было',
+    bybitSyncing: 'Синхронизация…',
+    bybitSyncNow: 'Синхронизировать',
+    bybitDisconnect: 'Отключить',
+    bybitDisconnectConfirm: 'Отключить Bybit Card? Уже импортированные расходы останутся.',
+    bybitApiKeyPlaceholder: 'Вставьте API Key',
+    bybitApiSecretPlaceholder: 'Вставьте API Secret',
+    bybitSecurityHint: 'Ключ проверяется как read-only и хранится на сервере в зашифрованном виде.',
+    bybitConnecting: 'Подключение…',
+    bybitConnect: 'Подключить Bybit Card',
     reminderGroupExpenses: 'Расходы',
     reminderGroupPlanner: 'Планер смен',
     reminderGroupFx: 'Курс валют',
@@ -1540,6 +1606,28 @@ const en: Dict = {
     sectionReports: 'Telegram reports',
     sectionReminders: 'Reminders',
     sectionPlanner: 'Planner',
+    sectionBybit: 'Automatic expenses',
+    bybitDescription: 'Bybit Card purchases appear in your history automatically. The first connection imports the last 7 days.',
+    bybitLoading: 'Checking connection…',
+    bybitConnected: 'Connected and syncing automatically',
+    bybitNotConnected: 'Automatic purchase import',
+    bybitLoadError: 'Could not load Bybit status.',
+    bybitConnectError: 'Could not connect Bybit Card.',
+    bybitSyncError: 'Could not sync purchases.',
+    bybitDisconnectError: 'Could not disconnect Bybit Card.',
+    bybitReadOnly: 'read only',
+    bybitLastSync: 'Last sync',
+    bybitImported: 'Imported',
+    bybitNeverSynced: 'not yet',
+    bybitSyncing: 'Syncing…',
+    bybitSyncNow: 'Sync now',
+    bybitDisconnect: 'Disconnect',
+    bybitDisconnectConfirm: 'Disconnect Bybit Card? Already imported expenses will remain.',
+    bybitApiKeyPlaceholder: 'Paste API Key',
+    bybitApiSecretPlaceholder: 'Paste API Secret',
+    bybitSecurityHint: 'The key is verified as read-only and stored encrypted on the server.',
+    bybitConnecting: 'Connecting…',
+    bybitConnect: 'Connect Bybit Card',
     reminderGroupExpenses: 'Expenses',
     reminderGroupPlanner: 'Shift planner',
     reminderGroupFx: 'FX rate',

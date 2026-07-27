@@ -458,6 +458,39 @@ export async function initDb() {
   }
 
   await db.exec(`
+    CREATE TABLE IF NOT EXISTS bybit_card_connections (
+      user_id TEXT PRIMARY KEY,
+      api_key_enc TEXT NOT NULL,
+      api_secret_enc TEXT NOT NULL,
+      api_key_hint TEXT NOT NULL DEFAULT '',
+      endpoint TEXT NOT NULL DEFAULT 'https://api.bybit.com',
+      enabled INTEGER NOT NULL DEFAULT 1,
+      sync_from TEXT NOT NULL,
+      last_sync_at TEXT,
+      last_error TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS bybit_card_imports (
+      user_id TEXT NOT NULL,
+      external_id TEXT NOT NULL,
+      order_no TEXT,
+      txn_id TEXT,
+      transaction_id TEXT NOT NULL,
+      record_status TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, external_id)
+    )
+  `);
+  await db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_bybit_card_imports_transaction
+    ON bybit_card_imports(user_id, transaction_id)
+  `);
+
+  await db.exec(`
     CREATE INDEX IF NOT EXISTS idx_transactions_user_date
     ON transactions(user_id, date DESC)
   `);

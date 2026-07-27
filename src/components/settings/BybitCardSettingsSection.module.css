@@ -1,0 +1,177 @@
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.icon {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  color: #f7b733;
+  background: rgba(247, 183, 51, 0.13);
+  border-radius: 13px;
+}
+
+.title {
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.subtitle {
+  margin-top: 2px;
+  color: var(--text-tertiary);
+  font-size: 13px;
+}
+
+.liveDot {
+  width: 9px;
+  height: 9px;
+  margin-left: auto;
+  border-radius: 50%;
+  background: #40e57b;
+  box-shadow: 0 0 0 4px rgba(64, 229, 123, 0.12);
+}
+
+.form,
+.connectedBody {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  padding: 16px 18px 18px;
+}
+
+.form label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.form input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 13px;
+  color: var(--text-primary);
+  background: var(--bg-card-light);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 12px;
+  outline: none;
+  font: inherit;
+}
+
+.form input:focus {
+  border-color: rgba(143, 92, 255, 0.75);
+  box-shadow: 0 0 0 3px rgba(143, 92, 255, 0.12);
+}
+
+.hint,
+.securityLine {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.securityLine {
+  color: #6fe899;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.stats > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 11px 12px;
+  background: rgba(255, 255, 255, 0.035);
+  border-radius: 12px;
+}
+
+.stats span {
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+.stats strong {
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.actions {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+}
+
+.primaryButton,
+.disconnectButton {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 15px;
+  border: 0;
+  border-radius: 12px;
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.primaryButton {
+  background: linear-gradient(135deg, #7b4fe8, #9a63ff);
+}
+
+.disconnectButton {
+  color: #ff7b82;
+  background: rgba(255, 88, 99, 0.1);
+}
+
+.primaryButton:disabled,
+.disconnectButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.error,
+.warning {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.error {
+  color: #ff9298;
+  background: rgba(255, 88, 99, 0.1);
+}
+
+.warning {
+  color: #f7c46c;
+  background: rgba(247, 183, 51, 0.1);
+}
+
+.spinning {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
