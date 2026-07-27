@@ -9,6 +9,7 @@ import {
 } from '../api/client';
 import { hapticLight } from '../utils/notify';
 import { buildPastDays, isWithinLastDays } from '../utils/dateRanges';
+import { formatWorkedHoursInput, parseWorkedHoursInput } from '../utils/workedHours';
 import styles from './CalendarPlanner.module.css';
 
 interface DayPlan {
@@ -873,9 +874,13 @@ const CalendarPlanner: React.FC = () => {
 
   const handleEditReportShift = async (entry: ShiftEntry) => {
     if (entry.id.startsWith('day-')) return;
-    const nextHoursRaw = window.prompt(t('planner', 'editShiftHoursPrompt'), String(entry.workedHours));
+    const nextHoursRaw = window.prompt(t('planner', 'editShiftHoursPrompt'), formatWorkedHoursInput(entry.workedHours));
     if (nextHoursRaw === null) return;
-    const nextHours = parseMoneyInput(nextHoursRaw);
+    const nextHours = parseWorkedHoursInput(nextHoursRaw);
+    if (nextHours === null) {
+      window.alert(t('planner', 'editShiftHoursInvalid'));
+      return;
+    }
     const nextAmountRaw = window.prompt(t('planner', 'editShiftAmountPrompt'), String(entry.salaryAmount));
     if (nextAmountRaw === null) return;
     const nextAmount = parseMoneyInput(nextAmountRaw);

@@ -94,8 +94,8 @@
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 4px;
   width: 100%;
-  background: transparent;
-  border: 1px solid var(--border-light);
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.13);
   border-radius: 16px;
   padding: 4px;
 }
@@ -103,8 +103,8 @@
 .reportRangeTabBtn {
   grid-column: span 2;
   min-width: 0;
-  border: none;
-  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.045);
+  background: rgba(255, 255, 255, 0.018);
   color: var(--text-secondary);
   border-radius: 11px;
   padding: 8px 4px;
@@ -123,8 +123,9 @@
 }
 
 .reportRangeTabBtnActive {
-  background: var(--bg-card-light);
-  color: var(--text-primary);
+  border-color: rgba(155, 124, 255, 0.68);
+  background: linear-gradient(180deg, rgba(124, 92, 255, 0.3), rgba(124, 92, 255, 0.18));
+  color: #fff;
 }
 
 .customRangeRow {

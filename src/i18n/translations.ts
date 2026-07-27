@@ -209,6 +209,7 @@ type Dict = {
     reportShiftBannersEmpty: string;
     deleteShiftEntryConfirm: string;
     editShiftHoursPrompt: string;
+    editShiftHoursInvalid: string;
     editShiftAmountPrompt: string;
     editShiftNotePrompt: string;
     monthReportTitle: string;
@@ -613,7 +614,8 @@ const uk: Dict = {
     reportShiftBanners: 'Кожна зміна',
     reportShiftBannersEmpty: 'За цей період ще немає завершених змін',
     deleteShiftEntryConfirm: 'Видалити цю зміну зі звіту?',
-    editShiftHoursPrompt: 'Години для зміни',
+    editShiftHoursPrompt: 'Години для зміни (ГГ:ХХ)',
+    editShiftHoursInvalid: 'Введіть години у форматі ГГ:ХХ. Хвилини мають бути від 00 до 59.',
     editShiftAmountPrompt: 'Сума для зміни',
     editShiftNotePrompt: 'Назва/нотатка зміни',
     monthReportTitle: 'Звіт за місяць',
@@ -1024,7 +1026,8 @@ const ru: Dict = {
     reportShiftBanners: 'Каждая смена',
     reportShiftBannersEmpty: 'За этот период пока нет завершённых смен',
     deleteShiftEntryConfirm: 'Удалить эту смену из отчёта?',
-    editShiftHoursPrompt: 'Часы для смены',
+    editShiftHoursPrompt: 'Часы для смены (ЧЧ:ММ)',
+    editShiftHoursInvalid: 'Введите часы в формате ЧЧ:ММ. Минуты должны быть от 00 до 59.',
     editShiftAmountPrompt: 'Сумма для смены',
     editShiftNotePrompt: 'Название/заметка смены',
     monthReportTitle: 'Отчёт за месяц',
@@ -1435,7 +1438,8 @@ const en: Dict = {
     reportShiftBanners: 'Each shift',
     reportShiftBannersEmpty: 'No completed shifts in this period yet',
     deleteShiftEntryConfirm: 'Delete this shift from the report?',
-    editShiftHoursPrompt: 'Hours for this shift',
+    editShiftHoursPrompt: 'Hours for this shift (HH:MM)',
+    editShiftHoursInvalid: 'Enter hours as HH:MM. Minutes must be between 00 and 59.',
     editShiftAmountPrompt: 'Amount for this shift',
     editShiftNotePrompt: 'Shift name/note',
     monthReportTitle: 'Monthly summary',
