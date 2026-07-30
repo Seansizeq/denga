@@ -140,7 +140,7 @@ describe('Bybit Card integration helpers', () => {
         PRIMARY KEY (user_id, external_id)
       );
     `);
-    const fetchImpl = async (url, init = {}) => {
+    const fetchImpl = async (url) => {
       const textUrl = String(url);
       if (textUrl.includes('/v5/user/query-api')) {
         return new Response(JSON.stringify({
@@ -152,15 +152,8 @@ describe('Bybit Card integration helpers', () => {
           },
         }), { status: 200 });
       }
-      // POST body now carries the type (SIDE_QUERY_FINANCIAL / SIDE_QUERY_REFUND)
-      let requestType = '';
-      try {
-        const parsed = JSON.parse(String(init.body ?? '{}'));
-        requestType = String(parsed.type ?? '');
-      } catch {
-        requestType = '';
-      }
-      const isFinancial = requestType === 'SIDE_QUERY_FINANCIAL' || textUrl.includes('SIDE_QUERY_FINANCIAL');
+      // Card endpoint: params in query string (official docs)
+      const isFinancial = textUrl.includes('SIDE_QUERY_FINANCIAL');
       return new Response(JSON.stringify({
         retCode: 0,
         result: {
