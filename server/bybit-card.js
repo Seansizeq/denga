@@ -248,22 +248,28 @@ const fetchCardRecords = async ({ endpoint, apiKey, secret, fetchImpl, startTime
     for (let page = 1; page <= 10; page += 1) {
       // Official docs: POST with params in the *query string*, no body.
       // https://bybit-exchange.github.io/docs/v5/bybit-card/asset-records
-      const body = await requestBybit({
-        endpoint,
-        path: '/v5/card/transaction/query-asset-records',
-        method: 'POST',
-        queryParams: true,
-        params: {
-          type,
-          createBeginTime: begin,
-          createEndTime: end,
-          limit: 100,
-          page,
-        },
-        apiKey,
-        secret,
-        fetchImpl,
-      });
+      let body;
+      try {
+        body = await requestBybit({
+          endpoint,
+          path: '/v5/card/transaction/query-asset-records',
+          method: 'POST',
+          queryParams: true,
+          params: {
+            type,
+            createBeginTime: begin,
+            createEndTime: end,
+            limit: 100,
+            page,
+          },
+          apiKey,
+          secret,
+          fetchImpl,
+        });
+      } catch (error) {
+        error.message = `[${type} page ${page}] ${error.message}`;
+        throw error;
+      }
       const rows = Array.isArray(body?.result?.data) ? body.result.data : [];
       all.push(...rows.map((record) => ({ kind, record })));
       if (rows.length < 100) break;
