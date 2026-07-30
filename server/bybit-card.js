@@ -41,29 +41,42 @@ export const signBybitRequest = ({ timestamp, apiKey, recvWindow = RECV_WINDOW, 
     .digest('hex');
 
 const buildQuery = (params = {}) => {
+  // Stable alphabetical order — some Bybit gateways are picky about param order.
+  const keys = Object.keys(params)
+    .filter((key) => params[key] !== undefined && params[key] !== null && params[key] !== '')
+    .sort();
   const query = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined && value !== null && value !== '') query.set(key, String(value));
+  for (const key of keys) {
+    query.set(key, String(params[key]));
   }
   return query.toString();
 };
 
 /**
- * Bybit V5 auth:
- * - GET  → sign timestamp+key+recvWindow+queryString, params in URL
- * - POST → sign timestamp+key+recvWindow+jsonBody, params in JSON body
+ * Bybit V5 auth + card endpoints:
+ * - GET  → sign queryString, params in URL
+ * - POST (standard) → sign jsonBody, body = JSON
+ * - POST /v5/card/* → official docs put params in the *query string* with no body.
+ *   For those we sign an empty body string "" and put params on the URL.
  *
- * Card endpoints are documented with query-string examples, but the signing
- * rule for POST is always the JSON body. Sending params as JSON body and
- * signing that body is the reliable approach.
+ * Use `queryParams: true` to force the card-style query-string POST.
  */
-const requestBybit = async ({ endpoint, path, method = 'GET', params, apiKey, secret, fetchImpl = fetch }) => {
+const requestBybit = async ({
+  endpoint,
+  path,
+  method = 'GET',
+  params,
+  apiKey,
+  secret,
+  fetchImpl = fetch,
+  queryParams = false,
+}) => {
   const timestamp = String(Date.now());
   let url;
   let payload;
   let bodyText;
 
-  if (method === 'POST') {
+  if (method === 'POST' && !queryParams) {
     const bodyObj = {};
     for (const [key, value] of Object.entries(params ?? {})) {
       if (value !== undefined && value !== null && value !== '') bodyObj[key] = value;
@@ -72,8 +85,9 @@ const requestBybit = async ({ endpoint, path, method = 'GET', params, apiKey, se
     payload = bodyText;
     url = `${endpoint}${path}`;
   } else {
+    // GET, or POST with query-string params (Bybit Card endpoints)
     const query = buildQuery(params);
-    payload = query;
+    payload = method === 'GET' ? query : '';
     bodyText = undefined;
     url = `${endpoint}${path}${query ? `?${query}` : ''}`;
   }
@@ -163,7 +177,6 @@ export const categoryForBybitRecord = (record) => {
 };
 
 const firstSupportedAmount = (record) => {
-  // Prefer the actual charged / billed amounts from the card response.
   const candidates = [
     [record?.transactionCurrencyAmount, record?.transactionCurrency],
     [record?.paidAmount, record?.paidCurrency],
@@ -207,7 +220,6 @@ export const normalizeBybitRecord = (record, kind) => {
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 90);
-  // side: 4 Refund(unDeduct), 5 Refund, 6 Chargeback → income
   const isRefund = kind === 'refund' || ['4', '5', '6'].includes(String(record?.side));
   return {
     externalId: recordId(record, isRefund ? 'refund' : 'purchase'),
@@ -226,22 +238,26 @@ export const normalizeBybitRecord = (record, kind) => {
 
 const fetchCardRecords = async ({ endpoint, apiKey, secret, fetchImpl, startTime, endTime }) => {
   const all = [];
-  // Only financial (clearing) + refund. Authorization holds often never settle the
-  // same way and used to create duplicate / pending phantom expenses.
+  const begin = Math.trunc(Number(startTime));
+  const end = Math.trunc(Number(endTime));
+
   for (const [kind, type] of [
     ['financial', 'SIDE_QUERY_FINANCIAL'],
     ['refund', 'SIDE_QUERY_REFUND'],
   ]) {
     for (let page = 1; page <= 10; page += 1) {
+      // Official docs: POST with params in the *query string*, no body.
+      // https://bybit-exchange.github.io/docs/v5/bybit-card/asset-records
       const body = await requestBybit({
         endpoint,
         path: '/v5/card/transaction/query-asset-records',
         method: 'POST',
+        queryParams: true,
         params: {
           type,
-          createBeginTime: startTime,
-          createEndTime: endTime,
-          limit: 500,
+          createBeginTime: begin,
+          createEndTime: end,
+          limit: 100,
           page,
         },
         apiKey,
@@ -250,7 +266,7 @@ const fetchCardRecords = async ({ endpoint, apiKey, secret, fetchImpl, startTime
       });
       const rows = Array.isArray(body?.result?.data) ? body.result.data : [];
       all.push(...rows.map((record) => ({ kind, record })));
-      if (rows.length < 500) break;
+      if (rows.length < 100) break;
     }
   }
   return all;
@@ -271,19 +287,15 @@ const shouldImport = ({ kind, record }) => {
   const status = String(record?.status ?? '');
   const side = String(record?.side ?? '');
 
-  // Declined / reversed / failed — never import
   if (tradeStatus === '2' || tradeStatus === '3' || status === '2') return false;
 
   if (kind === 'financial') {
-    // Settled purchases + ATM: side 3 (Transaction), 7 (Direct), 13 (ATM)
-    // Require completed tradeStatus; also accept status=1 as success signal
     const isPurchaseSide = ['3', '7', '13'].includes(side);
     const isDone = tradeStatus === '1' || status === '1';
     return isPurchaseSide && isDone;
   }
 
   if (kind === 'refund') {
-    // 4 unDeduct refund, 5 refund, 6 chargeback
     return ['4', '5', '6'].includes(side) && (tradeStatus === '1' || status === '1');
   }
 
@@ -374,7 +386,6 @@ export const syncBybitCard = async ({ db, userId, fetchImpl = fetch }) => {
       if (!shouldImport(item)) continue;
       const normalized = normalizeBybitRecord(item.record, item.kind === 'refund' ? 'refund' : 'purchase');
       if (!normalized) continue;
-      // financial > refund priority for same external id edge cases
       const priority = item.kind === 'financial' ? 2 : 3;
       const previous = selected.get(normalized.externalId);
       if (!previous || priority > previous.priority) selected.set(normalized.externalId, { ...normalized, priority });
