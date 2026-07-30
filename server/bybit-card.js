@@ -48,13 +48,37 @@ const buildQuery = (params = {}) => {
   return query.toString();
 };
 
+/**
+ * Bybit V5 auth:
+ * - GET  → sign timestamp+key+recvWindow+queryString, params in URL
+ * - POST → sign timestamp+key+recvWindow+jsonBody, params in JSON body
+ *
+ * Card endpoints are documented with query-string examples, but the signing
+ * rule for POST is always the JSON body. Sending params as JSON body and
+ * signing that body is the reliable approach.
+ */
 const requestBybit = async ({ endpoint, path, method = 'GET', params, apiKey, secret, fetchImpl = fetch }) => {
-  const query = buildQuery(params);
   const timestamp = String(Date.now());
-  const bodyText = method === 'POST' ? '{}' : '';
-  const payload = method === 'GET' ? query : bodyText;
+  let url;
+  let payload;
+  let bodyText;
+
+  if (method === 'POST') {
+    const bodyObj = {};
+    for (const [key, value] of Object.entries(params ?? {})) {
+      if (value !== undefined && value !== null && value !== '') bodyObj[key] = value;
+    }
+    bodyText = JSON.stringify(bodyObj);
+    payload = bodyText;
+    url = `${endpoint}${path}`;
+  } else {
+    const query = buildQuery(params);
+    payload = query;
+    bodyText = undefined;
+    url = `${endpoint}${path}${query ? `?${query}` : ''}`;
+  }
+
   const signature = signBybitRequest({ timestamp, apiKey, payload, secret });
-  const url = `${endpoint}${path}${query ? `?${query}` : ''}`;
   const response = await fetchImpl(url, {
     method,
     headers: {
@@ -64,7 +88,7 @@ const requestBybit = async ({ endpoint, path, method = 'GET', params, apiKey, se
       'X-BAPI-TIMESTAMP': timestamp,
       'X-BAPI-RECV-WINDOW': RECV_WINDOW,
     },
-    ...(method === 'POST' ? { body: bodyText } : {}),
+    ...(bodyText !== undefined ? { body: bodyText } : {}),
     signal: AbortSignal.timeout(15_000),
   });
   if (!response.ok) throw new Error(`Bybit HTTP ${response.status}`);
@@ -139,9 +163,14 @@ export const categoryForBybitRecord = (record) => {
 };
 
 const firstSupportedAmount = (record) => {
+  // Prefer the actual charged / billed amounts from the card response.
   const candidates = [
-    [record?.transactionCurrencyAmount || record?.transactionAmount, record?.transactionCurrency],
-    [record?.basicAmount || record?.billAmount, record?.basicCurrency],
+    [record?.transactionCurrencyAmount, record?.transactionCurrency],
+    [record?.paidAmount, record?.paidCurrency],
+    [record?.paidFiat, record?.paidCurrency || record?.basicCurrency],
+    [record?.billAmount, record?.basicCurrency || record?.transactionCurrency],
+    [record?.basicAmount, record?.basicCurrency],
+    [record?.transactionAmount, record?.transactionCurrency],
   ];
   for (const [amountValue, currencyValue] of candidates) {
     const amount = Math.abs(Number(amountValue));
@@ -178,6 +207,7 @@ export const normalizeBybitRecord = (record, kind) => {
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 90);
+  // side: 4 Refund(unDeduct), 5 Refund, 6 Chargeback → income
   const isRefund = kind === 'refund' || ['4', '5', '6'].includes(String(record?.side));
   return {
     externalId: recordId(record, isRefund ? 'refund' : 'purchase'),
@@ -196,8 +226,9 @@ export const normalizeBybitRecord = (record, kind) => {
 
 const fetchCardRecords = async ({ endpoint, apiKey, secret, fetchImpl, startTime, endTime }) => {
   const all = [];
+  // Only financial (clearing) + refund. Authorization holds often never settle the
+  // same way and used to create duplicate / pending phantom expenses.
   for (const [kind, type] of [
-    ['authorization', 'SIDE_QUERY_AUTH'],
     ['financial', 'SIDE_QUERY_FINANCIAL'],
     ['refund', 'SIDE_QUERY_REFUND'],
   ]) {
@@ -225,14 +256,38 @@ const fetchCardRecords = async ({ endpoint, apiKey, secret, fetchImpl, startTime
   return all;
 };
 
+/**
+ * Official side values (Bybit Card):
+ *  1 Authorization, 2 Auth reversal, 3 Transaction, 4 Refund(unDeduct),
+ *  5 Refund, 6 Chargeback, 7 Transaction(Direct), 8 Refund reversal,
+ *  9 Chargeback reversal, 10 Refund request, 11 Refund reversal request,
+ *  12 Chargeback fee, 13 ATM withdrawal
+ *
+ * tradeStatus: 0 In_Progress, 1 Completed, 2 Declined, 3 Reversal
+ * status: -1 Init, 0 Pending, 1 Success, 2 Fail
+ */
 const shouldImport = ({ kind, record }) => {
   const tradeStatus = String(record?.tradeStatus ?? '');
   const status = String(record?.status ?? '');
   const side = String(record?.side ?? '');
+
+  // Declined / reversed / failed — never import
   if (tradeStatus === '2' || tradeStatus === '3' || status === '2') return false;
-  if (kind === 'authorization') return side === '1' && (tradeStatus === '0' || tradeStatus === '1');
-  if (kind === 'financial') return ['3', '7', '13'].includes(side) && tradeStatus === '1';
-  return ['4', '5', '6'].includes(side) && (tradeStatus === '1' || status === '1');
+
+  if (kind === 'financial') {
+    // Settled purchases + ATM: side 3 (Transaction), 7 (Direct), 13 (ATM)
+    // Require completed tradeStatus; also accept status=1 as success signal
+    const isPurchaseSide = ['3', '7', '13'].includes(side);
+    const isDone = tradeStatus === '1' || status === '1';
+    return isPurchaseSide && isDone;
+  }
+
+  if (kind === 'refund') {
+    // 4 unDeduct refund, 5 refund, 6 chargeback
+    return ['4', '5', '6'].includes(side) && (tradeStatus === '1' || status === '1');
+  }
+
+  return false;
 };
 
 const publicConnection = async (db, userId) => {
@@ -319,7 +374,8 @@ export const syncBybitCard = async ({ db, userId, fetchImpl = fetch }) => {
       if (!shouldImport(item)) continue;
       const normalized = normalizeBybitRecord(item.record, item.kind === 'refund' ? 'refund' : 'purchase');
       if (!normalized) continue;
-      const priority = item.kind === 'financial' ? 2 : item.kind === 'authorization' ? 1 : 3;
+      // financial > refund priority for same external id edge cases
+      const priority = item.kind === 'financial' ? 2 : 3;
       const previous = selected.get(normalized.externalId);
       if (!previous || priority > previous.priority) selected.set(normalized.externalId, { ...normalized, priority });
     }
