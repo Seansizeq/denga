@@ -5,6 +5,68 @@ const DEFAULT_ENDPOINTS = ['https://api.bybit.com', 'https://api.bybit.eu'];
 const SUPPORTED_CURRENCIES = new Set(['UAH', 'PLN', 'USD']);
 const RECV_WINDOW = '5000';
 const LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
+const TRACKED_BALANCE_COINS = ['BTC', 'ETH', 'SOL', 'TON', 'USDT'];
+
+const createIntegrationError = (integrationCode, message, cause) => {
+  const error = new Error(message, cause ? { cause } : undefined);
+  error.integrationCode = integrationCode;
+  return error;
+};
+
+const apiCodeOf = (error) => String(error?.code ?? '');
+
+export const toBybitPublicError = (error) => {
+  if (error?.integrationCode) {
+    return { code: error.integrationCode, error: error.message };
+  }
+  const apiCode = apiCodeOf(error);
+  if (apiCode === '81007') {
+    return {
+      code: 'BYBIT_EU_THIRD_PARTY_REQUIRED',
+      error: 'Bybit EU only allows API access through approved third-party application connections.',
+    };
+  }
+  if (apiCode === '10010') {
+    return {
+      code: 'BYBIT_IP_MISMATCH',
+      error: 'This API key is restricted to different IP addresses. Add the Denga server IP in Bybit or remove the IP restriction.',
+    };
+  }
+  if (apiCode === '10009' || apiCode === '10024' || apiCode === '110132') {
+    return {
+      code: 'BYBIT_REGION_RESTRICTED',
+      error: 'Bybit API access is restricted for this account or region.',
+    };
+  }
+  if (apiCode === '10005') {
+    return {
+      code: 'BYBIT_PERMISSION_DENIED',
+      error: 'The API key does not have the required read permissions.',
+    };
+  }
+  if (apiCode === '10003') {
+    return {
+      code: 'BYBIT_ENDPOINT_MISMATCH',
+      error: 'The API key is invalid or belongs to another Bybit domain. Bybit EU requires an approved third-party connection.',
+    };
+  }
+  if (apiCode === '10004' || apiCode === '10007' || error?.httpStatus === 401) {
+    return {
+      code: 'BYBIT_INVALID_CREDENTIALS',
+      error: 'The API key or secret is invalid.',
+    };
+  }
+  if (error?.httpStatus === 403) {
+    return {
+      code: 'BYBIT_REGION_RESTRICTED',
+      error: 'Bybit rejected access from this server region or IP address.',
+    };
+  }
+  return {
+    code: 'BYBIT_REQUEST_FAILED',
+    error: 'Bybit could not complete the read-only request. Try again later.',
+  };
+};
 
 const parseEncryptionKey = (value = process.env.BYBIT_CREDENTIALS_KEY) => {
   const raw = String(value ?? '').trim();
@@ -105,18 +167,25 @@ const requestBybit = async ({
     ...(bodyText !== undefined ? { body: bodyText } : {}),
     signal: AbortSignal.timeout(15_000),
   });
-  if (!response.ok) throw new Error(`Bybit HTTP ${response.status}`);
-  const body = await response.json();
-  if (Number(body?.retCode) !== 0) {
-    const error = new Error(String(body?.retMsg || `Bybit error ${body?.retCode}`));
-    error.code = String(body?.retCode ?? '');
+  let responseBody = null;
+  try {
+    responseBody = await response.json();
+  } catch {
+    /* handled below as an HTTP error */
+  }
+  if (!response.ok || Number(responseBody?.retCode) !== 0) {
+    const error = new Error(String(responseBody?.retMsg || `Bybit HTTP ${response.status}`));
+    error.code = String(responseBody?.retCode ?? `HTTP_${response.status}`);
+    error.httpStatus = response.status;
+    error.endpoint = endpoint;
+    error.requestPath = path;
     throw error;
   }
-  return body;
+  return responseBody;
 };
 
 export const validateBybitCredentials = async ({ apiKey, secret, fetchImpl = fetch }) => {
-  let lastError;
+  const attempts = [];
   for (const endpoint of DEFAULT_ENDPOINTS) {
     try {
       const body = await requestBybit({
@@ -127,17 +196,27 @@ export const validateBybitCredentials = async ({ apiKey, secret, fetchImpl = fet
         fetchImpl,
       });
       const info = body?.result ?? {};
-      if (Number(info.readOnly) !== 1) throw new Error('API key must be read-only');
-      if (!Array.isArray(info?.permissions?.BitCard) || !info.permissions.BitCard.includes('BitCard')) {
-        throw new Error('API key does not have BitCard permission');
+      if (Number(info.readOnly) !== 1) {
+        throw createIntegrationError('BYBIT_READ_ONLY_REQUIRED', 'API key must be read-only.');
       }
-      if (info.isMaster !== true) throw new Error('BitCard requires a master account API key');
+      if (!Array.isArray(info?.permissions?.BitCard) || !info.permissions.BitCard.includes('BitCard')) {
+        throw createIntegrationError('BYBIT_CARD_PERMISSION_REQUIRED', 'Enable the read-only Bybit Card permission for this API key.');
+      }
+      if (info.isMaster !== true) {
+        throw createIntegrationError('BYBIT_MASTER_KEY_REQUIRED', 'Bybit Card requires a master account API key.');
+      }
       return { endpoint, info };
     } catch (error) {
-      lastError = error;
+      if (error?.integrationCode) throw error;
+      attempts.push(error);
     }
   }
-  throw lastError ?? new Error('Could not connect to Bybit');
+
+  const publicErrors = attempts.map(toBybitPublicError);
+  const preferred = publicErrors.find((item) => item.code !== 'BYBIT_ENDPOINT_MISMATCH')
+    ?? publicErrors[0]
+    ?? { code: 'BYBIT_REQUEST_FAILED', error: 'Could not connect to Bybit.' };
+  throw createIntegrationError(preferred.code, preferred.error, attempts.at(-1));
 };
 
 const numericMcc = (value) => {
@@ -308,14 +387,161 @@ const shouldImport = ({ kind, record }) => {
   return false;
 };
 
+export const normalizeBybitBalances = ({ unified, funding }) => {
+  const totals = new Map(TRACKED_BALANCE_COINS.map((coin) => [coin, 0]));
+  const unifiedRows = Array.isArray(unified?.result?.list)
+    ? unified.result.list.flatMap((account) => Array.isArray(account?.coin) ? account.coin : [])
+    : [];
+  for (const row of unifiedRows) {
+    const coin = String(row?.coin ?? '').toUpperCase();
+    if (!totals.has(coin)) continue;
+    const amount = Number(row?.equity ?? row?.walletBalance);
+    if (Number.isFinite(amount) && amount > 0) totals.set(coin, totals.get(coin) + amount);
+  }
+  const fundingRows = Array.isArray(funding?.result?.balance) ? funding.result.balance : [];
+  for (const row of fundingRows) {
+    const coin = String(row?.coin ?? '').toUpperCase();
+    if (!totals.has(coin)) continue;
+    const amount = Number(row?.walletBalance);
+    if (Number.isFinite(amount) && amount > 0) totals.set(coin, totals.get(coin) + amount);
+  }
+  return [...totals.entries()]
+    .filter(([, amount]) => amount > 0)
+    .map(([coin, amount]) => ({ coin, amount }));
+};
+
+const fetchBybitBalances = async ({ endpoint, apiKey, secret, fetchImpl }) => {
+  const coin = TRACKED_BALANCE_COINS.join(',');
+  const [unifiedResult, fundingResult] = await Promise.allSettled([
+    requestBybit({
+      endpoint,
+      path: '/v5/account/wallet-balance',
+      params: { accountType: 'UNIFIED', coin },
+      apiKey,
+      secret,
+      fetchImpl,
+    }),
+    requestBybit({
+      endpoint,
+      path: '/v5/asset/transfer/query-account-coins-balance',
+      params: { accountType: 'FUND', coin },
+      apiKey,
+      secret,
+      fetchImpl,
+    }),
+  ]);
+  const unified = unifiedResult.status === 'fulfilled' ? unifiedResult.value : null;
+  const funding = fundingResult.status === 'fulfilled' ? fundingResult.value : null;
+  if (!unified && !funding) {
+    throw unifiedResult.reason ?? fundingResult.reason ?? new Error('Bybit balances unavailable');
+  }
+  return {
+    balances: normalizeBybitBalances({ unified, funding }),
+    complete: Boolean(unified && funding),
+    warning: unified && funding
+      ? null
+      : 'Some Bybit balances could not be read. Check the API key permissions and account type.',
+  };
+};
+
+const nextBybitAccountKey = async (db, userId, coin) => {
+  const ownerHash = crypto.createHash('sha256').update(String(userId)).digest('hex').slice(0, 10);
+  const base = `bybit_${ownerHash}_${coin.toLowerCase()}`;
+  let key = base;
+  let suffix = 2;
+  while (await db.get('SELECT 1 FROM account_portfolio WHERE account_key = ? LIMIT 1', [key])) {
+    key = `${base}_${suffix}`;
+    suffix += 1;
+  }
+  return key;
+};
+
+const syncBybitAssetAccounts = async (db, userId, balances, clearMissing) => {
+  const amounts = new Map(balances.map((item) => [item.coin, item.amount]));
+  const links = await db.all(
+    'SELECT coin, account_key AS accountKey FROM bybit_asset_accounts WHERE user_id = ?',
+    [userId],
+  );
+  const linkByCoin = new Map(links.map((row) => [String(row.coin), String(row.accountKey)]));
+  const coins = new Set([
+    ...amounts.keys(),
+    ...(clearMissing ? linkByCoin.keys() : []),
+  ]);
+  const now = new Date().toISOString();
+  for (const coin of coins) {
+    const amount = Number(amounts.get(coin) ?? 0);
+    let accountKey = linkByCoin.get(coin);
+    if (!accountKey && amount <= 0) continue;
+    if (!accountKey) {
+      accountKey = await nextBybitAccountKey(db, userId, coin);
+      const sortRow = await db.get(
+        "SELECT COALESCE(MAX(sort_index), 0) AS maxSort FROM account_portfolio WHERE user_id = ? AND section = 'crypto'",
+        [userId],
+      );
+      await db.run(
+        `INSERT INTO account_portfolio
+          (account_key, user_id, section, sort_index, name, primary_amount, primary_currency,
+           sub_text, icon_tone, badge, debt_phrase, icon_key, debt_direction,
+           debt_initial_amount, debt_created_at, updatedAt)
+         VALUES (?, ?, 'crypto', ?, ?, 0, 'UAH', ?, 'crypto', ?, NULL, NULL, NULL, NULL, NULL, ?)`,
+        [accountKey, userId, Number(sortRow?.maxSort) + 10, `Bybit ${coin}`, `${amount} ${coin}`, coin.slice(0, 3), now],
+      );
+      await db.run(
+        'INSERT INTO bybit_asset_accounts (user_id, coin, account_key, updated_at) VALUES (?, ?, ?, ?)',
+        [userId, coin, accountKey, now],
+      );
+    } else {
+      const account = await db.get(
+        'SELECT 1 FROM account_portfolio WHERE user_id = ? AND account_key = ? LIMIT 1',
+        [userId, accountKey],
+      );
+      if (!account) {
+        await db.run('DELETE FROM bybit_asset_accounts WHERE user_id = ? AND coin = ?', [userId, coin]);
+        if (amount > 0) {
+          const recreated = await nextBybitAccountKey(db, userId, coin);
+          const sortRow = await db.get(
+            "SELECT COALESCE(MAX(sort_index), 0) AS maxSort FROM account_portfolio WHERE user_id = ? AND section = 'crypto'",
+            [userId],
+          );
+          await db.run(
+            `INSERT INTO account_portfolio
+              (account_key, user_id, section, sort_index, name, primary_amount, primary_currency,
+               sub_text, icon_tone, badge, debt_phrase, icon_key, debt_direction,
+               debt_initial_amount, debt_created_at, updatedAt)
+             VALUES (?, ?, 'crypto', ?, ?, 0, 'UAH', ?, 'crypto', ?, NULL, NULL, NULL, NULL, NULL, ?)`,
+            [recreated, userId, Number(sortRow?.maxSort) + 10, `Bybit ${coin}`, `${amount} ${coin}`, coin.slice(0, 3), now],
+          );
+          await db.run(
+            'INSERT INTO bybit_asset_accounts (user_id, coin, account_key, updated_at) VALUES (?, ?, ?, ?)',
+            [userId, coin, recreated, now],
+          );
+        }
+        continue;
+      }
+      await db.run(
+        `UPDATE account_portfolio
+         SET section = 'crypto', primary_amount = 0, primary_currency = 'UAH', sub_text = ?,
+             icon_tone = 'crypto', badge = ?, updatedAt = ?
+         WHERE user_id = ? AND account_key = ?`,
+        [`${amount} ${coin}`, coin.slice(0, 3), now, userId, accountKey],
+      );
+      await db.run(
+        'UPDATE bybit_asset_accounts SET updated_at = ? WHERE user_id = ? AND coin = ?',
+        [now, userId, coin],
+      );
+    }
+  }
+};
+
 const publicConnection = async (db, userId) => {
   const row = await db.get(
-    `SELECT enabled, api_key_hint, endpoint, last_sync_at, last_error, created_at
+    `SELECT enabled, api_key_hint, endpoint, last_sync_at, last_error, last_balance_error, created_at
      FROM bybit_card_connections WHERE user_id = ?`,
     [userId]
   );
   if (!row) return { connected: false, enabled: false, importedCount: 0 };
   const count = await db.get('SELECT COUNT(*) AS count FROM bybit_card_imports WHERE user_id = ?', [userId]);
+  const assetCount = await db.get('SELECT COUNT(*) AS count FROM bybit_asset_accounts WHERE user_id = ?', [userId]);
   return {
     connected: true,
     enabled: Boolean(row.enabled),
@@ -323,8 +549,10 @@ const publicConnection = async (db, userId) => {
     endpoint: row.endpoint,
     lastSyncAt: row.last_sync_at,
     lastError: row.last_error,
+    balanceSyncError: row.last_balance_error,
     connectedAt: row.created_at,
     importedCount: Number(count?.count) || 0,
+    syncedAssetCount: Number(assetCount?.count) || 0,
   };
 };
 
@@ -378,14 +606,18 @@ export const syncBybitCard = async ({ db, userId, fetchImpl = fetch }) => {
     const endTime = Date.now();
     const syncFromMs = Date.parse(connection.sync_from) || endTime - LOOKBACK_MS;
     const startTime = Math.max(syncFromMs, endTime - LOOKBACK_MS);
-    const rawRecords = await fetchCardRecords({
-      endpoint: connection.endpoint,
-      apiKey,
-      secret,
-      fetchImpl,
-      startTime,
-      endTime,
-    });
+    const [rawRecords, balanceResult] = await Promise.all([
+      fetchCardRecords({
+        endpoint: connection.endpoint,
+        apiKey,
+        secret,
+        fetchImpl,
+        startTime,
+        endTime,
+      }),
+      fetchBybitBalances({ endpoint: connection.endpoint, apiKey, secret, fetchImpl })
+        .catch((error) => ({ balances: null, complete: false, warning: toBybitPublicError(error).error })),
+    ]);
 
     const selected = new Map();
     for (const item of rawRecords) {
@@ -444,9 +676,12 @@ export const syncBybitCard = async ({ db, userId, fetchImpl = fetch }) => {
         );
         imported += 1;
       }
+      if (balanceResult.balances) {
+        await syncBybitAssetAccounts(db, userId, balanceResult.balances, balanceResult.complete);
+      }
       await db.run(
-        'UPDATE bybit_card_connections SET last_sync_at = ?, last_error = NULL, updated_at = ? WHERE user_id = ?',
-        [new Date().toISOString(), new Date().toISOString(), userId]
+        'UPDATE bybit_card_connections SET last_sync_at = ?, last_error = NULL, last_balance_error = ?, updated_at = ? WHERE user_id = ?',
+        [new Date().toISOString(), balanceResult.warning, new Date().toISOString(), userId]
       );
       await db.run('COMMIT');
     } catch (error) {
@@ -457,7 +692,7 @@ export const syncBybitCard = async ({ db, userId, fetchImpl = fetch }) => {
   } catch (error) {
     await db.run(
       'UPDATE bybit_card_connections SET last_error = ?, updated_at = ? WHERE user_id = ?',
-      [String(error?.message || 'Sync failed').slice(0, 300), new Date().toISOString(), userId]
+      [toBybitPublicError(error).error.slice(0, 300), new Date().toISOString(), userId]
     );
     throw error;
   } finally {

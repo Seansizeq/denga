@@ -101,6 +101,10 @@
   border-radius: 12px;
 }
 
+.stats > div:first-child {
+  grid-column: 1 / -1;
+}
+
 .stats span {
   color: var(--text-tertiary);
   font-size: 11px;

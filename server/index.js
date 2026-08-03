@@ -21,6 +21,7 @@ import {
   getBybitCardStatus,
   startBybitCardSync,
   syncBybitCard,
+  toBybitPublicError,
 } from './bybit-card.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -2738,10 +2739,10 @@ app.post('/api/integrations/bybit-card', async (req, res) => {
   } catch (error) {
     const message = String(error?.message || 'Could not connect to Bybit');
     const configError = message.includes('BYBIT_CREDENTIALS_KEY');
-    res.status(configError ? 503 : 400).json({
-      error: configError ? 'Bybit integration is not configured on the server' : message,
-      code: configError ? 'BYBIT_SERVER_NOT_CONFIGURED' : 'BYBIT_CONNECTION_FAILED',
-    });
+    const publicError = configError
+      ? { error: 'Bybit integration is not configured on the server', code: 'BYBIT_SERVER_NOT_CONFIGURED' }
+      : toBybitPublicError(error);
+    res.status(configError ? 503 : 400).json(publicError);
   }
 });
 
@@ -2750,10 +2751,7 @@ app.post('/api/integrations/bybit-card/sync', async (req, res) => {
   try {
     res.json(await syncBybitCard({ db, userId }));
   } catch (error) {
-    res.status(502).json({
-      error: String(error?.message || 'Bybit sync failed'),
-      code: 'BYBIT_SYNC_FAILED',
-    });
+    res.status(502).json(toBybitPublicError(error));
   }
 });
 
@@ -5074,6 +5072,7 @@ app.delete('/api/me', authMiddleware, async (req, res) => {
     'goals',
     'goal_contributions',
     'bybit_card_imports',
+    'bybit_asset_accounts',
     'bybit_card_connections',
   ];
   await db.run('BEGIN IMMEDIATE');

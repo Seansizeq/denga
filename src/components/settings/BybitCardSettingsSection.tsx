@@ -26,6 +26,25 @@ const BybitCardSettingsSection: React.FC = () => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
+  const messageForError = (cause: unknown, fallback: 'bybitConnectError' | 'bybitSyncError' | 'bybitDisconnectError') => {
+    const code = cause instanceof Error && 'code' in cause
+      ? String((cause as Error & { code?: string }).code ?? '')
+      : '';
+    switch (code) {
+      case 'BYBIT_READ_ONLY_REQUIRED': return t('settings', 'bybitErrorReadOnly');
+      case 'BYBIT_CARD_PERMISSION_REQUIRED': return t('settings', 'bybitErrorCardPermission');
+      case 'BYBIT_MASTER_KEY_REQUIRED': return t('settings', 'bybitErrorMaster');
+      case 'BYBIT_EU_THIRD_PARTY_REQUIRED': return t('settings', 'bybitErrorEu');
+      case 'BYBIT_IP_MISMATCH': return t('settings', 'bybitErrorIp');
+      case 'BYBIT_REGION_RESTRICTED': return t('settings', 'bybitErrorRegion');
+      case 'BYBIT_PERMISSION_DENIED': return t('settings', 'bybitErrorPermission');
+      case 'BYBIT_ENDPOINT_MISMATCH': return t('settings', 'bybitErrorEndpoint');
+      case 'BYBIT_INVALID_CREDENTIALS': return t('settings', 'bybitErrorCredentials');
+      case 'BYBIT_SERVER_NOT_CONFIGURED': return t('settings', 'bybitErrorServerConfig');
+      default: return cause instanceof Error ? cause.message : t('settings', fallback);
+    }
+  };
+
   useEffect(() => {
     let cancelled = false;
     void getBybitCardStatus()
@@ -54,7 +73,7 @@ const BybitCardSettingsSection: React.FC = () => {
       setApiKey('');
       setApiSecret('');
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t('settings', 'bybitConnectError'));
+      setError(messageForError(cause, 'bybitConnectError'));
     } finally {
       setBusy(false);
     }
@@ -66,7 +85,7 @@ const BybitCardSettingsSection: React.FC = () => {
     try {
       setStatus(await syncBybitCard());
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t('settings', 'bybitSyncError'));
+      setError(messageForError(cause, 'bybitSyncError'));
     } finally {
       setBusy(false);
     }
@@ -80,7 +99,7 @@ const BybitCardSettingsSection: React.FC = () => {
       await disconnectBybitCard();
       setStatus(emptyStatus);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t('settings', 'bybitDisconnectError'));
+      setError(messageForError(cause, 'bybitDisconnectError'));
     } finally {
       setBusy(false);
     }
@@ -100,7 +119,7 @@ const BybitCardSettingsSection: React.FC = () => {
       <div className={styles.header}>
         <span className={styles.icon}><CreditCard size={22} aria-hidden="true" /></span>
         <div>
-          <div className={styles.title}>Bybit Card</div>
+          <div className={styles.title}>Bybit</div>
           <div className={styles.subtitle}>
             {loading
               ? t('settings', 'bybitLoading')
@@ -127,8 +146,13 @@ const BybitCardSettingsSection: React.FC = () => {
               <span>{t('settings', 'bybitImported')}</span>
               <strong>{status.importedCount}</strong>
             </div>
+            <div>
+              <span>{t('settings', 'bybitAssets')}</span>
+              <strong>{status.syncedAssetCount ?? 0}</strong>
+            </div>
           </div>
           {status.lastError ? <p className={styles.warning}>{status.lastError}</p> : null}
+          {status.balanceSyncError ? <p className={styles.warning}>{t('settings', 'bybitBalanceWarning')}</p> : null}
           {error ? <p className={styles.error}>{error}</p> : null}
           <div className={styles.actions}>
             <button className={styles.primaryButton} type="button" onClick={handleSync} disabled={busy}>

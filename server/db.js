@@ -530,8 +530,23 @@ export async function initDb() {
       sync_from TEXT NOT NULL,
       last_sync_at TEXT,
       last_error TEXT,
+      last_balance_error TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
+    )
+  `);
+  try {
+    await db.exec(`ALTER TABLE bybit_card_connections ADD COLUMN last_balance_error TEXT`);
+  } catch {
+    /* already exists */
+  }
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS bybit_asset_accounts (
+      user_id TEXT NOT NULL,
+      coin TEXT NOT NULL,
+      account_key TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, coin)
     )
   `);
   await db.exec(`

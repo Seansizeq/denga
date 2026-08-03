@@ -287,8 +287,10 @@ export type BybitCardStatus = {
   endpoint?: string;
   lastSyncAt?: string | null;
   lastError?: string | null;
+  balanceSyncError?: string | null;
   connectedAt?: string;
   importedCount: number;
+  syncedAssetCount?: number;
   imported?: number;
   updated?: number;
   busy?: boolean;
@@ -298,9 +300,13 @@ const bybitResponse = async (response: Response): Promise<BybitCardStatus> => {
   if (response.ok) return response.json();
   let message = 'Bybit request failed';
   try {
-    const body = (await response.json()) as { error?: string };
+    const body = (await response.json()) as { error?: string; code?: string };
     if (body.error) message = body.error;
-  } catch {
+    const error = new Error(message) as Error & { code?: string };
+    error.code = body.code;
+    throw error;
+  } catch (error) {
+    if (error instanceof Error && 'code' in error) throw error;
     /* ignore malformed error response */
   }
   throw new Error(message);

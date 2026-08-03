@@ -7,9 +7,12 @@ import {
   connectBybitCard,
   decryptCredential,
   encryptCredential,
+  normalizeBybitBalances,
   normalizeBybitRecord,
   signBybitRequest,
   syncBybitCard,
+  toBybitPublicError,
+  validateBybitCredentials,
 } from './bybit-card.js';
 
 describe('Bybit Card integration helpers', () => {
@@ -98,7 +101,54 @@ describe('Bybit Card integration helpers', () => {
     ).toBeNull();
   });
 
-  it('imports a card purchase once across repeated syncs', async () => {
+  it('combines supported Unified and Funding balances', () => {
+    expect(normalizeBybitBalances({
+      unified: { result: { list: [{ coin: [
+        { coin: 'BTC', equity: '0.25' },
+        { coin: 'USDC', equity: '100' },
+      ] }] } },
+      funding: { result: { balance: [
+        { coin: 'BTC', walletBalance: '0.05' },
+        { coin: 'USDT', walletBalance: '20' },
+      ] } },
+    })).toEqual([
+      { coin: 'BTC', amount: 0.3 },
+      { coin: 'USDT', amount: 20 },
+    ]);
+  });
+
+  it('rejects API keys that can write before storing them', async () => {
+    const fetchImpl = async () => new Response(JSON.stringify({
+      retCode: 0,
+      result: {
+        readOnly: 0,
+        isMaster: true,
+        permissions: { BitCard: ['BitCard'] },
+      },
+    }), { status: 200 });
+    await expect(validateBybitCredentials({
+      apiKey: 'api-key-value',
+      secret: 'api-secret-value',
+      fetchImpl,
+    })).rejects.toMatchObject({ integrationCode: 'BYBIT_READ_ONLY_REQUIRED' });
+  });
+
+  it('turns EU and permission failures into actionable public errors', async () => {
+    expect(toBybitPublicError({ code: '81007' })).toMatchObject({
+      code: 'BYBIT_EU_THIRD_PARTY_REQUIRED',
+    });
+    const fetchImpl = async () => new Response(JSON.stringify({
+      retCode: 10010,
+      retMsg: 'Unmatched IP',
+    }), { status: 200 });
+    await expect(validateBybitCredentials({
+      apiKey: 'api-key-value',
+      secret: 'api-secret-value',
+      fetchImpl,
+    })).rejects.toMatchObject({ integrationCode: 'BYBIT_IP_MISMATCH' });
+  });
+
+  it('imports a card purchase once and synchronizes balances', async () => {
     const previousKey = process.env.BYBIT_CREDENTIALS_KEY;
     process.env.BYBIT_CREDENTIALS_KEY = encryptionKey;
     const db = await open({ filename: ':memory:', driver: sqlite3.Database });
@@ -125,8 +175,34 @@ describe('Bybit Card integration helpers', () => {
         sync_from TEXT NOT NULL,
         last_sync_at TEXT,
         last_error TEXT,
+        last_balance_error TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
+      );
+      CREATE TABLE bybit_asset_accounts (
+        user_id TEXT NOT NULL,
+        coin TEXT NOT NULL,
+        account_key TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (user_id, coin)
+      );
+      CREATE TABLE account_portfolio (
+        account_key TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        section TEXT NOT NULL,
+        sort_index INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        primary_amount REAL NOT NULL,
+        primary_currency TEXT NOT NULL,
+        sub_text TEXT,
+        icon_tone TEXT NOT NULL,
+        badge TEXT,
+        debt_phrase TEXT,
+        icon_key TEXT,
+        debt_direction TEXT,
+        debt_initial_amount REAL,
+        debt_created_at TEXT,
+        updatedAt TEXT NOT NULL
       );
       CREATE TABLE bybit_card_imports (
         user_id TEXT NOT NULL,
@@ -150,6 +226,24 @@ describe('Bybit Card integration helpers', () => {
             isMaster: true,
             permissions: { BitCard: ['BitCard'] },
           },
+        }), { status: 200 });
+      }
+      if (textUrl.includes('/v5/account/wallet-balance')) {
+        return new Response(JSON.stringify({
+          retCode: 0,
+          result: { list: [{ coin: [
+            { coin: 'BTC', equity: '0.25' },
+            { coin: 'USDT', equity: '20' },
+          ] }] },
+        }), { status: 200 });
+      }
+      if (textUrl.includes('/v5/asset/transfer/query-account-coins-balance')) {
+        return new Response(JSON.stringify({
+          retCode: 0,
+          result: { balance: [
+            { coin: 'BTC', walletBalance: '0.05' },
+            { coin: 'USDT', walletBalance: '5' },
+          ] },
         }), { status: 200 });
       }
       // Card endpoint: params in query string (official docs)
@@ -186,10 +280,16 @@ describe('Bybit Card integration helpers', () => {
       const first = await syncBybitCard({ db, userId: 'user-1', fetchImpl });
       const second = await syncBybitCard({ db, userId: 'user-1', fetchImpl });
       const rows = await db.all('SELECT * FROM transactions');
+      const accounts = await db.all('SELECT name, sub_text AS subText FROM account_portfolio ORDER BY name');
       expect(first.imported).toBe(1);
       expect(second.imported).toBe(0);
       expect(rows).toHaveLength(1);
       expect(rows[0]).toMatchObject({ amount: 19.99, currency: 'PLN', categoryId: 'food', type: 'expense' });
+      expect(first.syncedAssetCount).toBe(2);
+      expect(accounts).toEqual([
+        { name: 'Bybit BTC', subText: '0.3 BTC' },
+        { name: 'Bybit USDT', subText: '25 USDT' },
+      ]);
     } finally {
       await db.close();
       if (previousKey === undefined) delete process.env.BYBIT_CREDENTIALS_KEY;
