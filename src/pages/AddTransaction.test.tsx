@@ -103,8 +103,8 @@ describe('AddTransaction', () => {
 
   it('uses transfer from/to labels in transfer form', () => {
     renderAdd('/add?type=transfer');
-    expect(screen.getByText('addTx.transferFrom')).toBeTruthy();
-    expect(screen.getByText('addTx.transferTo')).toBeTruthy();
+    expect(screen.getAllByText('addTx.transferFrom')).toHaveLength(2);
+    expect(screen.getAllByText('addTx.transferTo')).toHaveLength(2);
   });
 
   it('opens account picker sheet on row tap', () => {

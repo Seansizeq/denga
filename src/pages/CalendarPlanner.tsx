@@ -212,7 +212,7 @@ const formatDecimalHoursAsHoursMinutes = (
   unitLabels: { hours: string; minutes: string }
 ): string => {
   const total = Math.max(0, Number(decimalHours) || 0);
-  let totalMinutes = Math.round(total * 60);
+  const totalMinutes = Math.round(total * 60);
   let hours = Math.floor(totalMinutes / 60);
   let minutes = totalMinutes - hours * 60;
   if (minutes === 60) {

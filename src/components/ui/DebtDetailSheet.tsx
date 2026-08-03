@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Pencil, X } from 'lucide-react';
 import { useTranslation } from '../../i18n/LanguageContext';
 import { formatDate } from '../../utils/formatters';
@@ -12,15 +12,24 @@ type DebtAccount = {
   primaryAmount: number;
   primaryCurrency: 'UAH' | 'PLN';
   debtDirection: 'owed_to_me' | 'owed_by_me' | null;
+  debtInitialAmount: number | null;
+  debtCreatedAt: string | null;
   iconTone: 'bank' | 'cash' | 'crypto' | 'stocks' | 'debt' | 'neutral';
   iconKey: string | null;
+};
+
+type PaymentAccount = {
+  accountKey: string;
+  name: string;
+  primaryCurrency: 'UAH' | 'PLN';
 };
 
 interface DebtDetailSheetProps {
   account: DebtAccount;
   repayments: Transaction[];
+  paymentAccounts: PaymentAccount[];
   onClose: () => void;
-  onPayment: (accountKey: string, amount: number, note: string) => Promise<void>;
+  onPayment: (accountKey: string, amount: number, note: string, paymentAccountKey: string) => Promise<void>;
   onEdit: () => void;
 }
 
@@ -40,27 +49,49 @@ const formatAmount = (amount: number, currency: string) => {
   return `${abs} ${suffix}`;
 };
 
-const DebtDetailSheet: React.FC<DebtDetailSheetProps> = ({ account, repayments, onClose, onPayment, onEdit }) => {
+const DebtDetailSheet: React.FC<DebtDetailSheetProps> = ({
+  account,
+  repayments,
+  paymentAccounts,
+  onClose,
+  onPayment,
+  onEdit,
+}) => {
   const { t, locale } = useTranslation();
   const [mode, setMode] = useState<'view' | 'pay'>('view');
   const [payAmount, setPayAmount] = useState('');
   const [payNote, setPayNote] = useState('');
+  const [paymentAccountKey, setPaymentAccountKey] = useState(() => paymentAccounts[0]?.accountKey ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
 
   const phrase = t('balance', account.debtDirection === 'owed_by_me' ? 'debtPhraseOwedByMe' : 'debtPhraseOwedToMe');
   const formattedBalance = formatAmount(account.primaryAmount, account.primaryCurrency);
+  const initialAmount = Math.max(account.primaryAmount, account.debtInitialAmount ?? account.primaryAmount);
+  const paidAmount = Math.max(0, initialAmount - account.primaryAmount);
+  const progress = initialAmount > 0 ? Math.min(100, Math.round((paidAmount / initialAmount) * 100)) : 0;
+  const parsedPayment = useMemo(() => parseMoney(payAmount), [payAmount]);
+  const canSubmit = Boolean(
+    parsedPayment && parsedPayment <= account.primaryAmount && paymentAccountKey && paymentAccounts.length > 0,
+  );
 
   const handleConfirmPayment = async () => {
-    const n = parseMoney(payAmount);
-    if (!n) return;
+    if (!parsedPayment) return;
+    if (parsedPayment > account.primaryAmount) {
+      setError(t('balance', 'debtPaymentExceedsBalance'));
+      return;
+    }
+    if (!paymentAccountKey) {
+      setError(t('balance', 'debtPaymentAccountRequired'));
+      return;
+    }
     setError('');
     setSaving(true);
     try {
-      await onPayment(account.accountKey, n, payNote.trim());
+      await onPayment(account.accountKey, parsedPayment, payNote.trim(), paymentAccountKey);
       setSuccess(true);
-      setTimeout(() => onClose(), 900);
+      window.setTimeout(() => onClose(), 900);
     } catch {
       setError(t('balance', 'debtPaymentFailed'));
     } finally {
@@ -73,7 +104,6 @@ const DebtDetailSheet: React.FC<DebtDetailSheetProps> = ({ account, repayments, 
       <button type="button" className={styles.scrim} onClick={onClose} aria-label={t('balance', 'close')} />
 
       <div className={styles.sheet}>
-        {/* Header */}
         <div className={styles.header}>
           <button type="button" className={styles.iconBtn} onClick={onClose} aria-label={t('balance', 'close')}>
             <X size={18} strokeWidth={2.4} />
@@ -85,7 +115,6 @@ const DebtDetailSheet: React.FC<DebtDetailSheetProps> = ({ account, repayments, 
         </div>
 
         <div className={styles.body}>
-          {/* Debt overview */}
           <div className={styles.debtCard}>
             <AccountRowAvatar
               accountKey={account.accountKey}
@@ -99,6 +128,26 @@ const DebtDetailSheet: React.FC<DebtDetailSheetProps> = ({ account, repayments, 
               <span className={styles.debtName}>{account.name}</span>
               <span className={styles.debtPhrase}>{phrase}</span>
               <span className={styles.debtBalance}>{formattedBalance}</span>
+            </div>
+          </div>
+
+          <div className={styles.summaryGrid}>
+            <div className={styles.summaryItem}>
+              <span>{t('balance', 'debtInitialAmount')}</span>
+              <strong>{formatAmount(initialAmount, account.primaryCurrency)}</strong>
+            </div>
+            <div className={styles.summaryItem}>
+              <span>{t('balance', 'debtPaidAmount')}</span>
+              <strong>{formatAmount(paidAmount, account.primaryCurrency)}</strong>
+            </div>
+            <div className={styles.progressItem}>
+              <div className={styles.progressHeader}>
+                <span>{t('balance', 'debtRemainingAmount')}</span>
+                <strong>{progress}%</strong>
+              </div>
+              <div className={styles.progressTrack} aria-label={`${progress}%`}>
+                <span className={styles.progressFill} style={{ width: `${progress}%` }} />
+              </div>
             </div>
           </div>
 
@@ -120,12 +169,26 @@ const DebtDetailSheet: React.FC<DebtDetailSheetProps> = ({ account, repayments, 
                 <input
                   className={styles.input}
                   value={payAmount}
-                  onChange={(e) => setPayAmount(e.target.value)}
+                  onChange={(e) => { setPayAmount(e.target.value); setError(''); }}
                   inputMode="decimal"
                   placeholder={t('balance', 'debtPaymentAmountPlaceholder').replace('{amount}', formattedBalance)}
-                  // eslint-disable-next-line jsx-a11y/no-autofocus
                   autoFocus
                 />
+              </label>
+              <label className={styles.label}>
+                {t('addTx', 'paymentAccount')}
+                <select
+                  className={styles.input}
+                  value={paymentAccountKey}
+                  onChange={(e) => { setPaymentAccountKey(e.target.value); setError(''); }}
+                >
+                  <option value="">{t('addTx', 'paymentAccountNone')}</option>
+                  {paymentAccounts.map((paymentAccount) => (
+                    <option key={paymentAccount.accountKey} value={paymentAccount.accountKey}>
+                      {paymentAccount.name} · {paymentAccount.primaryCurrency}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label className={styles.label}>
                 {t('balance', 'debtPaymentNoteLabel')}
@@ -137,6 +200,7 @@ const DebtDetailSheet: React.FC<DebtDetailSheetProps> = ({ account, repayments, 
                   maxLength={80}
                 />
               </label>
+              {paymentAccounts.length === 0 ? <p className={styles.error}>{t('balance', 'debtPaymentAccountRequired')}</p> : null}
               {error ? <p className={styles.error}>{error}</p> : null}
               <div className={styles.payActions}>
                 <button
@@ -151,7 +215,7 @@ const DebtDetailSheet: React.FC<DebtDetailSheetProps> = ({ account, repayments, 
                   type="button"
                   className={styles.primary}
                   onClick={handleConfirmPayment}
-                  disabled={saving || !parseMoney(payAmount)}
+                  disabled={saving || !canSubmit}
                 >
                   {saving ? `${t('addTx', 'save')}...` : t('balance', 'confirm')}
                 </button>

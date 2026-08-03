@@ -30,6 +30,8 @@ type PortfolioAccountRow = {
   badge: string | null;
   iconKey: string | null;
   debtDirection: DebtDirection | null;
+  debtInitialAmount: number | null;
+  debtCreatedAt: string | null;
 };
 
 const isPortfolioSection = (v: string): v is PortfolioSection => ['bank', 'cash', 'crypto', 'stocks', 'debt'].includes(v);
@@ -50,6 +52,9 @@ const parsePortfolioRow = (raw: unknown): PortfolioAccountRow | null => {
   const debtDirection: DebtDirection | null =
     section === 'debt' ? (debtDirectionRaw === 'owed_by_me' ? 'owed_by_me' : 'owed_to_me') : null;
   const badge = typeof r.badge === 'string' ? r.badge : null;
+  const debtInitialRaw = Number(r.debtInitialAmount);
+  const debtInitialAmount = section === 'debt' && Number.isFinite(debtInitialRaw) ? debtInitialRaw : null;
+  const debtCreatedAt = section === 'debt' && typeof r.debtCreatedAt === 'string' ? r.debtCreatedAt : null;
   const iconKey = typeof r.iconKey === 'string' && r.iconKey.trim() ? r.iconKey.trim() : null;
   const iconRaw = typeof r.iconTone === 'string' ? r.iconTone.trim() : 'neutral';
   const iconTone: IconTone = ['bank', 'cash', 'crypto', 'stocks', 'debt', 'neutral'].includes(iconRaw)
@@ -67,6 +72,8 @@ const parsePortfolioRow = (raw: unknown): PortfolioAccountRow | null => {
     badge,
     iconKey,
     debtDirection,
+    debtInitialAmount,
+    debtCreatedAt,
   };
 };
 
@@ -127,7 +134,7 @@ const formatGroupAmount = (amount: number, currency: string) => {
 const Accounts: React.FC = () => {
   const { t, displayCurrency, convertAmount } = useTranslation();
   const { accounts, cryptoPrices, refreshAccounts } = usePortfolio();
-  const { transactions } = useTransactions();
+  const { transactions, refreshTransactions } = useTransactions();
   const [picking, setPicking] = useState(false);
   const [editing, setEditing] = useState<EditableAccount | null>(null);
   const [debtDetail, setDebtDetail] = useState<PortfolioAccountRow | null>(null);
@@ -302,11 +309,20 @@ const Accounts: React.FC = () => {
   const debtRepayments = useMemo(() => {
     if (!debtDetail) return [];
     return transactions
-      .filter((tx) => tx.categoryId === 'debt_return' && tx.fromAccountKey === debtDetail.accountKey)
+      .filter(
+        (tx) =>
+          tx.categoryId === 'debt_return' &&
+          (tx.fromAccountKey === debtDetail.accountKey || tx.toAccountKey === debtDetail.accountKey),
+      )
       .slice()
       .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
       .slice(0, 10);
   }, [transactions, debtDetail]);
+
+  const debtPaymentAccounts = useMemo(() => {
+    if (!debtDetail) return [];
+    return portfolio.filter((row) => ['bank', 'cash'].includes(row.section) && row.primaryCurrency === debtDetail.primaryCurrency);
+  }, [portfolio, debtDetail]);
 
   const handleRowPress = useCallback(
     (id: string) => {
@@ -322,16 +338,17 @@ const Accounts: React.FC = () => {
   );
 
   const handleDebtPayment = useCallback(
-    async (accountKey: string, amount: number, note: string) => {
+    async (accountKey: string, amount: number, note: string, paymentAccountKey: string) => {
       const res = await apiFetch(`/api/accounts/${encodeURIComponent(accountKey)}/payment`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount, note }),
+        body: JSON.stringify({ amount, note, paymentAccountKey }),
       });
       if (!res.ok) throw new Error('payment failed');
       await refreshAccounts();
+      await refreshTransactions();
     },
-    [refreshAccounts],
+    [refreshAccounts, refreshTransactions],
   );
 
   const handleSaveAccount = useCallback(
@@ -422,6 +439,7 @@ const Accounts: React.FC = () => {
         <DebtDetailSheet
           account={debtDetail}
           repayments={debtRepayments}
+          paymentAccounts={debtPaymentAccounts}
           onClose={() => setDebtDetail(null)}
           onPayment={handleDebtPayment}
           onEdit={() => {

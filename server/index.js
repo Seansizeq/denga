@@ -9,6 +9,9 @@ import { getDatabasePath, initDb } from './db.js';
 import { startScheduledDatabaseBackups } from './backup.js';
 import { createReceiptScanHandler } from './receipt-scan.js';
 import { getTransactionAccountEffects, validateTransferPayload } from './transaction-effects.js';
+import { buildDebtRepaymentTransfer, validateDebtPayment } from './debt.js';
+import { getPreviousFullWeekDaySet } from './report-periods.js';
+import { deliverReportToTelegram } from './report-delivery.js';
 import { parseSmartTransaction, isSmartTransactionEnabled } from './smart-transaction.js';
 import {
   connectBybitCard,
@@ -136,7 +139,22 @@ const applyAccountDelta = async (dbConn, userId, accountKey, delta) => {
 };
 const applyTransactionEffects = async (dbConn, userId, tx, multiplier = 1) => {
   for (const effect of getTransactionAccountEffects(tx)) {
-    await applyAccountDelta(dbConn, userId, effect.accountKey, effect.delta * multiplier);
+    let delta = effect.delta * multiplier;
+    if (tx?.type === 'transfer') {
+      const account = await dbConn.get(
+        `SELECT section, debt_direction AS debtDirection
+         FROM account_portfolio
+         WHERE user_id = ? AND account_key = ?
+         LIMIT 1`,
+        [userId, effect.accountKey]
+      );
+      // Liability balances use the opposite sign to asset balances: paying money
+      // into a debt I owe reduces it, while borrowing more increases it.
+      if (account?.section === 'debt' && account?.debtDirection === 'owed_by_me') {
+        delta *= -1;
+      }
+    }
+    await applyAccountDelta(dbConn, userId, effect.accountKey, delta);
   }
 };
 const getAccountsByKeys = async (dbConn, userId, keys) => {
@@ -478,13 +496,6 @@ const shiftIsoDay = (day, deltaDays) => {
   if (Number.isNaN(d.getTime())) return day;
   d.setUTCDate(d.getUTCDate() + deltaDays);
   return d.toISOString().slice(0, 10);
-};
-const getWeekDaySet = (todayDay) => {
-  const set = new Set();
-  for (let i = 0; i < 7; i += 1) {
-    set.add(shiftIsoDay(todayDay, -i));
-  }
-  return set;
 };
 const getMonthDaySet = (todayDay) => {
   const [y, m] = String(todayDay).split('-');
@@ -1025,6 +1036,7 @@ const summarizeTransactions = (txs, targetCurrency = 'UAH', fxPayload = FX_FALLB
   const byCategory = new Map();
   const reportCurrency = normalizeCurrency(targetCurrency);
   for (const tx of txs) {
+    if (tx.type === 'transfer') continue;
     const amount = convertCurrencyServer(
       Number(tx.amount) || 0,
       normalizeCurrency(tx.currency),
@@ -1618,11 +1630,12 @@ const encodePngBuffer = async (img) => {
   await PImage.encodePNGToStream(img, out);
   return Buffer.concat(chunks);
 };
-const renderReportCardPng = async (reportType, periodLabel, summary, comparison) => {
+const renderReportCardPng = async (reportType, periodLabel, summary, comparison, reportCurrency = 'UAH') => {
   ensureReportFont();
   if (!reportFontAvailable) {
     throw new Error('report font not available');
   }
+  const currencySign = currencySymbol(normalizeCurrency(reportCurrency));
   const width = 1280;
   const height = 1700;
   const img = PImage.make(width, height);
@@ -1700,18 +1713,18 @@ const renderReportCardPng = async (reportType, periodLabel, summary, comparison)
   setFont(40, 500);
   ctx.fillText(`Дохід:`, 140, 420);
   ctx.fillStyle = colors.income;
-  ctx.fillText(`+${Math.abs(summary.income).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} UAH`, 550, 420);
+  ctx.fillText(`+${Math.abs(summary.income).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} ${currencySign}`, 550, 420);
   
   ctx.fillStyle = colors.text;
   ctx.fillText(`Витрати:`, 140, 500);
   ctx.fillStyle = colors.expense;
-  ctx.fillText(`-${Math.abs(summary.expense).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} UAH`, 550, 500);
+  ctx.fillText(`-${Math.abs(summary.expense).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} ${currencySign}`, 550, 500);
   
   ctx.fillStyle = colors.text;
   ctx.fillText(`Результат:`, 140, 580);
   ctx.fillStyle = summary.net >= 0 ? colors.income : colors.expense;
   ctx.fillText(
-    `${summary.net >= 0 ? '+' : '-'}${Math.abs(summary.net).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} UAH`,
+    `${summary.net >= 0 ? '+' : '-'}${Math.abs(summary.net).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} ${currencySign}`,
     550,
     580
   );
@@ -1741,7 +1754,7 @@ const renderReportCardPng = async (reportType, periodLabel, summary, comparison)
     ctx.fillText(`${idx + 1}. ${String(categoryNameById(item.categoryId)).slice(0, 24)}`, 140, 1140 + idx * 58);
     
     ctx.fillStyle = colors.expense;
-    ctx.fillText(`${Math.abs(item.amount).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} UAH`, 850, 1140 + idx * 58);
+    ctx.fillText(`${Math.abs(item.amount).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} ${currencySign}`, 850, 1140 + idx * 58);
   });
 
   block(100, 1360, width - 200, 300, 'Топ доходів');
@@ -1751,7 +1764,7 @@ const renderReportCardPng = async (reportType, periodLabel, summary, comparison)
     ctx.fillText(`${idx + 1}. ${String(categoryNameById(item.categoryId)).slice(0, 24)}`, 140, 1470 + idx * 58);
     
     ctx.fillStyle = colors.income;
-    ctx.fillText(`${Math.abs(item.amount).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} UAH`, 850, 1470 + idx * 58);
+    ctx.fillText(`${Math.abs(item.amount).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} ${currencySign}`, 850, 1470 + idx * 58);
   });
 
   return encodePngBuffer(img);
@@ -1765,6 +1778,21 @@ const buildReportText = (reportType, periodLabel, txs, comparison, extra = {}) =
     return `${sign}${Math.abs(value).toLocaleString('uk-UA', { maximumFractionDigits: 2 })}`;
   };
   const TECHNICAL_CATEGORY_IDS = new Set(['other_income', 'other_expense']);
+  const appendNarrative = (lines) => {
+    const achievements = Array.isArray(extra.achievementLines) ? extra.achievementLines.filter(Boolean) : [];
+    const recommendations = Array.isArray(extra.recommendationLines) ? extra.recommendationLines.filter(Boolean) : [];
+    if (achievements.length > 0) {
+      lines.push('');
+      lines.push('🏆 *ДОСЯГНЕННЯ*');
+      lines.push(...achievements.slice(0, 6));
+    }
+    if (recommendations.length > 0) {
+      lines.push('');
+      lines.push('💡 *ЩО ВАРТО ЗРОБИТИ ДАЛІ*');
+      lines.push(...recommendations.slice(0, 4));
+    }
+    return lines;
+  };
   if (reportType === 'weekly') {
     const topExpenseCategories = (summary.topExpenses || [])
       .filter((item) => !TECHNICAL_CATEGORY_IDS.has(item.categoryId))
@@ -1804,7 +1832,7 @@ const buildReportText = (reportType, periodLabel, txs, comparison, extra = {}) =
       lines.push('⏰ *РОБОЧИЙ ЧАС*');
       lines.push(`└ Відпрацьовано: *${formatHoursAsHoursMinutes(workedHours)}*`);
     }
-    return lines.join('\n');
+    return appendNarrative(lines).join('\n');
   }
   if (reportType === 'monthly') {
     const topExpenseCategories = (summary.topExpenses || [])
@@ -1851,7 +1879,7 @@ const buildReportText = (reportType, periodLabel, txs, comparison, extra = {}) =
       lines.push(`├ Робочих днів: ${workingDays}`);
       lines.push(`└ Середньо/день: ${formatHoursAsHoursMinutes(avgPerDay)}`);
     }
-    return lines.join('\n');
+    return appendNarrative(lines).join('\n');
   }
   const title = reportType === 'weekly' ? '📊 ТИЖНЕВИЙ ЗВІТ' : '📅 МІСЯЧНИЙ ЗВІТ';
   const lines = [
@@ -1897,7 +1925,7 @@ const sendUserReport = async (dbConn, userId, chatId, reportType, timeZone) => {
   const tz = normalizeTimeZone(timeZone);
   const nowIso = new Date().toISOString();
   const today = dayFromIsoInZone(nowIso, tz) || nowIso.slice(0, 10);
-  const rangeSet = reportType === 'weekly' ? getWeekDaySet(today) : getPreviousFullMonthDaySet(today);
+  const rangeSet = reportType === 'weekly' ? getPreviousFullWeekDaySet(today) : getPreviousFullMonthDaySet(today);
   const txs = await dbConn.all(
     'SELECT amount, currency, categoryId, type, date FROM transactions WHERE user_id = ? ORDER BY date DESC LIMIT 5000',
     [userId]
@@ -1911,7 +1939,7 @@ const sendUserReport = async (dbConn, userId, chatId, reportType, timeZone) => {
   const sortedDays = Array.from(rangeSet).sort();
   const periodEndDay = sortedDays[sortedDays.length - 1] || today;
   const periodLabel = reportType === 'weekly'
-    ? `${formatDayMonth(sortedDays[0])} — ${formatDayMonth(today)}.${String(today).slice(0, 4)}`
+    ? `${formatDayMonth(sortedDays[0])} — ${formatDayMonth(periodEndDay)}.${String(periodEndDay).slice(0, 4)}`
     : `${sortedDays[0]} → ${periodEndDay}`;
   const summary = summarizeTransactions(scoped, reportCurrency, fx);
   const previousSummary = summarizeTransactions(previousScoped, reportCurrency, fx);
@@ -1996,16 +2024,23 @@ const sendUserReport = async (dbConn, userId, chatId, reportType, timeZone) => {
     recommendationLines,
     achievementLines,
   });
+  let pngBuffer = null;
   try {
-    await bot.sendMessage(chatId, text, {
-      disable_web_page_preview: true,
-      parse_mode: 'Markdown',
-    });
-    return true;
+    pngBuffer = await renderReportCardPng(reportType, periodLabel, summary, comparison, reportCurrency);
   } catch (e) {
-    console.error('[bot] sendUserReport failed', { userId, chatId, reportType, err: e });
-    return false;
+    console.warn('[bot] report PNG rendering failed; sending text only', { userId, reportType, err: e });
   }
+  const reportName = reportType === 'weekly' ? 'Тижневий фінансовий звіт' : 'Місячний фінансовий звіт';
+  const sign = currencySymbol(reportCurrency);
+  const caption = [
+    `📊 ${reportName}`,
+    periodLabel,
+    `Результат: ${summary.net >= 0 ? '+' : '-'}${Math.abs(summary.net).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} ${sign}`,
+  ].join('\n');
+  return deliverReportToTelegram({
+    bot, chatId, pngBuffer, caption, text,
+    fileName: `financial-${reportType}-${periodEndDay}.png`,
+  });
 };
 const sendFinancialAdvice = async (dbConn, userId, chatId, periodDaysRaw, timeZone) => {
   if (!bot) return;
@@ -3993,6 +4028,8 @@ app.get('/api/accounts', async (req, res) => {
        badge,
        icon_key AS iconKey,
        debt_direction AS debtDirection,
+       debt_initial_amount AS debtInitialAmount,
+       debt_created_at AS debtCreatedAt,
        updatedAt
      FROM account_portfolio
      WHERE user_id = ?
@@ -4049,8 +4086,8 @@ app.post('/api/accounts', async (req, res) => {
   const now = new Date().toISOString();
   await db.run(
     `INSERT INTO account_portfolio
-     (account_key, user_id, section, sort_index, name, primary_amount, primary_currency, sub_text, icon_tone, badge, icon_key, debt_direction, updatedAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     (account_key, user_id, section, sort_index, name, primary_amount, primary_currency, sub_text, icon_tone, badge, icon_key, debt_direction, debt_initial_amount, debt_created_at, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       accountKey,
       userId,
@@ -4064,9 +4101,19 @@ app.post('/api/accounts', async (req, res) => {
       badge ? badge : null,
       iconKey,
       debtDirection,
+      section === 'debt' ? primaryAmount : null,
+      section === 'debt' ? now : null,
       now,
     ]
   );
+  if (section === 'debt') {
+    await db.run(
+      `INSERT INTO debt_events
+        (id, user_id, debt_account_key, event_type, amount, currency, date, note, created_at)
+       VALUES (?, ?, ?, 'created', ?, ?, ?, ?, ?)`,
+      [uuidv4(), userId, accountKey, primaryAmount, primaryCurrency, now, 'Opening balance', now]
+    );
+  }
 
   const row = await db.get(
     `SELECT
@@ -4081,6 +4128,8 @@ app.post('/api/accounts', async (req, res) => {
        badge,
        icon_key AS iconKey,
        debt_direction AS debtDirection,
+       debt_initial_amount AS debtInitialAmount,
+       debt_created_at AS debtCreatedAt,
        updatedAt
      FROM account_portfolio
      WHERE user_id = ? AND account_key = ?
@@ -4134,7 +4183,7 @@ app.put('/api/accounts/:key', async (req, res) => {
 
   const now = new Date().toISOString();
   const existing = await db.get(
-    `SELECT account_key AS accountKey, primary_amount AS primaryAmount, primary_currency AS primaryCurrency
+    `SELECT account_key AS accountKey, section, primary_amount AS primaryAmount, primary_currency AS primaryCurrency
      FROM account_portfolio
      WHERE user_id = ? AND account_key = ?
      LIMIT 1`,
@@ -4180,7 +4229,26 @@ app.put('/api/accounts/:key', async (req, res) => {
 
   // A direct amount edit on a debt row is a manual correction, not a real cash-flow event.
   const delta = primaryAmount - prevPrimaryAmount;
-  if (section !== 'debt' && Number.isFinite(delta) && Math.abs(delta) > 0.000001) {
+  if (section === 'debt' && existing.section !== 'debt') {
+    await db.run(
+      `UPDATE account_portfolio SET debt_initial_amount = ?, debt_created_at = ?
+       WHERE user_id = ? AND account_key = ?`,
+      [primaryAmount, now, userId, accountKey]
+    );
+    await db.run(
+      `INSERT INTO debt_events
+        (id, user_id, debt_account_key, event_type, amount, currency, date, note, created_at)
+       VALUES (?, ?, ?, 'created', ?, ?, ?, ?, ?)`,
+      [uuidv4(), userId, accountKey, primaryAmount, primaryCurrency, now, 'Opening balance', now]
+    );
+  } else if (section === 'debt' && Number.isFinite(delta) && Math.abs(delta) > 0.000001) {
+    await db.run(
+      `INSERT INTO debt_events
+        (id, user_id, debt_account_key, event_type, amount, currency, date, note, created_at)
+       VALUES (?, ?, ?, 'adjustment', ?, ?, ?, ?, ?)`,
+      [uuidv4(), userId, accountKey, delta, primaryCurrency, now, 'Manual balance correction', now]
+    );
+  } else if (section !== 'debt' && Number.isFinite(delta) && Math.abs(delta) > 0.000001) {
     const txType = delta > 0 ? 'income' : 'expense';
     const txAmount = Math.abs(delta);
     const correctionCategoryId = await resolveBalanceCorrectionCategoryId(db, userId, txType);
@@ -4216,6 +4284,8 @@ app.put('/api/accounts/:key', async (req, res) => {
        badge,
        icon_key AS iconKey,
        debt_direction AS debtDirection,
+       debt_initial_amount AS debtInitialAmount,
+       debt_created_at AS debtCreatedAt,
        updatedAt
      FROM account_portfolio
      WHERE user_id = ? AND account_key = ?
@@ -4226,46 +4296,103 @@ app.put('/api/accounts/:key', async (req, res) => {
   res.json(row);
 });
 
-app.post('/api/accounts/:key/payment', authMiddleware, async (req, res) => {
+app.post('/api/accounts/:key/payment', async (req, res) => {
   const userId = req.authUserId;
-  const accountKey = String(req.params.key ?? '').trim();
+  const accountKey = String(req.params.key ?? '').trim().toLowerCase();
+  const paymentAccountKey = String(req.body?.paymentAccountKey ?? '').trim().toLowerCase();
   const amount = Number(req.body?.amount);
   const note = typeof req.body?.note === 'string' ? req.body.note.trim() : '';
 
-  if (!accountKey) { res.status(400).json({ error: 'invalid key' }); return; }
-  if (!Number.isFinite(amount) || amount <= 0) { res.status(400).json({ error: 'amount must be positive' }); return; }
-
-  const account = await db.get(
-    `SELECT primary_amount, primary_currency, name FROM account_portfolio
-     WHERE user_id = ? AND account_key = ? AND section = 'debt' LIMIT 1`,
-    [userId, accountKey]
-  );
-  if (!account) { res.status(404).json({ error: 'debt account not found' }); return; }
-
-  const newAmount = Math.max(0, Number(account.primary_amount) - amount);
-  const now = new Date().toISOString();
-  const today = now.slice(0, 10);
-  const txId = uuidv4();
-  const currency = account.primary_currency === 'PLN' ? 'PLN' : 'UAH';
+  if (!accountKey) { res.status(400).json({ error: 'invalid key', code: 'INVALID_DEBT_KEY' }); return; }
+  if (note.length > 80) { res.status(400).json({ error: 'note must be <= 80 chars', code: 'INVALID_NOTE' }); return; }
 
   await db.run('BEGIN IMMEDIATE');
   try {
+    const debtAccount = await db.get(
+      `SELECT account_key AS accountKey, section, primary_amount AS primaryAmount,
+              primary_currency AS primaryCurrency, debt_direction AS debtDirection, name
+       FROM account_portfolio
+       WHERE user_id = ? AND account_key = ? AND section = 'debt'
+       LIMIT 1`,
+      [userId, accountKey]
+    );
+    const paymentAccount = paymentAccountKey
+      ? await db.get(
+          `SELECT account_key AS accountKey, section, primary_currency AS primaryCurrency
+           FROM account_portfolio
+           WHERE user_id = ? AND account_key = ?
+           LIMIT 1`,
+          [userId, paymentAccountKey]
+        )
+      : null;
+    const validated = validateDebtPayment({ debtAccount, paymentAccount, amount });
+    if (!validated.ok) {
+      await db.run('ROLLBACK');
+      res.status(validated.status).json({ error: validated.error, code: validated.code });
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const eventId = uuidv4();
+    const transaction = {
+      id: uuidv4(),
+      user_id: userId,
+      date: now,
+      note: note || `Debt repayment: ${debtAccount.name}`,
+      debtEventId: eventId,
+      ...buildDebtRepaymentTransfer(validated),
+    };
+
     await db.run(
-      'UPDATE account_portfolio SET primary_amount = ?, updatedAt = ? WHERE user_id = ? AND account_key = ?',
-      [newAmount, now, userId, accountKey]
+      `INSERT INTO debt_events
+        (id, user_id, debt_account_key, event_type, amount, currency,
+         payment_account_key, transaction_id, date, note, created_at)
+       VALUES (?, ?, ?, 'repayment', ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        eventId,
+        userId,
+        validated.debtAccountKey,
+        validated.amount,
+        validated.currency,
+        validated.paymentAccountKey,
+        transaction.id,
+        now,
+        transaction.note,
+        now,
+      ]
     );
     await db.run(
-      `INSERT INTO transactions (id, user_id, type, amount, currency, categoryId, date, note, fromAccountKey, toAccountKey)
-       VALUES (?, ?, 'income', ?, ?, 'debt_return', ?, ?, ?, NULL)`,
-      [txId, userId, amount, currency, today,
-       note || `Повернення: ${account.name}`, accountKey]
+      `INSERT INTO transactions
+        (id, user_id, type, amount, currency, transferToAmount, transferToCurrency,
+         categoryId, date, note, fromAccountKey, toAccountKey, debtEventId)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        transaction.id,
+        userId,
+        transaction.type,
+        transaction.amount,
+        transaction.currency,
+        transaction.transferToAmount,
+        transaction.transferToCurrency,
+        transaction.categoryId,
+        transaction.date,
+        transaction.note,
+        transaction.fromAccountKey,
+        transaction.toAccountKey,
+        transaction.debtEventId,
+      ]
+    );
+    await applyTransactionEffects(db, userId, transaction);
+    const updated = await db.get(
+      'SELECT primary_amount AS primaryAmount FROM account_portfolio WHERE user_id = ? AND account_key = ?',
+      [userId, accountKey]
     );
     await db.run('COMMIT');
+    res.json({ newAmount: Number(updated?.primaryAmount) || 0, transaction });
   } catch (e) {
     await db.run('ROLLBACK');
     throw e;
   }
-  res.json({ newAmount, transactionId: txId });
 });
 
 app.delete('/api/accounts/:key', async (req, res) => {
@@ -4282,7 +4409,19 @@ app.delete('/api/accounts/:key', async (req, res) => {
     return;
   }
 
-  await db.run('DELETE FROM account_portfolio WHERE user_id = ? AND account_key = ?', [userId, accountKey]);
+  await db.run('BEGIN IMMEDIATE');
+  try {
+    await db.run(
+      `UPDATE transactions SET debtEventId = NULL
+       WHERE user_id = ? AND debtEventId IN (
+         SELECT id FROM debt_events WHERE user_id = ? AND debt_account_key = ?
+       )`,
+      [userId, userId, accountKey]
+    );
+    await db.run('DELETE FROM debt_events WHERE user_id = ? AND debt_account_key = ?', [userId, accountKey]);
+    await db.run('DELETE FROM account_portfolio WHERE user_id = ? AND account_key = ?', [userId, accountKey]);
+    await db.run('COMMIT');
+  } catch (e) { await db.run('ROLLBACK'); throw e; }
   res.status(204).end();
 });
 
@@ -4403,6 +4542,10 @@ app.patch('/api/transactions/:id', async (req, res) => {
   }
 
   const amount = req.body?.amount === undefined ? Number(current.amount) : Number(req.body.amount);
+  if (current.debtEventId) {
+    res.status(409).json({ error: 'Debt repayments cannot be edited directly', code: 'DEBT_EVENT_MANAGED' });
+    return;
+  }
   const currency = req.body?.currency === undefined ? normalizeCurrency(current.currency) : normalizeCurrency(req.body.currency);
   const categoryId = typeof req.body?.categoryId === 'string' ? req.body.categoryId : current.categoryId;
   const type =
@@ -4538,6 +4681,9 @@ app.delete('/api/transactions/:id', async (req, res) => {
   }
   await applyTransactionEffects(db, userId, current, -1);
   await db.run('DELETE FROM transactions WHERE user_id = ? AND id = ?', [userId, id]);
+  if (current.debtEventId) {
+    await db.run('DELETE FROM debt_events WHERE user_id = ? AND id = ?', [userId, current.debtEventId]);
+  }
   res.status(204).send();
 });
 

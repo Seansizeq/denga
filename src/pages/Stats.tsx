@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { PieChart } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useTransactions } from '../context/TransactionContext';
@@ -7,16 +7,19 @@ import { getBudgets, type CategoryBudget } from '../api/client';
 import { useStatsPeriod } from '../hooks/useStatsPeriod';
 import { useStatsAggregates } from '../hooks/useStatsAggregates';
 import { toIsoDateParam, type StatsRange } from '../utils/statsPeriod';
+import { buildTrendBuckets } from '../utils/statsTrendBuckets';
 import StatsPeriodNav from '../components/stats/StatsPeriodNav';
 import StatsSummaryStrip from '../components/stats/StatsSummaryStrip';
 import StatsCategoryChart from '../components/stats/StatsCategoryChart';
+import StatsTrendChart from '../components/stats/StatsTrendChart';
+import StatsInsightsGrid from '../components/stats/StatsInsightsGrid';
 import styles from './Stats.module.css';
 
 const RANGE_OPTIONS: StatsRange[] = ['today', 'week', 'month', 'year'];
 
 const Stats: React.FC = () => {
   const navigate = useNavigate();
-  const { t, convertAmount } = useTranslation();
+  const { t, locale, convertAmount } = useTranslation();
   const { transactions } = useTransactions();
 
   const { range, setRange, anchors, bounds, previousBounds, periodLabel, isCurrent, goPrev, goNext, goToCurrent } =
@@ -48,10 +51,23 @@ const Stats: React.FC = () => {
     chartType,
   });
 
+  const trendBuckets = useMemo(
+    () =>
+      buildTrendBuckets({
+        transactions,
+        convertAmount: (amount, currency) => convertAmount(amount, currency),
+        type: chartType,
+        range,
+        anchors,
+        locale,
+      }),
+    [transactions, convertAmount, chartType, range, anchors, locale],
+  );
+
   const openHistory = useCallback(
-    (opts: { categoryId?: string; from?: Date; to?: Date }) => {
+    (opts: { categoryId?: string; from?: Date; to?: Date; type?: 'expense' | 'income' }) => {
       const sp = new URLSearchParams();
-      sp.set('type', chartType);
+      sp.set('type', opts.type ?? chartType);
       if (opts.categoryId) sp.set('categoryId', opts.categoryId);
       sp.set('from', toIsoDateParam(opts.from ?? bounds.start));
       sp.set('to', toIsoDateParam(opts.to ?? bounds.end));
@@ -99,6 +115,11 @@ const Stats: React.FC = () => {
         previousNet={aggregates.previousNet}
       />
 
+      <StatsTrendChart
+        buckets={trendBuckets}
+        onBucketClick={(bucket) => openHistory({ from: bucket.from, to: bucket.to })}
+      />
+
       <section className={styles.section}>
         <div className={styles.sectionHeaderWithToggle}>
           <h2 className={styles.sectionTitle}>{t('stats', 'byCategory')}</h2>
@@ -141,6 +162,13 @@ const Stats: React.FC = () => {
         )}
       </section>
 
+      <section className={styles.section}>
+        <h2 className={styles.sectionTitle}>{t('stats', 'insightsTitle')}</h2>
+        <StatsInsightsGrid
+          insights={aggregates.insights}
+          onCategoryClick={(categoryId) => openHistory({ categoryId, type: 'expense' })}
+        />
+      </section>
     </div>
   );
 };

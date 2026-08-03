@@ -17,6 +17,7 @@ export interface Transaction {
   note?: string;
   fromAccountKey?: string;
   toAccountKey?: string;
+  debtEventId?: string;
   transferToAmount?: number;
   transferToCurrency?: 'UAH' | 'PLN' | 'USD';
 }

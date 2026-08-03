@@ -375,6 +375,66 @@ export async function initDb() {
   } catch {
     /* already exists */
   }
+  try {
+    await db.exec(`ALTER TABLE account_portfolio ADD COLUMN debt_initial_amount REAL`);
+  } catch {
+    /* already exists */
+  }
+  try {
+    await db.exec(`ALTER TABLE account_portfolio ADD COLUMN debt_created_at TEXT`);
+  } catch {
+    /* already exists */
+  }
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS debt_events (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      debt_account_key TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      amount REAL NOT NULL,
+      currency TEXT NOT NULL,
+      payment_account_key TEXT,
+      transaction_id TEXT,
+      date TEXT NOT NULL,
+      note TEXT,
+      created_at TEXT NOT NULL
+    )
+  `);
+  await db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_debt_events_account
+    ON debt_events(user_id, debt_account_key, date DESC)
+  `);
+  try {
+    await db.exec(`ALTER TABLE transactions ADD COLUMN debtEventId TEXT`);
+  } catch {
+    /* already exists */
+  }
+  await db.run(
+    `UPDATE account_portfolio
+     SET debt_initial_amount = primary_amount + COALESCE((
+           SELECT SUM(t.amount)
+           FROM transactions t
+           WHERE t.user_id = account_portfolio.user_id
+             AND t.categoryId = 'debt_return'
+             AND (t.fromAccountKey = account_portfolio.account_key OR t.toAccountKey = account_portfolio.account_key)
+         ), 0),
+         debt_created_at = COALESCE(debt_created_at, updatedAt)
+     WHERE section = 'debt' AND debt_initial_amount IS NULL`
+  );
+  await db.run(
+    `INSERT INTO debt_events
+      (id, user_id, debt_account_key, event_type, amount, currency, date, note, created_at)
+     SELECT lower(hex(randomblob(16))), a.user_id, a.account_key, 'created',
+            COALESCE(a.debt_initial_amount, a.primary_amount), a.primary_currency,
+            COALESCE(a.debt_created_at, a.updatedAt), 'Migrated opening balance',
+            COALESCE(a.debt_created_at, a.updatedAt)
+     FROM account_portfolio a
+     WHERE a.section = 'debt'
+       AND NOT EXISTS (
+         SELECT 1 FROM debt_events e
+         WHERE e.user_id = a.user_id AND e.debt_account_key = a.account_key
+       )`
+  );
   // Backfill: every debt row without an explicit direction defaults to "owed to me"
   // (matches the app's previous implicit assumption, so this is a no-op behavior-wise).
   await db.run(

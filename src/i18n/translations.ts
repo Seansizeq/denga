@@ -66,6 +66,11 @@ type Dict = {
     debtPaymentRecorded: string;
     debtDeleteConfirmWithBalance: string;
     debtRepaymentHistoryTitle: string;
+    debtInitialAmount: string;
+    debtPaidAmount: string;
+    debtRemainingAmount: string;
+    debtPaymentExceedsBalance: string;
+    debtPaymentAccountRequired: string;
     liabilityLineLabel: string;
     close: string;
     confirm: string;
@@ -494,6 +499,11 @@ const uk: Dict = {
     debtPaymentRecorded: 'Зафіксовано',
     debtDeleteConfirmWithBalance: 'Цей борг ще не погашено повністю. Видалити рахунок разом із залишком боргу?',
     debtRepaymentHistoryTitle: 'Історія повернень',
+    debtInitialAmount: 'Початкова сума',
+    debtPaidAmount: 'Вже погашено',
+    debtRemainingAmount: 'Прогрес погашення',
+    debtPaymentExceedsBalance: 'Сума повернення не може перевищувати залишок боргу.',
+    debtPaymentAccountRequired: 'Додай або вибери рахунок у цій валюті для руху грошей.',
     liabilityLineLabel: 'Я винен загалом',
     close: 'Закрити',
     confirm: 'Підтвердити',
@@ -928,6 +938,11 @@ const ru: Dict = {
     debtPaymentRecorded: 'Зафиксировано',
     debtDeleteConfirmWithBalance: 'Этот долг ещё не погашен полностью. Удалить счёт вместе с остатком долга?',
     debtRepaymentHistoryTitle: 'История возвратов',
+    debtInitialAmount: 'Начальная сумма',
+    debtPaidAmount: 'Уже погашено',
+    debtRemainingAmount: 'Прогресс погашения',
+    debtPaymentExceedsBalance: 'Сумма возврата не может превышать остаток долга.',
+    debtPaymentAccountRequired: 'Добавь или выбери счёт в этой валюте для движения денег.',
     liabilityLineLabel: 'Я должен всего',
     close: 'Закрыть',
     confirm: 'Подтвердить',
@@ -1362,6 +1377,11 @@ const en: Dict = {
     debtPaymentRecorded: 'Recorded',
     debtDeleteConfirmWithBalance: "This debt isn't fully paid off yet. Delete it along with the outstanding balance?",
     debtRepaymentHistoryTitle: 'Repayment history',
+    debtInitialAmount: 'Initial amount',
+    debtPaidAmount: 'Already repaid',
+    debtRemainingAmount: 'Repayment progress',
+    debtPaymentExceedsBalance: 'The repayment cannot exceed the outstanding balance.',
+    debtPaymentAccountRequired: 'Add or select an account in this currency for the money movement.',
     liabilityLineLabel: 'Total owed by me',
     close: 'Close',
     confirm: 'Confirm',

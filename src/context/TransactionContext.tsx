@@ -21,6 +21,7 @@ interface TransactionContextType {
   addTransaction: (transaction: TransactionDraft) => Promise<boolean>;
   updateTransaction: (id: string, transaction: TransactionDraft) => Promise<boolean>;
   deleteTransaction: (id: string) => Promise<boolean>;
+  refreshTransactions: () => Promise<void>;
   balance: Balance;
   isBootstrapping: boolean;
 }
@@ -182,7 +183,7 @@ export const TransactionProvider: React.FC<{
 
   return (
     <TransactionContext.Provider
-      value={{ transactions, addTransaction, updateTransaction, deleteTransaction, balance, isBootstrapping }}
+      value={{ transactions, addTransaction, updateTransaction, deleteTransaction, refreshTransactions: fetchTransactions, balance, isBootstrapping }}
     >
       {children}
     </TransactionContext.Provider>

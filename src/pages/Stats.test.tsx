@@ -65,6 +65,8 @@ describe('Stats page', () => {
     expect(screen.getByRole('tab', { name: 'range.month' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: 'range.year' })).toBeTruthy();
     expect(screen.getByText('stats.byCategory')).toBeTruthy();
+    expect(screen.getByText('stats.trendTitle')).toBeTruthy();
+    expect(screen.getByText('stats.insightsTitle')).toBeTruthy();
   });
 
   it('switches range and chart type without crashing', () => {

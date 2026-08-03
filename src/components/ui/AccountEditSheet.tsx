@@ -202,7 +202,6 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
               onChange={(e) => setName(e.target.value)}
               maxLength={40}
               placeholder={SECTION_PLACEHOLDER[section]}
-              // eslint-disable-next-line jsx-a11y/no-autofocus
               autoFocus={isCreateMode}
             />
           </label>
