@@ -56,7 +56,12 @@ const pushToGithub = () => {
   assertCleanGitTree();
 
   log(`Pushing to ${GIT_REMOTE_URL} (${GIT_BRANCH})...`);
-  sh(`git push origin ${GIT_BRANCH}`, { stdio: 'inherit' });
+  // GITHUB_TOKEN in .deploy.env is intended for the production server clone.
+  // Do not let GitHub CLI prefer it over the developer's local keyring token.
+  const localGitEnv = { ...process.env };
+  delete localGitEnv.GITHUB_TOKEN;
+  delete localGitEnv.GH_TOKEN;
+  sh(`git push origin ${GIT_BRANCH}`, { stdio: 'inherit', env: localGitEnv });
   const sha = sh('git rev-parse HEAD');
   log(`Pushed ${sha.slice(0, 7)}.`);
   return sha;
