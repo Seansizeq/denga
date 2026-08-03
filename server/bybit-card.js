@@ -421,12 +421,13 @@ export const normalizeBybitBalances = ({ unified, funding }) => {
 };
 
 const fetchBybitBalances = async ({ endpoint, apiKey, secret, fetchImpl }) => {
-  const coin = TRACKED_BALANCE_COINS.join(',');
+  // Omitting coin makes Bybit return non-zero assets and avoids rejecting the
+  // whole request when a tracked ticker is unavailable for a region/account.
   const [unifiedResult, fundingResult] = await Promise.allSettled([
     requestBybit({
       endpoint,
       path: '/v5/account/wallet-balance',
-      params: { accountType: 'UNIFIED', coin },
+      params: { accountType: 'UNIFIED' },
       apiKey,
       secret,
       fetchImpl,
@@ -434,7 +435,7 @@ const fetchBybitBalances = async ({ endpoint, apiKey, secret, fetchImpl }) => {
     requestBybit({
       endpoint,
       path: '/v5/asset/transfer/query-account-coins-balance',
-      params: { accountType: 'FUND', coin },
+      params: { accountType: 'FUND' },
       apiKey,
       secret,
       fetchImpl,

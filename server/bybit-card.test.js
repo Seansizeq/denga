@@ -223,6 +223,7 @@ describe('Bybit Card integration helpers', () => {
       );
     `);
     const cardRequests = [];
+    const balanceRequests = [];
     const fetchImpl = async (url, options = {}) => {
       const textUrl = String(url);
       if (textUrl.includes('/v5/user/query-api')) {
@@ -236,6 +237,7 @@ describe('Bybit Card integration helpers', () => {
         }), { status: 200 });
       }
       if (textUrl.includes('/v5/account/wallet-balance')) {
+        balanceRequests.push(textUrl);
         return new Response(JSON.stringify({
           retCode: 0,
           result: { list: [{ coin: [
@@ -245,6 +247,7 @@ describe('Bybit Card integration helpers', () => {
         }), { status: 200 });
       }
       if (textUrl.includes('/v5/asset/transfer/query-account-coins-balance')) {
+        balanceRequests.push(textUrl);
         return new Response(JSON.stringify({
           retCode: 0,
           result: { balance: [
@@ -308,6 +311,8 @@ describe('Bybit Card integration helpers', () => {
         { name: 'Bybit USDT', subText: '25 USDT' },
       ]);
       expect(cardRequests.length).toBeGreaterThan(0);
+      expect(balanceRequests.length).toBeGreaterThan(0);
+      expect(balanceRequests.every((url) => !url.includes('coin='))).toBe(true);
       expect(cardRequests[0].options.body).toBe('{}');
       const timestamp = cardRequests[0].options.headers['X-BAPI-TIMESTAMP'];
       expect(cardRequests[0].options.headers['X-BAPI-SIGN']).toBe(signBybitRequest({

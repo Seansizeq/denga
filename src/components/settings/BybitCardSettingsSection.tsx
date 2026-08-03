@@ -161,7 +161,9 @@ const BybitCardSettingsSection: React.FC = () => {
             </div>
           </div>
           {!error && storedError ? <p className={styles.warning}>{storedError}</p> : null}
-          {status.balanceSyncError ? <p className={styles.warning}>{t('settings', 'bybitBalanceWarning')}</p> : null}
+          {!error && !storedError && status.balanceSyncError
+            ? <p className={styles.warning}>{t('settings', 'bybitBalanceWarning')}</p>
+            : null}
           {error ? <p className={styles.error}>{error}</p> : null}
           <div className={styles.actions}>
             <button className={styles.primaryButton} type="button" onClick={handleSync} disabled={busy}>
