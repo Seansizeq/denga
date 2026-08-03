@@ -69,7 +69,7 @@ export const toBybitPublicError = (error) => {
   ) {
     return {
       code: 'BYBIT_CARD_HISTORY_UNAVAILABLE',
-      error: 'Bybit does not provide Card history for this account through the API. Balances can still sync.',
+      error: 'Bybit accepted this read-only key but does not expose Card history to this API connection. Balances can still sync.',
     };
   }
   return {
