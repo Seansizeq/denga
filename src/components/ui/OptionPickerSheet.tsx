@@ -8,6 +8,7 @@ export type PickerOption = {
   label: string;
   hint?: string;
   leading?: React.ReactNode;
+  group?: string;
 };
 
 interface OptionPickerSheetProps {
@@ -62,25 +63,29 @@ const OptionPickerSheet: React.FC<OptionPickerSheetProps> = ({
         />
       ) : null}
       <ul className={styles.list}>
-        {visibleOptions.map((option) => {
+        {visibleOptions.map((option, index) => {
           const active = option.id === selectedId;
+          const showGroup = Boolean(option.group && option.group !== visibleOptions[index - 1]?.group);
           return (
-            <li key={option.id}>
-              <button
-                type="button"
-                className={`${styles.item} ${active ? styles.itemActive : ''}`}
-                onClick={() => onSelect(option.id)}
-              >
-                <span className={styles.itemMain}>
-                  {option.leading ? <span className={styles.leading}>{option.leading}</span> : null}
-                  <span className={styles.labels}>
-                    <span className={styles.label}>{option.label}</span>
-                    {option.hint ? <span className={styles.hint}>{option.hint}</span> : null}
+            <React.Fragment key={option.id}>
+              {showGroup ? <li className={styles.groupLabel}>{option.group}</li> : null}
+              <li>
+                <button
+                  type="button"
+                  className={`${styles.item} ${active ? styles.itemActive : ''}`}
+                  onClick={() => onSelect(option.id)}
+                >
+                  <span className={styles.itemMain}>
+                    {option.leading ? <span className={styles.leading}>{option.leading}</span> : null}
+                    <span className={styles.labels}>
+                      <span className={styles.label}>{option.label}</span>
+                      {option.hint ? <span className={styles.hint}>{option.hint}</span> : null}
+                    </span>
                   </span>
-                </span>
-                {active ? <Check size={18} strokeWidth={2.5} className={styles.check} /> : null}
-              </button>
-            </li>
+                  {active ? <Check size={18} strokeWidth={2.5} className={styles.check} /> : null}
+                </button>
+              </li>
+            </React.Fragment>
           );
         })}
       </ul>

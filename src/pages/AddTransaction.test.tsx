@@ -10,6 +10,9 @@ const mocks = vi.hoisted(() => ({
   addTransaction: vi.fn(async () => true),
   updateTransaction: vi.fn(async () => true),
   apiFetch: vi.fn(async () => ({ ok: true, json: async () => [] })),
+  portfolioAccounts: [
+    { accountKey: 'privat24', name: 'Privat24', primaryCurrency: 'UAH', section: 'bank' },
+  ] as Array<Record<string, unknown>>,
 }));
 
 vi.mock('react-router-dom', async () => {
@@ -45,7 +48,7 @@ vi.mock('../context/TransactionContext', () => ({
 
 vi.mock('../context/PortfolioContext', () => ({
   usePortfolio: () => ({
-    accounts: [{ accountKey: 'privat24', name: 'Privat24', primaryCurrency: 'UAH' }],
+    accounts: mocks.portfolioAccounts,
   }),
 }));
 
@@ -83,6 +86,9 @@ describe('AddTransaction', () => {
 
   beforeEach(() => {
     mocks.apiFetch.mockResolvedValue({ ok: true, json: async () => [] });
+    mocks.portfolioAccounts = [
+      { accountKey: 'privat24', name: 'Privat24', primaryCurrency: 'UAH', section: 'bank' },
+    ];
   });
 
   it('prefills payment account from note query param', () => {
@@ -111,5 +117,31 @@ describe('AddTransaction', () => {
     renderAdd('/add');
     fireEvent.click(screen.getByText('addTx.paymentAccount'));
     expect(screen.getByRole('dialog')).toBeTruthy();
+  });
+
+  it('groups and sorts every account in the transfer picker', () => {
+    mocks.portfolioAccounts = [
+      { accountKey: 'debt-z', name: 'Zed debt', primaryCurrency: 'UAH', section: 'debt' },
+      { accountKey: 'btc-main', name: 'Bitcoin', primaryCurrency: 'USD', section: 'crypto' },
+      { accountKey: 'wallet-main', name: 'Cash account', primaryCurrency: 'UAH', section: 'cash' },
+      { accountKey: 'card-main', name: 'Card account', primaryCurrency: 'UAH', section: 'bank' },
+    ];
+    renderAdd('/add?type=transfer');
+
+    fireEvent.click(screen.getByRole('button', { name: /addTx.transferFrom/ }));
+    const dialogText = screen.getByRole('dialog').textContent ?? '';
+    const expectedOrder = [
+      'addTx.accountGroupOrdinary',
+      'Card account',
+      'Cash account',
+      'addTx.accountGroupCrypto',
+      'Bitcoin',
+      'addTx.accountGroupDebt',
+      'Zed debt',
+    ];
+    const positions = expectedOrder.map((value) => dialogText.indexOf(value));
+
+    expect(positions.every((position) => position >= 0)).toBe(true);
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
   });
 });

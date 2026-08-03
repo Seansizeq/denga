@@ -37,18 +37,16 @@ import {
 } from '../utils/addTransactionDefaults';
 import { resolveCategoryForTypeChange } from '../utils/categoryForType';
 import ExpenseTemplateBar from '../components/ExpenseTemplateBar';
+import {
+  getAccountPickerGroup,
+  inferAccountSectionFromKey,
+  sortAccountPickerItems,
+  type AccountPickerGroup,
+  type AccountSection,
+} from '../utils/accountPicker';
 import styles from './AddTransaction.module.css';
 
 const iconRegistry = LucideIcons as unknown as Record<string, React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>>;
-
-// Best-effort section guess for built-in account keys that aren't real
-// portfolio rows (so they still get a sensible avatar in the picker).
-const inferAccountSectionFromKey = (key: string): 'bank' | 'cash' | 'crypto' | 'stocks' | 'debt' => {
-  if (key === 'wallet' || key === 'cash') return 'cash';
-  if (['crypto', 'sol', 'ton', 'usdt', 'btc', 'eth'].includes(key)) return 'crypto';
-  if (key === 'misha' || key === 'debt') return 'debt';
-  return 'bank';
-};
 
 const AddTransaction: React.FC = () => {
   const navigate = useNavigate();
@@ -154,7 +152,6 @@ const AddTransaction: React.FC = () => {
     [rawAccounts],
   );
 
-  type AccountSection = 'bank' | 'cash' | 'crypto' | 'stocks' | 'debt';
   // Icon tone / section / iconKey per account, so the picker can show avatars
   // matching the rest of the app instead of a bare text list.
   const accountMetaByKey = useMemo(() => {
@@ -214,6 +211,36 @@ const AddTransaction: React.FC = () => {
   );
 
   const { allowedPaymentKeys, paymentChipOptions } = usePaymentAccountOptions(portfolioAccounts, language);
+
+  const accountGroupLabels = useMemo<Record<AccountPickerGroup, string>>(() => ({
+    ordinary: t('addTx', 'accountGroupOrdinary'),
+    crypto: t('addTx', 'accountGroupCrypto'),
+    debt: t('addTx', 'accountGroupDebt'),
+  }), [t]);
+
+  const paymentAccountPickerItems = useMemo(
+    () => sortAccountPickerItems(
+      paymentChipOptions.map(({ key, label }) => ({
+        key,
+        label,
+        section: accountMetaByKey.get(key)?.section ?? inferAccountSectionFromKey(key),
+      })),
+      language,
+    ),
+    [paymentChipOptions, accountMetaByKey, language],
+  );
+
+  const transferAccountPickerItems = useMemo(
+    () => sortAccountPickerItems(
+      portfolioAccounts.map((account) => ({
+        ...account,
+        label: account.name,
+        section: accountMetaByKey.get(account.key)?.section ?? inferAccountSectionFromKey(account.key),
+      })),
+      language,
+    ),
+    [portfolioAccounts, accountMetaByKey, language],
+  );
 
   const editNotFound = isEditing && !isBootstrapping && !editingTransaction;
   const customCategoryIds = useMemo(() => customCategories.map((c) => c.id), [customCategories]);
@@ -755,13 +782,14 @@ const AddTransaction: React.FC = () => {
         selectedId={paymentAccount}
         options={[
           { id: '', label: t('addTx', 'paymentAccountNone') },
-          ...paymentChipOptions.map(({ key, label }) => {
+          ...paymentAccountPickerItems.map(({ key, label, section }) => {
             const acc = portfolioAccounts.find((a) => a.key === key);
             return {
               id: key,
               label,
               leading: renderAccountAvatar(key),
               hint: acc && acc.currency !== 'UAH' ? acc.currency : undefined,
+              group: accountGroupLabels[getAccountPickerGroup(section)],
             };
           }),
         ]}
@@ -779,11 +807,12 @@ const AddTransaction: React.FC = () => {
         selectedId={transferAccountSheet === 'to' ? transferToAccountKey : transferFromAccountKey}
         options={[
           { id: '', label: t('addTx', 'paymentAccountNone') },
-          ...portfolioAccounts.map((account) => ({
+          ...transferAccountPickerItems.map((account) => ({
             id: account.key,
             label: account.name,
             hint: account.currency,
             leading: renderAccountAvatar(account.key),
+            group: accountGroupLabels[getAccountPickerGroup(account.section)],
           })),
         ]}
         onSelect={(id) => {

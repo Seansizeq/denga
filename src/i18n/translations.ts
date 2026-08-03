@@ -101,6 +101,9 @@ type Dict = {
     paymentAccount: string;
     paymentAccountHint: string;
     paymentAccountNone: string;
+    accountGroupOrdinary: string;
+    accountGroupCrypto: string;
+    accountGroupDebt: string;
     templates: string;
     saveAsTemplate: string;
     templateNamePlaceholder: string;
@@ -525,6 +528,9 @@ const uk: Dict = {
     paymentAccount: 'Рахунок',
     paymentAccountHint: 'Обери карту чи готівку — цей рахунок оновиться в «Рахунках»',
     paymentAccountNone: 'Не вказано',
+    accountGroupOrdinary: 'Картки й готівка',
+    accountGroupCrypto: 'Криптовалюта',
+    accountGroupDebt: 'Борги',
     templates: 'Шаблони',
     saveAsTemplate: 'Зберегти як шаблон',
     templateNamePlaceholder: 'Назва шаблону',
@@ -955,6 +961,9 @@ const ru: Dict = {
     paymentAccount: 'Счёт',
     paymentAccountHint: 'Выбери карту или наличные — этот счёт обновится в «Счетах»',
     paymentAccountNone: 'Не указано',
+    accountGroupOrdinary: 'Карты и наличные',
+    accountGroupCrypto: 'Криптовалюта',
+    accountGroupDebt: 'Долги',
     templates: 'Шаблоны',
     saveAsTemplate: 'Сохранить как шаблон',
     templateNamePlaceholder: 'Название шаблона',
@@ -1385,6 +1394,9 @@ const en: Dict = {
     paymentAccount: 'Account',
     paymentAccountHint: 'Pick a card or cash — this account will update on Accounts',
     paymentAccountNone: 'Not set',
+    accountGroupOrdinary: 'Cards and cash',
+    accountGroupCrypto: 'Cryptocurrency',
+    accountGroupDebt: 'Debts',
     templates: 'Templates',
     saveAsTemplate: 'Save as template',
     templateNamePlaceholder: 'Template name',
