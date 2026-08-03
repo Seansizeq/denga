@@ -4,7 +4,6 @@ import GeneralSettingsSection from '../components/settings/GeneralSettingsSectio
 import ReportsSettingsSection from '../components/settings/ReportsSettingsSection';
 import RemindersSettingsSection from '../components/settings/RemindersSettingsSection';
 import PlannerTemplateSection from '../components/settings/PlannerTemplateSection';
-import BybitCardSettingsSection from '../components/settings/BybitCardSettingsSection';
 import DangerZoneSection from '../components/settings/DangerZoneSection';
 import styles from './Settings.module.css';
 
@@ -18,7 +17,6 @@ const Settings: React.FC = () => {
       <ReportsSettingsSection />
       <RemindersSettingsSection />
       <PlannerTemplateSection />
-      <BybitCardSettingsSection />
       <DangerZoneSection />
     </div>
   );

@@ -9,6 +9,36 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const getDatabasePath = () =>
   process.env.DATABASE_PATH ? path.resolve(process.env.DATABASE_PATH) : path.resolve(__dirname, '../database.sqlite');
 
+export async function removeRetiredBybitIntegration(db) {
+  const assetLinksTable = await db.get(
+    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'bybit_asset_accounts'",
+  );
+  await db.run('BEGIN IMMEDIATE');
+  try {
+    if (assetLinksTable) {
+      // Only remove accounts explicitly linked by the retired integration.
+      // Older user-created Bybit/Card/overall accounts have no link row and remain untouched.
+      await db.run(
+        `DELETE FROM account_portfolio
+         WHERE EXISTS (
+           SELECT 1 FROM bybit_asset_accounts links
+           WHERE links.user_id = account_portfolio.user_id
+             AND links.account_key = account_portfolio.account_key
+         )`,
+      );
+    }
+    await db.exec(`
+      DROP TABLE IF EXISTS bybit_card_imports;
+      DROP TABLE IF EXISTS bybit_asset_accounts;
+      DROP TABLE IF EXISTS bybit_card_connections;
+    `);
+    await db.run('COMMIT');
+  } catch (error) {
+    await db.run('ROLLBACK');
+    throw error;
+  }
+}
+
 export async function initDb() {
   const dbPath = getDatabasePath();
   const db = await open({
@@ -519,59 +549,7 @@ export async function initDb() {
     /* already exists */
   }
 
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS bybit_card_connections (
-      user_id TEXT PRIMARY KEY,
-      api_key_enc TEXT NOT NULL,
-      api_secret_enc TEXT NOT NULL,
-      api_key_hint TEXT NOT NULL DEFAULT '',
-      endpoint TEXT NOT NULL DEFAULT 'https://api.bybit.com',
-      enabled INTEGER NOT NULL DEFAULT 1,
-      sync_from TEXT NOT NULL,
-      last_sync_at TEXT,
-      last_error TEXT,
-      last_error_code TEXT,
-      last_balance_error TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    )
-  `);
-  try {
-    await db.exec(`ALTER TABLE bybit_card_connections ADD COLUMN last_balance_error TEXT`);
-  } catch {
-    /* already exists */
-  }
-  try {
-    await db.exec(`ALTER TABLE bybit_card_connections ADD COLUMN last_error_code TEXT`);
-  } catch {
-    /* already exists */
-  }
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS bybit_asset_accounts (
-      user_id TEXT NOT NULL,
-      coin TEXT NOT NULL,
-      account_key TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      PRIMARY KEY (user_id, coin)
-    )
-  `);
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS bybit_card_imports (
-      user_id TEXT NOT NULL,
-      external_id TEXT NOT NULL,
-      order_no TEXT,
-      txn_id TEXT,
-      transaction_id TEXT NOT NULL,
-      record_status TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      PRIMARY KEY (user_id, external_id)
-    )
-  `);
-  await db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_bybit_card_imports_transaction
-    ON bybit_card_imports(user_id, transaction_id)
-  `);
+  await removeRetiredBybitIntegration(db);
 
   await db.exec(`
     CREATE INDEX IF NOT EXISTS idx_transactions_user_date

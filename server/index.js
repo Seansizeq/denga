@@ -15,14 +15,6 @@ import { getPreviousFullWeekDaySet } from './report-periods.js';
 import { deliverReportToTelegram } from './report-delivery.js';
 import { renderFinancialReportCardPng } from './report-card.js';
 import { parseSmartTransaction, isSmartTransactionEnabled } from './smart-transaction.js';
-import {
-  connectBybitCard,
-  disconnectBybitCard,
-  getBybitCardStatus,
-  startBybitCardSync,
-  syncBybitCard,
-  toBybitPublicError,
-} from './bybit-card.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -2717,49 +2709,6 @@ app.get('/api/automation/shift/end', async (req, res) => {
 // --- API Logic ---
 app.use('/api', authMiddleware);
 
-app.get('/api/integrations/bybit-card', async (req, res) => {
-  res.json(await getBybitCardStatus(db, String(req.authUserId)));
-});
-
-app.post('/api/integrations/bybit-card', async (req, res) => {
-  const userId = String(req.authUserId ?? '');
-  try {
-    await connectBybitCard({
-      db,
-      userId,
-      apiKey: req.body?.apiKey,
-      secret: req.body?.apiSecret,
-    });
-    try {
-      await syncBybitCard({ db, userId });
-    } catch {
-      // Keep the valid connection and surface the first sync error in its status.
-    }
-    res.status(201).json(await getBybitCardStatus(db, userId));
-  } catch (error) {
-    const message = String(error?.message || 'Could not connect to Bybit');
-    const configError = message.includes('BYBIT_CREDENTIALS_KEY');
-    const publicError = configError
-      ? { error: 'Bybit integration is not configured on the server', code: 'BYBIT_SERVER_NOT_CONFIGURED' }
-      : toBybitPublicError(error);
-    res.status(configError ? 503 : 400).json(publicError);
-  }
-});
-
-app.post('/api/integrations/bybit-card/sync', async (req, res) => {
-  const userId = String(req.authUserId ?? '');
-  try {
-    res.json(await syncBybitCard({ db, userId }));
-  } catch (error) {
-    res.status(502).json(toBybitPublicError(error));
-  }
-});
-
-app.delete('/api/integrations/bybit-card', async (req, res) => {
-  await disconnectBybitCard(db, String(req.authUserId ?? ''));
-  res.status(204).end();
-});
-
 app.get('/api/reports/settings', async (req, res) => {
   const userId = String(req.authUserId ?? '');
   if (!userId) {
@@ -5071,9 +5020,6 @@ app.delete('/api/me', authMiddleware, async (req, res) => {
     'budget_alerts',
     'goals',
     'goal_contributions',
-    'bybit_card_imports',
-    'bybit_asset_accounts',
-    'bybit_card_connections',
   ];
   await db.run('BEGIN IMMEDIATE');
   try {
@@ -5106,5 +5052,4 @@ app.use((req, res) => {
 
 app.listen(port, '0.0.0.0', () => {
   console.log(`Server running at http://0.0.0.0:${port}`);
-  startBybitCardSync({ db });
 });

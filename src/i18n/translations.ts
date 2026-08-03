@@ -309,42 +309,6 @@ type Dict = {
     sectionReports: string;
     sectionReminders: string;
     sectionPlanner: string;
-    sectionBybit: string;
-    bybitDescription: string;
-    bybitLoading: string;
-    bybitConnected: string;
-    bybitNotConnected: string;
-    bybitLoadError: string;
-    bybitConnectError: string;
-    bybitSyncError: string;
-    bybitDisconnectError: string;
-    bybitReadOnly: string;
-    bybitLastSync: string;
-    bybitImported: string;
-    bybitAssets: string;
-    bybitBalanceWarning: string;
-    bybitNeverSynced: string;
-    bybitSyncing: string;
-    bybitSyncNow: string;
-    bybitDisconnect: string;
-    bybitDisconnectConfirm: string;
-    bybitApiKeyPlaceholder: string;
-    bybitApiSecretPlaceholder: string;
-    bybitSecurityHint: string;
-    bybitConnecting: string;
-    bybitConnect: string;
-    bybitErrorReadOnly: string;
-    bybitErrorCardPermission: string;
-    bybitErrorMaster: string;
-    bybitErrorEu: string;
-    bybitErrorIp: string;
-    bybitErrorRegion: string;
-    bybitErrorPermission: string;
-    bybitErrorEndpoint: string;
-    bybitErrorCredentials: string;
-    bybitErrorServerConfig: string;
-    bybitErrorCardRequest: string;
-    bybitErrorRetry: string;
     reminderGroupExpenses: string;
     reminderGroupPlanner: string;
     reminderGroupFx: string;
@@ -750,42 +714,6 @@ const uk: Dict = {
     sectionReports: 'Звіти Telegram',
     sectionReminders: 'Нагадування',
     sectionPlanner: 'Планер',
-    sectionBybit: 'Синхронізація Bybit',
-    bybitDescription: 'Read-only синхронізація балансів BTC, ETH, SOL, TON і USDT та покупок Bybit Card за останні 7 днів.',
-    bybitLoading: 'Перевіряємо підключення…',
-    bybitConnected: 'Підключено й синхронізується автоматично',
-    bybitNotConnected: 'Автоматичний імпорт покупок',
-    bybitLoadError: 'Не вдалося завантажити стан Bybit.',
-    bybitConnectError: 'Не вдалося підключити Bybit Card.',
-    bybitSyncError: 'Не вдалося синхронізувати покупки.',
-    bybitDisconnectError: 'Не вдалося відключити Bybit Card.',
-    bybitReadOnly: 'лише читання',
-    bybitLastSync: 'Остання синхронізація',
-    bybitImported: 'Операцій',
-    bybitAssets: 'Активів',
-    bybitBalanceWarning: 'Покупки синхронізовано, але частину балансів прочитати не вдалося. Перевірте read-only дозволи й тип акаунта.',
-    bybitNeverSynced: 'ще не було',
-    bybitSyncing: 'Синхронізація…',
-    bybitSyncNow: 'Синхронізувати',
-    bybitDisconnect: 'Відключити',
-    bybitDisconnectConfirm: 'Відключити Bybit Card? Уже імпортовані витрати залишаться.',
-    bybitApiKeyPlaceholder: 'Вставте API Key',
-    bybitApiSecretPlaceholder: 'Вставте API Secret',
-    bybitSecurityHint: 'Ключ перевіряється як read-only і зберігається на сервері в зашифрованому вигляді.',
-    bybitConnecting: 'Підключення…',
-    bybitConnect: 'Підключити Bybit',
-    bybitErrorReadOnly: 'Створіть у Bybit ключ лише для читання. Ключі з правом запису Denga не приймає.',
-    bybitErrorCardPermission: 'Увімкніть для ключа read-only дозвіл Bybit Card.',
-    bybitErrorMaster: 'Для Bybit Card потрібен API-ключ головного акаунта, не субакаунта.',
-    bybitErrorEu: 'Bybit EU дозволяє API лише через схвалені сторонні застосунки. Denga не може прийняти звичайний EU API-ключ.',
-    bybitErrorIp: 'IP-обмеження ключа не містить сервер Denga. Оновіть список дозволених IP у Bybit.',
-    bybitErrorRegion: 'Bybit обмежив API для цього акаунта або регіону.',
-    bybitErrorPermission: 'Ключ не має потрібних read-only дозволів для читання даних.',
-    bybitErrorEndpoint: 'Ключ недійсний або створений для іншого домену Bybit. Для Bybit EU потрібне схвалене стороннє підключення.',
-    bybitErrorCredentials: 'API Key або API Secret неправильний.',
-    bybitErrorServerConfig: 'Шифрування ключів Bybit ще не налаштоване на сервері Denga.',
-    bybitErrorCardRequest: 'Bybit прийняв ключ, але не надає історію покупок цьому API-підключенню. Баланси синхронізуються; імпорт покупок наразі недоступний.',
-    bybitErrorRetry: 'Bybit тимчасово не завершив запит. Спробуйте синхронізацію ще раз трохи пізніше.',
     reminderGroupExpenses: 'Витрати',
     reminderGroupPlanner: 'Планер змін',
     reminderGroupFx: 'Курс валют',
@@ -1197,42 +1125,6 @@ const ru: Dict = {
     sectionReports: 'Отчёты Telegram',
     sectionReminders: 'Напоминания',
     sectionPlanner: 'Планер',
-    sectionBybit: 'Синхронизация Bybit',
-    bybitDescription: 'Read-only синхронизация балансов BTC, ETH, SOL, TON и USDT и покупок Bybit Card за последние 7 дней.',
-    bybitLoading: 'Проверяем подключение…',
-    bybitConnected: 'Подключено и синхронизируется автоматически',
-    bybitNotConnected: 'Автоматический импорт покупок',
-    bybitLoadError: 'Не удалось загрузить состояние Bybit.',
-    bybitConnectError: 'Не удалось подключить Bybit Card.',
-    bybitSyncError: 'Не удалось синхронизировать покупки.',
-    bybitDisconnectError: 'Не удалось отключить Bybit Card.',
-    bybitReadOnly: 'только чтение',
-    bybitLastSync: 'Последняя синхронизация',
-    bybitImported: 'Операций',
-    bybitAssets: 'Активов',
-    bybitBalanceWarning: 'Покупки синхронизированы, но часть балансов прочитать не удалось. Проверьте read-only разрешения и тип аккаунта.',
-    bybitNeverSynced: 'ещё не было',
-    bybitSyncing: 'Синхронизация…',
-    bybitSyncNow: 'Синхронизировать',
-    bybitDisconnect: 'Отключить',
-    bybitDisconnectConfirm: 'Отключить Bybit Card? Уже импортированные расходы останутся.',
-    bybitApiKeyPlaceholder: 'Вставьте API Key',
-    bybitApiSecretPlaceholder: 'Вставьте API Secret',
-    bybitSecurityHint: 'Ключ проверяется как read-only и хранится на сервере в зашифрованном виде.',
-    bybitConnecting: 'Подключение…',
-    bybitConnect: 'Подключить Bybit',
-    bybitErrorReadOnly: 'Создайте в Bybit ключ только для чтения. Ключи с правом записи Denga не принимает.',
-    bybitErrorCardPermission: 'Включите для ключа read-only разрешение Bybit Card.',
-    bybitErrorMaster: 'Для Bybit Card нужен API-ключ главного аккаунта, не субаккаунта.',
-    bybitErrorEu: 'Bybit EU разрешает API только через одобренные сторонние приложения. Denga не может принять обычный EU API-ключ.',
-    bybitErrorIp: 'IP-ограничение ключа не содержит сервер Denga. Обновите список разрешённых IP в Bybit.',
-    bybitErrorRegion: 'Bybit ограничил API для этого аккаунта или региона.',
-    bybitErrorPermission: 'Ключ не имеет нужных read-only разрешений для чтения данных.',
-    bybitErrorEndpoint: 'Ключ недействителен или создан для другого домена Bybit. Для Bybit EU нужно одобренное стороннее подключение.',
-    bybitErrorCredentials: 'API Key или API Secret неверный.',
-    bybitErrorServerConfig: 'Шифрование ключей Bybit ещё не настроено на сервере Denga.',
-    bybitErrorCardRequest: 'Bybit принял ключ, но не предоставляет историю покупок этому API-подключению. Балансы синхронизируются; импорт покупок сейчас недоступен.',
-    bybitErrorRetry: 'Bybit временно не завершил запрос. Повторите синхронизацию немного позже.',
     reminderGroupExpenses: 'Расходы',
     reminderGroupPlanner: 'Планер смен',
     reminderGroupFx: 'Курс валют',
@@ -1644,42 +1536,6 @@ const en: Dict = {
     sectionReports: 'Telegram reports',
     sectionReminders: 'Reminders',
     sectionPlanner: 'Planner',
-    sectionBybit: 'Bybit sync',
-    bybitDescription: 'Read-only sync for BTC, ETH, SOL, TON and USDT balances plus the last 7 days of Bybit Card purchases.',
-    bybitLoading: 'Checking connection…',
-    bybitConnected: 'Connected and syncing automatically',
-    bybitNotConnected: 'Automatic purchase import',
-    bybitLoadError: 'Could not load Bybit status.',
-    bybitConnectError: 'Could not connect Bybit Card.',
-    bybitSyncError: 'Could not sync purchases.',
-    bybitDisconnectError: 'Could not disconnect Bybit Card.',
-    bybitReadOnly: 'read only',
-    bybitLastSync: 'Last sync',
-    bybitImported: 'Transactions',
-    bybitAssets: 'Assets',
-    bybitBalanceWarning: 'Purchases synced, but some balances could not be read. Check read-only permissions and account type.',
-    bybitNeverSynced: 'not yet',
-    bybitSyncing: 'Syncing…',
-    bybitSyncNow: 'Sync now',
-    bybitDisconnect: 'Disconnect',
-    bybitDisconnectConfirm: 'Disconnect Bybit Card? Already imported expenses will remain.',
-    bybitApiKeyPlaceholder: 'Paste API Key',
-    bybitApiSecretPlaceholder: 'Paste API Secret',
-    bybitSecurityHint: 'The key is verified as read-only and stored encrypted on the server.',
-    bybitConnecting: 'Connecting…',
-    bybitConnect: 'Connect Bybit',
-    bybitErrorReadOnly: 'Create a read-only key in Bybit. Denga rejects keys with write access.',
-    bybitErrorCardPermission: 'Enable the read-only Bybit Card permission for this key.',
-    bybitErrorMaster: 'Bybit Card requires a master-account API key, not a subaccount key.',
-    bybitErrorEu: 'Bybit EU only allows API access through approved third-party apps. Denga cannot accept a regular EU API key.',
-    bybitErrorIp: 'The key IP restriction does not include the Denga server. Update the allowed IP list in Bybit.',
-    bybitErrorRegion: 'Bybit restricted API access for this account or region.',
-    bybitErrorPermission: 'The key lacks the required read-only permissions.',
-    bybitErrorEndpoint: 'The key is invalid or belongs to another Bybit domain. Bybit EU requires an approved third-party connection.',
-    bybitErrorCredentials: 'The API Key or API Secret is incorrect.',
-    bybitErrorServerConfig: 'Bybit credential encryption is not configured on the Denga server.',
-    bybitErrorCardRequest: 'Bybit accepted the key but does not expose purchase history to this API connection. Balances still sync; purchase import is currently unavailable.',
-    bybitErrorRetry: 'Bybit could not complete the request right now. Retry synchronization a little later.',
     reminderGroupExpenses: 'Expenses',
     reminderGroupPlanner: 'Shift planner',
     reminderGroupFx: 'FX rate',
