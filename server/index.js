@@ -4,7 +4,6 @@ import TelegramBot from 'node-telegram-bot-api';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
-import PImage from 'pureimage';
 import { getDatabasePath, initDb } from './db.js';
 import { startScheduledDatabaseBackups } from './backup.js';
 import { createReceiptScanHandler } from './receipt-scan.js';
@@ -12,6 +11,7 @@ import { getTransactionAccountEffects, validateTransferPayload } from './transac
 import { buildDebtRepaymentTransfer, validateDebtPayment } from './debt.js';
 import { getPreviousFullWeekDaySet } from './report-periods.js';
 import { deliverReportToTelegram } from './report-delivery.js';
+import { renderFinancialReportCardPng } from './report-card.js';
 import { parseSmartTransaction, isSmartTransactionEnabled } from './smart-transaction.js';
 import {
   connectBybitCard,
@@ -20,9 +20,7 @@ import {
   startBybitCardSync,
   syncBybitCard,
 } from './bybit-card.js';
-import { existsSync } from 'fs';
 import path from 'path';
-import { PassThrough } from 'stream';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -1115,13 +1113,6 @@ const formatWeekdayUk = (iso) => {
   const raw = new Intl.DateTimeFormat('uk-UA', { weekday: 'long' }).format(d);
   return raw.charAt(0).toUpperCase() + raw.slice(1);
 };
-const formatMonthHeaderUk = (isoDay) => {
-  const d = new Date(`${isoDay}T12:00:00.000Z`);
-  if (Number.isNaN(d.getTime())) return 'МІСЯЦЬ';
-  const month = new Intl.DateTimeFormat('uk-UA', { month: 'long' }).format(d).toUpperCase();
-  const year = new Intl.DateTimeFormat('uk-UA', { year: 'numeric' }).format(d);
-  return `${month} ${year}`;
-};
 const percentChange = (current, previous) => {
   const prev = Number(previous) || 0;
   const cur = Number(current) || 0;
@@ -1331,224 +1322,6 @@ const buildRecommendationItems = async ({
     .sort((a, b) => b.priority - a.priority)
     .slice(0, 5);
 };
-const getBudgetCompliance = async (dbConn, userId, txs, today, tz, fxPayload) => {
-  const rows = await dbConn.all(
-    `SELECT category_id AS categoryId, monthly_limit AS monthlyLimit, currency
-     FROM category_budgets
-     WHERE user_id = ?`,
-    [userId]
-  );
-  if (!Array.isArray(rows) || rows.length === 0) {
-    return { items: [], allUnderLimit: false };
-  }
-  const ym = String(today || '').slice(0, 7);
-  const items = [];
-  for (const row of rows) {
-    const limit = Number(row?.monthlyLimit);
-    if (!(limit > 0)) continue;
-    const budgetCurrency = normalizeCurrency(row?.currency);
-    let spent = 0;
-    for (const tx of txs || []) {
-      if (tx?.type !== 'expense' || tx.categoryId !== row.categoryId) continue;
-      const txDay = dayFromIsoInZone(String(tx.date), tz);
-      if (!String(txDay).startsWith(ym)) continue;
-      spent += convertCurrencyServer(
-        Number(tx.amount) || 0,
-        normalizeCurrency(tx.currency),
-        budgetCurrency,
-        fxPayload
-      );
-    }
-    const ratio = spent / limit;
-    items.push({
-      categoryId: row.categoryId,
-      spent,
-      limit,
-      budgetCurrency,
-      ratio,
-    });
-  }
-  const allUnderLimit = items.length > 0 && items.every((i) => i.ratio < 1);
-  return { items, allUnderLimit };
-};
-const getActiveGoalsWithSaved = async (dbConn, userId, rangeSet, tz) => {
-  const sortedDays = Array.from(rangeSet).sort();
-  if (sortedDays.length === 0) return [];
-  const rangeStart = sortedDays[0];
-  const rangeEnd = sortedDays[sortedDays.length - 1];
-  const goals = await dbConn.all(
-    `SELECT id, name, target_amount AS targetAmount, currency FROM goals WHERE user_id = ? AND archived = 0`,
-    [userId]
-  );
-  const contribs = await dbConn.all(
-    `SELECT goal_id AS goalId, amount, date FROM goal_contributions WHERE user_id = ?`,
-    [userId]
-  );
-  const byGoal = new Map();
-  for (const g of goals || []) {
-    const id = String(g.id);
-    byGoal.set(id, {
-      id,
-      name: String(g.name || 'Ціль'),
-      targetAmount: Math.max(0, Number(g.targetAmount) || 0),
-      currency: normalizeCurrency(g.currency),
-      savedBefore: 0,
-      savedInPeriod: 0,
-      savedThroughEnd: 0,
-    });
-  }
-  for (const c of contribs || []) {
-    const gid = String(c.goalId);
-    const row = byGoal.get(gid);
-    if (!row) continue;
-    const day = dayFromIsoInZone(String(c.date), tz);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
-    const amt = Math.max(0, Number(c.amount) || 0);
-    if (day <= rangeEnd) row.savedThroughEnd += amt;
-    if (day < rangeStart) row.savedBefore += amt;
-    if (day >= rangeStart && day <= rangeEnd) row.savedInPeriod += amt;
-  }
-  return Array.from(byGoal.values())
-    .filter((g) => g.targetAmount > 0)
-    .map((g) => ({
-      ...g,
-      progressStart: g.savedBefore / g.targetAmount,
-      progressEnd: g.savedThroughEnd / g.targetAmount,
-    }));
-};
-const buildAchievementLines = async ({
-  reportType,
-  summary,
-  prevSummary,
-  currentExpenseByCategory,
-  previousExpenseByCategory,
-  dbConn,
-  userId,
-  txs,
-  today,
-  tz,
-  fxPayload,
-  workedHours,
-  workingDays,
-  rangeSet,
-}) => {
-  const candidates = [];
-  const income = Math.max(0, Number(summary.income) || 0);
-  const net = Number(summary.net) || 0;
-  const savedPct = income > 0 ? (Math.max(0, net) / income) * 100 : 0;
-  if (savedPct >= 50) {
-    candidates.push({
-      priority: 90,
-      line: `🏆 Видатний рівень збережень: ${savedPct.toLocaleString('uk-UA', { maximumFractionDigits: 0 })}%`,
-    });
-  } else if (savedPct >= 30) {
-    candidates.push({
-      priority: 90,
-      line: `💎 Високий рівень збережень: ${savedPct.toLocaleString('uk-UA', { maximumFractionDigits: 0 })}%`,
-    });
-  } else if (savedPct >= 10) {
-    candidates.push({
-      priority: 90,
-      line: `✅ Збережено ${savedPct.toLocaleString('uk-UA', { maximumFractionDigits: 0 })}% доходу`,
-    });
-  }
-  const prevNet = Number(prevSummary?.net) || 0;
-  const netBetterPct = percentChange(net, prevNet);
-  let addedNetComparison = false;
-  if (net > prevNet && prevNet !== 0) {
-    candidates.push({
-      priority: 70,
-      line: `📈 Баланс кращий на ${Math.abs(Math.round(netBetterPct))}% за минулий період`,
-    });
-    addedNetComparison = true;
-  }
-  if (net > 0 && !addedNetComparison) {
-    candidates.push({ priority: 60, line: '✅ Період закрито у плюс' });
-  }
-  const { items: budgetItems, allUnderLimit } = await getBudgetCompliance(
-    dbConn,
-    userId,
-    txs,
-    today,
-    tz,
-    fxPayload
-  );
-  if (budgetItems.length >= 1 && allUnderLimit) {
-    candidates.push({ priority: 80, line: '🛡️ Усі бюджети в межах ліміту' });
-  } else {
-    const goodOnes = budgetItems
-      .filter((i) => i.ratio <= 0.7)
-      .sort((a, b) => a.ratio - b.ratio)
-      .slice(0, 2);
-    for (const b of goodOnes) {
-      candidates.push({
-        priority: 80,
-        line: `✅ Бюджет «${categoryNameById(b.categoryId)}»: лише ${Math.round(b.ratio * 100)}% використано`,
-      });
-    }
-  }
-  const goalRows = await getActiveGoalsWithSaved(dbConn, userId, rangeSet, tz);
-  for (const g of goalRows) {
-    if (g.progressEnd >= 1 && g.progressStart < 1) {
-      candidates.push({ priority: 100, line: `🏆 Ціль «${g.name}» виконана!` });
-      continue;
-    }
-    if (g.savedInPeriod <= 0) continue;
-    const thresholds = [
-      { t: 0.75, label: '75%' },
-      { t: 0.5, label: '50%' },
-      { t: 0.25, label: '25%' },
-    ];
-    for (const { t, label } of thresholds) {
-      if (g.progressStart < t && g.progressEnd >= t) {
-        candidates.push({
-          priority: 95,
-          line: `🎯 Ціль «${g.name}»: досягнуто ${label}`,
-        });
-        break;
-      }
-    }
-  }
-  const topCats = Array.from(currentExpenseByCategory.entries())
-    .filter(([, amt]) => amt > 0)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 3);
-  let bestReduction = null;
-  for (const [categoryId, cur] of topCats) {
-    const prevAmt = previousExpenseByCategory.get(categoryId) ?? 0;
-    if (!(cur > 0) || !(prevAmt > 0)) continue;
-    const reduction = (prevAmt - cur) / prevAmt;
-    if (reduction >= 0.15) {
-      if (!bestReduction || reduction > bestReduction.reduction) {
-        bestReduction = { categoryId, reduction };
-      }
-    }
-  }
-  if (bestReduction) {
-    candidates.push({
-      priority: 75,
-      line: `📉 «${categoryNameById(bestReduction.categoryId)}»: витрати −${Math.round(bestReduction.reduction * 100)}%`,
-    });
-  }
-  const wh = Math.max(0, Number(workedHours) || 0);
-  const wd = Math.max(0, Number(workingDays) || 0);
-  if (reportType === 'weekly' && wh >= 40) {
-    candidates.push({
-      priority: 50,
-      line: `⏱️ Відпрацьовано ${formatHoursAsHoursMinutes(wh)} / ${wd} днів`,
-    });
-  }
-  if (reportType === 'monthly' && wh >= 160) {
-    candidates.push({
-      priority: 50,
-      line: `⏱️ Відпрацьовано ${formatHoursAsHoursMinutes(wh)} / ${wd} днів`,
-    });
-  }
-  return candidates
-    .sort((a, b) => b.priority - a.priority)
-    .slice(0, 6)
-    .map((c) => c.line);
-};
 const formatRecommendationsSection = (items, title = '💡 РЕКОМЕНДАЦІЇ') => {
   const lines = [title];
   if (!Array.isArray(items) || items.length === 0) {
@@ -1569,357 +1342,6 @@ const detectPrimaryCurrency = (txs) => {
   }
   return Object.entries(counters).sort((a, b) => Number(b[1]) - Number(a[1]))[0]?.[0] || 'UAH';
 };
-const escapeHtml = (value) =>
-  String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-let reportFontReady = false;
-let reportFontAvailable = false;
-let reportFontRegular = 'sans-serif';
-let reportFontBold = 'sans-serif';
-const ensureReportFont = () => {
-  if (reportFontReady) return;
-  const candidates = [
-    {
-      regular: path.resolve(__dirname, '../node_modules/dejavu-fonts-ttf/ttf/DejaVuSans.ttf'),
-      bold: path.resolve(__dirname, '../node_modules/dejavu-fonts-ttf/ttf/DejaVuSans-Bold.ttf'),
-    },
-    {
-      regular: '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
-      bold: '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
-    },
-    {
-      regular: '/usr/share/fonts/dejavu/DejaVuSans.ttf',
-      bold: '/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf',
-    },
-    {
-      regular: 'C:/Windows/Fonts/arial.ttf',
-      bold: 'C:/Windows/Fonts/arialbd.ttf',
-    },
-  ];
-  for (const pair of candidates) {
-    try {
-      if (!existsSync(pair.regular)) continue;
-      const regular = PImage.registerFont(pair.regular, 'DengaSansRegular');
-      regular.loadSync();
-      let boldLoaded = false;
-      if (pair.bold && existsSync(pair.bold)) {
-        const bold = PImage.registerFont(pair.bold, 'DengaSansBold');
-        bold.loadSync();
-        boldLoaded = true;
-      }
-      reportFontReady = true;
-      reportFontAvailable = true;
-      reportFontRegular = 'DengaSansRegular';
-      reportFontBold = boldLoaded ? 'DengaSansBold' : 'DengaSansRegular';
-      return;
-    } catch {
-      // try next
-    }
-  }
-  reportFontReady = true;
-  reportFontAvailable = false;
-};
-const encodePngBuffer = async (img) => {
-  const out = new PassThrough();
-  const chunks = [];
-  out.on('data', (c) => chunks.push(Buffer.from(c)));
-  await PImage.encodePNGToStream(img, out);
-  return Buffer.concat(chunks);
-};
-const renderReportCardPng = async (reportType, periodLabel, summary, comparison, reportCurrency = 'UAH') => {
-  ensureReportFont();
-  if (!reportFontAvailable) {
-    throw new Error('report font not available');
-  }
-  const currencySign = currencySymbol(normalizeCurrency(reportCurrency));
-  const width = 1280;
-  const height = 1700;
-  const img = PImage.make(width, height);
-  const ctx = img.getContext('2d');
-  
-  const colors = {
-    bg: '#0f0f12',
-    card: '#16141d',
-    accent: '#ffb020',
-    income: '#4ADE80',
-    expense: '#F87171',
-    text: '#F2F2F5',
-    sub: '#A5A5B0',
-    border: '#2C2835',
-    blockBg: '#1D1A25'
-  };
-  
-  const drawRoundedRect = (x, y, w, h, r, fill, stroke) => {
-    ctx.beginPath();
-    ctx.roundRect(x, y, w, h, r);
-    if (fill) {
-      ctx.fillStyle = fill;
-      ctx.fill();
-    }
-    if (stroke) {
-      ctx.strokeStyle = stroke;
-      ctx.stroke();
-    }
-  };
-
-  ctx.fillStyle = colors.bg;
-  ctx.fillRect(0, 0, width, height);
-
-  ctx.lineWidth = 2;
-  drawRoundedRect(48, 48, width - 96, height - 96, 48, colors.card, colors.border);
-  
-  ctx.save();
-  ctx.beginPath();
-  ctx.roundRect(48, 48, width - 96, height - 96, 48);
-  ctx.clip();
-  ctx.fillStyle = colors.accent;
-  ctx.fillRect(48, 48, width - 96, 16);
-  ctx.restore();
-
-  const regularFont = reportFontAvailable ? reportFontRegular : 'sans-serif';
-  const boldFont = reportFontAvailable ? reportFontBold : regularFont;
-  const setFont = (size, weight = 500) => {
-    const family = weight >= 700 ? boldFont : regularFont;
-    ctx.font = `${size}pt ${family}`;
-  };
-  ctx.textBaseline = 'alphabetic';
-  
-  const incomeTrendText = formatComparisonChange(comparison.incomeDelta, { positive: 'більше', negative: 'менше' });
-  const expenseTrendText = formatComparisonChange(comparison.expenseDelta, { positive: 'більше', negative: 'менше' });
-  const comparisonLabel = reportType === 'weekly' ? 'Попереднього тижня' : 'Попереднього місяця';
-
-  ctx.fillStyle = colors.text;
-  setFont(64, 700);
-  ctx.fillText(reportType === 'weekly' ? 'Тижневий звіт' : 'Місячний звіт', 100, 180);
-  
-  ctx.fillStyle = colors.sub;
-  setFont(32, 400);
-  ctx.fillText(periodLabel, 100, 240);
-
-  const block = (x, y, w, h, title) => {
-    drawRoundedRect(x, y, w, h, 32, colors.blockBg, colors.border);
-    ctx.fillStyle = colors.sub;
-    setFont(24, 700);
-    ctx.fillText(title.toUpperCase(), x + 40, y + 56);
-  };
-
-  block(100, 300, width - 200, 350, 'Підсумки');
-  
-  ctx.fillStyle = colors.text;
-  setFont(40, 500);
-  ctx.fillText(`Дохід:`, 140, 420);
-  ctx.fillStyle = colors.income;
-  ctx.fillText(`+${Math.abs(summary.income).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} ${currencySign}`, 550, 420);
-  
-  ctx.fillStyle = colors.text;
-  ctx.fillText(`Витрати:`, 140, 500);
-  ctx.fillStyle = colors.expense;
-  ctx.fillText(`-${Math.abs(summary.expense).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} ${currencySign}`, 550, 500);
-  
-  ctx.fillStyle = colors.text;
-  ctx.fillText(`Результат:`, 140, 580);
-  ctx.fillStyle = summary.net >= 0 ? colors.income : colors.expense;
-  ctx.fillText(
-    `${summary.net >= 0 ? '+' : '-'}${Math.abs(summary.net).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} ${currencySign}`,
-    550,
-    580
-  );
-  
-  ctx.fillStyle = colors.sub;
-  setFont(28, 500);
-  ctx.fillText(`Операцій: ${summary.incomeCount + summary.expenseCount}`, 140, 635);
-
-  block(100, 690, width - 200, 300, 'Порівняння');
-  ctx.fillStyle = colors.sub;
-  setFont(26, 400);
-  ctx.fillText(`До ${comparisonLabel}:`, 140, 780);
-  ctx.fillStyle = colors.text;
-  setFont(30, 500);
-  ctx.fillText('Дохід', 140, 845);
-  ctx.fillStyle = comparison.incomeDelta >= 0 ? colors.income : colors.expense;
-  ctx.fillText(incomeTrendText, 450, 845);
-  ctx.fillStyle = colors.text;
-  ctx.fillText('Витрати', 140, 905);
-  ctx.fillStyle = comparison.expenseDelta <= 0 ? colors.income : colors.expense;
-  ctx.fillText(expenseTrendText, 450, 905);
-
-  block(100, 1030, width - 200, 300, 'Топ витрат');
-  (summary.topExpenses || []).slice(0, 5).forEach((item, idx) => {
-    ctx.fillStyle = colors.text;
-    setFont(36, 500);
-    ctx.fillText(`${idx + 1}. ${String(categoryNameById(item.categoryId)).slice(0, 24)}`, 140, 1140 + idx * 58);
-    
-    ctx.fillStyle = colors.expense;
-    ctx.fillText(`${Math.abs(item.amount).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} ${currencySign}`, 850, 1140 + idx * 58);
-  });
-
-  block(100, 1360, width - 200, 300, 'Топ доходів');
-  (summary.topIncome || []).slice(0, 5).forEach((item, idx) => {
-    ctx.fillStyle = colors.text;
-    setFont(36, 500);
-    ctx.fillText(`${idx + 1}. ${String(categoryNameById(item.categoryId)).slice(0, 24)}`, 140, 1470 + idx * 58);
-    
-    ctx.fillStyle = colors.income;
-    ctx.fillText(`${Math.abs(item.amount).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} ${currencySign}`, 850, 1470 + idx * 58);
-  });
-
-  return encodePngBuffer(img);
-};
-const buildReportText = (reportType, periodLabel, txs, comparison, extra = {}) => {
-  const reportCurrencyCode = normalizeCurrency(extra.reportCurrency || 'UAH');
-  const summary = extra.summary ?? summarizeTransactions(txs, reportCurrencyCode, extra.fxPayload ?? FX_FALLBACK);
-  const sign = currencySymbol(reportCurrencyCode);
-  const formatAmount = (value, withSign = false) => {
-    const sign = withSign ? (value >= 0 ? '+' : '-') : '';
-    return `${sign}${Math.abs(value).toLocaleString('uk-UA', { maximumFractionDigits: 2 })}`;
-  };
-  const TECHNICAL_CATEGORY_IDS = new Set(['other_income', 'other_expense']);
-  const appendNarrative = (lines) => {
-    const achievements = Array.isArray(extra.achievementLines) ? extra.achievementLines.filter(Boolean) : [];
-    const recommendations = Array.isArray(extra.recommendationLines) ? extra.recommendationLines.filter(Boolean) : [];
-    if (achievements.length > 0) {
-      lines.push('');
-      lines.push('🏆 *ДОСЯГНЕННЯ*');
-      lines.push(...achievements.slice(0, 6));
-    }
-    if (recommendations.length > 0) {
-      lines.push('');
-      lines.push('💡 *ЩО ВАРТО ЗРОБИТИ ДАЛІ*');
-      lines.push(...recommendations.slice(0, 4));
-    }
-    return lines;
-  };
-  if (reportType === 'weekly') {
-    const topExpenseCategories = (summary.topExpenses || [])
-      .filter((item) => !TECHNICAL_CATEGORY_IDS.has(item.categoryId))
-      .slice(0, 5);
-    const workedHours = Math.max(0, Number(extra.workedHours) || 0);
-    const prevIncome = Number(extra.previousIncome) || 0;
-    const prevExpense = Number(extra.previousExpense) || 0;
-    const incomePct = percentChange(summary.income, prevIncome);
-    const expensePct = percentChange(summary.expense, prevExpense);
-    const lines = [
-      '📊 *ФІНАНСОВИЙ ЗВІТ*',
-      '━━━━━━━━━━━━━━━━━━━━',
-      `📅 Період: ${periodLabel}`,
-      '',
-      '💰 *ФІНАНСИ*',
-      `├ Дохід: *+${formatAmount(summary.income)} ${sign}*`,
-      `├ Витрати: *-${formatAmount(summary.expense)} ${sign}*`,
-      `└ Баланс: \`${formatAmount(summary.net, true)} ${sign}\``,
-    ];
-    if (prevIncome > 0 || prevExpense > 0) {
-      lines.push('');
-      lines.push('🔁 *ПОРІВНЯННЯ З МИНУЛИМ ТИЖНЕМ*');
-      lines.push(`├ Дохід: \`${incomePct >= 0 ? '+' : ''}${incomePct.toLocaleString('uk-UA', { maximumFractionDigits: 0 })}%\` ${incomePct >= 0 ? '⬆️' : '⬇️'}`);
-      lines.push(`└ Витрати: \`${expensePct >= 0 ? '+' : ''}${expensePct.toLocaleString('uk-UA', { maximumFractionDigits: 0 })}%\` ${expensePct >= 0 ? '⬆️' : '⬇️'}`);
-    }
-    lines.push('');
-    lines.push('📈 *Категорії витрат:*');
-    if (topExpenseCategories.length > 0) {
-      for (const item of topExpenseCategories) {
-        lines.push(`${CATEGORY_EMOJI[item.categoryId] ?? '•'} ${categoryNameById(item.categoryId)}: ${formatAmount(item.amount)} ${sign}`);
-      }
-    } else {
-      lines.push('• Немає витрат за період');
-    }
-    if (workedHours > 0) {
-      lines.push('');
-      lines.push('⏰ *РОБОЧИЙ ЧАС*');
-      lines.push(`└ Відпрацьовано: *${formatHoursAsHoursMinutes(workedHours)}*`);
-    }
-    return appendNarrative(lines).join('\n');
-  }
-  if (reportType === 'monthly') {
-    const topExpenseCategories = (summary.topExpenses || [])
-      .filter((item) => !TECHNICAL_CATEGORY_IDS.has(item.categoryId))
-      .slice(0, 5);
-    const totalExpense = topExpenseCategories.reduce((a, item) => a + item.amount, 0);
-    const workedHours = Math.max(0, Number(extra.workedHours) || 0);
-    const workingDays = Math.max(0, Number(extra.workingDays) || 0);
-    const avgPerDay = Math.max(0, Number(extra.avgPerDay) || 0);
-    const incomePct = percentChange(summary.income, Number(extra.previousIncome) || 0);
-    const expensePct = percentChange(summary.expense, Number(extra.previousExpense) || 0);
-    const netPct = percentChange(summary.net, Number(extra.previousNet) || 0);
-    const monthHeader = formatMonthHeaderUk(extra.periodEndDay || '');
-    const lines = [
-      `📅 *ФІНАНСОВИЙ ЗВІТ — ${monthHeader}*`,
-      '━━━━━━━━━━━━━━━━━━━━━━━━━━',
-      '',
-      '💰 *ЗАГАЛЬНА СТАТИСТИКА*',
-      `Дохід: *+${formatAmount(summary.income)} ${sign}*`,
-      `Витрати: *-${formatAmount(summary.expense)} ${sign}*`,
-      `Баланс: \`${formatAmount(summary.net, true)} ${sign}\``,
-      '',
-      '📊 *ВИТРАТИ ПО КАТЕГОРІЯХ*',
-    ];
-    if (topExpenseCategories.length > 0) {
-      for (const item of topExpenseCategories) {
-        const pct = totalExpense > 0 ? (item.amount / totalExpense) * 100 : 0;
-        lines.push(
-          `${CATEGORY_EMOJI[item.categoryId] ?? '•'} ${categoryNameById(item.categoryId)}: ${formatAmount(item.amount)} ${sign} (${pct.toLocaleString('uk-UA', { maximumFractionDigits: 0 })}%)`
-        );
-      }
-    } else {
-      lines.push('• Немає витрат за період');
-    }
-    lines.push('');
-    lines.push('📈 *ПОРІВНЯННЯ З МИНУЛИМ МІСЯЦЕМ*');
-    lines.push(`├ Дохід: \`${incomePct >= 0 ? '+' : ''}${incomePct.toLocaleString('uk-UA', { maximumFractionDigits: 0 })}%\` ${incomePct >= 0 ? '⬆️' : '⬇️'}`);
-    lines.push(`├ Витрати: \`${expensePct >= 0 ? '+' : ''}${expensePct.toLocaleString('uk-UA', { maximumFractionDigits: 0 })}%\` ${expensePct >= 0 ? '⬆️' : '⬇️'}`);
-    lines.push(`└ Баланс: \`${netPct >= 0 ? '+' : ''}${netPct.toLocaleString('uk-UA', { maximumFractionDigits: 0 })}%\` ${netPct >= 0 ? '⬆️' : '⬇️'}`);
-    if (workedHours > 0) {
-      lines.push('');
-      lines.push('⏰ *РОБОЧИЙ ЧАС*');
-      lines.push(`├ Всього відпрацьовано: *${formatHoursAsHoursMinutes(workedHours)}*`);
-      lines.push(`├ Робочих днів: ${workingDays}`);
-      lines.push(`└ Середньо/день: ${formatHoursAsHoursMinutes(avgPerDay)}`);
-    }
-    return appendNarrative(lines).join('\n');
-  }
-  const title = reportType === 'weekly' ? '📊 ТИЖНЕВИЙ ЗВІТ' : '📅 МІСЯЧНИЙ ЗВІТ';
-  const lines = [
-    title,
-    periodLabel,
-    '',
-    '💰 ПІДСУМКИ',
-    `Дохід: +${formatAmount(summary.income)} UAH`,
-    `Витрати: -${formatAmount(summary.expense)} UAH`,
-    `Результат: ${formatAmount(summary.net, true)} UAH`,
-    `Операцій: ${summary.incomeCount + summary.expenseCount}`,
-  ];
-  if (comparison) {
-    const incomeTrendText = formatComparisonChange(comparison.incomeDelta, { positive: 'більше', negative: 'менше' });
-    const expenseTrendText = formatComparisonChange(comparison.expenseDelta, { positive: 'більше', negative: 'менше' });
-    lines.push('');
-    lines.push(`🔁 ДО ${reportType === 'weekly' ? 'МИНУЛОГО ТИЖНЯ' : 'МИНУЛОГО МІСЯЦЯ'}`);
-    lines.push(`Дохід: ${incomeTrendText}`);
-    lines.push(`Витрати: ${expenseTrendText}`);
-  }
-  if (summary.topExpenses.length > 0) {
-    lines.push('');
-    lines.push('📉 ТОП ВИТРАТ');
-    summary.topExpenses.forEach((item, idx) => {
-      lines.push(`${idx + 1}) ${categoryNameById(item.categoryId)} — ${formatAmount(item.amount)} UAH`);
-    });
-  }
-  if (summary.topIncome.length > 0) {
-    lines.push('');
-    lines.push('📈 ТОП ДОХОДІВ');
-    summary.topIncome.forEach((item, idx) => {
-      lines.push(`${idx + 1}) ${categoryNameById(item.categoryId)} — ${formatAmount(item.amount)} UAH`);
-    });
-  }
-  if ((txs?.length ?? 0) === 0) {
-    lines.push('');
-    lines.push('ℹ️ За обраний період операцій не знайдено.');
-  }
-  return lines.join('\n');
-};
 const sendUserReport = async (dbConn, userId, chatId, reportType, timeZone) => {
   if (!bot) return false;
   const tz = normalizeTimeZone(timeZone);
@@ -1930,115 +1352,55 @@ const sendUserReport = async (dbConn, userId, chatId, reportType, timeZone) => {
     'SELECT amount, currency, categoryId, type, date FROM transactions WHERE user_id = ? ORDER BY date DESC LIMIT 5000',
     [userId]
   );
-  const scoped = (Array.isArray(txs) ? txs : []).filter((tx) => rangeSet.has(dayFromIsoInZone(tx.date, tz)));
+  const allTransactions = Array.isArray(txs) ? txs : [];
+  const scoped = allTransactions.filter((tx) => rangeSet.has(dayFromIsoInZone(tx.date, tz)));
   const previousRangeSet = buildPreviousPeriodDaySet(reportType, rangeSet);
-  const previousScoped = (Array.isArray(txs) ? txs : []).filter((tx) => previousRangeSet.has(dayFromIsoInZone(tx.date, tz)));
+  const previousScoped = allTransactions.filter((tx) => previousRangeSet.has(dayFromIsoInZone(tx.date, tz)));
   const reportSettings = await getReportSettings(dbConn, userId);
   const fx = await fetchFxRates();
   const reportCurrency = normalizeCurrency(reportSettings.reportCurrency || detectPrimaryCurrency(scoped));
   const sortedDays = Array.from(rangeSet).sort();
+  const periodStartDay = sortedDays[0] || today;
   const periodEndDay = sortedDays[sortedDays.length - 1] || today;
-  const periodLabel = reportType === 'weekly'
-    ? `${formatDayMonth(sortedDays[0])} — ${formatDayMonth(periodEndDay)}.${String(periodEndDay).slice(0, 4)}`
-    : `${sortedDays[0]} → ${periodEndDay}`;
+  const periodLabel = `${formatDayMonth(periodStartDay)} — ${formatDayMonth(periodEndDay)}.${String(periodEndDay).slice(0, 4)}`;
   const summary = summarizeTransactions(scoped, reportCurrency, fx);
   const previousSummary = summarizeTransactions(previousScoped, reportCurrency, fx);
   const comparison = buildReportComparison(summary, previousSummary);
-  const shiftRows = await dbConn.all(
-    `SELECT day, worked_hours, salary_amount, salary_currency
-     FROM planner_shift_entries
-     WHERE user_id = ? AND day >= ? AND day <= ?`,
-    [userId, sortedDays[0], sortedDays[sortedDays.length - 1]]
-  );
-  const plannerDayRows = await dbConn.all(
-    `SELECT day, hasShift, workedHours
-     FROM planner_days
-     WHERE day >= ? AND day <= ?`,
-    [plannerDayKey(userId, sortedDays[0]), plannerDayKey(userId, sortedDays[sortedDays.length - 1])]
-  );
-  const periodDays = reportType === 'weekly' ? 7 : Math.max(28, sortedDays.length);
-  const recommendationItems = await buildRecommendationItems({
-    dbConn,
-    userId,
-    txs: Array.isArray(txs) ? txs : [],
-    currentTxs: scoped,
-    previousTxs: previousScoped,
-    periodDays,
-    today,
-    tz,
-    reportCurrency,
-  });
-  const recommendationLines = recommendationItems.map((item) => `• ${item.insight}. ${item.action}`);
-  const entryHoursByDay = new Map();
-  for (const row of shiftRows || []) {
-    const day = String(row.day || '');
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
-    entryHoursByDay.set(day, (entryHoursByDay.get(day) ?? 0) + Math.max(0, Number(row.worked_hours) || 0));
-  }
-  const plannerFallbackByDay = new Map();
-  for (const row of plannerDayRows || []) {
-    const dayIso = plannerDayFromStored(userId, String(row.day || ''));
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(dayIso)) continue;
-    if (!Boolean(row.hasShift)) continue;
-    if (entryHoursByDay.has(dayIso)) continue;
-    plannerFallbackByDay.set(dayIso, Math.max(0, Number(row.workedHours) || 0));
-  }
-  const workedHours =
-    Array.from(entryHoursByDay.values()).reduce((acc, h) => acc + h, 0) +
-    Array.from(plannerFallbackByDay.values()).reduce((acc, h) => acc + h, 0);
-  const workedDaySet = new Set([
-    ...Array.from(entryHoursByDay.keys()),
-    ...Array.from(plannerFallbackByDay.keys()),
-  ]);
-  const workingDays = workedDaySet.size;
-  const avgPerDay = workingDays > 0 ? workedHours / workingDays : 0;
-  const currentExpenseByCategory = sumExpenseByCategory(scoped, reportCurrency, fx);
-  const previousExpenseByCategory = sumExpenseByCategory(previousScoped, reportCurrency, fx);
-  const achievementLines = await buildAchievementLines({
-    reportType,
-    summary,
-    prevSummary: previousSummary,
-    currentExpenseByCategory,
-    previousExpenseByCategory,
-    dbConn,
-    userId,
-    txs: Array.isArray(txs) ? txs : [],
-    today,
-    tz,
-    fxPayload: fx,
-    workedHours,
-    workingDays,
-    rangeSet,
-  });
-  const text = buildReportText(reportType, periodLabel, scoped, comparison, {
-    summary,
-    workedHours,
-    workingDays,
-    avgPerDay,
-    reportCurrency,
-    fxPayload: fx,
-    previousIncome: previousSummary.income,
-    previousExpense: previousSummary.expense,
-    previousNet: previousSummary.net,
-    periodEndDay,
-    recommendationLines,
-    achievementLines,
-  });
+  const topExpenses = (summary.topExpenses || [])
+    .filter((item) => !['other_income', 'other_expense'].includes(item.categoryId))
+    .slice(0, 4)
+    .map((item) => ({ ...item, name: categoryNameById(item.categoryId) }));
+
   let pngBuffer = null;
   try {
-    pngBuffer = await renderReportCardPng(reportType, periodLabel, summary, comparison, reportCurrency);
-  } catch (e) {
-    console.warn('[bot] report PNG rendering failed; sending text only', { userId, reportType, err: e });
+    pngBuffer = await renderFinancialReportCardPng({
+      reportType,
+      periodLabel,
+      summary,
+      comparison,
+      reportCurrency,
+      topExpenses,
+    });
+  } catch (error) {
+    console.warn('[bot] report PNG rendering failed; using short text fallback', {
+      userId,
+      reportType,
+      error,
+    });
   }
+
   const reportName = reportType === 'weekly' ? 'Тижневий фінансовий звіт' : 'Місячний фінансовий звіт';
-  const sign = currencySymbol(reportCurrency);
-  const caption = [
-    `📊 ${reportName}`,
+  const fallbackText = [
+    reportName,
     periodLabel,
-    `Результат: ${summary.net >= 0 ? '+' : '-'}${Math.abs(summary.net).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} ${sign}`,
+    `Результат: ${summary.net >= 0 ? "+" : "−"}${formatMoney(summary.net)} ${currencySymbol(reportCurrency)}`,
   ].join('\n');
+
   return deliverReportToTelegram({
-    bot, chatId, pngBuffer, caption, text,
+    bot,
+    chatId,
+    pngBuffer,
+    fallbackText,
     fileName: `financial-${reportType}-${periodEndDay}.png`,
   });
 };

@@ -4,21 +4,21 @@ import { deliverReportToTelegram } from './report-delivery.js';
 const silentLogger = { warn: vi.fn(), error: vi.fn() };
 
 describe('report delivery', () => {
-  it('sends the image and detailed text', async () => {
+  it('sends only the image when rendering succeeds', async () => {
     const bot = { sendPhoto: vi.fn(async () => ({})), sendMessage: vi.fn(async () => ({})) };
     await expect(deliverReportToTelegram({
       bot,
       chatId: 1,
       pngBuffer: Buffer.from('png'),
-      caption: 'Weekly report',
-      text: 'Details',
+      fallbackText: 'Short fallback',
       logger: silentLogger,
     })).resolves.toBe(true);
     expect(bot.sendPhoto).toHaveBeenCalledOnce();
-    expect(bot.sendMessage).toHaveBeenCalledOnce();
+    expect(bot.sendPhoto.mock.calls[0][2]).toEqual({});
+    expect(bot.sendMessage).not.toHaveBeenCalled();
   });
 
-  it('falls back to text when photo delivery fails', async () => {
+  it('sends one short text fallback when photo delivery fails', async () => {
     const bot = {
       sendPhoto: vi.fn(async () => { throw new Error('photo failed'); }),
       sendMessage: vi.fn(async () => ({})),
@@ -27,14 +27,15 @@ describe('report delivery', () => {
       bot,
       chatId: 1,
       pngBuffer: Buffer.from('png'),
-      caption: 'Weekly report',
-      text: 'Details',
+      fallbackText: 'Short fallback',
       logger: silentLogger,
     })).resolves.toBe(true);
+    expect(bot.sendPhoto).toHaveBeenCalledOnce();
     expect(bot.sendMessage).toHaveBeenCalledOnce();
+    expect(bot.sendMessage).toHaveBeenCalledWith(1, 'Short fallback', { disable_web_page_preview: true });
   });
 
-  it('reports failure only when neither delivery succeeds', async () => {
+  it('reports failure when the single available delivery also fails', async () => {
     const bot = {
       sendPhoto: vi.fn(async () => { throw new Error('photo failed'); }),
       sendMessage: vi.fn(async () => { throw new Error('text failed'); }),
@@ -43,8 +44,7 @@ describe('report delivery', () => {
       bot,
       chatId: 1,
       pngBuffer: Buffer.from('png'),
-      caption: 'Weekly report',
-      text: 'Details',
+      fallbackText: 'Short fallback',
       logger: silentLogger,
     })).resolves.toBe(false);
   });

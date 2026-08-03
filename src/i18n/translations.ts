@@ -265,17 +265,8 @@ type Dict = {
     totalExpense: string;
     net: string;
     vsPrevious: string;
-    insightsTitle: string;
-    noInsights: string;
-    insightTrend: string;
-    insightGrowth: string;
-    insightAnomaly: string;
-    insightRecurring: string;
-    previousPeriod: string;
-    trendTitle: string;
     byCategory: string;
     categoriesWord: string;
-    daysShort: string;
     noData: string;
     transactions: string;
     manageBudgets: string;
@@ -698,17 +689,8 @@ const uk: Dict = {
     totalExpense: 'Усього витрат',
     net: 'Чистий результат',
     vsPrevious: 'до минулого періоду',
-    insightsTitle: 'Інсайти',
-    noInsights: 'Ще недостатньо даних для висновків',
-    insightTrend: 'Тренд витрат',
-    insightGrowth: 'Найшвидше зростає',
-    insightAnomaly: 'Аномальна витрата',
-    insightRecurring: 'Повторюється',
-    previousPeriod: 'До минулого періоду',
-    trendTitle: 'Динаміка',
     byCategory: 'За категоріями',
     categoriesWord: 'категорій',
-    daysShort: 'дн',
     noData: 'Немає даних для цього періоду',
     transactions: 'операцій',
     manageBudgets: 'Налаштувати бюджети',
@@ -1137,17 +1119,8 @@ const ru: Dict = {
     totalExpense: 'Всего расходов',
     net: 'Чистый результат',
     vsPrevious: 'к прошлому периоду',
-    insightsTitle: 'Инсайты',
-    noInsights: 'Пока недостаточно данных для выводов',
-    insightTrend: 'Тренд расходов',
-    insightGrowth: 'Растёт быстрее всего',
-    insightAnomaly: 'Аномальная трата',
-    insightRecurring: 'Повторяется',
-    previousPeriod: 'К прошлому периоду',
-    trendTitle: 'Динамика',
     byCategory: 'По категориям',
     categoriesWord: 'категорий',
-    daysShort: 'дн',
     noData: 'Нет данных за этот период',
     transactions: 'операций',
     manageBudgets: 'Настроить бюджеты',
@@ -1576,17 +1549,8 @@ const en: Dict = {
     totalExpense: 'Total expenses',
     net: 'Net',
     vsPrevious: 'vs previous period',
-    insightsTitle: 'Insights',
-    noInsights: 'Not enough data for insights yet',
-    insightTrend: 'Spending trend',
-    insightGrowth: 'Growing fastest',
-    insightAnomaly: 'Anomalous spend',
-    insightRecurring: 'Recurring hint',
-    previousPeriod: 'Vs previous period',
-    trendTitle: 'Trend',
     byCategory: 'By category',
     categoriesWord: 'categories',
-    daysShort: 'd',
     noData: 'No data for this period',
     transactions: 'transactions',
     manageBudgets: 'Manage budgets',

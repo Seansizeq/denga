@@ -1,9 +1,7 @@
 import { useMemo } from 'react';
 import type { Transaction } from '../types';
 import type { CurrencyCode } from '../utils/currency';
-import { isInPeriod, type PeriodAnchors, type StatsRange } from '../utils/statsPeriod';
-import { buildSpendingInsights, type SpendingInsights } from '../utils/spendingInsights';
-import type { PeriodBounds } from '../utils/statsPeriod';
+import { isInPeriod, type PeriodBounds } from '../utils/statsPeriod';
 
 export interface CategoryTotal {
   id: string;
@@ -21,7 +19,6 @@ export interface StatsAggregates {
   previousNet: number;
   byCategory: CategoryTotal[];
   transactionCount: number;
-  insights: SpendingInsights;
 }
 
 type ConvertAmount = (amount: number, from: CurrencyCode) => number;
@@ -45,13 +42,11 @@ const sumByType = (
 export const useStatsAggregates = (params: {
   transactions: readonly Transaction[];
   convertAmount: ConvertAmount;
-  range: StatsRange;
-  anchors: PeriodAnchors;
   bounds: PeriodBounds;
   previousBounds: PeriodBounds;
   chartType: 'expense' | 'income';
 }): StatsAggregates => {
-  const { transactions, convertAmount, range, anchors, bounds, previousBounds, chartType } = params;
+  const { transactions, convertAmount, bounds, previousBounds, chartType } = params;
 
   return useMemo(() => {
     const filtered = transactions.filter((tx) => isInPeriod(tx.date, bounds));
@@ -77,7 +72,6 @@ export const useStatsAggregates = (params: {
 
     const byCategory = Array.from(categoryMap.values()).sort((a, b) => b.total - a.total);
     const previous = sumByType(transactions, previousBounds, convertAmount);
-    const insights = buildSpendingInsights({ transactions, convertAmount, range, anchors });
 
     return {
       filtered,
@@ -89,7 +83,6 @@ export const useStatsAggregates = (params: {
       previousNet: previous.income - previous.expense,
       byCategory,
       transactionCount,
-      insights,
     };
-  }, [transactions, convertAmount, range, anchors, bounds, previousBounds, chartType]);
+  }, [transactions, convertAmount, bounds, previousBounds, chartType]);
 };
