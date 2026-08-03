@@ -10,6 +10,7 @@ import { createReceiptScanHandler } from './receipt-scan.js';
 import { getTransactionAccountEffects, validateTransferPayload } from './transaction-effects.js';
 import { buildDebtRepaymentTransfer, validateDebtPayment } from './debt.js';
 import { legacyDebtPhraseForDirection } from './debt-direction.js';
+import { selectMonthStartAndLatestPrices } from './crypto-history.js';
 import { getPreviousFullWeekDaySet } from './report-periods.js';
 import { deliverReportToTelegram } from './report-delivery.js';
 import { renderFinancialReportCardPng } from './report-card.js';
@@ -230,19 +231,14 @@ const COINGECKO_CHART_IDS = Object.keys(COINGECKO_ID_TO_SYMBOL);
 
 const fetchOneCoinMarketChartUsd = async (coinId) => {
   const res = await fetch(
-    `https://api.coingecko.com/api/v3/coins/${encodeURIComponent(coinId)}/market_chart?vs_currency=usd&days=30`,
+    `https://api.coingecko.com/api/v3/coins/${encodeURIComponent(coinId)}/market_chart?vs_currency=usd&days=31`,
     { headers: { accept: 'application/json' } }
   );
   if (!res.ok) throw new Error(`chart ${coinId} ${res.status}`);
   const data = await res.json();
-  const prices = data?.prices;
-  if (!Array.isArray(prices) || prices.length === 0) throw new Error(`no prices ${coinId}`);
-  const oldest = Number(prices[0][1]);
-  const newest = Number(prices[prices.length - 1][1]);
-  if (!Number.isFinite(oldest) || !Number.isFinite(newest) || oldest <= 0 || newest <= 0) {
-    throw new Error(`bad chart nums ${coinId}`);
-  }
-  return { past: oldest, now: newest };
+  const selected = selectMonthStartAndLatestPrices(data?.prices);
+  if (!selected) throw new Error(`no prices ${coinId}`);
+  return selected;
 };
 
 const fetchCryptoUsdHistory = async () => {
@@ -254,26 +250,26 @@ const fetchCryptoUsdHistory = async () => {
     const charts = await Promise.all(
       COINGECKO_CHART_IDS.map((id) => fetchOneCoinMarketChartUsd(id).then((r) => ({ id, ...r })))
     );
-    const prices30dAgo = {};
+    const pricesMonthStart = {};
     const pricesNow = {};
     for (const row of charts) {
       const sym = COINGECKO_ID_TO_SYMBOL[row.id];
       if (sym) {
-        prices30dAgo[sym] = row.past;
+        pricesMonthStart[sym] = row.monthStart;
         pricesNow[sym] = row.now;
       }
     }
     const symbols = Object.values(COINGECKO_ID_TO_SYMBOL);
     const allOk = symbols.every(
       (s) =>
-        Number.isFinite(prices30dAgo[s]) &&
-        prices30dAgo[s] > 0 &&
+        Number.isFinite(pricesMonthStart[s]) &&
+        pricesMonthStart[s] > 0 &&
         Number.isFinite(pricesNow[s]) &&
         pricesNow[s] > 0
     );
     if (!allOk) throw new Error('incomplete history');
     cryptoHistoryCache = {
-      prices30dAgo,
+      pricesMonthStart,
       pricesNow,
       updatedAt: new Date().toISOString(),
     };
@@ -285,7 +281,7 @@ const fetchCryptoUsdHistory = async () => {
     }
     return {
       ok: false,
-      prices30dAgo: {},
+      pricesMonthStart: {},
       pricesNow: {},
       updatedAt: new Date(0).toISOString(),
       source: 'unavailable',

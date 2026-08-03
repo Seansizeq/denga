@@ -1,6 +1,5 @@
 import type { Transaction } from '../types';
 import type { CurrencyCode } from './currency';
-import { isWithinLastDays } from './dateRanges';
 import { getTransactionAccountEffects } from './transactionUtils';
 
 export type CryptoSymbol = 'BTC' | 'ETH' | 'SOL' | 'TON' | 'USDT';
@@ -16,7 +15,7 @@ export type PortfolioRowInput = {
 
 export type CryptoUsdHistory = {
   pricesNow: Partial<Record<CryptoSymbol, number>>;
-  prices30dAgo: Partial<Record<CryptoSymbol, number>>;
+  pricesMonthStart: Partial<Record<CryptoSymbol, number>>;
 };
 
 export const parseCryptoPosition = (subText?: string | null): { symbol: CryptoSymbol; amount: number } | null => {
@@ -32,16 +31,17 @@ export const parseCryptoPosition = (subText?: string | null): { symbol: CryptoSy
   return null;
 };
 
-const sumAccountDeltasInWindow = (
+const sumAccountDeltasSinceMonthStart = (
   transactions: readonly Transaction[],
   accountKey: string,
-  windowDays: number,
-  now: Date
+  now: Date,
 ): number => {
   let sum = 0;
   const key = accountKey.toLowerCase();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   for (const tx of transactions) {
-    if (!isWithinLastDays(tx.date, windowDays, now)) continue;
+    const timestamp = new Date(tx.date).getTime();
+    if (!Number.isFinite(timestamp) || timestamp < monthStart.getTime() || timestamp > now.getTime()) continue;
     const effect = getTransactionAccountEffects(tx).find((row) => row.accountKey === key);
     if (!effect) continue;
     sum += effect.delta;
@@ -58,31 +58,31 @@ export const portfolioNeedsCryptoHistory = (accounts: readonly PortfolioRowInput
 };
 
 const historyCoversPosition = (history: CryptoUsdHistory, symbol: CryptoSymbol): boolean => {
-  const n0 = history.pricesNow[symbol];
-  const n1 = history.prices30dAgo[symbol];
+  const current = history.pricesNow[symbol];
+  const monthStart = history.pricesMonthStart[symbol];
   return (
-    n0 !== undefined &&
-    n1 !== undefined &&
-    Number.isFinite(n0) &&
-    n0 > 0 &&
-    Number.isFinite(n1) &&
-    n1 > 0
+    current !== undefined &&
+    monthStart !== undefined &&
+    Number.isFinite(current) &&
+    current > 0 &&
+    Number.isFinite(monthStart) &&
+    monthStart > 0
   );
 };
 
 /**
- * Оцінка портфеля ~windowDays тому: фіат — primaryAmount мінус signed-дельти з транзакцій з Account;
- * крипто з позицією в subText — amount * USD (30d тому) → primaryCurrency.
+ * Portfolio value at the start of the current calendar month. Fiat balances
+ * are rolled back using linked transactions from month start through now;
+ * crypto positions use the USD price captured near the first day of the month.
  */
-export const computePortfolioPriorUahPln = (params: {
+export const computePortfolioMonthStartUahPln = (params: {
   accounts: readonly PortfolioRowInput[];
   transactions: readonly Transaction[];
   convertAmount: (amount: number, from: CurrencyCode, to?: CurrencyCode) => number;
   cryptoHistory: CryptoUsdHistory | null;
-  windowDays: number;
   now?: Date;
 }): { uah: number; pln: number } | null => {
-  const { accounts, transactions, convertAmount, cryptoHistory, windowDays, now = new Date() } = params;
+  const { accounts, transactions, convertAmount, cryptoHistory, now = new Date() } = params;
 
   if (portfolioNeedsCryptoHistory(accounts)) {
     if (!cryptoHistory) return null;
@@ -107,15 +107,15 @@ export const computePortfolioPriorUahPln = (params: {
     if (section === 'crypto') {
       const pos = parseCryptoPosition(typeof r.subText === 'string' ? r.subText : null);
       if (pos && cryptoHistory && historyCoversPosition(cryptoHistory, pos.symbol)) {
-        const usdPast = pos.amount * (cryptoHistory.prices30dAgo[pos.symbol] as number);
-        amountPrimary = convertAmount(usdPast, 'USD', primaryCurrency);
+        const usdAtMonthStart = pos.amount * (cryptoHistory.pricesMonthStart[pos.symbol] as number);
+        amountPrimary = convertAmount(usdAtMonthStart, 'USD', primaryCurrency);
       } else {
-        const roll = sumAccountDeltasInWindow(transactions, key, windowDays, now);
-        amountPrimary = baseAmount - roll;
+        const delta = sumAccountDeltasSinceMonthStart(transactions, key, now);
+        amountPrimary = baseAmount - delta;
       }
     } else {
-      const roll = sumAccountDeltasInWindow(transactions, key, windowDays, now);
-      amountPrimary = baseAmount - roll;
+      const delta = sumAccountDeltasSinceMonthStart(transactions, key, now);
+      amountPrimary = baseAmount - delta;
     }
 
     const signedAmountPrimary = section === 'debt' && r.debtDirection === 'owed_by_me' ? -amountPrimary : amountPrimary;
@@ -128,14 +128,14 @@ export const computePortfolioPriorUahPln = (params: {
 
 export const priorNetInDisplayCurrency = (
   prior: { uah: number; pln: number },
-  convertAmount: (amount: number, from: CurrencyCode, to?: CurrencyCode) => number
+  convertAmount: (amount: number, from: CurrencyCode, to?: CurrencyCode) => number,
 ): number => convertAmount(prior.uah, 'UAH') + convertAmount(prior.pln, 'PLN');
 
-/** Відсоток зміни відносно priorNet; null якщо база ~0 або нестабільно. */
+/** Percentage change from the month-start net value. */
 export const computeWealthMonthChangePercent = (
   mainNet: number,
   priorNet: number,
-  epsilon = 1e-4
+  epsilon = 1e-4,
 ): number | null => {
   const absPrior = Math.abs(priorNet);
   if (absPrior < epsilon) return null;

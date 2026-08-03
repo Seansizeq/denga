@@ -12,7 +12,7 @@ import type { CryptoUsdHistory } from '../utils/portfolioMonthChange';
 
 const ACCOUNTS_STORAGE_KEY = 'denga_accounts_v1';
 const CRYPTO_PRICES_STORAGE_KEY = 'denga_crypto_prices_v1';
-const CRYPTO_HISTORY_STORAGE_KEY = 'denga_crypto_history_v1';
+const CRYPTO_HISTORY_STORAGE_KEY = 'denga_crypto_history_v2';
 
 const ACCOUNTS_POLL_MS = 5000;
 const CRYPTO_PRICES_POLL_MS = 120_000;
@@ -34,9 +34,9 @@ const isCryptoHistory = (v: unknown): v is CryptoUsdHistory => {
   const obj = v as Record<string, unknown>;
   return (
     obj.pricesNow !== undefined &&
-    obj.prices30dAgo !== undefined &&
+    obj.pricesMonthStart !== undefined &&
     typeof obj.pricesNow === 'object' &&
-    typeof obj.prices30dAgo === 'object'
+    typeof obj.pricesMonthStart === 'object'
   );
 };
 
@@ -114,12 +114,12 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (!res.ok) return;
       const body = (await res.json()) as {
         ok?: boolean;
-        prices30dAgo?: Record<string, number>;
+        pricesMonthStart?: Record<string, number>;
         pricesNow?: Record<string, number>;
       };
-      if (!body?.ok || !body.prices30dAgo || !body.pricesNow) return;
+      if (!body?.ok || !body.pricesMonthStart || !body.pricesNow) return;
       const next: CryptoUsdHistory = {
-        prices30dAgo: body.prices30dAgo as CryptoUsdHistory['prices30dAgo'],
+        pricesMonthStart: body.pricesMonthStart as CryptoUsdHistory['pricesMonthStart'],
         pricesNow: body.pricesNow as CryptoUsdHistory['pricesNow'],
       };
       if (mountedRef.current) setCryptoUsdHistory(next);

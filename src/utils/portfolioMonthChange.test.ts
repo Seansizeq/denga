@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Transaction } from '../types';
 import type { CurrencyCode } from './currency';
 import {
-  computePortfolioPriorUahPln,
+  computePortfolioMonthStartUahPln,
   computeWealthMonthChangePercent,
   portfolioNeedsCryptoHistory,
   priorNetInDisplayCurrency,
@@ -26,7 +26,7 @@ describe('portfolioMonthChange', () => {
     expect(
       portfolioNeedsCryptoHistory([
         { accountKey: 'x', section: 'bank', primaryAmount: 1, primaryCurrency: 'UAH', subText: '' },
-      ])
+      ]),
     ).toBe(false);
     expect(
       portfolioNeedsCryptoHistory([
@@ -37,17 +37,17 @@ describe('portfolioMonthChange', () => {
           primaryCurrency: 'UAH',
           subText: '0.5 BTC',
         },
-      ])
+      ]),
     ).toBe(true);
   });
 
-  it('rolls back fiat balance with linked transactions in the window', () => {
+  it('rolls back only linked transactions from the current calendar month', () => {
     const accounts = [
       { accountKey: 'pumb', section: 'bank', primaryAmount: 10000, primaryCurrency: 'UAH' as const },
     ];
     const transactions: Transaction[] = [
       {
-        id: '1',
+        id: 'current-month',
         amount: 500,
         currency: 'UAH',
         categoryId: 'salary',
@@ -55,13 +55,30 @@ describe('portfolioMonthChange', () => {
         date: '2026-05-01T10:00:00.000Z',
         note: 'Salary Account: pumb',
       },
+      {
+        id: 'previous-month-but-within-30-days',
+        amount: 1200,
+        currency: 'UAH',
+        categoryId: 'salary',
+        type: 'income',
+        date: '2026-04-20T10:00:00.000Z',
+        note: 'Salary Account: pumb',
+      },
+      {
+        id: 'future',
+        amount: 900,
+        currency: 'UAH',
+        categoryId: 'salary',
+        type: 'income',
+        date: '2026-05-03T10:00:00.000Z',
+        note: 'Salary Account: pumb',
+      },
     ];
-    const prior = computePortfolioPriorUahPln({
+    const prior = computePortfolioMonthStartUahPln({
       accounts,
       transactions,
       convertAmount: convertSimple,
       cryptoHistory: null,
-      windowDays: 30,
       now: fixedNow,
     });
     expect(prior).toEqual({ uah: 9500, pln: 0 });
@@ -70,7 +87,7 @@ describe('portfolioMonthChange', () => {
     expect(computeWealthMonthChangePercent(10000, priorNet)).toBeCloseTo((500 / 9500) * 100, 5);
   });
 
-  it('returns null when crypto needs history but history is missing', () => {
+  it('returns null when crypto needs month-start history but history is missing', () => {
     const accounts = [
       {
         accountKey: 'c',
@@ -81,18 +98,17 @@ describe('portfolioMonthChange', () => {
       },
     ];
     expect(
-      computePortfolioPriorUahPln({
+      computePortfolioMonthStartUahPln({
         accounts,
         transactions: [],
         convertAmount: convertSimple,
         cryptoHistory: null,
-        windowDays: 30,
         now: fixedNow,
-      })
+      }),
     ).toBe(null);
   });
 
-  it('values crypto prior from historical USD price', () => {
+  it('values crypto from the price at the start of the current month', () => {
     const accounts = [
       {
         accountKey: 'c',
@@ -102,15 +118,14 @@ describe('portfolioMonthChange', () => {
         subText: '1 BTC',
       },
     ];
-    const prior = computePortfolioPriorUahPln({
+    const prior = computePortfolioMonthStartUahPln({
       accounts,
       transactions: [],
       convertAmount: convertSimple,
       cryptoHistory: {
         pricesNow: { BTC: 100_000 },
-        prices30dAgo: { BTC: 80_000 },
+        pricesMonthStart: { BTC: 80_000 },
       },
-      windowDays: 30,
       now: fixedNow,
     });
     expect(prior?.uah).toBe(80_000 * 40);

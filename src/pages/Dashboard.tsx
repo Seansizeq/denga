@@ -11,7 +11,7 @@ import RecentTransactions from '../components/ui/RecentTransactions';
 import type { RangeFilter } from '../components/ui/RecentTransactions';
 import { isWithinLastDays } from '../utils/dateRanges';
 import {
-  computePortfolioPriorUahPln,
+  computePortfolioMonthStartUahPln,
   computeWealthMonthChangePercent,
   parseCryptoPosition,
   portfolioNeedsCryptoHistory,
@@ -150,12 +150,11 @@ const Dashboard: React.FC = () => {
     if (!worth || !portfolioRows || portfolioRows.length === 0) return null;
     const needsHist = portfolioNeedsCryptoHistory(portfolioRows);
     if (needsHist && !cryptoUsdHistory) return null;
-    const priorBuckets = computePortfolioPriorUahPln({
+    const priorBuckets = computePortfolioMonthStartUahPln({
       accounts: portfolioRows,
       transactions,
       convertAmount,
       cryptoHistory: needsHist ? cryptoUsdHistory : null,
-      windowDays: 30,
     });
     if (!priorBuckets) return null;
     const priorNet = priorNetInDisplayCurrency(priorBuckets, convertAmount);
