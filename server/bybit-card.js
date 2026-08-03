@@ -64,12 +64,12 @@ export const toBybitPublicError = (error) => {
   }
   const message = String(error?.message ?? '').toLowerCase();
   if (
-    String(error?.requestPath ?? '').startsWith('/v5/card/') &&
-    (apiCode === '10001' || message.includes('param_illegal') || message.includes('parameter'))
+    String(error?.requestPath ?? '') === '/v5/card/transaction/query-asset-records' &&
+    (apiCode === '120110001' || apiCode === '10001' || message.includes('param_illegal') || message.includes('parameter'))
   ) {
     return {
-      code: 'BYBIT_CARD_REQUEST_REJECTED',
-      error: 'Bybit rejected the Card history request. Retry synchronization; if it repeats, contact Denga support.',
+      code: 'BYBIT_CARD_HISTORY_UNAVAILABLE',
+      error: 'Bybit does not provide Card history for this account through the API. Balances can still sync.',
     };
   }
   return {
@@ -618,7 +618,7 @@ export const syncBybitCard = async ({ db, userId, fetchImpl = fetch }) => {
     const endTime = Date.now();
     const syncFromMs = Date.parse(connection.sync_from) || endTime - LOOKBACK_MS;
     const startTime = Math.max(syncFromMs, endTime - LOOKBACK_MS);
-    const [rawRecords, balanceResult] = await Promise.all([
+    const [cardResult, balanceResult] = await Promise.all([
       fetchCardRecords({
         endpoint: connection.endpoint,
         apiKey,
@@ -626,13 +626,21 @@ export const syncBybitCard = async ({ db, userId, fetchImpl = fetch }) => {
         fetchImpl,
         startTime,
         endTime,
-      }),
+      })
+        .then((records) => ({ records, warning: null }))
+        .catch((error) => {
+          const warning = toBybitPublicError(error);
+          if (warning.code === 'BYBIT_CARD_HISTORY_UNAVAILABLE') {
+            return { records: [], warning };
+          }
+          throw error;
+        }),
       fetchBybitBalances({ endpoint: connection.endpoint, apiKey, secret, fetchImpl })
         .catch((error) => ({ balances: null, complete: false, warning: toBybitPublicError(error).error })),
     ]);
 
     const selected = new Map();
-    for (const item of rawRecords) {
+    for (const item of cardResult.records) {
       if (!shouldImport(item)) continue;
       const normalized = normalizeBybitRecord(item.record, item.kind === 'refund' ? 'refund' : 'purchase');
       if (!normalized) continue;
@@ -692,8 +700,15 @@ export const syncBybitCard = async ({ db, userId, fetchImpl = fetch }) => {
         await syncBybitAssetAccounts(db, userId, balanceResult.balances, balanceResult.complete);
       }
       await db.run(
-        'UPDATE bybit_card_connections SET last_sync_at = ?, last_error = NULL, last_error_code = NULL, last_balance_error = ?, updated_at = ? WHERE user_id = ?',
-        [new Date().toISOString(), balanceResult.warning, new Date().toISOString(), userId]
+        'UPDATE bybit_card_connections SET last_sync_at = ?, last_error = ?, last_error_code = ?, last_balance_error = ?, updated_at = ? WHERE user_id = ?',
+        [
+          new Date().toISOString(),
+          cardResult.warning?.error ?? null,
+          cardResult.warning?.code ?? null,
+          balanceResult.warning,
+          new Date().toISOString(),
+          userId,
+        ]
       );
       await db.run('COMMIT');
     } catch (error) {

@@ -141,7 +141,7 @@ describe('Bybit Card integration helpers', () => {
       code: '0',
       message: 'param_illegal',
       requestPath: '/v5/card/transaction/query-asset-records',
-    })).toMatchObject({ code: 'BYBIT_CARD_REQUEST_REJECTED' });
+    })).toMatchObject({ code: 'BYBIT_CARD_HISTORY_UNAVAILABLE' });
     const fetchImpl = async () => new Response(JSON.stringify({
       retCode: 10010,
       retMsg: 'Unmatched IP',
@@ -287,10 +287,19 @@ describe('Bybit Card integration helpers', () => {
       });
       const first = await syncBybitCard({ db, userId: 'user-1', fetchImpl });
       const second = await syncBybitCard({ db, userId: 'user-1', fetchImpl });
+      const unavailableHistoryFetch = async (url, options) => {
+        if (String(url).includes('/v5/card/transaction/query-asset-records')) {
+          return new Response(JSON.stringify({ retCode: 120110001, retMsg: 'param_illegal' }), { status: 200 });
+        }
+        return fetchImpl(url, options);
+      };
+      const partial = await syncBybitCard({ db, userId: 'user-1', fetchImpl: unavailableHistoryFetch });
       const rows = await db.all('SELECT * FROM transactions');
       const accounts = await db.all('SELECT name, sub_text AS subText FROM account_portfolio ORDER BY name');
       expect(first.imported).toBe(1);
       expect(second.imported).toBe(0);
+      expect(partial.lastErrorCode).toBe('BYBIT_CARD_HISTORY_UNAVAILABLE');
+      expect(partial.lastSyncAt).toBeTruthy();
       expect(rows).toHaveLength(1);
       expect(rows[0]).toMatchObject({ amount: 19.99, currency: 'PLN', categoryId: 'food', type: 'expense' });
       expect(first.syncedAssetCount).toBe(2);

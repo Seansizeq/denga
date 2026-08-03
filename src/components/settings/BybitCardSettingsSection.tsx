@@ -39,7 +39,7 @@ const BybitCardSettingsSection: React.FC = () => {
       case 'BYBIT_ENDPOINT_MISMATCH': return t('settings', 'bybitErrorEndpoint');
       case 'BYBIT_INVALID_CREDENTIALS': return t('settings', 'bybitErrorCredentials');
       case 'BYBIT_SERVER_NOT_CONFIGURED': return t('settings', 'bybitErrorServerConfig');
-      case 'BYBIT_CARD_REQUEST_REJECTED': return t('settings', 'bybitErrorCardRequest');
+      case 'BYBIT_CARD_HISTORY_UNAVAILABLE': return t('settings', 'bybitErrorCardRequest');
       case 'BYBIT_REQUEST_FAILED': return t('settings', 'bybitErrorRetry');
       default: return t('settings', fallback);
     }
