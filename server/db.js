@@ -530,6 +530,7 @@ export async function initDb() {
       sync_from TEXT NOT NULL,
       last_sync_at TEXT,
       last_error TEXT,
+      last_error_code TEXT,
       last_balance_error TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
@@ -537,6 +538,11 @@ export async function initDb() {
   `);
   try {
     await db.exec(`ALTER TABLE bybit_card_connections ADD COLUMN last_balance_error TEXT`);
+  } catch {
+    /* already exists */
+  }
+  try {
+    await db.exec(`ALTER TABLE bybit_card_connections ADD COLUMN last_error_code TEXT`);
   } catch {
     /* already exists */
   }

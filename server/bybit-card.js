@@ -62,6 +62,16 @@ export const toBybitPublicError = (error) => {
       error: 'Bybit rejected access from this server region or IP address.',
     };
   }
+  const message = String(error?.message ?? '').toLowerCase();
+  if (
+    String(error?.requestPath ?? '').startsWith('/v5/card/') &&
+    (apiCode === '10001' || message.includes('param_illegal') || message.includes('parameter'))
+  ) {
+    return {
+      code: 'BYBIT_CARD_REQUEST_REJECTED',
+      error: 'Bybit rejected the Card history request. Retry synchronization; if it repeats, contact Denga support.',
+    };
+  }
   return {
     code: 'BYBIT_REQUEST_FAILED',
     error: 'Bybit could not complete the read-only request. Try again later.',
@@ -118,8 +128,8 @@ const buildQuery = (params = {}) => {
  * Bybit V5 auth + card endpoints:
  * - GET  → sign queryString, params in URL
  * - POST (standard) → sign jsonBody, body = JSON
- * - POST /v5/card/* → official docs put params in the *query string* with no body.
- *   For those we sign an empty body string "" and put params on the URL.
+ * - POST /v5/card/* → official docs put params in the query string and send an
+ *   empty JSON object. For those we sign and send "{}".
  *
  * Use `queryParams: true` to force the card-style query-string POST.
  */
@@ -147,10 +157,10 @@ const requestBybit = async ({
     payload = bodyText;
     url = `${endpoint}${path}`;
   } else {
-    // GET, or POST with query-string params (Bybit Card endpoints)
+    // GET, or POST with query-string params (Bybit Card endpoints).
     const query = buildQuery(params);
-    payload = method === 'GET' ? query : '';
-    bodyText = undefined;
+    payload = method === 'GET' ? query : '{}';
+    bodyText = method === 'GET' ? undefined : '{}';
     url = `${endpoint}${path}${query ? `?${query}` : ''}`;
   }
 
@@ -325,7 +335,7 @@ const fetchCardRecords = async ({ endpoint, apiKey, secret, fetchImpl, startTime
     ['refund', 'SIDE_QUERY_REFUND'],
   ]) {
     for (let page = 1; page <= 10; page += 1) {
-      // Official docs: POST with params in the *query string*, no body.
+      // Official docs: POST with params in the query string and an empty JSON body.
       // https://bybit-exchange.github.io/docs/v5/bybit-card/asset-records
       let body;
       try {
@@ -535,7 +545,7 @@ const syncBybitAssetAccounts = async (db, userId, balances, clearMissing) => {
 
 const publicConnection = async (db, userId) => {
   const row = await db.get(
-    `SELECT enabled, api_key_hint, endpoint, last_sync_at, last_error, last_balance_error, created_at
+    `SELECT enabled, api_key_hint, endpoint, last_sync_at, last_error, last_error_code, last_balance_error, created_at
      FROM bybit_card_connections WHERE user_id = ?`,
     [userId]
   );
@@ -549,6 +559,7 @@ const publicConnection = async (db, userId) => {
     endpoint: row.endpoint,
     lastSyncAt: row.last_sync_at,
     lastError: row.last_error,
+    lastErrorCode: row.last_error_code,
     balanceSyncError: row.last_balance_error,
     connectedAt: row.created_at,
     importedCount: Number(count?.count) || 0,
@@ -578,6 +589,7 @@ export const connectBybitCard = async ({ db, userId, apiKey, secret, fetchImpl =
        sync_from = excluded.sync_from,
        last_sync_at = NULL,
        last_error = NULL,
+       last_error_code = NULL,
        updated_at = excluded.updated_at`,
     [
       userId,
@@ -680,7 +692,7 @@ export const syncBybitCard = async ({ db, userId, fetchImpl = fetch }) => {
         await syncBybitAssetAccounts(db, userId, balanceResult.balances, balanceResult.complete);
       }
       await db.run(
-        'UPDATE bybit_card_connections SET last_sync_at = ?, last_error = NULL, last_balance_error = ?, updated_at = ? WHERE user_id = ?',
+        'UPDATE bybit_card_connections SET last_sync_at = ?, last_error = NULL, last_error_code = NULL, last_balance_error = ?, updated_at = ? WHERE user_id = ?',
         [new Date().toISOString(), balanceResult.warning, new Date().toISOString(), userId]
       );
       await db.run('COMMIT');
@@ -690,9 +702,10 @@ export const syncBybitCard = async ({ db, userId, fetchImpl = fetch }) => {
     }
     return { ...(await publicConnection(db, userId)), imported, updated };
   } catch (error) {
+    const publicError = toBybitPublicError(error);
     await db.run(
-      'UPDATE bybit_card_connections SET last_error = ?, updated_at = ? WHERE user_id = ?',
-      [toBybitPublicError(error).error.slice(0, 300), new Date().toISOString(), userId]
+      'UPDATE bybit_card_connections SET last_error = ?, last_error_code = ?, updated_at = ? WHERE user_id = ?',
+      [publicError.error.slice(0, 300), publicError.code, new Date().toISOString(), userId]
     );
     throw error;
   } finally {

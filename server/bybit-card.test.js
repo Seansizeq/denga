@@ -137,6 +137,11 @@ describe('Bybit Card integration helpers', () => {
     expect(toBybitPublicError({ code: '81007' })).toMatchObject({
       code: 'BYBIT_EU_THIRD_PARTY_REQUIRED',
     });
+    expect(toBybitPublicError({
+      code: '0',
+      message: 'param_illegal',
+      requestPath: '/v5/card/transaction/query-asset-records',
+    })).toMatchObject({ code: 'BYBIT_CARD_REQUEST_REJECTED' });
     const fetchImpl = async () => new Response(JSON.stringify({
       retCode: 10010,
       retMsg: 'Unmatched IP',
@@ -175,6 +180,7 @@ describe('Bybit Card integration helpers', () => {
         sync_from TEXT NOT NULL,
         last_sync_at TEXT,
         last_error TEXT,
+        last_error_code TEXT,
         last_balance_error TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
@@ -216,7 +222,8 @@ describe('Bybit Card integration helpers', () => {
         PRIMARY KEY (user_id, external_id)
       );
     `);
-    const fetchImpl = async (url) => {
+    const cardRequests = [];
+    const fetchImpl = async (url, options = {}) => {
       const textUrl = String(url);
       if (textUrl.includes('/v5/user/query-api')) {
         return new Response(JSON.stringify({
@@ -246,7 +253,8 @@ describe('Bybit Card integration helpers', () => {
           ] },
         }), { status: 200 });
       }
-      // Card endpoint: params in query string (official docs)
+      // Card endpoint: params in query string, empty JSON body (official docs)
+      cardRequests.push({ url: textUrl, options });
       const isFinancial = textUrl.includes('SIDE_QUERY_FINANCIAL');
       return new Response(JSON.stringify({
         retCode: 0,
@@ -290,6 +298,15 @@ describe('Bybit Card integration helpers', () => {
         { name: 'Bybit BTC', subText: '0.3 BTC' },
         { name: 'Bybit USDT', subText: '25 USDT' },
       ]);
+      expect(cardRequests.length).toBeGreaterThan(0);
+      expect(cardRequests[0].options.body).toBe('{}');
+      const timestamp = cardRequests[0].options.headers['X-BAPI-TIMESTAMP'];
+      expect(cardRequests[0].options.headers['X-BAPI-SIGN']).toBe(signBybitRequest({
+        timestamp,
+        apiKey: 'api-key-value',
+        payload: '{}',
+        secret: 'api-secret-value',
+      }));
     } finally {
       await db.close();
       if (previousKey === undefined) delete process.env.BYBIT_CREDENTIALS_KEY;

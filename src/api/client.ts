@@ -287,6 +287,7 @@ export type BybitCardStatus = {
   endpoint?: string;
   lastSyncAt?: string | null;
   lastError?: string | null;
+  lastErrorCode?: string | null;
   balanceSyncError?: string | null;
   connectedAt?: string;
   importedCount: number;

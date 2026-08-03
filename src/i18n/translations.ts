@@ -343,6 +343,8 @@ type Dict = {
     bybitErrorEndpoint: string;
     bybitErrorCredentials: string;
     bybitErrorServerConfig: string;
+    bybitErrorCardRequest: string;
+    bybitErrorRetry: string;
     reminderGroupExpenses: string;
     reminderGroupPlanner: string;
     reminderGroupFx: string;
@@ -782,6 +784,8 @@ const uk: Dict = {
     bybitErrorEndpoint: 'Ключ недійсний або створений для іншого домену Bybit. Для Bybit EU потрібне схвалене стороннє підключення.',
     bybitErrorCredentials: 'API Key або API Secret неправильний.',
     bybitErrorServerConfig: 'Шифрування ключів Bybit ще не налаштоване на сервері Denga.',
+    bybitErrorCardRequest: 'Bybit відхилив запит історії картки. Спробуйте синхронізацію ще раз; якщо помилка повториться, зверніться в підтримку Denga.',
+    bybitErrorRetry: 'Bybit тимчасово не завершив запит. Спробуйте синхронізацію ще раз трохи пізніше.',
     reminderGroupExpenses: 'Витрати',
     reminderGroupPlanner: 'Планер змін',
     reminderGroupFx: 'Курс валют',
@@ -1227,6 +1231,8 @@ const ru: Dict = {
     bybitErrorEndpoint: 'Ключ недействителен или создан для другого домена Bybit. Для Bybit EU нужно одобренное стороннее подключение.',
     bybitErrorCredentials: 'API Key или API Secret неверный.',
     bybitErrorServerConfig: 'Шифрование ключей Bybit ещё не настроено на сервере Denga.',
+    bybitErrorCardRequest: 'Bybit отклонил запрос истории карты. Повторите синхронизацию; если ошибка появится снова, обратитесь в поддержку Denga.',
+    bybitErrorRetry: 'Bybit временно не завершил запрос. Повторите синхронизацию немного позже.',
     reminderGroupExpenses: 'Расходы',
     reminderGroupPlanner: 'Планер смен',
     reminderGroupFx: 'Курс валют',
@@ -1672,6 +1678,8 @@ const en: Dict = {
     bybitErrorEndpoint: 'The key is invalid or belongs to another Bybit domain. Bybit EU requires an approved third-party connection.',
     bybitErrorCredentials: 'The API Key or API Secret is incorrect.',
     bybitErrorServerConfig: 'Bybit credential encryption is not configured on the Denga server.',
+    bybitErrorCardRequest: 'Bybit rejected the card history request. Retry synchronization; if it happens again, contact Denga support.',
+    bybitErrorRetry: 'Bybit could not complete the request right now. Retry synchronization a little later.',
     reminderGroupExpenses: 'Expenses',
     reminderGroupPlanner: 'Shift planner',
     reminderGroupFx: 'FX rate',

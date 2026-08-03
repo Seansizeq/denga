@@ -26,10 +26,8 @@ const BybitCardSettingsSection: React.FC = () => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
-  const messageForError = (cause: unknown, fallback: 'bybitConnectError' | 'bybitSyncError' | 'bybitDisconnectError') => {
-    const code = cause instanceof Error && 'code' in cause
-      ? String((cause as Error & { code?: string }).code ?? '')
-      : '';
+  type ErrorFallback = 'bybitConnectError' | 'bybitSyncError' | 'bybitDisconnectError';
+  const messageForCode = (code: string, fallback: ErrorFallback) => {
     switch (code) {
       case 'BYBIT_READ_ONLY_REQUIRED': return t('settings', 'bybitErrorReadOnly');
       case 'BYBIT_CARD_PERMISSION_REQUIRED': return t('settings', 'bybitErrorCardPermission');
@@ -41,8 +39,16 @@ const BybitCardSettingsSection: React.FC = () => {
       case 'BYBIT_ENDPOINT_MISMATCH': return t('settings', 'bybitErrorEndpoint');
       case 'BYBIT_INVALID_CREDENTIALS': return t('settings', 'bybitErrorCredentials');
       case 'BYBIT_SERVER_NOT_CONFIGURED': return t('settings', 'bybitErrorServerConfig');
-      default: return cause instanceof Error ? cause.message : t('settings', fallback);
+      case 'BYBIT_CARD_REQUEST_REJECTED': return t('settings', 'bybitErrorCardRequest');
+      case 'BYBIT_REQUEST_FAILED': return t('settings', 'bybitErrorRetry');
+      default: return t('settings', fallback);
     }
+  };
+  const messageForError = (cause: unknown, fallback: ErrorFallback) => {
+    const code = cause instanceof Error && 'code' in cause
+      ? String((cause as Error & { code?: string }).code ?? '')
+      : '';
+    return messageForCode(code, fallback);
   };
 
   useEffect(() => {
@@ -110,6 +116,9 @@ const BybitCardSettingsSection: React.FC = () => {
         new Date(status.lastSyncAt),
       )
     : t('settings', 'bybitNeverSynced');
+  const storedError = status.lastError
+    ? messageForCode(status.lastErrorCode || 'BYBIT_REQUEST_FAILED', 'bybitSyncError')
+    : '';
 
   return (
     <SettingsSection
@@ -151,7 +160,7 @@ const BybitCardSettingsSection: React.FC = () => {
               <strong>{status.syncedAssetCount ?? 0}</strong>
             </div>
           </div>
-          {status.lastError ? <p className={styles.warning}>{status.lastError}</p> : null}
+          {!error && storedError ? <p className={styles.warning}>{storedError}</p> : null}
           {status.balanceSyncError ? <p className={styles.warning}>{t('settings', 'bybitBalanceWarning')}</p> : null}
           {error ? <p className={styles.error}>{error}</p> : null}
           <div className={styles.actions}>
