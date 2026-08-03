@@ -2,6 +2,7 @@ import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { resolveDebtDirectionForMigration } from './debt-direction.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -435,22 +436,23 @@ export async function initDb() {
          WHERE e.user_id = a.user_id AND e.debt_account_key = a.account_key
        )`
   );
-  // Backfill: every debt row without an explicit direction defaults to "owed to me"
-  // (matches the app's previous implicit assumption, so this is a no-op behavior-wise).
-  await db.run(
-    `UPDATE account_portfolio SET debt_direction = 'owed_to_me'
-     WHERE section = 'debt' AND (debt_direction IS NULL OR debt_direction = '')`
-  );
-  // Best-effort reclassification from the legacy free-text debt_phrase (e.g. "я винен"),
-  // since SQLite LIKE isn't reliably case-insensitive for Cyrillic text.
+  // Infer the direction only for genuinely legacy rows. An explicit modern value
+  // must never be overwritten by stale debt_phrase text on a later server restart.
   {
-    const owedByMeKeywords = ['винен', 'винна', 'винні', 'должен', 'должна', 'должны', 'borrowed', 'i owe'];
-    const debtRows = await db.all(`SELECT account_key, debt_phrase FROM account_portfolio WHERE section = 'debt'`);
+    const debtRows = await db.all(
+      `SELECT account_key AS accountKey,
+              debt_phrase AS debtPhrase,
+              debt_direction AS debtDirection
+       FROM account_portfolio
+       WHERE section = 'debt'`
+    );
     for (const row of debtRows) {
-      const phrase = String(row.debt_phrase ?? '').toLowerCase();
-      if (owedByMeKeywords.some((kw) => phrase.includes(kw))) {
-        await db.run(`UPDATE account_portfolio SET debt_direction = 'owed_by_me' WHERE account_key = ?`, [row.account_key]);
-      }
+      const resolved = resolveDebtDirectionForMigration(row);
+      if (!resolved.shouldUpdate) continue;
+      await db.run(
+        `UPDATE account_portfolio SET debt_direction = ? WHERE account_key = ?`,
+        [resolved.direction, row.accountKey]
+      );
     }
   }
   // Remove legacy seed rows (user_id='') that block real users from creating accounts with matching keys

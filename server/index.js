@@ -9,6 +9,7 @@ import { startScheduledDatabaseBackups } from './backup.js';
 import { createReceiptScanHandler } from './receipt-scan.js';
 import { getTransactionAccountEffects, validateTransferPayload } from './transaction-effects.js';
 import { buildDebtRepaymentTransfer, validateDebtPayment } from './debt.js';
+import { legacyDebtPhraseForDirection } from './debt-direction.js';
 import { getPreviousFullWeekDaySet } from './report-periods.js';
 import { deliverReportToTelegram } from './report-delivery.js';
 import { renderFinancialReportCardPng } from './report-card.js';
@@ -3448,8 +3449,8 @@ app.post('/api/accounts', async (req, res) => {
   const now = new Date().toISOString();
   await db.run(
     `INSERT INTO account_portfolio
-     (account_key, user_id, section, sort_index, name, primary_amount, primary_currency, sub_text, icon_tone, badge, icon_key, debt_direction, debt_initial_amount, debt_created_at, updatedAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     (account_key, user_id, section, sort_index, name, primary_amount, primary_currency, sub_text, icon_tone, badge, debt_phrase, icon_key, debt_direction, debt_initial_amount, debt_created_at, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       accountKey,
       userId,
@@ -3461,6 +3462,7 @@ app.post('/api/accounts', async (req, res) => {
       subText ? subText : null,
       iconTone,
       badge ? badge : null,
+      section === 'debt' ? legacyDebtPhraseForDirection(debtDirection) : null,
       iconKey,
       debtDirection,
       section === 'debt' ? primaryAmount : null,
@@ -3568,6 +3570,7 @@ app.put('/api/accounts/:key', async (req, res) => {
          sub_text = ?,
          icon_tone = ?,
          badge = ?,
+         debt_phrase = ?,
          icon_key = ?,
          debt_direction = ?,
          updatedAt = ?
@@ -3581,6 +3584,7 @@ app.put('/api/accounts/:key', async (req, res) => {
       subText ? subText : null,
       iconTone,
       badge ? badge : null,
+      section === 'debt' ? legacyDebtPhraseForDirection(debtDirection) : null,
       iconKey,
       debtDirection,
       now,
