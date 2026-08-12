@@ -293,6 +293,19 @@ type Dict = {
     fullscreenDescription: string;
     fullscreenUnsupported: string;
     automationTitle: string;
+    automationGeoTitle: string;
+    automationGeoDescription: string;
+    automationStartUrl: string;
+    automationEndUrl: string;
+    automationCopy: string;
+    automationCopied: string;
+    automationCopyFailed: string;
+    automationRotate: string;
+    automationRotateWarning: string;
+    automationRotateConfirm: string;
+    automationNoTemplate: string;
+    automationHowToIos: string;
+    automationHowToAndroid: string;
     weeklyAutoReport: string;
     monthlyAutoReport: string;
     reportSendTime: string;
@@ -698,6 +711,24 @@ const uk: Dict = {
     fullscreenDescription: 'Розгортає застосунок на весь екран і приховує шапку Telegram',
     fullscreenUnsupported: 'Недоступно у вашій версії Telegram',
     automationTitle: 'Автоматизація Telegram',
+    automationGeoTitle: 'Автозміна за геолокацією',
+    automationGeoDescription:
+      'Ці посилання починають і завершують зміну без відкриття застосунку. Прив’яжіть їх до геозони «робота» в автоматизації телефону — зміна стартуватиме сама, щойно ви приїдете.',
+    automationStartUrl: 'Посилання: почати зміну',
+    automationEndUrl: 'Посилання: завершити зміну',
+    automationCopy: 'Натисніть, щоб скопіювати',
+    automationCopied: 'Посилання скопійовано',
+    automationCopyFailed: 'Не вдалося скопіювати посилання',
+    automationRotate: 'Оновити токен',
+    automationRotateWarning:
+      'Старі посилання перестануть працювати. Після оновлення потрібно вставити нові посилання в автоматизацію на телефоні.',
+    automationRotateConfirm: 'Так, оновити',
+    automationNoTemplate:
+      'Спочатку оберіть шаблон зміни за замовчуванням вище — без нього автозапуск не спрацює.',
+    automationHowToIos:
+      'iOS: Команди → Автоматизація → Нова → «Прибуття» → адреса роботи → дія «Отримати вміст URL» → вставте посилання початку. Для «Відбуття» — посилання завершення.',
+    automationHowToAndroid:
+      'Android: Tasker або MacroDroid → тригер «Геозона / Location» → дія HTTP Request (GET) → вставте посилання.',
     weeklyAutoReport: 'Авто тижневий звіт',
     monthlyAutoReport: 'Авто місячний звіт',
     reportSendTime: 'Час надсилання звіту',
@@ -1109,6 +1140,24 @@ const ru: Dict = {
     fullscreenDescription: 'Разворачивает приложение на весь экран и скрывает шапку Telegram',
     fullscreenUnsupported: 'Недоступно в вашей версии Telegram',
     automationTitle: 'Автоматизация Telegram',
+    automationGeoTitle: 'Автосмена по геолокации',
+    automationGeoDescription:
+      'Эти ссылки начинают и завершают смену без открытия приложения. Привяжите их к геозоне «работа» в автоматизации телефона — смена начнётся сама, как только вы приедете.',
+    automationStartUrl: 'Ссылка: начать смену',
+    automationEndUrl: 'Ссылка: завершить смену',
+    automationCopy: 'Нажмите, чтобы скопировать',
+    automationCopied: 'Ссылка скопирована',
+    automationCopyFailed: 'Не удалось скопировать ссылку',
+    automationRotate: 'Обновить токен',
+    automationRotateWarning:
+      'Старые ссылки перестанут работать. После обновления нужно вставить новые ссылки в автоматизацию на телефоне.',
+    automationRotateConfirm: 'Да, обновить',
+    automationNoTemplate:
+      'Сначала выберите шаблон смены по умолчанию выше — без него автозапуск не сработает.',
+    automationHowToIos:
+      'iOS: Быстрые команды → Автоматизация → Новая → «Прибытие» → адрес работы → действие «Получить содержимое URL» → вставьте ссылку начала. Для «Убытия» — ссылку завершения.',
+    automationHowToAndroid:
+      'Android: Tasker или MacroDroid → триггер «Геозона / Location» → действие HTTP Request (GET) → вставьте ссылку.',
     weeklyAutoReport: 'Авто недельный отчёт',
     monthlyAutoReport: 'Авто месячный отчёт',
     reportSendTime: 'Время отправки отчёта',
@@ -1520,6 +1569,24 @@ const en: Dict = {
     fullscreenDescription: 'Expands the app to the whole screen and hides the Telegram header',
     fullscreenUnsupported: 'Not available in your version of Telegram',
     automationTitle: 'Telegram automation',
+    automationGeoTitle: 'Auto shift by location',
+    automationGeoDescription:
+      'These links start and end a shift without opening the app. Wire them to a "work" geofence in your phone automation and the shift starts by itself when you arrive.',
+    automationStartUrl: 'Link: start shift',
+    automationEndUrl: 'Link: end shift',
+    automationCopy: 'Tap to copy',
+    automationCopied: 'Link copied',
+    automationCopyFailed: 'Could not copy the link',
+    automationRotate: 'Rotate token',
+    automationRotateWarning:
+      'The old links will stop working. After rotating you need to paste the new links into your phone automation.',
+    automationRotateConfirm: 'Yes, rotate',
+    automationNoTemplate:
+      'Pick a default shift template above first — auto start will not work without it.',
+    automationHowToIos:
+      'iOS: Shortcuts → Automation → New → "Arrive" → work address → action "Get Contents of URL" → paste the start link. Use the end link for "Leave".',
+    automationHowToAndroid:
+      'Android: Tasker or MacroDroid → "Geofence / Location" trigger → HTTP Request (GET) action → paste the link.',
     weeklyAutoReport: 'Weekly auto report',
     monthlyAutoReport: 'Monthly auto report',
     reportSendTime: 'Report send time',

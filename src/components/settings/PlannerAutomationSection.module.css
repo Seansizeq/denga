@@ -1,0 +1,143 @@
+.linkRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 18px;
+  background: transparent;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.linkRow:active {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.linkRow + .linkRow {
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.linkLabels {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.linkLabel {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.linkValue {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.copyIcon {
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.warning {
+  padding: 14px 18px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--accent-red, #ff5f5f);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.howTo {
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.howToLine {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-tertiary);
+}
+
+.rotateRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 18px;
+  background: transparent;
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  text-align: left;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--accent-red, #ff5f5f);
+}
+
+.rotateRow:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.confirmBox {
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.confirmText {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+.cancelBtn {
+  flex: 1;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.cancelBtn:disabled,
+.dangerBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dangerBtn {
+  flex: 1;
+  padding: 12px;
+  border-radius: 14px;
+  border: none;
+  background: rgba(255, 80, 80, 0.18);
+  color: var(--accent-red, #ff5f5f);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
