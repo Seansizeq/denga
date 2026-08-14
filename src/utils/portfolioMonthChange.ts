@@ -1,14 +1,21 @@
 import type { Transaction } from '../types';
 import type { CurrencyCode } from './currency';
+import {
+  isCryptoDenomination,
+  normalizeDenomination,
+  type CryptoSymbol,
+  type Denomination,
+} from './denomination';
 import { getTransactionAccountEffects } from './transactionUtils';
 
-export type CryptoSymbol = 'BTC' | 'ETH' | 'SOL' | 'TON' | 'USDT';
+export type { CryptoSymbol } from './denomination';
 
 export type PortfolioRowInput = {
   accountKey: string;
   section: string;
   primaryAmount: number;
-  primaryCurrency: 'UAH' | 'PLN';
+  /** The unit the balance is counted in \u2014 fiat currency or crypto asset. */
+  primaryCurrency: Denomination;
   subText?: string | null;
   debtDirection?: 'owed_to_me' | 'owed_by_me' | null;
 };
@@ -18,22 +25,17 @@ export type CryptoUsdHistory = {
   pricesMonthStart: Partial<Record<CryptoSymbol, number>>;
 };
 
-export const parseCryptoPosition = (subText?: string | null): { symbol: CryptoSymbol; amount: number } | null => {
-  if (!subText) return null;
-  const m = subText.match(/([0-9][0-9\s\u00A0\u202F]*(?:[.,][0-9]+)?)\s*([A-Za-z]{3,5})/);
-  if (!m?.[1] || !m?.[2]) return null;
-  const amount = Number(m[1].replace(/[\s\u00A0\u202F]+/g, '').replace(',', '.'));
-  if (!Number.isFinite(amount) || amount <= 0) return null;
-  const symbol = m[2].toUpperCase();
-  if (symbol === 'BTC' || symbol === 'ETH' || symbol === 'SOL' || symbol === 'TON' || symbol === 'USDT') {
-    return { symbol, amount };
-  }
-  return null;
-};
-
+/**
+ * Balance change on an account since the start of the month.
+ *
+ * Only effects recorded in the account's own denomination count. Transfers made
+ * before an account was re-denominated carry the old unit, and adding a figure
+ * in hryvnia to a balance counted in tokens would produce nonsense.
+ */
 const sumAccountDeltasSinceMonthStart = (
   transactions: readonly Transaction[],
   accountKey: string,
+  denomination: Denomination,
   now: Date,
 ): number => {
   let sum = 0;
@@ -44,18 +46,14 @@ const sumAccountDeltasSinceMonthStart = (
     if (!Number.isFinite(timestamp) || timestamp < monthStart.getTime() || timestamp > now.getTime()) continue;
     const effect = getTransactionAccountEffects(tx).find((row) => row.accountKey === key);
     if (!effect) continue;
+    if (normalizeDenomination(effect.currency) !== denomination) continue;
     sum += effect.delta;
   }
   return sum;
 };
 
-export const portfolioNeedsCryptoHistory = (accounts: readonly PortfolioRowInput[]): boolean => {
-  for (const r of accounts) {
-    if (String(r.section).toLowerCase() !== 'crypto') continue;
-    if (parseCryptoPosition(typeof r.subText === 'string' ? r.subText : null)) return true;
-  }
-  return false;
-};
+export const portfolioNeedsCryptoHistory = (accounts: readonly PortfolioRowInput[]): boolean =>
+  accounts.some((r) => isCryptoDenomination(r.primaryCurrency));
 
 const historyCoversPosition = (history: CryptoUsdHistory, symbol: CryptoSymbol): boolean => {
   const current = history.pricesNow[symbol];
@@ -87,9 +85,8 @@ export const computePortfolioMonthStartUahPln = (params: {
   if (portfolioNeedsCryptoHistory(accounts)) {
     if (!cryptoHistory) return null;
     for (const r of accounts) {
-      if (String(r.section).toLowerCase() !== 'crypto') continue;
-      const pos = parseCryptoPosition(typeof r.subText === 'string' ? r.subText : null);
-      if (pos && !historyCoversPosition(cryptoHistory, pos.symbol)) return null;
+      if (!isCryptoDenomination(r.primaryCurrency)) continue;
+      if (!historyCoversPosition(cryptoHistory, r.primaryCurrency)) return null;
     }
   }
 
@@ -98,28 +95,34 @@ export const computePortfolioMonthStartUahPln = (params: {
 
   for (const r of accounts) {
     const section = String(r.section ?? '').trim().toLowerCase();
-    const primaryCurrency = r.primaryCurrency === 'PLN' ? 'PLN' : 'UAH';
+    const denomination = normalizeDenomination(r.primaryCurrency);
     const key = String(r.accountKey ?? '').trim().toLowerCase();
     const baseAmount = Number(r.primaryAmount);
     if (!Number.isFinite(baseAmount)) continue;
 
+    // Roll the balance back to what it was on the 1st, in its own unit.
+    const quantityAtMonthStart =
+      baseAmount - sumAccountDeltasSinceMonthStart(transactions, key, denomination, now);
+
+    // Same bucketing rule as the dashboard: UAH and PLN keep their own totals,
+    // everything else is carried as its hryvnia equivalent.
+    const bucket: CurrencyCode = denomination === 'PLN' ? 'PLN' : 'UAH';
+
     let amountPrimary: number;
-    if (section === 'crypto') {
-      const pos = parseCryptoPosition(typeof r.subText === 'string' ? r.subText : null);
-      if (pos && cryptoHistory && historyCoversPosition(cryptoHistory, pos.symbol)) {
-        const usdAtMonthStart = pos.amount * (cryptoHistory.pricesMonthStart[pos.symbol] as number);
-        amountPrimary = convertAmount(usdAtMonthStart, 'USD', primaryCurrency);
-      } else {
-        const delta = sumAccountDeltasSinceMonthStart(transactions, key, now);
-        amountPrimary = baseAmount - delta;
-      }
+    if (isCryptoDenomination(denomination)) {
+      if (!cryptoHistory || !historyCoversPosition(cryptoHistory, denomination)) continue;
+      // Valued at the price that applied at the start of the month, so the
+      // change reflects both the position and the market move.
+      const usdAtMonthStart = quantityAtMonthStart * (cryptoHistory.pricesMonthStart[denomination] as number);
+      amountPrimary = convertAmount(usdAtMonthStart, 'USD', bucket);
+    } else if (denomination !== bucket) {
+      amountPrimary = convertAmount(quantityAtMonthStart, denomination, bucket);
     } else {
-      const delta = sumAccountDeltasSinceMonthStart(transactions, key, now);
-      amountPrimary = baseAmount - delta;
+      amountPrimary = quantityAtMonthStart;
     }
 
     const signedAmountPrimary = section === 'debt' && r.debtDirection === 'owed_by_me' ? -amountPrimary : amountPrimary;
-    if (primaryCurrency === 'PLN') pln += signedAmountPrimary;
+    if (bucket === 'PLN') pln += signedAmountPrimary;
     else uah += signedAmountPrimary;
   }
 

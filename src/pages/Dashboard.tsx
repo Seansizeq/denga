@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Plus } from 'lucide-react';
 import { useTransactions } from '../context/TransactionContext';
 import { useTranslation } from '../i18n/LanguageContext';
+import { showAppAlert } from '../utils/notify';
 import { usePortfolio } from '../context/PortfolioContext';
 import Header from '../components/ui/Header';
 import HeroBalance from '../components/ui/HeroBalance';
@@ -13,11 +14,13 @@ import { isWithinLastDays } from '../utils/dateRanges';
 import {
   computePortfolioMonthStartUahPln,
   computeWealthMonthChangePercent,
-  parseCryptoPosition,
+
   portfolioNeedsCryptoHistory,
   priorNetInDisplayCurrency,
   type PortfolioRowInput,
 } from '../utils/portfolioMonthChange';
+import { normalizeDenomination } from '../utils/denomination';
+import { useDenominationRates } from '../hooks/useDenominationRates';
 import styles from './Dashboard.module.css';
 
 type PortfolioWorth = { uah: number; pln: number };
@@ -31,7 +34,9 @@ const normalizeAccountRow = (row: Record<string, unknown>): PortfolioRowInput | 
     accountKey,
     section: String(row.section ?? ''),
     primaryAmount,
-    primaryCurrency: row.primaryCurrency === 'PLN' ? 'PLN' : 'UAH',
+    primaryCurrency: normalizeDenomination(
+      typeof row.primaryCurrency === 'string' ? row.primaryCurrency : undefined,
+    ),
     subText: typeof row.subText === 'string' ? row.subText : null,
     debtDirection: row.debtDirection === 'owed_by_me' ? 'owed_by_me' : 'owed_to_me',
   };
@@ -41,7 +46,8 @@ const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const { t, displayCurrency, convertAmount } = useTranslation();
   const { transactions, deleteTransaction } = useTransactions();
-  const { accounts, cryptoPrices, cryptoUsdHistory, refreshCryptoHistory } = usePortfolio();
+  const { accounts, cryptoUsdHistory, refreshCryptoHistory } = usePortfolio();
+  const { convert } = useDenominationRates();
   const [range, setRange] = useState<RangeFilter>('today');
 
   const inRange = useMemo(() => {
@@ -65,10 +71,14 @@ const Dashboard: React.FC = () => {
     [transactions, inRange],
   );
 
+  // Підсумок рахується за той самий період, що показує фільтр під ним.
+  // Раніше зверху була сума за весь час, а список — за «сьогодні».
   const summary = useMemo(() => {
-    const totals = transactions.reduce(
+    const totals = filtered.reduce(
       (acc, tx) => {
-        const amountInDisplay = convertAmount(tx.amount, tx.currency);
+        // Crypto-denominated rows are skipped when unpriced rather than
+        // counted as if one token were one hryvnia.
+        const amountInDisplay = convert(tx.amount, tx.currency) ?? 0;
         if (tx.type === 'income') acc.income += amountInDisplay;
         else if (tx.type === 'expense') acc.expense += amountInDisplay;
         return acc;
@@ -81,7 +91,7 @@ const Dashboard: React.FC = () => {
       totalExpense: totals.expense,
       totalNet: totals.income - totals.expense,
     };
-  }, [transactions, convertAmount]);
+  }, [filtered, convert]);
 
   const portfolioRows = useMemo<PortfolioRowInput[]>(() => {
     const rows: PortfolioRowInput[] = [];
@@ -99,24 +109,27 @@ const Dashboard: React.FC = () => {
     for (const row of accounts) {
       const baseAmount = Number(row.primaryAmount);
       const section = String(row.section ?? '').trim().toLowerCase();
-      const primaryCurrency = row.primaryCurrency === 'PLN' ? 'PLN' : 'UAH';
+      const denomination = normalizeDenomination(
+        typeof row.primaryCurrency === 'string' ? row.primaryCurrency : undefined,
+      );
       if (!Number.isFinite(baseAmount)) continue;
-      let amount = baseAmount;
-      if (section === 'crypto') {
-        const position = parseCryptoPosition(typeof row.subText === 'string' ? row.subText : null);
-        const marketUsd = position ? (cryptoPrices[position.symbol] ?? 0) * position.amount : 0;
-        if (marketUsd > 0) {
-          amount = convertAmount(marketUsd, 'USD', primaryCurrency);
-        }
-      }
+
+      // Two buckets keep the "you also hold X" line meaningful for the two
+      // currencies actually spent day to day. Anything else — USD, crypto — is
+      // carried as its hryvnia equivalent, so the net total stays exact.
+      const bucket: 'UAH' | 'PLN' = denomination === 'PLN' ? 'PLN' : 'UAH';
+      const amount = denomination === bucket ? baseAmount : convert(baseAmount, denomination, bucket);
+      // An unpriced crypto position is left out rather than counted as zero-value fiat.
+      if (amount === null) continue;
+
       // A debt someone else owes me is a receivable asset; a debt I owe is a liability
       // and must reduce net worth instead of inflating it.
       const signedAmount = section === 'debt' && row.debtDirection === 'owed_by_me' ? -amount : amount;
-      if (primaryCurrency === 'PLN') pln += signedAmount;
+      if (bucket === 'PLN') pln += signedAmount;
       else uah += signedAmount;
     }
     return { uah, pln };
-  }, [accounts, cryptoPrices, convertAmount]);
+  }, [accounts, convert]);
 
   const needsCryptoHistory = useMemo(
     () => portfolioNeedsCryptoHistory(portfolioRows),
@@ -197,7 +210,7 @@ const Dashboard: React.FC = () => {
           transactions={filtered}
           onDelete={async (id) => {
             const ok = await deleteTransaction(id);
-            if (!ok) window.alert(t('addTx', 'saveFailed'));
+            if (!ok) showAppAlert(t('addTx', 'saveFailed'));
           }}
           onEdit={(id) => navigate(`/add?edit=${id}`)}
           filter={range}

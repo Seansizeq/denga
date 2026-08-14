@@ -3,6 +3,7 @@ import { PieChart } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useTransactions } from '../context/TransactionContext';
 import { useTranslation } from '../i18n/LanguageContext';
+import { useDenominationRates } from '../hooks/useDenominationRates';
 import { getBudgets, type CategoryBudget } from '../api/client';
 import { useStatsPeriod } from '../hooks/useStatsPeriod';
 import { useStatsAggregates } from '../hooks/useStatsAggregates';
@@ -16,7 +17,8 @@ const RANGE_OPTIONS: StatsRange[] = ['today', 'week', 'month', 'year'];
 
 const Stats: React.FC = () => {
   const navigate = useNavigate();
-  const { t, convertAmount } = useTranslation();
+  const { t } = useTranslation();
+  const { convert } = useDenominationRates();
   const { transactions } = useTransactions();
 
   const { range, setRange, bounds, previousBounds, periodLabel, isCurrent, goPrev, goNext, goToCurrent } =
@@ -40,7 +42,7 @@ const Stats: React.FC = () => {
 
   const aggregates = useStatsAggregates({
     transactions,
-    convertAmount,
+    convertAmount: convert,
     bounds,
     previousBounds,
     chartType,
@@ -67,7 +69,7 @@ const Stats: React.FC = () => {
         <h1 className={styles.title}>{t('stats', 'title')}</h1>
       </header>
 
-      <div className={styles.rangeTabs} role="tablist" aria-label="Stats range">
+      <div className={styles.rangeTabs} role="tablist" aria-label={t('stats', 'title')}>
         {RANGE_OPTIONS.map((opt) => (
           <button
             key={opt}

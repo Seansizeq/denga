@@ -1,10 +1,12 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { Transaction, Balance, TransactionDraft } from '../types';
 import { apiFetch } from '../api/client';
-import { normalizeCurrency } from '../utils/currency';
+import { normalizeDenomination } from '../utils/denomination';
 import { usePersistedState } from '../hooks/usePersistedState';
+import { usePolling } from '../hooks/usePolling';
 
 const TRANSACTIONS_STORAGE_KEY = 'denga_transactions_v1';
+const TRANSACTIONS_POLL_MS = 5000;
 
 const isTransactionArray = (v: unknown): v is Transaction[] =>
   Array.isArray(v) &&
@@ -24,6 +26,8 @@ interface TransactionContextType {
   refreshTransactions: () => Promise<void>;
   balance: Balance;
   isBootstrapping: boolean;
+  /** true — останній запит не вдався, список показано з кешу. */
+  transactionsStale: boolean;
 }
 
 const TransactionContext = createContext<TransactionContextType | undefined>(undefined);
@@ -38,6 +42,7 @@ export const TransactionProvider: React.FC<{
     { validate: isTransactionArray },
   );
   const [isBootstrapping, setIsBootstrapping] = useState(true);
+  const [transactionsStale, setTransactionsStale] = useState(false);
   const readyNotifiedRef = useRef(false);
 
   const notifyReady = useCallback(() => {
@@ -49,20 +54,23 @@ export const TransactionProvider: React.FC<{
   const fetchTransactions = useCallback(async ({ initial = false }: { initial?: boolean } = {}) => {
     try {
       const response = await apiFetch('/api/transactions');
-      if (!response.ok) return;
+      if (!response.ok) throw new Error(`transactions ${response.status}`);
       const data = await response.json();
       const normalized = Array.isArray(data)
         ? data.map((row) => ({
             ...row,
-            currency: normalizeCurrency((row as { currency?: string }).currency),
+            currency: normalizeDenomination((row as { currency?: string }).currency),
             transferToCurrency: (row as { transferToCurrency?: string }).transferToCurrency
-              ? normalizeCurrency((row as { transferToCurrency?: string }).transferToCurrency)
+              ? normalizeDenomination((row as { transferToCurrency?: string }).transferToCurrency)
               : undefined,
           }))
         : [];
       setTransactions(normalized);
+      setTransactionsStale(false);
     } catch (error) {
       console.error('Error fetching transactions:', error);
+      // Кеш лишається видимим, але позначеним — див. банер стану даних.
+      setTransactionsStale(true);
     } finally {
       if (initial) {
         setIsBootstrapping(false);
@@ -87,12 +95,14 @@ export const TransactionProvider: React.FC<{
       notifyReady();
     }
     void fetchTransactions({ initial: true });
-    // Poll for changes from the bot every 5 seconds
-    const interval = window.setInterval(() => {
-      void fetchTransactions();
-    }, 5000);
-    return () => clearInterval(interval);
   }, [fetchTransactions, notifyReady]);
+
+  // Транзакції можуть прилетіти з бота, тож список підтягується сам —
+  // але лише поки застосунок на екрані.
+  const pollTransactions = useCallback(() => {
+    void fetchTransactions();
+  }, [fetchTransactions]);
+  usePolling(pollTransactions, TRANSACTIONS_POLL_MS);
 
   const balance = useMemo<Balance>(() => {
     let income = 0;
@@ -117,9 +127,9 @@ export const TransactionProvider: React.FC<{
         setTransactions((prev) => [
           {
             ...(newTransaction as Transaction),
-            currency: normalizeCurrency((newTransaction as { currency?: string }).currency),
+            currency: normalizeDenomination((newTransaction as { currency?: string }).currency),
             transferToCurrency: (newTransaction as { transferToCurrency?: string }).transferToCurrency
-              ? normalizeCurrency((newTransaction as { transferToCurrency?: string }).transferToCurrency)
+              ? normalizeDenomination((newTransaction as { transferToCurrency?: string }).transferToCurrency)
               : undefined,
           },
           ...prev,
@@ -163,9 +173,9 @@ export const TransactionProvider: React.FC<{
             tx.id === id
               ? {
                   ...(updated as Transaction),
-                  currency: normalizeCurrency((updated as { currency?: string }).currency),
+                  currency: normalizeDenomination((updated as { currency?: string }).currency),
                   transferToCurrency: (updated as { transferToCurrency?: string }).transferToCurrency
-                    ? normalizeCurrency((updated as { transferToCurrency?: string }).transferToCurrency)
+                    ? normalizeDenomination((updated as { transferToCurrency?: string }).transferToCurrency)
                     : undefined,
                 }
               : tx
@@ -183,7 +193,16 @@ export const TransactionProvider: React.FC<{
 
   return (
     <TransactionContext.Provider
-      value={{ transactions, addTransaction, updateTransaction, deleteTransaction, refreshTransactions: fetchTransactions, balance, isBootstrapping }}
+      value={{
+        transactions,
+        addTransaction,
+        updateTransaction,
+        deleteTransaction,
+        refreshTransactions: fetchTransactions,
+        balance,
+        isBootstrapping,
+        transactionsStale,
+      }}
     >
       {children}
     </TransactionContext.Provider>

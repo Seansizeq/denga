@@ -1,5 +1,5 @@
 export type AccountSection = 'bank' | 'cash' | 'crypto' | 'stocks' | 'debt';
-export type AccountPickerGroup = 'ordinary' | 'crypto' | 'debt';
+export type AccountPickerGroup = 'bank' | 'cash' | 'crypto' | 'debt';
 
 export type AccountPickerItem = {
   key: string;
@@ -8,9 +8,10 @@ export type AccountPickerItem = {
 };
 
 const GROUP_ORDER: Record<AccountPickerGroup, number> = {
-  ordinary: 0,
-  crypto: 1,
-  debt: 2,
+  bank: 0,
+  cash: 1,
+  crypto: 2,
+  debt: 3,
 };
 
 export const inferAccountSectionFromKey = (key: string): AccountSection => {
@@ -23,7 +24,8 @@ export const inferAccountSectionFromKey = (key: string): AccountSection => {
 export const getAccountPickerGroup = (section: AccountSection): AccountPickerGroup => {
   if (section === 'debt') return 'debt';
   if (section === 'crypto' || section === 'stocks') return 'crypto';
-  return 'ordinary';
+  if (section === 'cash') return 'cash';
+  return 'bank';
 };
 
 export const sortAccountPickerItems = <T extends AccountPickerItem>(

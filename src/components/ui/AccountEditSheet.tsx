@@ -2,8 +2,14 @@ import React, { useMemo, useState } from 'react';
 import { ChevronDown, ChevronUp, Sparkles, X } from 'lucide-react';
 import { useTranslation } from '../../i18n/LanguageContext';
 import { AccountIconGlyph, type AccountIconKey } from '../../utils/accountIcons';
-import { parseCryptoPosition, type CryptoSymbol } from '../../utils/cryptoPosition';
+import {
+  DENOMINATIONS,
+  isCryptoDenomination,
+  normalizeDenomination,
+  type Denomination,
+} from '../../utils/denomination';
 import { AccountRowAvatar } from './AccountRowAvatar';
+import { showAppConfirm } from '../../utils/notify';
 import styles from './AccountEditSheet.module.css';
 
 export type EditableAccount = {
@@ -12,7 +18,8 @@ export type EditableAccount = {
   sortIndex: number;
   name: string;
   primaryAmount: number;
-  primaryCurrency: 'UAH' | 'PLN';
+  /** The unit the balance is counted in — fiat currency or crypto asset. */
+  primaryCurrency: Denomination;
   subText: string;
   iconTone: 'bank' | 'cash' | 'crypto' | 'stocks' | 'debt' | 'neutral';
   badge: string;
@@ -35,62 +42,71 @@ const parseMoney = (raw: string): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
-const COLOR_OPTIONS: Array<{ tone: EditableAccount['iconTone']; label: string; swatch: string }> = [
-  { tone: 'bank',    label: 'Жовтий',      swatch: '#ffb020' },
-  { tone: 'cash',    label: 'Фіолетовий',  swatch: '#8f74ff' },
-  { tone: 'crypto',  label: 'Блакитний',   swatch: '#58b7ff' },
-  { tone: 'stocks',  label: 'Зелений',     swatch: '#4ade80' },
-  { tone: 'debt',    label: 'Червоний',    swatch: '#ff6b6b' },
-  { tone: 'neutral', label: 'Нейтральний', swatch: '#73737c' },
+const COLOR_OPTIONS: Array<{
+  tone: EditableAccount['iconTone'];
+  labelKey: 'colorBank' | 'colorCash' | 'colorCrypto' | 'colorStocks' | 'colorDebt' | 'colorNeutral';
+  swatch: string;
+}> = [
+  { tone: 'bank',    labelKey: 'colorBank',    swatch: '#ffb020' },
+  { tone: 'cash',    labelKey: 'colorCash',    swatch: '#8f74ff' },
+  { tone: 'crypto',  labelKey: 'colorCrypto',  swatch: '#58b7ff' },
+  { tone: 'stocks',  labelKey: 'colorStocks',  swatch: '#4ade80' },
+  { tone: 'debt',    labelKey: 'colorDebt',    swatch: '#ff6b6b' },
+  { tone: 'neutral', labelKey: 'colorNeutral', swatch: '#73737c' },
 ];
 
-const LUCIDE_PICKS: Array<{ key: Exclude<AccountIconKey, 'auto'>; label: string }> = [
-  { key: 'CreditCard',       label: 'Картка'   },
-  { key: 'Landmark',         label: 'Банк'     },
-  { key: 'Wallet',           label: 'Гаманець' },
-  { key: 'Banknote',         label: 'Готівка'  },
-  { key: 'PiggyBank',        label: 'Заощад.'  },
-  { key: 'Coins',            label: 'Крипта'   },
-  { key: 'TrendingUp',       label: 'Акції'    },
-  { key: 'CircleDollarSign', label: 'Стейбл'   },
-  { key: 'HandCoins',        label: 'Борг'     },
+const LUCIDE_PICKS: Array<{
+  key: Exclude<AccountIconKey, 'auto'>;
+  labelKey:
+    | 'iconCard' | 'iconBank' | 'iconWallet' | 'iconCash' | 'iconSavings'
+    | 'iconCrypto' | 'iconStocks' | 'iconStable' | 'iconDebt';
+}> = [
+  { key: 'CreditCard',       labelKey: 'iconCard'    },
+  { key: 'Landmark',         labelKey: 'iconBank'    },
+  { key: 'Wallet',           labelKey: 'iconWallet'  },
+  { key: 'Banknote',         labelKey: 'iconCash'    },
+  { key: 'PiggyBank',        labelKey: 'iconSavings' },
+  { key: 'Coins',            labelKey: 'iconCrypto'  },
+  { key: 'TrendingUp',       labelKey: 'iconStocks'  },
+  { key: 'CircleDollarSign', labelKey: 'iconStable'  },
+  { key: 'HandCoins',        labelKey: 'iconDebt'    },
 ];
 
-const SECTION_LABELS: Record<EditableAccount['section'], string> = {
-  bank:   'Карти',
-  cash:   'Готівка',
-  crypto: 'Крипта',
-  stocks: 'Акції',
-  debt:   'Борг',
+/** Розділи звуться так само, як у гаманці й у пікері типу рахунку. */
+const SECTION_LABEL_KEYS: Record<
+  EditableAccount['section'],
+  'sectionBank' | 'sectionCash' | 'sectionCrypto' | 'sectionStocks' | 'sectionDebt'
+> = {
+  bank:   'sectionBank',
+  cash:   'sectionCash',
+  crypto: 'sectionCrypto',
+  stocks: 'sectionStocks',
+  debt:   'sectionDebt',
 };
 
-const SECTION_PLACEHOLDER: Record<EditableAccount['section'], string> = {
-  bank:   'ПриватБанк, Монобанк...',
-  cash:   'Гаманець, Каса...',
-  crypto: 'Bitcoin, ETH-гаманець...',
-  stocks: 'Акції США, Monobank...',
-  debt:   'Михайло, Оренда...',
+const SECTION_PLACEHOLDER_KEYS: Record<
+  EditableAccount['section'],
+  'placeholderBank' | 'placeholderCash' | 'placeholderCrypto' | 'placeholderStocks' | 'placeholderDebt'
+> = {
+  bank:   'placeholderBank',
+  cash:   'placeholderCash',
+  crypto: 'placeholderCrypto',
+  stocks: 'placeholderStocks',
+  debt:   'placeholderDebt',
 };
 
 const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, onSave, onDelete }) => {
   const { t } = useTranslation();
   const [name, setName] = useState(() => initial.name);
   const [amount, setAmount] = useState(() => String(initial.primaryAmount));
-  const [currency, setCurrency] = useState<'UAH' | 'PLN'>(() => initial.primaryCurrency);
+  const [currency, setCurrency] = useState<Denomination>(() => normalizeDenomination(initial.primaryCurrency));
   const [section, setSection] = useState<EditableAccount['section']>(() => initial.section);
   const [iconKey, setIconKey] = useState(() => (initial.iconKey ?? '').trim());
   const [debtDirection, setDebtDirection] = useState<'owed_to_me' | 'owed_by_me'>(
     () => (initial.debtDirection === 'owed_by_me' ? 'owed_by_me' : 'owed_to_me'),
   );
   const [iconTone, setIconTone] = useState<EditableAccount['iconTone']>(() => initial.iconTone);
-  const [cryptoQty, setCryptoQty] = useState(() => {
-    const pos = parseCryptoPosition(initial.subText);
-    return pos ? String(pos.amount) : '';
-  });
-  const [cryptoSymbol, setCryptoSymbol] = useState<CryptoSymbol | ''>(() => {
-    const pos = parseCryptoPosition(initial.subText);
-    return pos ? pos.symbol : '';
-  });
+
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -104,11 +120,12 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
     return slug || 'account';
   }, [initial.accountKey, name]);
 
-  const previewCryptoSymbol = useMemo(() => {
-    if (section !== 'crypto') return null;
-    if (cryptoSymbol) return cryptoSymbol;
-    return parseCryptoPosition(initial.subText)?.symbol ?? null;
-  }, [section, cryptoSymbol, initial.subText]);
+  // The denomination is the coin: no second place to state it, so the two
+  // can no longer disagree.
+  const previewCryptoSymbol = useMemo(
+    () => (isCryptoDenomination(currency) ? currency : null),
+    [currency],
+  );
 
   const handleSave = async () => {
     const n = parseMoney(amount);
@@ -116,9 +133,8 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
     setError('');
     setSaving(true);
     try {
-      const qty = cryptoQty.replace(',', '.').trim();
-      const builtSubText =
-        section === 'crypto' && qty && cryptoSymbol ? `${qty} ${cryptoSymbol}` : initial.subText;
+      // sub_text is a free-form note again; the position lives in the balance.
+      const builtSubText = initial.subText;
       await onSave({
         ...initial,
         section,
@@ -146,7 +162,7 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
       initial.section === 'debt' && initial.primaryAmount > 0
         ? t('balance', 'debtDeleteConfirmWithBalance')
         : t('addTx', 'deleteConfirm');
-    const ok = window.confirm(confirmMessage);
+    const ok = await showAppConfirm(confirmMessage);
     if (!ok) return;
     setSaving(true);
     try {
@@ -168,7 +184,9 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
           <button type="button" className={styles.iconBtn} onClick={onClose} aria-label={t('addTx', 'cancel')}>
             <X size={18} strokeWidth={2.4} />
           </button>
-          <h2 className={styles.title}>{isCreateMode ? 'Новий рахунок' : 'Редагування рахунку'}</h2>
+          <h2 className={styles.title}>
+            {t('balance', isCreateMode ? 'accountNewTitle' : 'accountEditTitle')}
+          </h2>
           <span className={styles.headerSpacer} />
         </div>
 
@@ -188,8 +206,8 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
               />
             </div>
             <div className={styles.previewInfo}>
-              <span className={styles.previewName}>{name.trim() || 'Новий рахунок'}</span>
-              <span className={styles.previewSection}>{SECTION_LABELS[section]}</span>
+              <span className={styles.previewName}>{name.trim() || t('balance', 'accountNewTitle')}</span>
+              <span className={styles.previewSection}>{t('balance', SECTION_LABEL_KEYS[section])}</span>
             </div>
           </div>
 
@@ -201,7 +219,7 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
               value={name}
               onChange={(e) => setName(e.target.value)}
               maxLength={40}
-              placeholder={SECTION_PLACEHOLDER[section]}
+              placeholder={t('accountEditor', SECTION_PLACEHOLDER_KEYS[section])}
               autoFocus={isCreateMode}
             />
           </label>
@@ -218,52 +236,25 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
               />
             </label>
             <label className={styles.label}>
-              Валюта
+              Валюта / актив
               <select
                 className={styles.select}
                 value={currency}
-                onChange={(e) => setCurrency(e.target.value === 'PLN' ? 'PLN' : 'UAH')}
+                onChange={(e) => setCurrency(normalizeDenomination(e.target.value))}
               >
-                <option value="UAH">UAH (₴)</option>
-                <option value="PLN">PLN (zł)</option>
+                {DENOMINATIONS.map((code) => (
+                  <option key={code} value={code}>
+                    {code === 'UAH' ? 'UAH (₴)' : code === 'PLN' ? 'PLN (zł)' : code === 'USD' ? 'USD ($)' : code}
+                  </option>
+                ))}
               </select>
             </label>
           </div>
 
-          {/* Crypto fields — shown only for crypto section */}
-          {section === 'crypto' ? (
-            <div className={styles.row2}>
-              <label className={styles.label}>
-                Кількість
-                <input
-                  className={styles.input}
-                  value={cryptoQty}
-                  onChange={(e) => setCryptoQty(e.target.value)}
-                  inputMode="decimal"
-                  placeholder="0.05"
-                />
-              </label>
-              <label className={styles.label}>
-                Монета
-                <select
-                  className={styles.select}
-                  value={cryptoSymbol}
-                  onChange={(e) => setCryptoSymbol(e.target.value as CryptoSymbol | '')}
-                >
-                  <option value="">—</option>
-                  <option value="BTC">BTC</option>
-                  <option value="ETH">ETH</option>
-                  <option value="SOL">SOL</option>
-                  <option value="TON">TON</option>
-                  <option value="USDT">USDT</option>
-                </select>
-              </label>
-            </div>
-          ) : null}
 
           {/* Compact color circles */}
           <div className={styles.colorSection}>
-            <span className={styles.colorLabel}>Колір</span>
+            <span className={styles.colorLabel}>{t('balance', 'accountColorLabel')}</span>
             <div className={styles.colorRow}>
               {COLOR_OPTIONS.map((opt) => (
                 <button
@@ -272,8 +263,8 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
                   className={`${styles.colorDot} ${iconTone === opt.tone ? styles.colorDotActive : ''}`}
                   style={{ backgroundColor: opt.swatch }}
                   onClick={() => setIconTone(opt.tone)}
-                  aria-label={opt.label}
-                  title={opt.label}
+                  aria-label={t('accountEditor', opt.labelKey)}
+                  title={t('accountEditor', opt.labelKey)}
                 />
               ))}
             </div>
@@ -315,7 +306,7 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
               className={styles.expandBtn}
               onClick={() => setAdvancedOpen((v) => !v)}
             >
-              <span>Іконка та розділ</span>
+              <span>{t('balance', 'accountIconSectionTitle')}</span>
               {advancedOpen ? (
                 <ChevronUp size={15} strokeWidth={2.4} />
               ) : (
@@ -326,7 +317,7 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
             {advancedOpen ? (
               <div className={styles.expandContent}>
                 <fieldset className={styles.colorFieldset}>
-                  <legend className={styles.label}>Іконка</legend>
+                  <legend className={styles.label}>{t('balance', 'accountIconLabel')}</legend>
                   <div className={styles.iconGrid}>
                     <button
                       type="button"
@@ -348,7 +339,7 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
                           aria-pressed={active}
                         >
                           <AccountIconGlyph iconKey={opt.key} size={18} strokeWidth={2.2} />
-                          {opt.label}
+                          {t('accountEditor', opt.labelKey)}
                         </button>
                       );
                     })}
@@ -362,11 +353,9 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
                     value={section}
                     onChange={(e) => setSection(e.target.value as EditableAccount['section'])}
                   >
-                    <option value="bank">Карти</option>
-                    <option value="cash">Готівка</option>
-                    <option value="crypto">Крипта</option>
-                    <option value="stocks">Акції</option>
-                    <option value="debt">Борг</option>
+                    {(Object.keys(SECTION_LABEL_KEYS) as Array<EditableAccount['section']>).map((key) => (
+                      <option key={key} value={key}>{t('balance', SECTION_LABEL_KEYS[key])}</option>
+                    ))}
                   </select>
                 </label>
               </div>

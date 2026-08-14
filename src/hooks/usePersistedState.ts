@@ -24,11 +24,15 @@ function readFromStorage<T>(
     const parsed = JSON.parse(raw) as Envelope<T> | T;
 
     let candidate: unknown;
+    // Без версії запис має вигляд `{ data }` — без поля `v`. Раніше конверт
+    // розпізнавався лише за наявності обох полів, тож валідатору діставався
+    // сам конверт, не проходив перевірку — і кеш губився при кожному
+    // перезавантаженні (застосунок стартував порожнім, якщо сервер мовчав).
     if (
       parsed &&
       typeof parsed === 'object' &&
-      'data' in (parsed as Record<string, unknown>) &&
-      'v' in (parsed as Record<string, unknown>)
+      !Array.isArray(parsed) &&
+      'data' in (parsed as Record<string, unknown>)
     ) {
       const envelope = parsed as Envelope<T>;
       if (options?.version !== undefined && envelope.v !== options.version) {

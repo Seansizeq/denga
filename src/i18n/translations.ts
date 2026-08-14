@@ -48,7 +48,21 @@ type Dict = {
     sectionBank: string;
     sectionCash: string;
     sectionCrypto: string;
+    sectionStocks: string;
     sectionDebt: string;
+    accountsAdd: string;
+    accountsEmptyTitle: string;
+    accountsEmptyHint: string;
+    accountsTotalAssets: string;
+    accountTypeTitle: string;
+    accountNewTitle: string;
+    accountEditTitle: string;
+    accountColorLabel: string;
+    accountIconLabel: string;
+    accountIconSectionTitle: string;
+    dataStale: string;
+    dataOffline: string;
+    fxFallback: string;
     sectionDebtOwedToMe: string;
     sectionDebtOwedByMe: string;
     debtDirectionLabel: string;
@@ -101,12 +115,11 @@ type Dict = {
     paymentAccount: string;
     paymentAccountHint: string;
     paymentAccountNone: string;
-    accountGroupOrdinary: string;
-    accountGroupCrypto: string;
-    accountGroupDebt: string;
     templates: string;
     saveAsTemplate: string;
     templateNamePlaceholder: string;
+    templateLimitReached: string;
+    templateSyncFailed: string;
     date: string;
     transferFrom: string;
     transferTo: string;
@@ -116,6 +129,8 @@ type Dict = {
     hintTransferAccounts: string;
     hintTransferDifferent: string;
     hintTransferDestination: string;
+    transferRateUnavailable: string;
+    transferRateEditable: string;
     dateToday: string;
     dateYesterday: string;
     repeatLast: string;
@@ -280,6 +295,12 @@ type Dict = {
     hideCategory: string;
   };
   settings: {
+    dangerZone: string;
+    deleteAccount: string;
+    deleteAccountWarning: string;
+    deleteAccountConfirm: string;
+    deleteAccountProgress: string;
+    deleteAccountFailed: string;
     title: string;
     language: string;
     languageDescription: string;
@@ -429,6 +450,30 @@ type Dict = {
     errorUnknown: string;
   };
   stub: { title: string; description: string; openButton: string };
+  /** Редактор рахунку: кольори, іконки, підказки полів. */
+  accountEditor: {
+    colorBank: string;
+    colorCash: string;
+    colorCrypto: string;
+    colorStocks: string;
+    colorDebt: string;
+    colorNeutral: string;
+    iconCard: string;
+    iconBank: string;
+    iconWallet: string;
+    iconCash: string;
+    iconSavings: string;
+    iconCrypto: string;
+    iconStocks: string;
+    iconStable: string;
+    iconDebt: string;
+    placeholderBank: string;
+    placeholderCash: string;
+    placeholderCrypto: string;
+    placeholderStocks: string;
+    placeholderDebt: string;
+  };
+  common: { loading: string; retry: string; notFoundTitle: string };
 };
 
 const uk: Dict = {
@@ -465,8 +510,22 @@ const uk: Dict = {
     bySection: 'По розділах',
     sectionBank: 'Карти',
     sectionCash: 'Готівка',
-    sectionCrypto: 'Акції та крипта',
+    sectionCrypto: 'Крипта',
+    sectionStocks: 'Акції',
     sectionDebt: 'Борг',
+    accountsAdd: 'Додати рахунок',
+    accountsEmptyTitle: 'Рахунків ще немає',
+    accountsEmptyHint: 'Натисніть «Додати рахунок», щоб створити перший',
+    accountsTotalAssets: 'Всього активів',
+    accountTypeTitle: 'Тип рахунку',
+    accountNewTitle: 'Новий рахунок',
+    accountEditTitle: 'Редагування рахунку',
+    accountColorLabel: 'Колір',
+    accountIconLabel: 'Іконка',
+    accountIconSectionTitle: 'Іконка та розділ',
+    dataStale: 'Дані застаріли — не вдається зв’язатися з сервером',
+    dataOffline: 'Немає з’єднання. Показано збережені дані',
+    fxFallback: 'Курс приблизний: сервер недоступний',
     sectionDebtOwedToMe: 'Борг',
     sectionDebtOwedByMe: 'Я винен',
     debtDirectionLabel: 'Напрямок боргу',
@@ -519,12 +578,11 @@ const uk: Dict = {
     paymentAccount: 'Рахунок',
     paymentAccountHint: 'Обери карту чи готівку — цей рахунок оновиться в «Рахунках»',
     paymentAccountNone: 'Не вказано',
-    accountGroupOrdinary: 'Картки й готівка',
-    accountGroupCrypto: 'Криптовалюта',
-    accountGroupDebt: 'Борги',
     templates: 'Шаблони',
     saveAsTemplate: 'Зберегти як шаблон',
     templateNamePlaceholder: 'Назва шаблону',
+    templateLimitReached: 'Досягнуто ліміт шаблонів — видаліть непотрібні',
+    templateSyncFailed: 'Не вдалося синхронізувати шаблони',
     date: 'Дата',
     transferFrom: 'З рахунку',
     transferTo: 'На рахунок',
@@ -534,6 +592,8 @@ const uk: Dict = {
     hintTransferAccounts: 'Оберіть рахунки для переказу',
     hintTransferDifferent: 'Рахунки мають відрізнятися',
     hintTransferDestination: 'Введіть суму зарахування',
+    transferRateUnavailable: 'Курс недоступний — впишіть суму зарахування вручну',
+    transferRateEditable: 'можна змінити',
     dateToday: 'Сьогодні',
     dateYesterday: 'Вчора',
     repeatLast: 'Повторити останню',
@@ -698,6 +758,12 @@ const uk: Dict = {
     hideCategory: 'Сховати категорію',
   },
   settings: {
+    dangerZone: 'Небезпечна зона',
+    deleteAccount: 'Видалити акаунт',
+    deleteAccountWarning: 'Всі транзакції, рахунки, цілі та налаштування будуть видалені назавжди. Це незворотна дія.',
+    deleteAccountConfirm: 'Так, видалити все',
+    deleteAccountProgress: 'Видалення...',
+    deleteAccountFailed: 'Не вдалося видалити. Спробуйте ще раз.',
     title: 'Налаштування',
     language: 'Мова інтерфейсу',
     languageDescription: 'Оберіть мову, якою відображатиметься застосунок',
@@ -858,6 +924,29 @@ const uk: Dict = {
       'Цей застосунок доступний лише всередині нашого Telegram\u00A0бота. Відкрийте його в Telegram, щоб продовжити.',
     openButton: 'Відкрити в Telegram',
   },
+  accountEditor: {
+    colorBank: 'Жовтий',
+    colorCash: 'Фіолетовий',
+    colorCrypto: 'Блакитний',
+    colorStocks: 'Зелений',
+    colorDebt: 'Червоний',
+    colorNeutral: 'Нейтральний',
+    iconCard: 'Картка',
+    iconBank: 'Банк',
+    iconWallet: 'Гаманець',
+    iconCash: 'Готівка',
+    iconSavings: 'Заощад.',
+    iconCrypto: 'Крипта',
+    iconStocks: 'Акції',
+    iconStable: 'Стейбл',
+    iconDebt: 'Борг',
+    placeholderBank: 'ПриватБанк, Монобанк...',
+    placeholderCash: 'Гаманець, Каса...',
+    placeholderCrypto: 'Bitcoin, ETH-гаманець...',
+    placeholderStocks: 'Акції США, Monobank...',
+    placeholderDebt: 'Михайло, Оренда...',
+  },
+  common: { loading: 'Завантаження…', retry: 'Оновити', notFoundTitle: 'Такої сторінки немає' },
 };
 
 const ru: Dict = {
@@ -894,8 +983,22 @@ const ru: Dict = {
     bySection: 'По разделам',
     sectionBank: 'Карты',
     sectionCash: 'Наличные',
-    sectionCrypto: 'Акции и крипта',
+    sectionCrypto: 'Крипта',
+    sectionStocks: 'Акции',
     sectionDebt: 'Долг',
+    accountsAdd: 'Добавить счёт',
+    accountsEmptyTitle: 'Счетов пока нет',
+    accountsEmptyHint: 'Нажмите «Добавить счёт», чтобы создать первый',
+    accountsTotalAssets: 'Всего активов',
+    accountTypeTitle: 'Тип счёта',
+    accountNewTitle: 'Новый счёт',
+    accountEditTitle: 'Редактирование счёта',
+    accountColorLabel: 'Цвет',
+    accountIconLabel: 'Иконка',
+    accountIconSectionTitle: 'Иконка и раздел',
+    dataStale: 'Данные устарели — нет связи с сервером',
+    dataOffline: 'Нет соединения. Показаны сохранённые данные',
+    fxFallback: 'Курс приблизительный: сервер недоступен',
     sectionDebtOwedToMe: 'Долг',
     sectionDebtOwedByMe: 'Я должен',
     debtDirectionLabel: 'Направление долга',
@@ -948,12 +1051,11 @@ const ru: Dict = {
     paymentAccount: 'Счёт',
     paymentAccountHint: 'Выбери карту или наличные — этот счёт обновится в «Счетах»',
     paymentAccountNone: 'Не указано',
-    accountGroupOrdinary: 'Карты и наличные',
-    accountGroupCrypto: 'Криптовалюта',
-    accountGroupDebt: 'Долги',
     templates: 'Шаблоны',
     saveAsTemplate: 'Сохранить как шаблон',
     templateNamePlaceholder: 'Название шаблона',
+    templateLimitReached: 'Достигнут лимит шаблонов — удалите ненужные',
+    templateSyncFailed: 'Не удалось синхронизировать шаблоны',
     date: 'Дата',
     transferFrom: 'Со счёта',
     transferTo: 'На счёт',
@@ -963,6 +1065,8 @@ const ru: Dict = {
     hintTransferAccounts: 'Выберите счета для перевода',
     hintTransferDifferent: 'Счета должны отличаться',
     hintTransferDestination: 'Введите сумму зачисления',
+    transferRateUnavailable: 'Курс недоступен — впишите сумму зачисления вручную',
+    transferRateEditable: 'можно изменить',
     dateToday: 'Сегодня',
     dateYesterday: 'Вчера',
     repeatLast: 'Повторить последнюю',
@@ -1127,6 +1231,12 @@ const ru: Dict = {
     hideCategory: 'Скрыть категорию',
   },
   settings: {
+    dangerZone: 'Опасная зона',
+    deleteAccount: 'Удалить аккаунт',
+    deleteAccountWarning: 'Все транзакции, счета, цели и настройки будут удалены навсегда. Это необратимо.',
+    deleteAccountConfirm: 'Да, удалить всё',
+    deleteAccountProgress: 'Удаление...',
+    deleteAccountFailed: 'Не удалось удалить. Попробуйте ещё раз.',
     title: 'Настройки',
     language: 'Язык интерфейса',
     languageDescription: 'Выберите язык, на котором будет отображаться приложение',
@@ -1287,6 +1397,29 @@ const ru: Dict = {
       'Это приложение доступно только внутри нашего Telegram\u00A0бота. Откройте его в Telegram, чтобы продолжить.',
     openButton: 'Открыть в Telegram',
   },
+  accountEditor: {
+    colorBank: 'Жёлтый',
+    colorCash: 'Фиолетовый',
+    colorCrypto: 'Голубой',
+    colorStocks: 'Зелёный',
+    colorDebt: 'Красный',
+    colorNeutral: 'Нейтральный',
+    iconCard: 'Карта',
+    iconBank: 'Банк',
+    iconWallet: 'Кошелёк',
+    iconCash: 'Наличные',
+    iconSavings: 'Сбереж.',
+    iconCrypto: 'Крипта',
+    iconStocks: 'Акции',
+    iconStable: 'Стейбл',
+    iconDebt: 'Долг',
+    placeholderBank: 'ПриватБанк, Монобанк...',
+    placeholderCash: 'Кошелёк, Касса...',
+    placeholderCrypto: 'Bitcoin, ETH-кошелёк...',
+    placeholderStocks: 'Акции США, Monobank...',
+    placeholderDebt: 'Михаил, Аренда...',
+  },
+  common: { loading: 'Загрузка…', retry: 'Обновить', notFoundTitle: 'Такой страницы нет' },
 };
 
 const en: Dict = {
@@ -1323,8 +1456,22 @@ const en: Dict = {
     bySection: 'By section',
     sectionBank: 'Cards',
     sectionCash: 'Cash',
-    sectionCrypto: 'Stocks & crypto',
+    sectionCrypto: 'Crypto',
+    sectionStocks: 'Stocks',
     sectionDebt: 'Debt',
+    accountsAdd: 'Add account',
+    accountsEmptyTitle: 'No accounts yet',
+    accountsEmptyHint: 'Tap "Add account" to create the first one',
+    accountsTotalAssets: 'Total assets',
+    accountTypeTitle: 'Account type',
+    accountNewTitle: 'New account',
+    accountEditTitle: 'Edit account',
+    accountColorLabel: 'Colour',
+    accountIconLabel: 'Icon',
+    accountIconSectionTitle: 'Icon and section',
+    dataStale: 'Data is stale — cannot reach the server',
+    dataOffline: 'No connection. Showing saved data',
+    fxFallback: 'Approximate rate: server unavailable',
     sectionDebtOwedToMe: 'Debt',
     sectionDebtOwedByMe: 'I owe',
     debtDirectionLabel: 'Debt direction',
@@ -1377,12 +1524,11 @@ const en: Dict = {
     paymentAccount: 'Account',
     paymentAccountHint: 'Pick a card or cash — this account will update on Accounts',
     paymentAccountNone: 'Not set',
-    accountGroupOrdinary: 'Cards and cash',
-    accountGroupCrypto: 'Cryptocurrency',
-    accountGroupDebt: 'Debts',
     templates: 'Templates',
     saveAsTemplate: 'Save as template',
     templateNamePlaceholder: 'Template name',
+    templateLimitReached: 'Template limit reached — delete some first',
+    templateSyncFailed: 'Could not sync templates',
     date: 'Date',
     transferFrom: 'From account',
     transferTo: 'To account',
@@ -1392,6 +1538,8 @@ const en: Dict = {
     hintTransferAccounts: 'Select accounts for the transfer',
     hintTransferDifferent: 'Accounts must be different',
     hintTransferDestination: 'Enter the credited amount',
+    transferRateUnavailable: 'Rate unavailable — enter the credited amount manually',
+    transferRateEditable: 'editable',
     dateToday: 'Today',
     dateYesterday: 'Yesterday',
     repeatLast: 'Repeat last',
@@ -1556,6 +1704,12 @@ const en: Dict = {
     hideCategory: 'Hide category',
   },
   settings: {
+    dangerZone: 'Danger zone',
+    deleteAccount: 'Delete account',
+    deleteAccountWarning: 'All transactions, accounts, goals and settings will be deleted permanently. This cannot be undone.',
+    deleteAccountConfirm: 'Yes, delete everything',
+    deleteAccountProgress: 'Deleting...',
+    deleteAccountFailed: 'Could not delete. Please try again.',
     title: 'Settings',
     language: 'Interface language',
     languageDescription: 'Choose the language the app is displayed in',
@@ -1716,6 +1870,29 @@ const en: Dict = {
       'This app is only available inside our Telegram\u00A0bot. Please open it in Telegram to continue.',
     openButton: 'Open in Telegram',
   },
+  accountEditor: {
+    colorBank: 'Yellow',
+    colorCash: 'Purple',
+    colorCrypto: 'Blue',
+    colorStocks: 'Green',
+    colorDebt: 'Red',
+    colorNeutral: 'Neutral',
+    iconCard: 'Card',
+    iconBank: 'Bank',
+    iconWallet: 'Wallet',
+    iconCash: 'Cash',
+    iconSavings: 'Savings',
+    iconCrypto: 'Crypto',
+    iconStocks: 'Stocks',
+    iconStable: 'Stable',
+    iconDebt: 'Debt',
+    placeholderBank: 'Revolut, Monobank...',
+    placeholderCash: 'Wallet, Cash box...',
+    placeholderCrypto: 'Bitcoin, ETH wallet...',
+    placeholderStocks: 'US stocks, IBKR...',
+    placeholderDebt: 'Michael, Rent...',
+  },
+  common: { loading: 'Loading…', retry: 'Refresh', notFoundTitle: 'Page not found' },
 };
 
 export const translations: Record<Language, Dict> = { uk, ru, en };

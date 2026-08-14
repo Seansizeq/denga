@@ -9,7 +9,12 @@
   transition: background-color 0.15s ease, transform 0.15s ease;
 }
 
-.row:active {
+/* Підсвітка натискання лише там, де рядок справді щось робить. */
+.rowTappable {
+  cursor: pointer;
+}
+
+.rowTappable:active {
   background-color: var(--bg-card-light);
   transform: scale(0.995);
 }
@@ -55,14 +60,19 @@
   flex-direction: column;
   align-items: flex-end;
   gap: 8px;
-  flex-shrink: 0;
+  /* Колонка суми більше не витісняє підпис: довгий переказ переноситься
+     на два рядки замість того, щоб з'їсти назву рахунку. */
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 60%;
 }
 
 .amount {
   font-size: 16px;
   font-weight: 600;
   color: var(--text-primary);
-  white-space: nowrap;
+  text-align: right;
+  overflow-wrap: anywhere;
 }
 
 .delta {
@@ -81,12 +91,12 @@
 
 .actions {
   display: flex;
-  gap: 6px;
+  gap: 12px;
 }
 
 .actionBtn {
-  width: 26px;
-  height: 26px;
+  width: 36px;
+  height: 36px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -101,4 +111,15 @@
 .actionBtn:active {
   background: rgba(255, 255, 255, 0.1);
   color: var(--text-primary);
+}
+
+/* Видалення візуально відрізняється від редагування — промах коштує дорого. */
+.actionBtnDanger {
+  color: var(--accent-red);
+  border-color: rgba(255, 107, 107, 0.28);
+}
+
+.actionBtnDanger:active {
+  background: rgba(255, 107, 107, 0.16);
+  color: var(--accent-red);
 }

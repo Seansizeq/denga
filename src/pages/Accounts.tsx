@@ -11,7 +11,13 @@ import { useTransactions } from '../context/TransactionContext';
 import { useTranslation } from '../i18n/LanguageContext';
 import { apiFetch } from '../api/client';
 import { sanitizeAccountBadge } from '../utils/accountIcons';
-import { parseCryptoPosition } from '../utils/cryptoPosition';
+import {
+  isCryptoDenomination,
+  normalizeDenomination,
+  type Denomination,
+} from '../utils/denomination';
+import { useDenominationRates } from '../hooks/useDenominationRates';
+import { formatCurrency } from '../utils/formatters';
 import styles from './Accounts.module.css';
 
 type PortfolioSection = 'bank' | 'cash' | 'crypto' | 'stocks' | 'debt';
@@ -24,7 +30,8 @@ type PortfolioAccountRow = {
   sortIndex: number;
   name: string;
   primaryAmount: number;
-  primaryCurrency: 'UAH' | 'PLN';
+  /** The unit the balance is counted in — fiat currency or crypto asset. */
+  primaryCurrency: Denomination;
   subText: string | null;
   iconTone: IconTone;
   badge: string | null;
@@ -46,7 +53,9 @@ const parsePortfolioRow = (raw: unknown): PortfolioAccountRow | null => {
   const primaryAmount = Number(r.primaryAmount);
   const sortIndex = Number(r.sortIndex);
   if (!Number.isFinite(primaryAmount) || !Number.isFinite(sortIndex)) return null;
-  const primaryCurrency = r.primaryCurrency === 'PLN' ? 'PLN' : 'UAH';
+  const primaryCurrency = normalizeDenomination(
+    typeof r.primaryCurrency === 'string' ? r.primaryCurrency : undefined,
+  );
   const subText = typeof r.subText === 'string' ? r.subText : null;
   const debtDirectionRaw = typeof r.debtDirection === 'string' ? r.debtDirection : '';
   const debtDirection: DebtDirection | null =
@@ -120,20 +129,21 @@ const SECTION_COLORS: Record<string, string> = {
   'debt-owed-by-me': '#8E8E93',
 };
 
-const formatGroupAmount = (amount: number, currency: string) => {
+/**
+ * Гроші тут виглядають так само, як на решті екранів: та сама функція, той
+ * самий символ валюти, локаль користувача. Раніше цей екран мав власний
+ * формат (`5 983,8 UAH` під кільцем із `5 983,8 ₴`).
+ */
+const formatGroupAmount = (amount: number, currency: string, locale: string) => {
   const normalized = Number.isFinite(amount) ? amount : 0;
-  const abs = Math.abs(normalized).toLocaleString('ru-RU', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  });
   const sign = normalized < 0 ? '−' : '';
-  const suffix = currency === 'PLN' ? 'zł' : currency;
-  return `${sign}${abs} ${suffix}`;
+  return `${sign}${formatCurrency(Math.abs(normalized), locale, normalizeDenomination(currency))}`;
 };
 
 const Accounts: React.FC = () => {
-  const { t, displayCurrency, convertAmount } = useTranslation();
-  const { accounts, cryptoPrices, refreshAccounts } = usePortfolio();
+  const { t, locale, displayCurrency } = useTranslation();
+  const { convert } = useDenominationRates();
+  const { accounts, accountsLoaded, refreshAccounts } = usePortfolio();
   const { transactions, refreshTransactions } = useTransactions();
   const [picking, setPicking] = useState(false);
   const [editing, setEditing] = useState<EditableAccount | null>(null);
@@ -148,8 +158,6 @@ const Accounts: React.FC = () => {
     (section: PickableSection) => setEditing(createEmptyAccount(section, portfolio)),
     [portfolio],
   );
-
-  const cryptoUsdPrices = cryptoPrices;
 
   const sections = useMemo(() => {
     type Row = {
@@ -170,21 +178,21 @@ const Accounts: React.FC = () => {
         .slice()
         .sort((a, b) => a.sortIndex - b.sortIndex || a.accountKey.localeCompare(b.accountKey))
         .map((r) => {
-          const position = r.section === 'crypto' ? parseCryptoPosition(r.subText) : null;
-          const marketUsd = position ? (cryptoUsdPrices[position.symbol] ?? 0) * position.amount : 0;
-          const dynamicPrimary =
-            position && marketUsd > 0
-              ? convertAmount(marketUsd, 'USD', r.primaryCurrency)
-              : r.primaryAmount;
-          const fiat = formatGroupAmount(dynamicPrimary, r.primaryCurrency);
-          const amount = fiat;
-          const converted = convertAmount(dynamicPrimary, r.primaryCurrency, displayCurrency);
-          const fxSub = r.primaryCurrency === displayCurrency ? '' : formatGroupAmount(converted, displayCurrency);
+          // The balance is already counted in the unit the account holds, so
+          // there is nothing to parse or re-derive here.
+          const amount = formatGroupAmount(r.primaryAmount, r.primaryCurrency, locale);
+          const converted = convert(r.primaryAmount, r.primaryCurrency, displayCurrency);
+          const fxSub =
+            r.primaryCurrency === displayCurrency
+              ? ''
+              : converted === null
+                // A missing crypto price shows as a dash rather than a wrong figure.
+                ? '—'
+                : formatGroupAmount(converted, displayCurrency, locale);
           const subAmount = [r.subText?.trim() ?? '', fxSub].filter(Boolean).join(' · ') || undefined;
-          const badge =
-            r.section === 'crypto' && position
-              ? position.symbol
-              : sanitizeAccountBadge(r.badge ?? '', r.name);
+          const badge = isCryptoDenomination(r.primaryCurrency)
+            ? r.primaryCurrency
+            : sanitizeAccountBadge(r.badge ?? '', r.name);
           return {
             id: r.accountKey,
             name: r.name,
@@ -194,23 +202,24 @@ const Accounts: React.FC = () => {
             iconTone: r.iconTone,
             section: r.section,
             iconKey: r.iconKey,
-            cryptoSymbol: position?.symbol ?? null,
+            cryptoSymbol: isCryptoDenomination(r.primaryCurrency) ? r.primaryCurrency : null,
           } satisfies Row;
         });
 
     const sumSectionFiat = (key: PortfolioSection, direction?: DebtDirection) => {
       const list = portfolio.filter((r) => r.section === key && (!direction || r.debtDirection === direction));
-      if (!list.length) return formatGroupAmount(0, displayCurrency);
+      if (!list.length) return formatGroupAmount(0, displayCurrency, locale);
+      let priced = 0;
       const sumDisplay = list.reduce((a, r) => {
-        const position = r.section === 'crypto' ? parseCryptoPosition(r.subText) : null;
-        const marketUsd = position ? (cryptoUsdPrices[position.symbol] ?? 0) * position.amount : 0;
-        const dynamicPrimary =
-          position && marketUsd > 0
-            ? convertAmount(marketUsd, 'USD', r.primaryCurrency)
-            : r.primaryAmount;
-        return a + convertAmount(dynamicPrimary, r.primaryCurrency, displayCurrency);
+        // Unpriced crypto contributes nothing rather than a made-up number.
+        const value = convert(r.primaryAmount, r.primaryCurrency, displayCurrency);
+        if (value === null) return a;
+        priced += 1;
+        return a + value;
       }, 0);
-      return formatGroupAmount(sumDisplay, displayCurrency);
+      // Жодної відомої ціни — підсумок «0 ₴» був би вигадкою, як і в рядку.
+      if (priced === 0) return '—';
+      return formatGroupAmount(sumDisplay, displayCurrency, locale);
     };
 
     return [
@@ -243,7 +252,7 @@ const Accounts: React.FC = () => {
       },
       {
         id: 'stocks',
-        title: 'Акції',
+        title: t('balance', 'sectionStocks'),
         total: sumSectionFiat('stocks'),
         variant: 'strip' as const,
         collapsible: true,
@@ -269,21 +278,13 @@ const Accounts: React.FC = () => {
         rows: rowsFor('debt', 'owed_by_me'),
       },
     ];
-  }, [portfolio, t, convertAmount, displayCurrency, cryptoUsdPrices]);
+  }, [portfolio, t, convert, displayCurrency, locale]);
 
   const ringSegments = useMemo(() => {
     const sumNumeric = (key: PortfolioSection, direction?: DebtDirection): number =>
       portfolio
         .filter((r) => r.section === key && (!direction || r.debtDirection === direction))
-        .reduce((a, r) => {
-          const position = r.section === 'crypto' ? parseCryptoPosition(r.subText) : null;
-          const marketUsd = position ? (cryptoUsdPrices[position.symbol] ?? 0) * position.amount : 0;
-          const dynamicPrimary =
-            position && marketUsd > 0
-              ? convertAmount(marketUsd, 'USD', r.primaryCurrency)
-              : r.primaryAmount;
-          return a + convertAmount(dynamicPrimary, r.primaryCurrency, displayCurrency);
-        }, 0);
+        .reduce((a, r) => a + (convert(r.primaryAmount, r.primaryCurrency, displayCurrency) ?? 0), 0);
 
     // Debts owed to me are a receivable asset and count toward the ring; debts I owe are
     // a liability and never contribute a slice (see the liability line rendered under the ring).
@@ -298,13 +299,13 @@ const Accounts: React.FC = () => {
       }))
       .filter((s) => s.amount > 0)
       .sort((a, b) => b.amount - a.amount);
-  }, [portfolio, sections, convertAmount, displayCurrency, cryptoUsdPrices]);
+  }, [portfolio, sections, convert, displayCurrency]);
 
   const owedByMeTotal = useMemo(() => {
     return portfolio
       .filter((r) => r.section === 'debt' && r.debtDirection === 'owed_by_me')
-      .reduce((a, r) => a + convertAmount(r.primaryAmount, r.primaryCurrency, displayCurrency), 0);
-  }, [portfolio, convertAmount, displayCurrency]);
+      .reduce((a, r) => a + (convert(r.primaryAmount, r.primaryCurrency, displayCurrency) ?? 0), 0);
+  }, [portfolio, convert, displayCurrency]);
 
   const debtRepayments = useMemo(() => {
     if (!debtDetail) return [];
@@ -405,15 +406,22 @@ const Accounts: React.FC = () => {
           type="button"
           className={styles.addButton}
           onClick={() => setPicking(true)}
-          aria-label="Додати рахунок"
+          aria-label={t('balance', 'accountsAdd')}
         >
           <Plus size={18} strokeWidth={2.6} />
-          <span>Додати рахунок</span>
+          <span>{t('balance', 'accountsAdd')}</span>
         </button>
         {portfolio.length === 0 ? (
           <div className={styles.emptyState}>
-            <p className={styles.emptyTitle}>Рахунків ще немає</p>
-            <p className={styles.emptyHint}>Натисніть + щоб додати перший рахунок</p>
+            {accountsLoaded ? (
+              <>
+                <p className={styles.emptyTitle}>{t('balance', 'accountsEmptyTitle')}</p>
+                <p className={styles.emptyHint}>{t('balance', 'accountsEmptyHint')}</p>
+              </>
+            ) : (
+              // Поки не прийшла перша відповідь, «рахунків немає» було б брехнею.
+              <p className={styles.emptyHint}>{t('common', 'loading')}</p>
+            )}
           </div>
         ) : (
           <>
@@ -422,7 +430,7 @@ const Accounts: React.FC = () => {
             )}
             {owedByMeTotal > 0 && (
               <p className={styles.liabilityLine}>
-                {t('balance', 'liabilityLineLabel')}: {formatGroupAmount(owedByMeTotal, displayCurrency)}
+                {t('balance', 'liabilityLineLabel')}: {formatGroupAmount(owedByMeTotal, displayCurrency, locale)}
               </p>
             )}
             <AccountsSnapshot sections={sections.filter((s) => s.rows.length > 0)} onRowPress={handleRowPress} />

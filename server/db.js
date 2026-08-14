@@ -3,6 +3,7 @@ import { open } from 'sqlite';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { resolveDebtDirectionForMigration } from './debt-direction.js';
+import { runCryptoDenominationMigration } from './crypto-denomination-migration.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -514,6 +515,28 @@ export async function initDb() {
     )
   `);
 
+  // Quick-entry templates for the add-transaction screen. Server-side so they
+  // follow the user across devices like everything else they own.
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS expense_templates (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL,
+      amount REAL,
+      currency TEXT NOT NULL DEFAULT 'UAH',
+      category_id TEXT NOT NULL,
+      note TEXT,
+      account_key TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+  await db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_expense_templates_user
+    ON expense_templates(user_id, created_at DESC)
+  `);
+
   await db.exec(`
     CREATE TABLE IF NOT EXISTS goals (
       id TEXT PRIMARY KEY,
@@ -550,6 +573,11 @@ export async function initDb() {
   }
 
   await removeRetiredBybitIntegration(db);
+
+  // Turn legacy free-text crypto positions into real balances. Takes its own
+  // file backup first and is a no-op once every crypto account is already
+  // denominated in its asset.
+  await runCryptoDenominationMigration(db, dbPath);
 
   await db.exec(`
     CREATE INDEX IF NOT EXISTS idx_transactions_user_date

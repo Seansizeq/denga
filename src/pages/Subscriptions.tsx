@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Plus } from 'lucide-react';
+import { Plus, X } from 'lucide-react';
 import { formatCurrency, type PlannerCurrency } from '../utils/formatters';
 import { useTranslation } from '../i18n/LanguageContext';
+import { useGoBack } from '../hooks/useGoBack';
+import { showAppConfirm } from '../utils/notify';
 import { apiFetch } from '../api/client';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { CATEGORIES, getCustomCategoryName } from '../constants/categories';
@@ -46,7 +47,7 @@ const isSubscriptionArray = (v: unknown): v is Subscription[] =>
   );
 
 const Subscriptions: React.FC = () => {
-  const navigate = useNavigate();
+  const goBack = useGoBack('/');
   const { t, locale } = useTranslation();
   const [items, setItems] = usePersistedState<Subscription[]>(
     SUBSCRIPTIONS_STORAGE_KEY,
@@ -161,6 +162,21 @@ const Subscriptions: React.FC = () => {
     return () => window.removeEventListener('keydown', onKey);
   }, [isFormOpen, resetForm]);
 
+  /* Сторінка під шитом не має прокручуватись разом із ним. */
+  useEffect(() => {
+    if (!isFormOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [isFormOpen]);
+
+  const canSave = useMemo(() => {
+    const numericAmount = Number(amount.replace(',', '.'));
+    return Boolean(name.trim()) && numericAmount > 0 && Boolean(nextChargeDate);
+  }, [amount, name, nextChargeDate]);
+
   const onSave = async () => {
     setActionError('');
     const numericAmount = Number(amount.replace(',', '.'));
@@ -261,7 +277,7 @@ const Subscriptions: React.FC = () => {
 
   const onDelete = async (id: string) => {
     setActionError('');
-    if (typeof window !== 'undefined' && !window.confirm(t('subscriptions', 'deleteConfirm'))) {
+    if (!(await showAppConfirm(t('subscriptions', 'deleteConfirm')))) {
       return;
     }
     try {
@@ -360,7 +376,7 @@ const Subscriptions: React.FC = () => {
   return (
     <div className={styles.container}>
       <header className={styles.header}>
-        <button type="button" className={styles.back} onClick={() => navigate('/')}>
+        <button type="button" className={styles.back} onClick={goBack}>
           ← {t('subscriptions', 'back')}
         </button>
         <h1 className={styles.title}>{t('subscriptions', 'title')}</h1>
@@ -395,7 +411,7 @@ const Subscriptions: React.FC = () => {
 
       <section className={styles.listSection}>
         {loading ? (
-          <p className={styles.emptyText}>{t('planner', 'loading')}</p>
+          <p className={styles.emptyText}>{t('common', 'loading')}</p>
         ) : activeItems.length === 0 && disabledItems.length === 0 ? (
           <p className={styles.emptyText}>{t('subscriptions', 'empty')}</p>
         ) : null}
@@ -411,90 +427,159 @@ const Subscriptions: React.FC = () => {
       ) : null}
 
       {isFormOpen ? (
-        <div className={styles.modalOverlay} role="presentation" onClick={resetForm}>
+        <div className={styles.sheetOverlay} role="presentation" onClick={resetForm}>
           <section
             role="dialog"
             aria-modal="true"
             aria-labelledby="subscriptions-form-title"
-            className={styles.modalCard}
+            className={styles.sheet}
             onClick={(e) => e.stopPropagation()}
           >
-            {actionError ? <p className={styles.formError}>{actionError}</p> : null}
-            <h2 id="subscriptions-form-title" className={styles.formTitle}>
-              {editingId ? `${t('subscriptions', 'edit')}` : t('subscriptions', 'addTitle')}
-            </h2>
-            <div className={styles.formGrid}>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder={t('subscriptions', 'name')}
-              />
-              <input
-                type="text"
-                inputMode="decimal"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value.replace(/[^0-9.,]/g, ''))}
-                placeholder={t('subscriptions', 'amount')}
-              />
-              <div className={styles.currencySegment} role="group" aria-label="Currency">
+            <div className={styles.sheetGrabber} aria-hidden="true" />
+            <header className={styles.sheetHeader}>
+              <h2 id="subscriptions-form-title" className={styles.sheetTitle}>
+                {editingId ? t('subscriptions', 'edit') : t('subscriptions', 'addTitle')}
+              </h2>
+              <button
+                type="button"
+                className={styles.sheetClose}
+                onClick={resetForm}
+                aria-label={t('addTx', 'cancel')}
+              >
+                <X size={17} strokeWidth={2.6} />
+              </button>
+            </header>
+
+            <div className={styles.sheetBody}>
+              {actionError ? (
+                <p className={styles.formError} role="alert">
+                  {actionError}
+                </p>
+              ) : null}
+
+              <div>
+                <div className={styles.amountRow}>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    className={styles.amountInput}
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value.replace(/[^0-9.,]/g, ''))}
+                    placeholder="0"
+                    aria-label={t('subscriptions', 'amount')}
+                  />
+                  <span className={styles.amountSuffix}>{currency === 'UAH' ? '₴' : 'zł'}</span>
+                </div>
+                <div
+                  className={`${styles.segment} ${styles.segmentCompact}`}
+                  role="group"
+                  aria-label="Currency"
+                >
+                  <button
+                    type="button"
+                    className={styles.segmentBtn}
+                    aria-pressed={currency === 'UAH'}
+                    onClick={() => setCurrency('UAH')}
+                  >
+                    ₴
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.segmentBtn}
+                    aria-pressed={currency === 'PLN'}
+                    onClick={() => setCurrency('PLN')}
+                  >
+                    zł
+                  </button>
+                </div>
+              </div>
+
+              <div className={styles.segment} role="group" aria-label={t('subscriptions', 'cycle')}>
                 <button
                   type="button"
-                  className={styles.currencySegmentBtn}
-                  aria-pressed={currency === 'UAH'}
-                  onClick={() => setCurrency('UAH')}
+                  className={styles.segmentBtn}
+                  aria-pressed={cycle === 'monthly'}
+                  onClick={() => setCycle('monthly')}
                 >
-                  ₴
+                  {t('subscriptions', 'monthly')}
                 </button>
                 <button
                   type="button"
-                  className={styles.currencySegmentBtn}
-                  aria-pressed={currency === 'PLN'}
-                  onClick={() => setCurrency('PLN')}
+                  className={styles.segmentBtn}
+                  aria-pressed={cycle === 'yearly'}
+                  onClick={() => setCycle('yearly')}
                 >
-                  zł
+                  {t('subscriptions', 'yearly')}
                 </button>
               </div>
-              <select
-                value={categoryId}
-                onChange={(e) => setCategoryId(e.target.value)}
-                aria-label={t('subscriptions', 'category')}
-              >
-                {BUILTIN_EXPENSE_CATEGORIES.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {t('categories', c.id as CategoryKey)}
-                  </option>
-                ))}
-                {customCategories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-              <select value={cycle} onChange={(e) => setCycle(e.target.value as BillingCycle)}>
-                <option value="monthly">{t('subscriptions', 'monthly')}</option>
-                <option value="yearly">{t('subscriptions', 'yearly')}</option>
-              </select>
-              <input
-                type="date"
-                value={nextChargeDate}
-                onChange={(e) => setNextChargeDate(e.target.value)}
-                aria-label={t('subscriptions', 'nextChargeDate')}
-              />
-              <input
-                type="text"
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder={t('subscriptions', 'note')}
-              />
-            </div>
-            <div className={styles.formActions}>
-              <button type="button" className={styles.cancelBtn} onClick={resetForm}>
-                {editingId ? t('subscriptions', 'cancelEdit') : t('addTx', 'cancel')}
-              </button>
-              <button type="button" className={styles.addBtn} onClick={() => void onSave()}>
-                {editingId ? t('subscriptions', 'saveChanges') : t('subscriptions', 'add')}
-              </button>
+
+              <div className={styles.group}>
+                <label className={styles.row}>
+                  <span className={styles.rowLabel}>{t('subscriptions', 'name')}</span>
+                  <input
+                    type="text"
+                    className={styles.rowField}
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Netflix"
+                  />
+                </label>
+
+                <label className={styles.row}>
+                  <span className={styles.rowLabel}>{t('subscriptions', 'category')}</span>
+                  <select
+                    className={`${styles.rowField} ${styles.rowSelect}`}
+                    value={categoryId}
+                    onChange={(e) => setCategoryId(e.target.value)}
+                  >
+                    {BUILTIN_EXPENSE_CATEGORIES.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {t('categories', c.id as CategoryKey)}
+                      </option>
+                    ))}
+                    {customCategories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className={styles.row}>
+                  <span className={styles.rowLabel}>{t('subscriptions', 'nextChargeDate')}</span>
+                  <input
+                    type="date"
+                    className={`${styles.rowField} ${styles.rowDate}`}
+                    value={nextChargeDate}
+                    onChange={(e) => setNextChargeDate(e.target.value)}
+                  />
+                </label>
+
+                <label className={styles.row}>
+                  <span className={styles.rowLabel}>{t('subscriptions', 'note')}</span>
+                  <input
+                    type="text"
+                    className={styles.rowField}
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    placeholder="—"
+                  />
+                </label>
+              </div>
+
+              <div className={styles.formActions}>
+                <button
+                  type="button"
+                  className={styles.submitBtn}
+                  disabled={!canSave}
+                  onClick={() => void onSave()}
+                >
+                  {editingId ? t('subscriptions', 'saveChanges') : t('subscriptions', 'add')}
+                </button>
+                <button type="button" className={styles.cancelBtn} onClick={resetForm}>
+                  {editingId ? t('subscriptions', 'cancelEdit') : t('addTx', 'cancel')}
+                </button>
+              </div>
             </div>
           </section>
         </div>

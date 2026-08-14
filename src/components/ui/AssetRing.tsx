@@ -47,7 +47,7 @@ const AssetRing: React.FC<AssetRingProps> = ({ segments }) => {
         <div className={styles.donut} style={{ background: donutBackground }}>
           <div className={styles.donutInner}>
             <span className={styles.donutValue}>{formattedTotal}</span>
-            <span className={styles.donutLabel}>Всього активів</span>
+            <span className={styles.donutLabel}>{t('balance', 'accountsTotalAssets')}</span>
           </div>
         </div>
       </div>

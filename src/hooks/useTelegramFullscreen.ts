@@ -42,16 +42,28 @@ const markBody = (on: boolean) => {
   else document.body.classList.remove(cls);
 };
 
+/**
+ * Метод присутній у SDK навіть там, де клієнт його не вміє: на Telegram 6.0
+ * виклик просто пише помилку в консоль. Тому питаємо ще й версію — Bot API
+ * 8.0 додав повноекранний режим.
+ */
+const supportsFullscreen = (app: TelegramWebApp | undefined): boolean => {
+  if (!app || typeof app.requestFullscreen !== 'function') return false;
+  if (typeof app.isVersionAtLeast === 'function') return app.isVersionAtLeast('8.0');
+  const version = Number.parseFloat(app.version ?? '0');
+  return Number.isFinite(version) && version >= 8;
+};
+
 export const useTelegramFullscreen = () => {
   const w = tg();
-  const isSupported = !!w && typeof w.requestFullscreen === 'function';
+  const isSupported = supportsFullscreen(w);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(!!w?.isFullscreen);
 
   const enter = useCallback(() => {
     const app = tg();
-    if (!app || typeof app.requestFullscreen !== 'function') return;
+    if (!supportsFullscreen(app)) return;
     try {
-      app.requestFullscreen();
+      app?.requestFullscreen?.();
       try { localStorage.setItem(STORAGE_KEY, '1'); } catch { /* ignore */ }
     } catch {
       /* ignore */

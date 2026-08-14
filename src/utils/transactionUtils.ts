@@ -57,11 +57,18 @@ export const getTransactionAccountEffects = (tx: Transaction): TransactionAccoun
 
 export const getTransactionNotePreview = (tx: Pick<Transaction, 'note'>): string => stripAccountFromNote(tx.note?.trim() ?? '');
 
-export const getTransferSummaryLabel = (tx: Pick<Transaction, 'type' | 'fromAccountKey' | 'toAccountKey'>): string => {
-  const source = formatAccountLabel(getTransferSourceAccountKey(tx));
-  const destination = formatAccountLabel(getTransferDestinationAccountKey(tx));
+/**
+ * `resolveName` дає назви такі, як у гаманці. Без нього лишається розкладений
+ * ключ — годиться лише там, де портфель недоступний.
+ */
+export const getTransferSummaryLabel = (
+  tx: Pick<Transaction, 'type' | 'fromAccountKey' | 'toAccountKey'>,
+  resolveName: (accountKey?: string | null) => string = formatAccountLabel,
+): string => {
+  const source = resolveName(getTransferSourceAccountKey(tx));
+  const destination = resolveName(getTransferDestinationAccountKey(tx));
   if (!source && !destination) return '';
   if (!source) return destination;
   if (!destination) return source;
-  return `${source} -> ${destination}`;
+  return `${source} → ${destination}`;
 };

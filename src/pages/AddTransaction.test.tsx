@@ -7,12 +7,16 @@ import AddTransaction from './AddTransaction';
 
 const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
-  addTransaction: vi.fn(async () => true),
-  updateTransaction: vi.fn(async () => true),
+  // Typed via generics rather than named parameters, so the payload can be
+  // asserted without declaring arguments the mock body never uses.
+  addTransaction: vi.fn<(draft: Record<string, unknown>) => Promise<boolean>>(async () => true),
+  updateTransaction:
+    vi.fn<(id: string, draft: Record<string, unknown>) => Promise<boolean>>(async () => true),
   apiFetch: vi.fn(async () => ({ ok: true, json: async () => [] })),
   portfolioAccounts: [
     { accountKey: 'privat24', name: 'Privat24', primaryCurrency: 'UAH', section: 'bank' },
   ] as Array<Record<string, unknown>>,
+  cryptoPrices: { USDT: 1, BTC: 60_000 } as Record<string, number>,
 }));
 
 vi.mock('react-router-dom', async () => {
@@ -49,6 +53,7 @@ vi.mock('../context/TransactionContext', () => ({
 vi.mock('../context/PortfolioContext', () => ({
   usePortfolio: () => ({
     accounts: mocks.portfolioAccounts,
+    cryptoPrices: mocks.cryptoPrices,
   }),
 }));
 
@@ -64,8 +69,19 @@ vi.mock('../i18n/LanguageContext', () => ({
   useTranslation: () => ({
     language: 'uk',
     t: (section: string, key: string) => `${section}.${key}`,
+    displayCurrency: 'UAH',
+    fxRates: {
+      base: 'USD',
+      rates: { USD: 1, PLN: 4, UAH: 40 },
+      updatedAt: '1970-01-01T00:00:00.000Z',
+      source: 'fallback',
+    },
   }),
 }));
+
+/** The two amount inputs of the transfer form, source first. */
+const transferAmountInputs = (): HTMLInputElement[] =>
+  Array.from(document.querySelectorAll('input[inputmode="decimal"]'));
 
 function renderAdd(initialPath = '/add') {
   return render(
@@ -89,6 +105,7 @@ describe('AddTransaction', () => {
     mocks.portfolioAccounts = [
       { accountKey: 'privat24', name: 'Privat24', primaryCurrency: 'UAH', section: 'bank' },
     ];
+    mocks.cryptoPrices = { USDT: 1, BTC: 60_000 };
   });
 
   it('prefills payment account from note query param', () => {
@@ -131,17 +148,108 @@ describe('AddTransaction', () => {
     fireEvent.click(screen.getByRole('button', { name: /addTx.transferFrom/ }));
     const dialogText = screen.getByRole('dialog').textContent ?? '';
     const expectedOrder = [
-      'addTx.accountGroupOrdinary',
+      'balance.sectionBank',
       'Card account',
+      'balance.sectionCash',
       'Cash account',
-      'addTx.accountGroupCrypto',
+      'balance.sectionCrypto',
       'Bitcoin',
-      'addTx.accountGroupDebt',
+      'balance.sectionDebt',
       'Zed debt',
     ];
     const positions = expectedOrder.map((value) => dialogText.indexOf(value));
 
     expect(positions.every((position) => position >= 0)).toBe(true);
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
+  });
+
+  describe('cross-denomination transfers', () => {
+    const cryptoAndCard = [
+      { accountKey: 'binance', name: 'Binance', primaryCurrency: 'USDT', section: 'crypto' },
+      { accountKey: 'karta', name: 'Karta', primaryCurrency: 'PLN', section: 'bank' },
+    ];
+
+    it('denominates each side by its own account, with no free-standing picker', () => {
+      mocks.portfolioAccounts = cryptoAndCard;
+      renderAdd('/add?type=transfer');
+
+      // The old currency <select> let you claim a unit the account did not hold,
+      // which the server could only reject.
+      expect(document.querySelector('select')).toBe(null);
+      expect(screen.getByText('USDT')).toBeTruthy();
+      expect(screen.getByText('PLN')).toBeTruthy();
+    });
+
+    it('suggests the destination amount from the current rate', () => {
+      mocks.portfolioAccounts = cryptoAndCard;
+      renderAdd('/add?type=transfer');
+
+      const [source, destination] = transferAmountInputs();
+      fireEvent.change(source, { target: { value: '50' } });
+      // 50 USDT -> 50 USD -> 200 PLN
+      expect(destination.value).toBe('200');
+    });
+
+    it('keeps the amount the user actually received', () => {
+      mocks.portfolioAccounts = cryptoAndCard;
+      renderAdd('/add?type=transfer');
+
+      const [source, destination] = transferAmountInputs();
+      fireEvent.change(source, { target: { value: '50' } });
+      fireEvent.change(destination, { target: { value: '190' } });
+      expect(destination.value).toBe('190');
+
+      // Re-typing the source must not overwrite a figure entered by hand.
+      fireEvent.change(source, { target: { value: '60' } });
+      expect(destination.value).toBe('190');
+    });
+
+    it('sends both account denominations on save', async () => {
+      mocks.portfolioAccounts = cryptoAndCard;
+      renderAdd('/add?type=transfer');
+
+      const [source, destination] = transferAmountInputs();
+      fireEvent.change(source, { target: { value: '50' } });
+      fireEvent.change(destination, { target: { value: '190' } });
+      fireEvent.click(screen.getByRole('button', { name: 'addTx.save' }));
+
+      await vi.waitFor(() => expect(mocks.addTransaction).toHaveBeenCalled());
+      expect(mocks.addTransaction.mock.calls[0][0]).toMatchObject({
+        type: 'transfer',
+        amount: 50,
+        currency: 'USDT',
+        transferToAmount: 190,
+        transferToCurrency: 'PLN',
+        fromAccountKey: 'binance',
+        toAccountKey: 'karta',
+      });
+    });
+
+    it('mirrors and locks the destination when both sides share a unit', () => {
+      mocks.portfolioAccounts = [
+        { accountKey: 'karta', name: 'Karta', primaryCurrency: 'PLN', section: 'bank' },
+        { accountKey: 'karta2', name: 'Karta 2', primaryCurrency: 'PLN', section: 'bank' },
+      ];
+      renderAdd('/add?type=transfer');
+
+      const [source, destination] = transferAmountInputs();
+      fireEvent.change(source, { target: { value: '200' } });
+      // What leaves is what arrives, so there is nothing to type.
+      expect(destination.value).toBe('200');
+      expect(destination.readOnly).toBe(true);
+    });
+
+    it('tells the user to enter the amount when the asset has no price', () => {
+      mocks.portfolioAccounts = [
+        { accountKey: 'ledger', name: 'Ledger', primaryCurrency: 'ETH', section: 'crypto' },
+        { accountKey: 'karta', name: 'Karta', primaryCurrency: 'PLN', section: 'bank' },
+      ];
+      mocks.cryptoPrices = {};
+      renderAdd('/add?type=transfer');
+
+      fireEvent.change(transferAmountInputs()[0], { target: { value: '1' } });
+      expect(screen.getByText('addTx.transferRateUnavailable')).toBeTruthy();
+      expect(transferAmountInputs()[1].value).toBe('');
+    });
   });
 });

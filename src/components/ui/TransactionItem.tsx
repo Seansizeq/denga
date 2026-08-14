@@ -6,8 +6,11 @@ import { findCategory, getCustomCategoryData, inferCustomCategoryIcon } from '..
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { useTranslation } from '../../i18n/LanguageContext';
 import type { CategoryKey } from '../../i18n/translations';
-import { stripAccountFromNote } from '../../utils/transactionAccount';
+import { getAccountSlugFromNote, stripAccountFromNote } from '../../utils/transactionAccount';
 import { getTransferSummaryLabel } from '../../utils/transactionUtils';
+import { useDenominationRates } from '../../hooks/useDenominationRates';
+import { useAccountNames } from '../../hooks/useAccountNames';
+import { hapticResult, showAppConfirm } from '../../utils/notify';
 import styles from './TransactionItem.module.css';
 
 const iconRegistry = LucideIcons as unknown as Record<string, React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>>;
@@ -16,10 +19,19 @@ interface TransactionItemProps {
   transaction: Transaction;
   onDelete?: (id: string) => void;
   onEdit?: (id: string) => void;
+  /** У згрупованих списках дату вже написано в заголовку дня. */
+  showDate?: boolean;
 }
 
-const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onDelete, onEdit }) => {
-  const { t, locale, displayCurrency, convertAmount } = useTranslation();
+const TransactionItem: React.FC<TransactionItemProps> = ({
+  transaction,
+  onDelete,
+  onEdit,
+  showDate = true,
+}) => {
+  const { t, locale, displayCurrency } = useTranslation();
+  const { convert } = useDenominationRates();
+  const resolveAccountName = useAccountNames();
   const customCategory = getCustomCategoryData(transaction.categoryId);
   const category = customCategory
     ? findCategory(transaction.type === 'income' ? 'other_income' : 'other_expense')
@@ -29,9 +41,10 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onDelete
     ? (iconRegistry[resolvedCustomIcon ?? 'Tag'] ?? LucideIcons.Tag)
     : (iconRegistry[category.icon] ?? LucideIcons.Circle);
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!onDelete) return;
-    if (window.confirm(t('history', 'deleteConfirm'))) {
+    if (await showAppConfirm(t('history', 'deleteConfirm'))) {
+      hapticResult('warning');
       onDelete(transaction.id);
     }
   };
@@ -43,25 +56,55 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onDelete
 
   const categoryName = customCategory?.name ?? t('categories', category.id as CategoryKey);
   const cleanNote = stripAccountFromNote(transaction.note?.trim() ?? '');
-  const transferSummary = getTransferSummaryLabel(transaction);
-  const subtitle = cleanNote || transferSummary || formatDate(transaction.date, locale);
   const isIncome = transaction.type === 'income';
   const isTransfer = transaction.type === 'transfer';
+
+  // Рахунок — найкорисніше, що можна написати в цьому рядку, тож він іде
+  // першим і для переказу, і для звичайної операції. Дата лишається тільки
+  // там, де список не згрупований по днях.
+  const accountSummary = isTransfer
+    ? getTransferSummaryLabel(transaction, resolveAccountName)
+    : resolveAccountName(getAccountSlugFromNote(transaction.note));
+  const subtitle =
+    [accountSummary, cleanNote, showDate ? formatDate(transaction.date, locale) : '']
+      .filter(Boolean)
+      .join(' · ');
   const txCurrency = transaction.currency;
-  const displayAmount = convertAmount(transaction.amount, txCurrency);
-  const showEquivalent = txCurrency !== displayCurrency;
+  // Null when a crypto price is missing: the equivalent line is hidden rather
+  // than showing a figure the app cannot actually stand behind.
+  const displayAmount = convert(transaction.amount, txCurrency);
+  const showEquivalent = txCurrency !== displayCurrency && displayAmount !== null;
   const destinationAmount =
     transaction.transferToAmount && transaction.transferToAmount > 0
       ? transaction.transferToAmount
       : transaction.amount;
   const destinationCurrency = transaction.transferToCurrency ?? txCurrency;
+  // Дві сторони варто показувати лише тоді, коли вони справді різні: переказ
+  // без конвертації — це одна сума, а не «1 300 zł → 1 300 zł».
+  const transferConverts =
+    destinationCurrency !== txCurrency || destinationAmount !== transaction.amount;
   const amountLabel = isTransfer
-    ? `${formatCurrency(transaction.amount, locale, txCurrency)} -> ${formatCurrency(destinationAmount, locale, destinationCurrency)}`
+    ? transferConverts
+      ? `${formatCurrency(transaction.amount, locale, txCurrency)} → ${formatCurrency(destinationAmount, locale, destinationCurrency)}`
+      : formatCurrency(transaction.amount, locale, txCurrency)
     : `${isIncome ? '+' : '−'}${formatCurrency(transaction.amount, locale, txCurrency)}`;
 
   return (
     <div
-      className={styles.row}
+      className={`${styles.row} ${onEdit ? styles.rowTappable : ''}`}
+      {...(onEdit
+        ? {
+            role: 'button' as const,
+            tabIndex: 0,
+            onClick: handleEdit,
+            onKeyDown: (e: React.KeyboardEvent) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                handleEdit();
+              }
+            },
+          }
+        : {})}
     >
       <div className={styles.iconCircle}>
         <IconComponent size={22} color={customCategory?.color ?? category.color} strokeWidth={2} />
@@ -86,13 +129,29 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onDelete
         {(onEdit || onDelete) ? (
           <div className={styles.actions}>
             {onEdit ? (
-              <button type="button" className={styles.actionBtn} onClick={handleEdit} aria-label={t('history', 'edit')}>
-                <Pencil size={14} />
+              <button
+                type="button"
+                className={styles.actionBtn}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleEdit();
+                }}
+                aria-label={t('history', 'edit')}
+              >
+                <Pencil size={16} />
               </button>
             ) : null}
             {onDelete ? (
-              <button type="button" className={styles.actionBtn} onClick={handleDelete} aria-label={t('history', 'delete')}>
-                <Trash2 size={14} />
+              <button
+                type="button"
+                className={`${styles.actionBtn} ${styles.actionBtnDanger}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void handleDelete();
+                }}
+                aria-label={t('history', 'delete')}
+              >
+                <Trash2 size={16} />
               </button>
             ) : null}
           </div>

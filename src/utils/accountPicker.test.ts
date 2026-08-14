@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { getAccountPickerGroup, sortAccountPickerItems } from './accountPicker';
 
 describe('accountPicker', () => {
-  it('keeps every account and groups ordinary, crypto, then debt accounts', () => {
+  it('keeps every account and groups cards, cash, crypto, then debt accounts', () => {
     const items = [
       { key: 'loan-z', label: 'Zed debt', section: 'debt' as const },
       { key: 'btc', label: 'Bitcoin', section: 'crypto' as const },
@@ -25,9 +25,9 @@ describe('accountPicker', () => {
       'loan-z',
     ]);
     expect(sorted.map((item) => getAccountPickerGroup(item.section))).toEqual([
-      'ordinary',
-      'ordinary',
-      'ordinary',
+      'bank',
+      'bank',
+      'cash',
       'crypto',
       'crypto',
       'debt',

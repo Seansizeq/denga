@@ -3,6 +3,7 @@ import { Pencil, X } from 'lucide-react';
 import { useTranslation } from '../../i18n/LanguageContext';
 import { formatDate } from '../../utils/formatters';
 import type { Transaction } from '../../types';
+import type { Denomination } from '../../utils/denomination';
 import { AccountRowAvatar } from './AccountRowAvatar';
 import styles from './DebtDetailSheet.module.css';
 
@@ -10,7 +11,7 @@ type DebtAccount = {
   accountKey: string;
   name: string;
   primaryAmount: number;
-  primaryCurrency: 'UAH' | 'PLN';
+  primaryCurrency: Denomination;
   debtDirection: 'owed_to_me' | 'owed_by_me' | null;
   debtInitialAmount: number | null;
   debtCreatedAt: string | null;
@@ -21,7 +22,7 @@ type DebtAccount = {
 type PaymentAccount = {
   accountKey: string;
   name: string;
-  primaryCurrency: 'UAH' | 'PLN';
+  primaryCurrency: Denomination;
 };
 
 interface DebtDetailSheetProps {

@@ -161,6 +161,61 @@ export const deleteBudget = async (categoryId: string): Promise<void> => {
   if (!res.ok) throw new Error('failed to delete budget');
 };
 
+export type ExpenseTemplatePayload = {
+  id?: string;
+  name: string;
+  type: 'income' | 'expense';
+  amount?: number;
+  currency: string;
+  categoryId: string;
+  note?: string;
+  account?: string;
+};
+
+export type ExpenseTemplateDto = {
+  id: string;
+  name: string;
+  type: 'income' | 'expense';
+  amount?: number;
+  currency: string;
+  categoryId: string;
+  note?: string;
+  account?: string;
+};
+
+export const getExpenseTemplates = async (): Promise<ExpenseTemplateDto[]> => {
+  const res = await apiFetch('/api/expense-templates');
+  if (!res.ok) throw new Error('failed to load templates');
+  return res.json();
+};
+
+export const createExpenseTemplate = async (
+  body: ExpenseTemplatePayload
+): Promise<ExpenseTemplateDto> => {
+  const res = await apiFetch('/api/expense-templates', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = new Error('failed to create template') as Error & { code?: string };
+    try {
+      const j = (await res.json()) as { code?: string };
+      if (typeof j?.code === 'string') err.code = j.code;
+    } catch {
+      /* ignore */
+    }
+    throw err;
+  }
+  return res.json();
+};
+
+export const deleteExpenseTemplate = async (id: string): Promise<void> => {
+  const res = await apiFetch(`/api/expense-templates/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  // A template already gone on the server is the state the caller wanted.
+  if (!res.ok && res.status !== 404) throw new Error('failed to delete template');
+};
+
 export type GoalCurrency = 'UAH' | 'PLN' | 'USD';
 
 export type Goal = {

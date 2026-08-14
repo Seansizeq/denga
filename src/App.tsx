@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import SplashScreen from './components/SplashScreen';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import { TransactionProvider } from './context/TransactionContext';
 import { PortfolioProvider } from './context/PortfolioContext';
 import BottomNavigation from './components/BottomNavigation';
 import { ToastProvider } from './components/ui/Toast';
+import DataStatusBanner from './components/ui/DataStatusBanner';
+import TelegramBackButton from './components/TelegramBackButton';
 import Dashboard from './pages/Dashboard';
 import Accounts from './pages/Accounts';
 import AddTransaction from './pages/AddTransaction';
@@ -81,6 +83,19 @@ const BrowserStub = () => {
   );
 };
 
+/** Невідомий шлях більше не дає порожній екран під нижньою навігацією. */
+const NotFound: React.FC = () => {
+  const { t } = useTranslation();
+  return (
+    <div style={{ padding: '80px 24px', textAlign: 'center' }}>
+      <p style={{ fontSize: 17, fontWeight: 600, marginBottom: 8 }}>{t('common', 'notFoundTitle')}</p>
+      <Link to="/" style={{ color: 'var(--accent-primary, #7C5CFF)', fontSize: 15 }}>
+        {t('nav', 'home')}
+      </Link>
+    </div>
+  );
+};
+
 const isInsideTelegram = (): boolean => {
   const tgWindow = window as Window & TelegramWindow;
   const tg = tgWindow.Telegram?.WebApp;
@@ -100,6 +115,8 @@ const TelegramApp: React.FC<{ onReady: () => void }> = ({ onReady }) => {
         <ToastProvider>
           <Router>
             <div className="app-content">
+              <TelegramBackButton />
+              <DataStatusBanner />
               <Routes>
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/accounts" element={<Accounts />} />
@@ -113,6 +130,7 @@ const TelegramApp: React.FC<{ onReady: () => void }> = ({ onReady }) => {
                 <Route path="/budgets" element={<Budgets />} />
                 <Route path="/goals" element={<Goals />} />
                 <Route path="/goals/:id" element={<GoalDetail />} />
+                <Route path="*" element={<NotFound />} />
               </Routes>
               <BottomNavigation />
             </div>

@@ -3,12 +3,13 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTransactions } from '../context/TransactionContext';
 import TransactionItem from '../components/ui/TransactionItem';
 import { useTranslation } from '../i18n/LanguageContext';
+import { showAppAlert } from '../utils/notify';
 import styles from './History.module.css';
 
 const History: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { transactions, deleteTransaction } = useTransactions();
+  const { transactions, deleteTransaction, isBootstrapping } = useTransactions();
   const { t, locale } = useTranslation();
 
   const categoryId = searchParams.get('categoryId');
@@ -19,7 +20,7 @@ const History: React.FC = () => {
 
   const handleDelete = async (id: string) => {
     const ok = await deleteTransaction(id);
-    if (!ok) window.alert(t('addTx', 'saveFailed'));
+    if (!ok) showAppAlert(t('addTx', 'saveFailed'));
   };
 
   const visible = useMemo(() => {
@@ -68,8 +69,14 @@ const History: React.FC = () => {
 
       {visible.length === 0 ? (
         <div className={styles.emptyState}>
-          <span className={styles.emptyIcon}>📭</span>
-          <p className={styles.emptyText}>{t('history', 'empty')}</p>
+          {isBootstrapping ? (
+            <p className={styles.emptyText}>{t('common', 'loading')}</p>
+          ) : (
+            <>
+              <span className={styles.emptyIcon}>📭</span>
+              <p className={styles.emptyText}>{t('history', 'empty')}</p>
+            </>
+          )}
         </div>
       ) : (
         <div className={styles.groups}>
@@ -83,6 +90,7 @@ const History: React.FC = () => {
                     transaction={tx}
                     onDelete={handleDelete}
                     onEdit={(id) => navigate(`/add?edit=${id}`)}
+                    showDate={false}
                   />
                 ))}
               </div>

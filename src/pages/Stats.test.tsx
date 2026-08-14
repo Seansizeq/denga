@@ -37,7 +37,12 @@ vi.mock('../i18n/LanguageContext', () => ({
     locale: 'uk-UA',
     displayCurrency: 'UAH',
     convertAmount: (amount: number) => amount,
+    fxRates: null,
   }),
+}));
+
+vi.mock('../context/PortfolioContext', () => ({
+  usePortfolio: () => ({ cryptoPrices: {} }),
 }));
 
 function renderStats(initialPath = '/stats') {

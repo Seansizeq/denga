@@ -11,6 +11,7 @@ import {
 import { formatCurrency } from '../utils/formatters';
 import type { DisplayCurrency } from '../utils/formatters';
 import { useTranslation } from '../i18n/LanguageContext';
+import { useGoBack } from '../hooks/useGoBack';
 import styles from './Goals.module.css';
 
 const SWATCHES = ['#7C5CFF', '#22c55e', '#06b6d4', '#eab308', '#f97316', '#ec4899'] as const;
@@ -57,6 +58,7 @@ const fillColorForPct = (pct: number, goalColor: string): string => {
 
 const Goals: React.FC = () => {
   const navigate = useNavigate();
+  const goBack = useGoBack('/');
   const { t, locale, displayCurrency } = useTranslation();
   const [goals, setGoals] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(true);
@@ -182,7 +184,7 @@ const Goals: React.FC = () => {
   return (
     <div className={styles.container}>
       <header className={styles.header}>
-        <button type="button" className={styles.back} onClick={() => navigate('/')}>
+        <button type="button" className={styles.back} onClick={goBack}>
           ← {t('nav', 'home')}
         </button>
         <h1 className={styles.title}>{t('goals', 'title')}</h1>
@@ -201,7 +203,7 @@ const Goals: React.FC = () => {
       ) : null}
 
       {loading ? (
-        <p className={styles.emptyText}>{t('planner', 'loading')}</p>
+        <p className={styles.emptyText}>{t('common', 'loading')}</p>
       ) : goals.length === 0 ? (
         <p className={styles.emptyText}>{t('goals', 'empty')}</p>
       ) : (

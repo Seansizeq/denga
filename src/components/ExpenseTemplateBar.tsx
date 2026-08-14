@@ -11,6 +11,8 @@ interface Props {
   onApply: (template: ExpenseTemplate) => void;
   onDelete: (id: string) => void;
   onSave: (name: string) => void;
+  /** Shown when the server rejected a save or delete. */
+  errorText?: string;
   labels: {
     title: string;
     saveAsTemplate: string;
@@ -29,6 +31,7 @@ const ExpenseTemplateBar: React.FC<Props> = ({
   onApply,
   onDelete,
   onSave,
+  errorText,
   labels,
 }) => {
   const [editMode, setEditMode] = useState(false);
@@ -45,7 +48,7 @@ const ExpenseTemplateBar: React.FC<Props> = ({
     setSaving(false);
   };
 
-  if (filtered.length === 0 && !canSave) return null;
+  if (filtered.length === 0 && !canSave && !errorText) return null;
 
   return (
     <section className={styles.section}>
@@ -120,6 +123,12 @@ const ExpenseTemplateBar: React.FC<Props> = ({
           </button>
         </div>
       )}
+
+      {errorText ? (
+        <p className={styles.errorText} role="alert">
+          {errorText}
+        </p>
+      ) : null}
 
       {filtered.length > 0 && (
         <div className={styles.scroll} role="list" aria-label={labels.title}>

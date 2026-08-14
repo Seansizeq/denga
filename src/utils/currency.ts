@@ -8,9 +8,12 @@ export type FxRatesPayload = {
 };
 
 export const SUPPORTED_CURRENCIES: CurrencyCode[] = ['UAH', 'PLN', 'USD'];
-export const TRANSFER_FROM_CURRENCIES = ['UAH', 'PLN', 'USD', 'USDT', 'BTC', 'ETH'] as const;
-export type TransferFromCurrency = (typeof TRANSFER_FROM_CURRENCIES)[number];
 
+/**
+ * Fiat reporting currency. Collapses anything else to UAH, so never use it on a
+ * stored account balance or transaction amount — those are denominations and
+ * may be crypto assets. See `normalizeDenomination` in ./denomination.
+ */
 export const normalizeCurrency = (raw?: string | null): CurrencyCode => {
   const code = String(raw ?? '').toUpperCase();
   return code === 'PLN' || code === 'USD' ? code : 'UAH';

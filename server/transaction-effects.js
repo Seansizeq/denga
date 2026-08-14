@@ -48,6 +48,55 @@ export const getTransactionAccountEffects = (tx) => {
   return [];
 };
 
+/**
+ * Liability balances use the opposite sign to asset balances: paying money into
+ * a debt I owe reduces it, while borrowing more increases it.
+ */
+export const resolveEffectDelta = (tx, effect, multiplier, account) => {
+  let delta = effect.delta * multiplier;
+  if (tx?.type === 'transfer' && account?.section === 'debt' && account?.debtDirection === 'owed_by_me') {
+    delta *= -1;
+  }
+  return delta;
+};
+
+/**
+ * Net balance change per account for transactions being applied (multiplier 1)
+ * and/or rolled back (-1) together, so an edit can be judged as a single move.
+ */
+export const computeNetDeltas = (entries, accountsByKey) => {
+  const net = new Map();
+  for (const { tx, multiplier } of entries) {
+    for (const effect of getTransactionAccountEffects(tx)) {
+      const account = accountsByKey.get(effect.accountKey);
+      const delta = resolveEffectDelta(tx, effect, multiplier, account);
+      net.set(effect.accountKey, (net.get(effect.accountKey) ?? 0) + delta);
+    }
+  }
+  return net;
+};
+
+const DEBT_EPSILON = 1e-6;
+
+/**
+ * Debt accounts must not be driven below zero. Reported before anything is
+ * written, so the caller refuses the request instead of clamping the stored
+ * value — clamping made applying and un-applying a transaction asymmetric and
+ * permanently drifted the balance on every edit or delete.
+ */
+export const collectDebtOverdrafts = (netDeltas, accountsByKey) => {
+  const violations = [];
+  for (const [accountKey, delta] of netDeltas) {
+    const account = accountsByKey.get(accountKey);
+    if (!account || account.section !== 'debt') continue;
+    const next = (Number(account.primaryAmount) || 0) + delta;
+    if (next < -DEBT_EPSILON) {
+      violations.push({ accountKey, available: Number(account.primaryAmount) || 0, resulting: next });
+    }
+  }
+  return violations;
+};
+
 export const validateTransferPayload = ({
   amount,
   currency,

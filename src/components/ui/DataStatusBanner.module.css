@@ -1,0 +1,51 @@
+.banner {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  padding-top: calc(8px + var(--tg-content-safe-area-top, 0px));
+  background: rgba(255, 159, 10, 0.16);
+  border-bottom: 1px solid rgba(255, 159, 10, 0.28);
+  color: #ffc46b;
+  font-size: 12.5px;
+  line-height: 1.35;
+  backdrop-filter: blur(8px);
+}
+
+.text {
+  flex: 1;
+  min-width: 0;
+}
+
+.retry {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 32px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 196, 107, 0.35);
+  background: transparent;
+  color: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.retry:disabled {
+  opacity: 0.6;
+}
+
+.spinning {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

@@ -7,9 +7,9 @@ import {
   apiFetch,
   getPlannerSettings,
 } from '../api/client';
-import { hapticLight } from '../utils/notify';
+import { hapticLight, hapticResult, showAppAlert, showAppConfirm } from '../utils/notify';
 import { buildPastDays, isWithinLastDays } from '../utils/dateRanges';
-import { formatWorkedHoursInput, parseWorkedHoursInput } from '../utils/workedHours';
+import ShiftEditSheet from '../components/ui/ShiftEditSheet';
 import styles from './CalendarPlanner.module.css';
 
 interface DayPlan {
@@ -272,6 +272,7 @@ const CalendarPlanner: React.FC = () => {
   const [customTo, setCustomTo] = useState(() => todayIso());
   const [activeShift, setActiveShift] = useState<ActiveShift | null>(null);
   const [activeShiftLoading, setActiveShiftLoading] = useState(false);
+  const [editingShift, setEditingShift] = useState<ShiftEntry | null>(null);
   const [dayShiftEntries, setDayShiftEntries] = useState<ShiftEntry[]>([]);
   const [dayShiftEntriesLoading, setDayShiftEntriesLoading] = useState(false);
   const [reportShiftEntries, setReportShiftEntries] = useState<ShiftEntry[]>([]);
@@ -388,7 +389,7 @@ const CalendarPlanner: React.FC = () => {
   };
 
   const handleEndShift = async () => {
-    if (!window.confirm(t('planner', 'endShiftConfirm') || 'Завершити зміну?')) return;
+    if (!(await showAppConfirm(t('planner', 'endShiftConfirm')))) return;
     setActiveShiftLoading(true);
     try {
       const response = await apiFetch('/api/planner/active-shift/end', {
@@ -811,7 +812,7 @@ const CalendarPlanner: React.FC = () => {
   };
 
   const removeShiftFromDay = async () => {
-    if (!window.confirm(t('planner', 'deleteShiftConfirm'))) return;
+    if (!(await showAppConfirm(t('planner', 'deleteShiftConfirm')))) return;
     const payload: DayPlan = {
       ...current,
       hasShift: false,
@@ -849,7 +850,7 @@ const CalendarPlanner: React.FC = () => {
   };
 
   const deleteShiftTemplate = async (tpl: ShiftTemplate) => {
-    if (!window.confirm(t('planner', 'deleteTemplateConfirm'))) return;
+    if (!(await showAppConfirm(t('planner', 'deleteTemplateConfirm')))) return;
     try {
       const response = await apiFetch(`/api/planner/shift-templates/${encodeURIComponent(tpl.id)}`, {
         method: 'DELETE',
@@ -872,41 +873,33 @@ const CalendarPlanner: React.FC = () => {
     }
   };
 
-  const handleEditReportShift = async (entry: ShiftEntry) => {
+  const handleEditReportShift = (entry: ShiftEntry) => {
     if (entry.id.startsWith('day-')) return;
-    const nextHoursRaw = window.prompt(t('planner', 'editShiftHoursPrompt'), formatWorkedHoursInput(entry.workedHours));
-    if (nextHoursRaw === null) return;
-    const nextHours = parseWorkedHoursInput(nextHoursRaw);
-    if (nextHours === null) {
-      window.alert(t('planner', 'editShiftHoursInvalid'));
-      return;
-    }
-    const nextAmountRaw = window.prompt(t('planner', 'editShiftAmountPrompt'), String(entry.salaryAmount));
-    if (nextAmountRaw === null) return;
-    const nextAmount = parseMoneyInput(nextAmountRaw);
-    const nextNoteRaw = window.prompt(t('planner', 'editShiftNotePrompt'), entry.note || '');
-    if (nextNoteRaw === null) return;
-    try {
-      const response = await apiFetch(`/api/planner/shifts/${encodeURIComponent(entry.id)}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          workedHours: nextHours,
-          salaryAmount: nextAmount,
-          salaryCurrency: entry.salaryCurrency,
-          note: nextNoteRaw.trim(),
-        }),
-      });
-      if (!response.ok) throw new Error(`Edit shift failed: ${response.status}`);
-      await refreshAfterShiftEntryMutation(entry.day);
-    } catch (error) {
-      console.error('Failed to edit report shift:', error);
-    }
+    setEditingShift(entry);
+  };
+
+  const handleSaveEditedShift = async (
+    entry: ShiftEntry,
+    next: { workedHours: number; salaryAmount: number; note: string },
+  ) => {
+    const response = await apiFetch(`/api/planner/shifts/${encodeURIComponent(entry.id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        workedHours: next.workedHours,
+        salaryAmount: next.salaryAmount,
+        salaryCurrency: entry.salaryCurrency,
+        note: next.note,
+      }),
+    });
+    // Помилку видно у формі — раніше вона мовчки лишалася в консолі.
+    if (!response.ok) throw new Error(`Edit shift failed: ${response.status}`);
+    await refreshAfterShiftEntryMutation(entry.day);
   };
 
   const handleDeleteReportShift = async (entry: ShiftEntry) => {
     if (entry.id.startsWith('day-')) return;
-    if (!window.confirm(t('planner', 'deleteShiftEntryConfirm'))) return;
+    if (!(await showAppConfirm(t('planner', 'deleteShiftEntryConfirm')))) return;
     try {
       const response = await apiFetch(`/api/planner/shifts/${encodeURIComponent(entry.id)}`, {
         method: 'DELETE',
@@ -915,6 +908,8 @@ const CalendarPlanner: React.FC = () => {
       await refreshAfterShiftEntryMutation(entry.day);
     } catch (error) {
       console.error('Failed to delete report shift:', error);
+      hapticResult('error');
+      showAppAlert(t('addTx', 'saveFailed'));
     }
   };
 
@@ -1179,7 +1174,7 @@ const CalendarPlanner: React.FC = () => {
           <div className={styles.reportShiftSection}>
             <p className={styles.templateSectionLabel}>{t('planner', 'reportShiftBanners')}</p>
             {reportShiftEntriesLoading ? (
-              <p className={styles.dayShiftsEmpty}>{t('planner', 'loading')}</p>
+              <p className={styles.dayShiftsEmpty}>{t('common', 'loading')}</p>
             ) : reportShiftBanners.length === 0 ? (
               <p className={styles.dayShiftsEmpty}>{t('planner', 'reportShiftBannersEmpty')}</p>
             ) : (
@@ -1221,7 +1216,7 @@ const CalendarPlanner: React.FC = () => {
           </div>
         </div>
 
-        {loading && <p className={styles.loading}>{t('planner', 'loading')}</p>}
+        {loading && <p className={styles.loading}>{t('common', 'loading')}</p>}
       </section>
 
       {activeShift ? (
@@ -1287,7 +1282,7 @@ const CalendarPlanner: React.FC = () => {
             ) : null}
             <p className={styles.templateSectionLabel}>{t('planner', 'dayShifts')}</p>
             {dayShiftEntriesLoading ? (
-              <p className={styles.dayShiftsEmpty}>{t('planner', 'loading')}</p>
+              <p className={styles.dayShiftsEmpty}>{t('common', 'loading')}</p>
             ) : dayShiftEntries.length === 0 ? (
               <p className={styles.dayShiftsEmpty}>{t('planner', 'dayShiftsEmpty')}</p>
             ) : (
@@ -1562,6 +1557,15 @@ const CalendarPlanner: React.FC = () => {
           </section>
         </div>
       ) : null}
+
+      <ShiftEditSheet
+        shift={editingShift}
+        onClose={() => setEditingShift(null)}
+        onSave={async (next) => {
+          if (!editingShift) return;
+          await handleSaveEditedShift(editingShift, next);
+        }}
+      />
 
       <div className={styles.spacer} />
     </div>

@@ -7,7 +7,13 @@ import { v4 as uuidv4 } from 'uuid';
 import { getDatabasePath, initDb } from './db.js';
 import { startScheduledDatabaseBackups } from './backup.js';
 import { createReceiptScanHandler } from './receipt-scan.js';
-import { getTransactionAccountEffects, validateTransferPayload } from './transaction-effects.js';
+import {
+  collectDebtOverdrafts,
+  computeNetDeltas,
+  getTransactionAccountEffects,
+  resolveEffectDelta,
+  validateTransferPayload,
+} from './transaction-effects.js';
 import { buildDebtRepaymentTransfer, validateDebtPayment } from './debt.js';
 import { legacyDebtPhraseForDirection } from './debt-direction.js';
 import { selectMonthStartAndLatestPrices } from './crypto-history.js';
@@ -15,6 +21,17 @@ import { getPreviousFullWeekDaySet } from './report-periods.js';
 import { deliverReportToTelegram } from './report-delivery.js';
 import { renderFinancialReportCardPng } from './report-card.js';
 import { parseSmartTransaction, isSmartTransactionEnabled } from './smart-transaction.js';
+import {
+  DENOMINATIONS,
+  convertDenomination,
+  isCryptoDenomination,
+  normalizeDenomination,
+} from './denomination.js';
+import {
+  TEMPLATES_PER_USER_MAX,
+  mapTemplateRow,
+  validateTemplatePayload,
+} from './expense-templates.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -77,6 +94,11 @@ const parseAmount = (value) => {
   const n = Number(value);
   return Number.isFinite(n) ? n : NaN;
 };
+/**
+ * Fiat reporting currency. Use this only where a figure must land in UAH/PLN/USD
+ * (reports, budgets, goals). For an account balance or a transaction amount use
+ * `normalizeDenomination`, which keeps crypto assets intact.
+ */
 const normalizeCurrency = (value) => {
   const code = String(value ?? '').toUpperCase();
   if (code === 'PLN' || code === 'USD' || code === 'UAH') return code;
@@ -121,33 +143,53 @@ const getCurrencyFromNote = (note) => {
 };
 const applyAccountDelta = async (dbConn, userId, accountKey, delta) => {
   if (!accountKey || !Number.isFinite(delta) || delta === 0) return;
-  // Debt balances should never go negative, regardless of which transaction type caused the delta.
+  // Stored exactly, with no clamping. Clamping here used to make un-applying a
+  // transaction (edit/delete, multiplier -1) a non-inverse of applying it, which
+  // permanently drifted debt balances. Debt overdraw is rejected up front
+  // instead — see collectDebtOverdrafts.
   await dbConn.run(
     `UPDATE account_portfolio
-     SET primary_amount = CASE WHEN section = 'debt' THEN MAX(0, primary_amount + ?) ELSE primary_amount + ? END,
+     SET primary_amount = primary_amount + ?,
          updatedAt = ?
      WHERE user_id = ? AND account_key = ?`,
-    [delta, delta, new Date().toISOString(), userId, accountKey]
+    [delta, new Date().toISOString(), userId, accountKey]
   );
 };
+
+const getAccountRowsForEffects = async (dbConn, userId, accountKeys) => {
+  const map = new Map();
+  for (const key of new Set(accountKeys)) {
+    if (!key) continue;
+    const account = await dbConn.get(
+      `SELECT account_key AS accountKey, section, debt_direction AS debtDirection,
+              primary_amount AS primaryAmount
+       FROM account_portfolio
+       WHERE user_id = ? AND account_key = ?
+       LIMIT 1`,
+      [userId, key]
+    );
+    if (account) map.set(key, account);
+  }
+  return map;
+};
+
+const checkDebtOverdrafts = async (dbConn, userId, entries) => {
+  const keys = entries.flatMap(({ tx }) => getTransactionAccountEffects(tx).map((e) => e.accountKey));
+  const accountsByKey = await getAccountRowsForEffects(dbConn, userId, keys);
+  const netDeltas = computeNetDeltas(entries, accountsByKey);
+  return collectDebtOverdrafts(netDeltas, accountsByKey);
+};
+
 const applyTransactionEffects = async (dbConn, userId, tx, multiplier = 1) => {
   for (const effect of getTransactionAccountEffects(tx)) {
-    let delta = effect.delta * multiplier;
-    if (tx?.type === 'transfer') {
-      const account = await dbConn.get(
-        `SELECT section, debt_direction AS debtDirection
-         FROM account_portfolio
-         WHERE user_id = ? AND account_key = ?
-         LIMIT 1`,
-        [userId, effect.accountKey]
-      );
-      // Liability balances use the opposite sign to asset balances: paying money
-      // into a debt I owe reduces it, while borrowing more increases it.
-      if (account?.section === 'debt' && account?.debtDirection === 'owed_by_me') {
-        delta *= -1;
-      }
-    }
-    await applyAccountDelta(dbConn, userId, effect.accountKey, delta);
+    const account = await dbConn.get(
+      `SELECT section, debt_direction AS debtDirection
+       FROM account_portfolio
+       WHERE user_id = ? AND account_key = ?
+       LIMIT 1`,
+      [userId, effect.accountKey]
+    );
+    await applyAccountDelta(dbConn, userId, effect.accountKey, resolveEffectDelta(tx, effect, multiplier, account));
   }
 };
 const getAccountsByKeys = async (dbConn, userId, keys) => {
@@ -171,7 +213,8 @@ const getAccountsByKeys = async (dbConn, userId, keys) => {
       String(row.accountKey ?? '').trim().toLowerCase(),
       {
         accountKey: String(row.accountKey ?? '').trim().toLowerCase(),
-        primaryCurrency: normalizeCurrency(row.primaryCurrency),
+        // Denomination, not fiat currency: a crypto account is counted in its asset.
+        primaryCurrency: normalizeDenomination(row.primaryCurrency),
       },
     ])
   );
@@ -362,6 +405,35 @@ const fetchCryptoUsdPrices = async () => {
     };
   }
 };
+/**
+ * Last known crypto USD prices without awaiting a fetch, so the synchronous
+ * report/budget helpers can value crypto-denominated amounts. Refreshed by
+ * fetchCryptoUsdPrices on its own cadence.
+ */
+const getCachedCryptoUsdPrices = () => cryptoCache?.prices ?? null;
+
+/**
+ * Converts a transaction amount, whatever it is denominated in, into a fiat
+ * reporting currency.
+ *
+ * A crypto amount whose price is unknown contributes 0 rather than being passed
+ * through as if 1 token equalled 1 hryvnia — an omitted figure beats an invented
+ * one in a report.
+ */
+const convertAmountServer = (amount, fromDenomination, toFiat, fxPayload, cryptoUsd) => {
+  const value = Number(amount);
+  if (!Number.isFinite(value)) return 0;
+  const from = normalizeDenomination(fromDenomination);
+  const to = normalizeCurrency(toFiat);
+  if (!isCryptoDenomination(from)) return convertCurrencyServer(value, from, to, fxPayload);
+  const converted = convertDenomination(value, from, to, {
+    fx: fxPayload,
+    cryptoUsd: cryptoUsd ?? getCachedCryptoUsdPrices(),
+    convertFiat: convertCurrencyServer,
+  });
+  return converted === null ? 0 : converted;
+};
+
 const buildSubscriptionChargeNote = (subscription) => {
   const base = typeof subscription.note === 'string' ? subscription.note.trim() : '';
   const suffix = `Subscription: ${subscription.name}`;
@@ -971,7 +1043,7 @@ const checkBudgetThresholdsAfterExpense = async (userId, categoryId) => {
   for (const tx of txs) {
     const d = dayFromIsoInZone(String(tx.date), tz);
     if (!String(d).startsWith(ym)) continue;
-    sum += convertCurrencyServer(Number(tx.amount), normalizeCurrency(tx.currency), budgetCur, fx);
+    sum += convertAmountServer(Number(tx.amount), tx.currency, budgetCur, fx);
   }
   const limit = Number(budget.monthlyLimit);
   if (!(limit > 0)) return;
@@ -1025,12 +1097,7 @@ const summarizeTransactions = (txs, targetCurrency = 'UAH', fxPayload = FX_FALLB
   const reportCurrency = normalizeCurrency(targetCurrency);
   for (const tx of txs) {
     if (tx.type === 'transfer') continue;
-    const amount = convertCurrencyServer(
-      Number(tx.amount) || 0,
-      normalizeCurrency(tx.currency),
-      reportCurrency,
-      fxPayload
-    );
+    const amount = convertAmountServer(Number(tx.amount) || 0, tx.currency, reportCurrency, fxPayload);
     if (tx.type === 'income') {
       income += amount;
       incomeCount += 1;
@@ -1123,12 +1190,7 @@ const sumExpenseByCategory = (txs, targetCurrency = 'UAH', fxPayload = FX_FALLBA
     if (tx?.type !== 'expense') continue;
     const amount = Math.max(
       0,
-      convertCurrencyServer(
-        Number(tx.amount) || 0,
-        normalizeCurrency(tx.currency),
-        normalizeCurrency(targetCurrency),
-        fxPayload
-      )
+      convertAmountServer(Number(tx.amount) || 0, tx.currency, targetCurrency, fxPayload)
     );
     if (!(amount > 0)) continue;
     map.set(tx.categoryId, (map.get(tx.categoryId) ?? 0) + amount);
@@ -1161,7 +1223,7 @@ const collectBudgetRisks = async (dbConn, userId, txs, today, tz, fxPayload) => 
       if (tx?.type !== 'expense' || tx?.categoryId !== row.categoryId) continue;
       const txDay = dayFromIsoInZone(String(tx.date), tz);
       if (!String(txDay).startsWith(ym)) continue;
-      spent += convertCurrencyServer(Number(tx.amount) || 0, normalizeCurrency(tx.currency), budgetCurrency, fxPayload);
+      spent += convertAmountServer(Number(tx.amount) || 0, tx.currency, budgetCurrency, fxPayload);
     }
     const ratio = spent / limit;
     if (ratio >= 0.8) {
@@ -1327,6 +1389,8 @@ const formatRecommendationsSection = (items, title = '💡 РЕКОМЕНДАЦ�
 const detectPrimaryCurrency = (txs) => {
   const counters = { UAH: 0, PLN: 0, USD: 0 };
   for (const tx of txs || []) {
+    // Crypto-denominated rows say nothing about which fiat to report in.
+    if (isCryptoDenomination(tx?.currency)) continue;
     const cur = normalizeCurrency(tx?.currency);
     counters[cur] = (counters[cur] || 0) + 1;
   }
@@ -2866,6 +2930,112 @@ app.delete('/api/budgets/:categoryId', async (req, res) => {
   res.status(204).end();
 });
 
+app.get('/api/expense-templates', async (req, res) => {
+  const userId = String(req.authUserId ?? '').trim();
+  if (!userId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const rows = await db.all(
+    `SELECT id, name, type, amount, currency, category_id AS categoryId,
+            note, account_key AS accountKey
+     FROM expense_templates
+     WHERE user_id = ?
+     ORDER BY created_at DESC`,
+    [userId]
+  );
+  res.json((rows || []).map(mapTemplateRow));
+});
+
+app.post('/api/expense-templates', async (req, res) => {
+  const userId = String(req.authUserId ?? '').trim();
+  if (!userId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const validated = validateTemplatePayload(req.body);
+  if (!validated.ok) {
+    res.status(validated.status).json({ error: validated.error, code: validated.code });
+    return;
+  }
+
+  const existing = await db.get(
+    'SELECT COUNT(*) AS count FROM expense_templates WHERE user_id = ?',
+    [userId]
+  );
+  if (Number(existing?.count ?? 0) >= TEMPLATES_PER_USER_MAX) {
+    res.status(409).json({
+      error: `at most ${TEMPLATES_PER_USER_MAX} templates`,
+      code: 'TEMPLATE_LIMIT_REACHED',
+    });
+    return;
+  }
+
+  const now = new Date().toISOString();
+  // The client may supply an id so a template imported from local storage keeps
+  // its identity instead of being duplicated on a second import.
+  const id = typeof req.body?.id === 'string' && req.body.id.trim()
+    ? req.body.id.trim().slice(0, 64)
+    : uuidv4();
+
+  await db.run(
+    `INSERT INTO expense_templates
+      (id, user_id, name, type, amount, currency, category_id, note, account_key, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       name = excluded.name,
+       type = excluded.type,
+       amount = excluded.amount,
+       currency = excluded.currency,
+       category_id = excluded.category_id,
+       note = excluded.note,
+       account_key = excluded.account_key,
+       updated_at = excluded.updated_at
+     WHERE expense_templates.user_id = excluded.user_id`,
+    [
+      id,
+      userId,
+      validated.name,
+      validated.type,
+      validated.amount,
+      validated.currency,
+      validated.categoryId,
+      validated.note,
+      validated.account,
+      now,
+      now,
+    ]
+  );
+
+  const row = await db.get(
+    `SELECT id, name, type, amount, currency, category_id AS categoryId,
+            note, account_key AS accountKey
+     FROM expense_templates
+     WHERE user_id = ? AND id = ?`,
+    [userId, id]
+  );
+  if (!row) {
+    res.status(409).json({ error: 'template id already taken', code: 'TEMPLATE_ID_CONFLICT' });
+    return;
+  }
+  res.status(201).json(mapTemplateRow(row));
+});
+
+app.delete('/api/expense-templates/:id', async (req, res) => {
+  const userId = String(req.authUserId ?? '').trim();
+  const id = String(req.params.id ?? '').trim();
+  if (!userId || !id) {
+    res.status(400).json({ error: 'invalid id' });
+    return;
+  }
+  const result = await db.run('DELETE FROM expense_templates WHERE user_id = ? AND id = ?', [userId, id]);
+  if (!result?.changes) {
+    res.status(404).json({ error: 'Template not found' });
+    return;
+  }
+  res.status(204).end();
+});
+
 const GOAL_COLOR_RE = /^#[0-9A-Fa-f]{6}$/;
 const mapGoalRow = (row, saved, contributionsCount) => ({
   id: row.id,
@@ -3154,7 +3324,9 @@ app.post('/api/goals/:id/contributions', async (req, res) => {
       return;
     }
     const acctKey = String(acct.k).trim().toLowerCase();
-    const acctCur = normalizeCurrency(acct.pc);
+    // Compared as a denomination, so a crypto account is not mistaken for UAH
+    // and silently accepted against a hryvnia goal.
+    const acctCur = normalizeDenomination(acct.pc);
     if (acctCur !== goalCurrency) {
       res.status(400).json({
         error: 'account primary currency must match goal currency',
@@ -3349,7 +3521,8 @@ app.post('/api/accounts', async (req, res) => {
   const userId = req.authUserId;
   const name = typeof req.body?.name === 'string' ? req.body.name.trim().replace(/\s+/g, ' ') : '';
   const primaryAmount = Number(req.body?.primaryAmount);
-  const primaryCurrency = req.body?.primaryCurrency === 'PLN' ? 'PLN' : 'UAH';
+  // The unit the balance is counted in: a fiat currency or a crypto asset.
+  const primaryCurrency = normalizeDenomination(req.body?.primaryCurrency);
   const subText = typeof req.body?.subText === 'string' ? req.body.subText.trim() : '';
   const iconTone = typeof req.body?.iconTone === 'string' ? req.body.iconTone.trim() : '';
   const badge = normalizeAccountBadge(typeof req.body?.badge === 'string' ? req.body.badge : '');
@@ -3457,7 +3630,8 @@ app.put('/api/accounts/:key', async (req, res) => {
 
   const name = typeof req.body?.name === 'string' ? req.body.name.trim().replace(/\s+/g, ' ') : '';
   const primaryAmount = Number(req.body?.primaryAmount);
-  const primaryCurrency = req.body?.primaryCurrency === 'PLN' ? 'PLN' : 'UAH';
+  // The unit the balance is counted in: a fiat currency or a crypto asset.
+  const primaryCurrency = normalizeDenomination(req.body?.primaryCurrency);
   const subText = typeof req.body?.subText === 'string' ? req.body.subText.trim() : '';
   const iconTone = typeof req.body?.iconTone === 'string' ? req.body.iconTone.trim() : '';
   const badge = normalizeAccountBadge(typeof req.body?.badge === 'string' ? req.body.badge : '');
@@ -3744,7 +3918,8 @@ app.get('/api/transactions', async (req, res) => {
 app.post('/api/transactions', async (req, res) => {
   const userId = req.authUserId;
   const amount = parseAmount(req.body?.amount);
-  const currency = normalizeCurrency(req.body?.currency);
+  // Denomination, so an amount can be counted in the asset its account holds.
+  const currency = normalizeDenomination(req.body?.currency);
   const categoryId = typeof req.body?.categoryId === 'string' ? req.body.categoryId.trim() : '';
   const type =
     req.body?.type === 'income' || req.body?.type === 'expense' || req.body?.type === 'transfer'
@@ -3814,6 +3989,16 @@ app.post('/api/transactions', async (req, res) => {
     ...transferFields,
   };
 
+  const overdrafts = await checkDebtOverdrafts(db, userId, [{ tx: transaction, multiplier: 1 }]);
+  if (overdrafts.length > 0) {
+    res.status(409).json({
+      error: 'this would push a debt balance below zero',
+      code: 'DEBT_BALANCE_NEGATIVE',
+      accounts: overdrafts,
+    });
+    return;
+  }
+
   await db.run(
     `INSERT INTO transactions
       (id, user_id, amount, currency, transferToAmount, transferToCurrency, categoryId, type, date, note, fromAccountKey, toAccountKey)
@@ -3855,7 +4040,9 @@ app.patch('/api/transactions/:id', async (req, res) => {
     res.status(409).json({ error: 'Debt repayments cannot be edited directly', code: 'DEBT_EVENT_MANAGED' });
     return;
   }
-  const currency = req.body?.currency === undefined ? normalizeCurrency(current.currency) : normalizeCurrency(req.body.currency);
+  const currency = req.body?.currency === undefined
+    ? normalizeDenomination(current.currency)
+    : normalizeDenomination(req.body.currency);
   const categoryId = typeof req.body?.categoryId === 'string' ? req.body.categoryId : current.categoryId;
   const type =
     req.body?.type === 'income' || req.body?.type === 'expense' || req.body?.type === 'transfer'
@@ -3931,6 +4118,19 @@ app.patch('/api/transactions/:id', async (req, res) => {
     ...nextTransferFields,
   };
 
+  const patchOverdrafts = await checkDebtOverdrafts(db, userId, [
+    { tx: current, multiplier: -1 },
+    { tx: nextTransaction, multiplier: 1 },
+  ]);
+  if (patchOverdrafts.length > 0) {
+    res.status(409).json({
+      error: 'this would push a debt balance below zero',
+      code: 'DEBT_BALANCE_NEGATIVE',
+      accounts: patchOverdrafts,
+    });
+    return;
+  }
+
   await db.run(
     `UPDATE transactions
      SET amount = ?,
@@ -3971,6 +4171,15 @@ app.delete('/api/transactions/:id', async (req, res) => {
   const current = await db.get('SELECT * FROM transactions WHERE user_id = ? AND id = ? LIMIT 1', [userId, id]);
   if (!current) {
     res.status(404).json({ error: 'Transaction not found' });
+    return;
+  }
+  const deleteOverdrafts = await checkDebtOverdrafts(db, userId, [{ tx: current, multiplier: -1 }]);
+  if (deleteOverdrafts.length > 0) {
+    res.status(409).json({
+      error: 'removing this would push a debt balance below zero; delete the later debt entries first',
+      code: 'DEBT_BALANCE_NEGATIVE',
+      accounts: deleteOverdrafts,
+    });
     return;
   }
   const linkedGoals = await db.all(

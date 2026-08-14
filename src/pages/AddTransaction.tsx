@@ -26,10 +26,19 @@ import {
   mergeAccountIntoNoteLimited,
   stripAccountFromNote,
 } from '../utils/transactionAccount';
-import { normalizeCurrency, SUPPORTED_CURRENCIES, TRANSFER_FROM_CURRENCIES, type CurrencyCode, type TransferFromCurrency } from '../utils/currency';
+import { normalizeCurrency, SUPPORTED_CURRENCIES, type CurrencyCode } from '../utils/currency';
+import {
+  normalizeDenomination,
+  roundForDenomination,
+  denominationPrecision,
+  type Denomination,
+} from '../utils/denomination';
+import { useDenominationRates } from '../hooks/useDenominationRates';
 import { apiFetch } from '../api/client';
 import { useExpenseTemplates, type ExpenseTemplate } from '../hooks/useExpenseTemplates';
 import { usePaymentAccountOptions } from '../hooks/usePaymentAccountOptions';
+import { hapticResult, showAppConfirm } from '../utils/notify';
+import { useGoBack } from '../hooks/useGoBack';
 import {
   hasPrefillParams,
   loadAddTransactionDefaults,
@@ -50,10 +59,16 @@ const iconRegistry = LucideIcons as unknown as Record<string, React.ComponentTyp
 
 const AddTransaction: React.FC = () => {
   const navigate = useNavigate();
+  const goBack = useGoBack('/');
   const { transactions, addTransaction, updateTransaction, isBootstrapping } = useTransactions();
   const { t, language } = useTranslation();
   const [searchParams] = useSearchParams();
-  const { templates, saveTemplate, deleteTemplate } = useExpenseTemplates();
+  const {
+    templates,
+    saveTemplate,
+    deleteTemplate,
+    error: templateError,
+  } = useExpenseTemplates();
   const editId = searchParams.get('edit')?.trim() ?? '';
   const editingTransaction = editId ? transactions.find((tx) => tx.id === editId) : undefined;
   const isEditing = Boolean(editId);
@@ -131,9 +146,10 @@ const AddTransaction: React.FC = () => {
   >(null);
   const [editingCustomId, setEditingCustomId] = useState<string | null>(null);
   const { accounts: rawAccounts } = usePortfolio();
-  const portfolioAccounts = useMemo<Array<{ key: string; name: string; currency: CurrencyCode }>>(
+  const { rateBetween } = useDenominationRates();
+  const portfolioAccounts = useMemo<Array<{ key: string; name: string; currency: Denomination }>>(
     () => {
-      const list: Array<{ key: string; name: string; currency: CurrencyCode }> = [];
+      const list: Array<{ key: string; name: string; currency: Denomination }> = [];
       for (const row of rawAccounts) {
         if (!row || typeof row !== 'object') continue;
         const r = row as Record<string, unknown>;
@@ -143,7 +159,9 @@ const AddTransaction: React.FC = () => {
         list.push({
           key,
           name: name || key,
-          currency: normalizeCurrency(typeof r.primaryCurrency === 'string' ? r.primaryCurrency : undefined),
+          // The unit this account holds — may be a crypto asset, so never
+          // squeeze it through normalizeCurrency.
+          currency: normalizeDenomination(typeof r.primaryCurrency === 'string' ? r.primaryCurrency : undefined),
         });
       }
       list.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
@@ -202,20 +220,24 @@ const AddTransaction: React.FC = () => {
     if (editingTransaction?.type === 'transfer') return String(editingTransaction.amount);
     return '';
   });
-  const [transferFromCurrencyOverride, setTransferFromCurrencyOverride] = useState<TransferFromCurrency | ''>(
-    () => {
-      if (editingTransaction?.type !== 'transfer') return '';
-      const c = editingTransaction.currency ?? '';
-      return (TRANSFER_FROM_CURRENCIES as readonly string[]).includes(c) ? c as TransferFromCurrency : '';
-    }
+  // True once the user edits the destination amount by hand, so a suggested
+  // rate never overwrites the figure they actually received.
+  const [transferToAmountTouched, setTransferToAmountTouched] = useState(
+    () => Boolean(editingTransaction?.type === 'transfer' && editingTransaction?.transferToAmount),
   );
 
-  const { allowedPaymentKeys, paymentChipOptions } = usePaymentAccountOptions(portfolioAccounts, language);
+  const { allowedPaymentKeys, paymentChipOptions } = usePaymentAccountOptions(
+    portfolioAccounts,
+    language,
+    paymentAccount,
+  );
 
+  // Ті самі заголовки, що й у гаманці, щоб розділи збігалися.
   const accountGroupLabels = useMemo<Record<AccountPickerGroup, string>>(() => ({
-    ordinary: t('addTx', 'accountGroupOrdinary'),
-    crypto: t('addTx', 'accountGroupCrypto'),
-    debt: t('addTx', 'accountGroupDebt'),
+    bank: t('balance', 'sectionBank'),
+    cash: t('balance', 'sectionCash'),
+    crypto: t('balance', 'sectionCrypto'),
+    debt: t('balance', 'sectionDebt'),
   }), [t]);
 
   const paymentAccountPickerItems = useMemo(
@@ -253,9 +275,17 @@ const AddTransaction: React.FC = () => {
     () => portfolioAccounts.find((account) => account.key === transferToAccountKey) ?? null,
     [portfolioAccounts, transferToAccountKey]
   );
-  const effectiveFromCurrencyStr = transferFromCurrencyOverride || transferFromAccount?.currency || currency;
-  const effectiveToCurrencyStr = transferToAccount?.currency ?? transferFromAccount?.currency ?? currency;
-  const transferUsesExchange = effectiveFromCurrencyStr !== effectiveToCurrencyStr;
+  // A transfer is always denominated by its accounts: you move what the source
+  // account holds, and it lands as what the destination account holds.
+  const transferFromDenomination: Denomination = transferFromAccount?.currency ?? normalizeDenomination(currency);
+  const transferToDenomination: Denomination =
+    transferToAccount?.currency ?? transferFromAccount?.currency ?? normalizeDenomination(currency);
+  const transferUsesExchange = transferFromDenomination !== transferToDenomination;
+
+  const transferSuggestedRate = useMemo(
+    () => (transferUsesExchange ? rateBetween(transferFromDenomination, transferToDenomination) : null),
+    [transferUsesExchange, rateBetween, transferFromDenomination, transferToDenomination],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -326,6 +356,8 @@ const AddTransaction: React.FC = () => {
           ? String(tx.amount)
           : ''
     );
+    // An existing transfer already carries the figure that actually landed.
+    setTransferToAmountTouched(Boolean(tx.type === 'transfer' && tx.transferToAmount));
     setNote(stripAccountFromNote(tx.note ?? ''));
   }, [editId, transactions]);
 
@@ -353,27 +385,39 @@ const AddTransaction: React.FC = () => {
     }
   }, [type, portfolioAccounts, transferFromAccountKey, transferToAccountKey]);
 
-  useEffect(() => {
-    if (type !== 'transfer' || !transferFromAccount) return;
-    setCurrency(transferFromAccount.currency);
-    setTransferFromCurrencyOverride('');
-  }, [type, transferFromAccount]);
-
+  // Same denomination on both sides: the amount that leaves is the amount that
+  // arrives, so the destination field mirrors the source and stays read-only.
   useEffect(() => {
     if (type !== 'transfer' || transferUsesExchange) return;
-    if (!amount) {
+    setTransferToAmount(amount || '');
+    setTransferToAmountTouched(false);
+  }, [type, transferUsesExchange, amount]);
+
+  // Different denominations: suggest the destination amount from the current
+  // rate, but only until the user types their own figure.
+  useEffect(() => {
+    if (type !== 'transfer' || !transferUsesExchange || transferToAmountTouched) return;
+    const parsedAmount = parseFloat(amount.replace(',', '.'));
+    if (!(parsedAmount > 0) || transferSuggestedRate === null) {
       setTransferToAmount('');
       return;
     }
-    setTransferToAmount(amount);
-  }, [type, transferUsesExchange, amount]);
+    setTransferToAmount(
+      String(roundForDenomination(parsedAmount * transferSuggestedRate, transferToDenomination)),
+    );
+  }, [
+    type,
+    transferUsesExchange,
+    transferToAmountTouched,
+    amount,
+    transferSuggestedRate,
+    transferToDenomination,
+  ]);
+
 
   const canCreateCustomCategory = newCategoryName.trim().length > 0;
 
-  const handleClose = useCallback(() => {
-    if (window.history.length > 1) navigate(-1);
-    else navigate('/');
-  }, [navigate]);
+  const handleClose = goBack;
 
   const handleTypeChange = useCallback(
     (newType: TransactionType) => {
@@ -416,11 +460,12 @@ const AddTransaction: React.FC = () => {
     if (!numAmount || numAmount <= 0) return;
     const transferDestinationAmount = parseFloat(transferToAmount.replace(',', '.'));
     const mergedNote = mergeAccountIntoNoteLimited(note.trim(), paymentAccount, allowedPaymentKeys);
-    const effectiveFromCurrency = transferFromCurrencyOverride || transferFromAccount?.currency || currency;
     const payload = type === 'transfer'
       ? {
           amount: numAmount,
-          currency: effectiveFromCurrency as CurrencyCode,
+          // Both sides are dictated by the accounts, never by a free-standing
+          // currency picker that the server would only reject.
+          currency: transferFromDenomination,
           type,
           categoryId: 'transfer',
           date,
@@ -431,7 +476,7 @@ const AddTransaction: React.FC = () => {
             Number.isFinite(transferDestinationAmount) && transferDestinationAmount > 0
               ? transferDestinationAmount
               : numAmount,
-          transferToCurrency: transferToAccount?.currency ?? transferFromAccount?.currency ?? currency,
+          transferToCurrency: transferToDenomination,
         }
       : {
           amount: numAmount,
@@ -443,9 +488,11 @@ const AddTransaction: React.FC = () => {
         };
     const ok = isEditing && editId ? await updateTransaction(editId, payload) : await addTransaction(payload);
     if (!ok) {
+      hapticResult('error');
       setSaveError(t('addTx', 'saveFailed'));
       return;
     }
+    hapticResult('success');
     if (type !== 'transfer') {
       saveAddTransactionDefaults({
         type,
@@ -454,7 +501,11 @@ const AddTransaction: React.FC = () => {
         paymentAccount: paymentAccount || undefined,
       });
     }
-    navigate('/');
+    // Редагування повертає на екран, з якого його відкрили (частіше за все —
+    // історія). Створення нової операції веде на головну, бо звідти її
+    // зазвичай і починають.
+    if (isEditing) goBack();
+    else navigate('/');
   };
 
   const handleApplyTemplate = useCallback((tpl: ExpenseTemplate) => {
@@ -466,8 +517,11 @@ const AddTransaction: React.FC = () => {
   }, []);
 
   const handleSaveTemplate = useCallback((name: string) => {
+    // The bar is only rendered outside the transfer branch, so this is a
+    // belt-and-braces guard that also narrows the type for the payload.
+    if (type === 'transfer') return;
     const numAmount = parseFloat(amount.replace(',', '.'));
-    saveTemplate({
+    void saveTemplate({
       name,
       type,
       amount: Number.isFinite(numAmount) && numAmount > 0 ? numAmount : undefined,
@@ -477,6 +531,16 @@ const AddTransaction: React.FC = () => {
       account: paymentAccount || undefined,
     });
   }, [amount, type, currency, categoryId, note, paymentAccount, saveTemplate]);
+
+  const handleDeleteTemplate = useCallback((id: string) => {
+    void deleteTemplate(id);
+  }, [deleteTemplate]);
+
+  const templateErrorText = useMemo(() => {
+    if (templateError === 'limit') return t('addTx', 'templateLimitReached');
+    if (templateError === 'save' || templateError === 'delete') return t('addTx', 'templateSyncFailed');
+    return '';
+  }, [templateError, t]);
 
   const isValid = useMemo(() => {
     if (editNotFound) return false;
@@ -615,16 +679,7 @@ const AddTransaction: React.FC = () => {
                   className={styles.amountInput}
                   onKeyDown={amountKeyDown}
                 />
-                <select
-                  className={styles.currencyBadgeSelect}
-                  value={transferFromCurrencyOverride || transferFromAccount?.currency || currency}
-                  onChange={(e) => setTransferFromCurrencyOverride(e.target.value as TransferFromCurrency)}
-                  aria-label="Валюта переказу"
-                >
-                  {TRANSFER_FROM_CURRENCIES.map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
+                <span className={styles.currencyBadge}>{transferFromDenomination}</span>
               </div>
             </div>
             <div className={styles.transferArrow} aria-hidden="true">↓</div>
@@ -637,16 +692,31 @@ const AddTransaction: React.FC = () => {
                   pattern="[0-9]*[.,]?[0-9]*"
                   placeholder={t('addTx', 'amountPlaceholder')}
                   value={transferToAmount}
-                  onChange={(e) => setTransferToAmount(e.target.value.replace(/[^0-9.,]/g, ''))}
+                  onChange={(e) => {
+                    setTransferToAmountTouched(true);
+                    setTransferToAmount(e.target.value.replace(/[^0-9.,]/g, ''));
+                  }}
                   className={styles.amountInput}
                   onKeyDown={amountKeyDown}
+                  // Same unit on both sides: what leaves is what arrives, so
+                  // there is nothing to type here.
+                  readOnly={!transferUsesExchange}
+                  aria-readonly={!transferUsesExchange}
                 />
-                <span className={styles.currencyBadge}>
-                  {transferToAccount?.currency ?? transferFromAccount?.currency ?? currency}
-                </span>
+                <span className={styles.currencyBadge}>{transferToDenomination}</span>
               </div>
             </div>
           </div>
+
+          {transferUsesExchange ? (
+            <p className={styles.transferRateHint}>
+              {transferSuggestedRate === null
+                ? t('addTx', 'transferRateUnavailable')
+                : `1 ${transferFromDenomination} ≈ ${transferSuggestedRate.toLocaleString(undefined, {
+                    maximumFractionDigits: denominationPrecision(transferToDenomination),
+                  })} ${transferToDenomination} · ${t('addTx', 'transferRateEditable')}`}
+            </p>
+          ) : null}
 
           <div className={styles.dateInline}>
             <input
@@ -704,8 +774,9 @@ const AddTransaction: React.FC = () => {
             currentType={type}
             canSave={isValid && !isEditing}
             onApply={handleApplyTemplate}
-            onDelete={deleteTemplate}
+            onDelete={handleDeleteTemplate}
             onSave={handleSaveTemplate}
+            errorText={templateErrorText}
             labels={{
               title: t('addTx', 'templates'),
               saveAsTemplate: t('addTx', 'saveAsTemplate'),
@@ -818,6 +889,9 @@ const AddTransaction: React.FC = () => {
         onSelect={(id) => {
           if (transferAccountSheet === 'to') setTransferToAccountKey(id);
           else setTransferFromAccountKey(id);
+          // Picking a different account changes what the destination figure
+          // means, so hand control back to the suggested rate.
+          setTransferToAmountTouched(false);
           setTransferAccountSheet(null);
         }}
       />
@@ -890,7 +964,7 @@ const AddTransaction: React.FC = () => {
                   type="button"
                   className={styles.customCategoryCreateBtn}
                   onClick={async () => {
-                    if (!window.confirm(t('addTx', 'deleteConfirm'))) return;
+                    if (!(await showAppConfirm(t('addTx', 'deleteConfirm')))) return;
                     try {
                       const response = await apiFetch(`/api/custom-categories/${encodeURIComponent(managingCustom.id)}`, {
                         method: 'DELETE',

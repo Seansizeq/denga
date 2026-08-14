@@ -17,6 +17,8 @@ import { normalizeCurrency } from '../utils/currency';
 import { formatCurrency } from '../utils/formatters';
 import type { DisplayCurrency } from '../utils/formatters';
 import { useTranslation } from '../i18n/LanguageContext';
+import { useGoBack } from '../hooks/useGoBack';
+import { showAppConfirm } from '../utils/notify';
 import { usePortfolio } from '../context/PortfolioContext';
 import styles from './Goals.module.css';
 
@@ -65,6 +67,7 @@ const fillColorForPct = (pct: number, goalColor: string): string => {
 const GoalDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const goBack = useGoBack('/goals');
   const { t, locale } = useTranslation();
   const [goal, setGoal] = useState<Goal | null>(null);
   const [contributions, setContributions] = useState<GoalContribution[]>([]);
@@ -221,7 +224,7 @@ const GoalDetail: React.FC = () => {
 
   const onDeleteContrib = async (contribId: string) => {
     if (!id) return;
-    if (!window.confirm(t('goals', 'deleteContribConfirm'))) return;
+    if (!(await showAppConfirm(t('goals', 'deleteContribConfirm')))) return;
     try {
       await deleteContribution(id, contribId);
       await load();
@@ -232,7 +235,7 @@ const GoalDetail: React.FC = () => {
 
   const onDeleteGoal = async () => {
     if (!id) return;
-    if (!window.confirm(t('goals', 'deleteConfirm'))) return;
+    if (!(await showAppConfirm(t('goals', 'deleteConfirm')))) return;
     try {
       await deleteGoal(id);
       navigate('/goals');
@@ -248,7 +251,7 @@ const GoalDetail: React.FC = () => {
   if (loading) {
     return (
       <div className={styles.container}>
-        <p className={styles.emptyText}>{t('planner', 'loading')}</p>
+        <p className={styles.emptyText}>{t('common', 'loading')}</p>
       </div>
     );
   }
@@ -256,7 +259,7 @@ const GoalDetail: React.FC = () => {
   if (error || !goal) {
     return (
       <div className={styles.container}>
-        <button type="button" className={styles.back} onClick={() => navigate('/goals')}>
+        <button type="button" className={styles.back} onClick={goBack}>
           ← {t('goals', 'title')}
         </button>
         <p className={styles.bannerError} role="alert">
@@ -271,7 +274,7 @@ const GoalDetail: React.FC = () => {
   return (
     <div className={styles.container}>
       <header className={styles.header}>
-        <button type="button" className={styles.back} onClick={() => navigate('/goals')}>
+        <button type="button" className={styles.back} onClick={goBack}>
           ← {t('goals', 'title')}
         </button>
       </header>

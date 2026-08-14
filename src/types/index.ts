@@ -1,3 +1,5 @@
+import type { Denomination } from '../utils/denomination';
+
 export type TransactionType = 'income' | 'expense' | 'transfer';
 
 export interface Category {
@@ -9,8 +11,9 @@ export interface Category {
 
 export interface Transaction {
   id: string;
+  /** The unit `amount` is counted in — fiat currency or crypto asset. */
+  currency: Denomination;
   amount: number;
-  currency: 'UAH' | 'PLN' | 'USD';
   categoryId: string;
   type: TransactionType;
   date: string;
@@ -19,7 +22,7 @@ export interface Transaction {
   toAccountKey?: string;
   debtEventId?: string;
   transferToAmount?: number;
-  transferToCurrency?: 'UAH' | 'PLN' | 'USD';
+  transferToCurrency?: Denomination;
 }
 
 export interface TransactionDraft {

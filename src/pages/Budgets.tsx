@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { apiFetch, deleteBudget, getBudgets, setBudget, type CategoryBudget } from '../api/client';
 import { CATEGORIES } from '../constants/categories';
 import { useTranslation } from '../i18n/LanguageContext';
+import { useGoBack } from '../hooks/useGoBack';
 import type { CategoryKey } from '../i18n/translations';
 import type { DisplayCurrency } from '../utils/formatters';
 import styles from './Budgets.module.css';
@@ -10,7 +10,7 @@ import styles from './Budgets.module.css';
 type CustomRow = { id: string; name: string };
 
 const Budgets: React.FC = () => {
-  const navigate = useNavigate();
+  const goBack = useGoBack('/stats');
   const { t, displayCurrency } = useTranslation();
   const [budgets, setBudgets] = useState<CategoryBudget[]>([]);
   const [customExpense, setCustomExpense] = useState<CustomRow[]>([]);
@@ -101,7 +101,7 @@ const Budgets: React.FC = () => {
   return (
     <div className={styles.container}>
       <header className={styles.header}>
-        <button type="button" className={styles.back} onClick={() => navigate('/stats')}>
+        <button type="button" className={styles.back} onClick={goBack}>
           ← {t('stats', 'title')}
         </button>
         <h1 className={styles.title}>{t('budgets', 'title')}</h1>
@@ -113,7 +113,7 @@ const Budgets: React.FC = () => {
       <div className={styles.card}>
         {loading ? (
           <div className={styles.row}>
-            <span className={styles.name}>…</span>
+            <span className={styles.name}>{t('common', 'loading')}</span>
           </div>
         ) : (
           rows.map((row) => (

@@ -112,13 +112,29 @@
   cursor: not-allowed;
 }
 
+.errorText {
+  margin: 0 0 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--accent-red);
+}
+
 /* ── Chips row ── */
 .scroll {
   display: flex;
   gap: 8px;
   overflow-x: auto;
-  padding-bottom: 4px;
+  /*
+   * `overflow-x: auto` makes the block axis clip as well, so the delete badge —
+   * which hangs 6px outside its chip on the top and right — was cut off on
+   * narrow screens. The padding gives it room inside the scroller and the
+   * negative margins keep the row aligned with the rest of the form.
+   */
+  padding: 8px 8px 8px 0;
+  margin: -8px -8px -4px 0;
   scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
 }
 
 .scroll::-webkit-scrollbar {

@@ -22,21 +22,27 @@ const convertSimple = (amount: number, from: CurrencyCode, to?: CurrencyCode): n
 };
 
 describe('portfolioMonthChange', () => {
-  it('portfolioNeedsCryptoHistory is true only for crypto with parsed position', () => {
+  it('portfolioNeedsCryptoHistory follows the account denomination', () => {
     expect(
       portfolioNeedsCryptoHistory([
         { accountKey: 'x', section: 'bank', primaryAmount: 1, primaryCurrency: 'UAH', subText: '' },
       ]),
     ).toBe(false);
+    // A crypto-section account genuinely held in fiat needs no price history.
     expect(
       portfolioNeedsCryptoHistory([
         {
           accountKey: 'c',
           section: 'crypto',
           primaryAmount: 100,
-          primaryCurrency: 'UAH',
-          subText: '0.5 BTC',
+          primaryCurrency: 'PLN',
+          subText: 'на біржі',
         },
+      ]),
+    ).toBe(false);
+    expect(
+      portfolioNeedsCryptoHistory([
+        { accountKey: 'c', section: 'crypto', primaryAmount: 0.5, primaryCurrency: 'BTC' },
       ]),
     ).toBe(true);
   });
@@ -92,9 +98,8 @@ describe('portfolioMonthChange', () => {
       {
         accountKey: 'c',
         section: 'crypto',
-        primaryAmount: 0,
-        primaryCurrency: 'UAH' as const,
-        subText: '1 BTC',
+        primaryAmount: 1,
+        primaryCurrency: 'BTC' as const,
       },
     ];
     expect(
@@ -113,9 +118,8 @@ describe('portfolioMonthChange', () => {
       {
         accountKey: 'c',
         section: 'crypto',
-        primaryAmount: 999,
-        primaryCurrency: 'UAH' as const,
-        subText: '1 BTC',
+        primaryAmount: 1,
+        primaryCurrency: 'BTC' as const,
       },
     ];
     const prior = computePortfolioMonthStartUahPln({

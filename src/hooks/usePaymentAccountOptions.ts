@@ -18,9 +18,15 @@ export interface PortfolioAccountRow {
   name: string;
 }
 
+/**
+ * `selectedKey` — рахунок, вибраний зараз (напр. у старій транзакції з
+ * `Account: privat24`). Навіть якщо його немає в портфелі, показуємо його,
+ * щоб вибір не загубився при редагуванні.
+ */
 export function usePaymentAccountOptions(
   portfolioAccounts: PortfolioAccountRow[],
   language: Language,
+  selectedKey?: string,
 ) {
   const allowedPaymentKeys = useMemo(() => {
     const s = new Set<string>([...ACCOUNT_NOTE_KEYS]);
@@ -30,26 +36,29 @@ export function usePaymentAccountOptions(
 
   const paymentChipOptions = useMemo(() => {
     const seen = new Set<string>();
-    const seenLabels = new Set<string>();
     const out: { key: string; label: string }[] = [];
     for (const r of portfolioAccounts) {
       const key = String(r.key ?? '').trim().toLowerCase();
       const label = String(r.name ?? '').trim();
       if (!key || seen.has(key)) continue;
       seen.add(key);
-      if (label) seenLabels.add(label.toLowerCase());
       out.push({ key, label: label || key });
     }
+
+    // Базові ключі — лише запасний варіант: коли портфель порожній, або коли
+    // саме такий рахунок уже вибрано. Інакше вони дублювали б рахунки
+    // гаманця під іншими назвами (Privat24 vs Приват24).
+    const selected = String(selectedKey ?? '').trim().toLowerCase();
+    const hasPortfolioAccounts = out.length > 0;
     for (const k of ACCOUNT_NOTE_KEYS) {
       const key = String(k).trim().toLowerCase();
-      const label = ACCOUNT_CHIP_LABELS[k][language];
-      if (seen.has(key) || seenLabels.has(label.toLowerCase())) continue;
+      if (seen.has(key)) continue;
+      if (hasPortfolioAccounts && key !== selected) continue;
       seen.add(key);
-      seenLabels.add(label.toLowerCase());
-      out.push({ key, label });
+      out.push({ key, label: ACCOUNT_CHIP_LABELS[k][language] });
     }
     return out;
-  }, [portfolioAccounts, language]);
+  }, [portfolioAccounts, language, selectedKey]);
 
   return { allowedPaymentKeys, paymentChipOptions };
 }

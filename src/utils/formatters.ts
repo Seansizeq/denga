@@ -1,3 +1,5 @@
+import { denominationPrecision, isCryptoDenomination, type Denomination } from './denomination';
+
 export type PlannerCurrency = 'UAH' | 'PLN';
 export type DisplayCurrency = PlannerCurrency | 'USD';
 
@@ -9,17 +11,22 @@ export const formatPlannerMoney = (amount: number, locale: string, currency: Pla
   return currency === 'PLN' ? `${formatted} zł` : `${formatted} ₴`;
 };
 
+/**
+ * Formats an amount in its own denomination. Crypto assets get a trailing
+ * symbol and enough decimals that a small position does not round to zero.
+ */
 export const formatCurrency = (
   amount: number,
   locale = 'uk-UA',
-  currency: DisplayCurrency = 'UAH'
+  currency: Denomination = 'UAH'
 ): string => {
   const formatted = Math.abs(amount).toLocaleString(locale, {
     minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
+    maximumFractionDigits: denominationPrecision(currency),
   });
   if (currency === 'PLN') return `${formatted} zł`;
   if (currency === 'USD') return `$${formatted}`;
+  if (isCryptoDenomination(currency)) return `${formatted} ${currency}`;
   return `${formatted} ₴`;
 };
 

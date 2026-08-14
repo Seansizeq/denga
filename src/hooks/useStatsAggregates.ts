@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import type { Transaction } from '../types';
-import type { CurrencyCode } from '../utils/currency';
+import type { Denomination } from '../utils/denomination';
 import { isInPeriod, type PeriodBounds } from '../utils/statsPeriod';
 
 export interface CategoryTotal {
@@ -21,7 +21,12 @@ export interface StatsAggregates {
   transactionCount: number;
 }
 
-type ConvertAmount = (amount: number, from: CurrencyCode) => number;
+/**
+ * Converts an amount from its own denomination into the display currency.
+ * Returns null when a crypto price is unavailable, so unpriced rows can be left
+ * out of a total instead of distorting it.
+ */
+type ConvertAmount = (amount: number, from: Denomination) => number | null;
 
 const sumByType = (
   transactions: readonly Transaction[],
@@ -33,6 +38,7 @@ const sumByType = (
   for (const tx of transactions) {
     if (!isInPeriod(tx.date, bounds)) continue;
     const amount = convertAmount(tx.amount, tx.currency);
+    if (amount === null) continue;
     if (tx.type === 'income') income += amount;
     else if (tx.type === 'expense') expense += amount;
   }
@@ -58,6 +64,7 @@ export const useStatsAggregates = (params: {
 
     for (const tx of filtered) {
       const amount = convertAmount(tx.amount, tx.currency);
+      if (amount === null) continue;
       if (tx.type === 'income') income += amount;
       else if (tx.type === 'expense') expense += amount;
 

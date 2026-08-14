@@ -565,25 +565,9 @@
   box-shadow: none;
   cursor: not-allowed;
 }
-
-.currencyBadgeSelect {
-  position: absolute;
-  right: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  flex-shrink: 0;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--text-primary);
-  font-size: 14px;
-  font-weight: 700;
-  padding: 8px 6px;
-  border-radius: 10px;
-  line-height: 1;
-  outline: none;
-  cursor: pointer;
-  -webkit-appearance: none;
-  appearance: none;
-  text-align: center;
-  min-width: 64px;
+.transferRateHint {
+  margin: 8px 4px 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-tertiary);
 }

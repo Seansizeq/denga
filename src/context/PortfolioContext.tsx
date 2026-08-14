@@ -5,9 +5,11 @@ import React, {
   useEffect,
   useMemo,
   useRef,
+  useState,
 } from 'react';
 import { apiFetch } from '../api/client';
 import { usePersistedState } from '../hooks/usePersistedState';
+import { usePolling } from '../hooks/usePolling';
 import type { CryptoUsdHistory } from '../utils/portfolioMonthChange';
 
 const ACCOUNTS_STORAGE_KEY = 'denga_accounts_v1';
@@ -42,6 +44,10 @@ const isCryptoHistory = (v: unknown): v is CryptoUsdHistory => {
 
 interface PortfolioContextValue {
   accounts: RawAccount[];
+  /** true — останній запит рахунків не вдався, на екрані кешовані суми. */
+  accountsStale: boolean;
+  /** false, поки не завершився перший запит: «рахунків немає» ≠ «ще вантажимо». */
+  accountsLoaded: boolean;
   cryptoPrices: CryptoPrices;
   cryptoUsdHistory: CryptoUsdHistory | null;
   refreshAccounts: () => Promise<void>;
@@ -70,6 +76,9 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     },
   );
 
+  const [accountsStale, setAccountsStale] = useState(false);
+  const [accountsLoaded, setAccountsLoaded] = useState(false);
+
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
@@ -81,13 +90,20 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const refreshAccounts = useCallback(async () => {
     try {
       const res = await apiFetch('/api/accounts');
-      if (!res.ok) return;
+      if (!res.ok) throw new Error(`accounts ${res.status}`);
       const data: unknown = await res.json();
-      if (!Array.isArray(data)) return;
+      if (!Array.isArray(data)) throw new Error('accounts: unexpected payload');
       const next = data.filter((row): row is RawAccount => Boolean(row && typeof row === 'object'));
-      if (mountedRef.current) setAccounts(next);
+      if (mountedRef.current) {
+        setAccounts(next);
+        setAccountsStale(false);
+      }
     } catch {
-      /* keep previous cached value */
+      // Кеш лишається на екрані, але вже позначений як застарілий — інакше
+      // користувач не відрізнить старі суми від свіжих.
+      if (mountedRef.current) setAccountsStale(true);
+    } finally {
+      if (mountedRef.current) setAccountsLoaded(true);
     }
   }, [setAccounts]);
 
@@ -128,27 +144,15 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, [setCryptoUsdHistory]);
 
-  useEffect(() => {
-    void refreshAccounts();
-    const id = window.setInterval(() => void refreshAccounts(), ACCOUNTS_POLL_MS);
-    return () => window.clearInterval(id);
-  }, [refreshAccounts]);
-
-  useEffect(() => {
-    void refreshCryptoPrices();
-    const id = window.setInterval(() => void refreshCryptoPrices(), CRYPTO_PRICES_POLL_MS);
-    return () => window.clearInterval(id);
-  }, [refreshCryptoPrices]);
-
-  useEffect(() => {
-    void refreshCryptoHistory();
-    const id = window.setInterval(() => void refreshCryptoHistory(), CRYPTO_HISTORY_POLL_MS);
-    return () => window.clearInterval(id);
-  }, [refreshCryptoHistory]);
+  usePolling(refreshAccounts, ACCOUNTS_POLL_MS);
+  usePolling(refreshCryptoPrices, CRYPTO_PRICES_POLL_MS);
+  usePolling(refreshCryptoHistory, CRYPTO_HISTORY_POLL_MS);
 
   const value = useMemo<PortfolioContextValue>(
     () => ({
       accounts,
+      accountsStale,
+      accountsLoaded,
       cryptoPrices,
       cryptoUsdHistory,
       refreshAccounts,
@@ -157,6 +161,8 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }),
     [
       accounts,
+      accountsStale,
+      accountsLoaded,
       cryptoPrices,
       cryptoUsdHistory,
       refreshAccounts,

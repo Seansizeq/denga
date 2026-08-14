@@ -56,7 +56,11 @@ const ScanReceipt: React.FC = () => {
   const [draftDate, setDraftDate] = useState('');
   const [draftNote, setDraftNote] = useState('');
 
-  const { allowedPaymentKeys, paymentChipOptions } = usePaymentAccountOptions(portfolioAccounts, language);
+  const { allowedPaymentKeys, paymentChipOptions } = usePaymentAccountOptions(
+    portfolioAccounts,
+    language,
+    paymentAccount,
+  );
 
   const triggerCamera = () => {
     setError(null);
