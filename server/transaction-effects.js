@@ -64,16 +64,74 @@ export const resolveEffectDelta = (tx, effect, multiplier, account) => {
  * Net balance change per account for transactions being applied (multiplier 1)
  * and/or rolled back (-1) together, so an edit can be judged as a single move.
  */
-export const computeNetDeltas = (entries, accountsByKey) => {
+export const computeNetDeltas = (entries, accountsByKey, convert) => {
   const net = new Map();
   for (const { tx, multiplier } of entries) {
     for (const effect of getTransactionAccountEffects(tx)) {
       const account = accountsByKey.get(effect.accountKey);
-      const delta = resolveEffectDelta(tx, effect, multiplier, account);
+      // Deltas are compared against a stored balance, so they must first be
+      // expressed in that balance's own unit.
+      const inAccountUnit = convert
+        ? resolveEffectDeltaInAccountUnit(effect, account, convert)
+        : { ok: true, delta: Number(effect.delta) };
+      if (!inAccountUnit.ok) continue;
+      const delta = resolveEffectDelta(tx, { ...effect, delta: inAccountUnit.delta }, multiplier, account);
       net.set(effect.accountKey, (net.get(effect.accountKey) ?? 0) + delta);
     }
   }
   return net;
+};
+
+/**
+ * An effect is denominated in the transaction's unit, the balance in the
+ * account's own. Applying one to the other unconverted is how a 2 200 ₴
+ * transfer subtracted 2 200 from a 70 USDT position: the number was simply
+ * added, and nothing compared the two units.
+ *
+ * Fiat differences settle through FX, which is what every report already does.
+ * A crypto/fiat mismatch is refused instead of priced: turning hryvnias into a
+ * token position at today's rate would silently invent how much of the asset
+ * was actually sold. The Add screen already records that properly as a
+ * transfer with both sides stated.
+ *
+ * Returns `{ ok: true, delta }` or `{ ok: false, reason }`.
+ */
+export const resolveEffectDeltaInAccountUnit = (effect, account, convert) => {
+  const effectUnit = String(effect?.currency ?? '').trim().toUpperCase();
+  const accountUnit = String(account?.primaryCurrency ?? '').trim().toUpperCase();
+  const delta = Number(effect?.delta);
+  if (!Number.isFinite(delta)) return { ok: false, reason: 'INVALID_AMOUNT' };
+  // Unknown account or unit: nothing to reconcile against, behave as before.
+  if (!accountUnit || !effectUnit || effectUnit === accountUnit) return { ok: true, delta };
+
+  const converted = convert(Math.abs(delta), effectUnit, accountUnit);
+  if (converted === null || !Number.isFinite(converted)) {
+    return { ok: false, reason: 'DENOMINATION_MISMATCH' };
+  }
+  return { ok: true, delta: delta < 0 ? -converted : converted };
+};
+
+/**
+ * Mismatches that cannot be settled, reported before anything is written so the
+ * request is refused instead of corrupting a balance.
+ */
+export const collectDenominationMismatches = (entries, accountsByKey, convert) => {
+  const violations = [];
+  for (const { tx } of entries) {
+    for (const effect of getTransactionAccountEffects(tx)) {
+      const account = accountsByKey.get(effect.accountKey);
+      if (!account) continue;
+      const resolved = resolveEffectDeltaInAccountUnit(effect, account, convert);
+      if (resolved.ok) continue;
+      violations.push({
+        accountKey: effect.accountKey,
+        accountCurrency: String(account.primaryCurrency ?? '').toUpperCase(),
+        transactionCurrency: String(effect.currency ?? '').toUpperCase(),
+        reason: resolved.reason,
+      });
+    }
+  }
+  return violations;
 };
 
 const DEBT_EPSILON = 1e-6;

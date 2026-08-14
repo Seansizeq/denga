@@ -9,9 +9,11 @@ import { startScheduledDatabaseBackups } from './backup.js';
 import { createReceiptScanHandler } from './receipt-scan.js';
 import {
   collectDebtOverdrafts,
+  collectDenominationMismatches,
   computeNetDeltas,
   getTransactionAccountEffects,
   resolveEffectDelta,
+  resolveEffectDeltaInAccountUnit,
   validateTransferPayload,
 } from './transaction-effects.js';
 import { buildDebtRepaymentTransfer, validateDebtPayment } from './debt.js';
@@ -162,7 +164,7 @@ const getAccountRowsForEffects = async (dbConn, userId, accountKeys) => {
     if (!key) continue;
     const account = await dbConn.get(
       `SELECT account_key AS accountKey, section, debt_direction AS debtDirection,
-              primary_amount AS primaryAmount
+              primary_amount AS primaryAmount, primary_currency AS primaryCurrency
        FROM account_portfolio
        WHERE user_id = ? AND account_key = ?
        LIMIT 1`,
@@ -173,23 +175,63 @@ const getAccountRowsForEffects = async (dbConn, userId, accountKeys) => {
   return map;
 };
 
-const checkDebtOverdrafts = async (dbConn, userId, entries) => {
+/**
+ * Converts between the unit a transaction is written in and the unit an account
+ * balance is kept in. Fiat pairs settle through the FX cache; a missing crypto
+ * price yields null, which the callers treat as "refuse", never as zero.
+ */
+const buildAccountUnitConverter = async () => {
+  const fx = await fetchFxRates().catch(() => FX_FALLBACK);
+  const cryptoUsd = getCachedCryptoUsdPrices();
+  return (amount, from, to) =>
+    convertDenomination(amount, from, to, {
+      fx,
+      cryptoUsd,
+      convertFiat: convertCurrencyServer,
+    });
+};
+
+/**
+ * Everything that must hold before a transaction touches balances: no debt is
+ * driven below zero, and no amount lands on an account denominated in another
+ * unit without a rate to settle it.
+ */
+const checkTransactionPreconditions = async (dbConn, userId, entries) => {
   const keys = entries.flatMap(({ tx }) => getTransactionAccountEffects(tx).map((e) => e.accountKey));
   const accountsByKey = await getAccountRowsForEffects(dbConn, userId, keys);
-  const netDeltas = computeNetDeltas(entries, accountsByKey);
-  return collectDebtOverdrafts(netDeltas, accountsByKey);
+  const convert = await buildAccountUnitConverter();
+  const mismatches = collectDenominationMismatches(entries, accountsByKey, convert);
+  const netDeltas = computeNetDeltas(entries, accountsByKey, convert);
+  return { mismatches, overdrafts: collectDebtOverdrafts(netDeltas, accountsByKey) };
 };
 
 const applyTransactionEffects = async (dbConn, userId, tx, multiplier = 1) => {
+  const convert = await buildAccountUnitConverter();
   for (const effect of getTransactionAccountEffects(tx)) {
     const account = await dbConn.get(
-      `SELECT section, debt_direction AS debtDirection
+      `SELECT section, debt_direction AS debtDirection, primary_currency AS primaryCurrency
        FROM account_portfolio
        WHERE user_id = ? AND account_key = ?
        LIMIT 1`,
       [userId, effect.accountKey]
     );
-    await applyAccountDelta(dbConn, userId, effect.accountKey, resolveEffectDelta(tx, effect, multiplier, account));
+    const inAccountUnit = resolveEffectDeltaInAccountUnit(effect, account, convert);
+    if (!inAccountUnit.ok) {
+      // Loud failure beats a corrupted balance: the endpoints check this up
+      // front, so reaching here means an unchecked path needs the same guard.
+      throw Object.assign(
+        new Error(
+          `refusing to apply ${effect.currency} to ${account?.primaryCurrency} account ${effect.accountKey}`,
+        ),
+        { code: 'ACCOUNT_DENOMINATION_MISMATCH', accountKey: effect.accountKey },
+      );
+    }
+    await applyAccountDelta(
+      dbConn,
+      userId,
+      effect.accountKey,
+      resolveEffectDelta(tx, { ...effect, delta: inAccountUnit.delta }, multiplier, account),
+    );
   }
 };
 const getAccountsByKeys = async (dbConn, userId, keys) => {
@@ -486,7 +528,15 @@ const runSubscriptionAutopayForUser = async (userId) => {
           'INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
           [tx.id, tx.user_id, tx.amount, tx.currency, tx.categoryId, tx.type, tx.date, tx.note ?? null]
         );
-        await applyTransactionEffects(db, userId, tx);
+        try {
+          await applyTransactionEffects(db, userId, tx);
+        } catch (e) {
+          // A subscription pinned to an account held in another unit must not
+          // corrupt that balance — nor stop the remaining subscriptions. The
+          // charge is still recorded; only the balance is left untouched.
+          if (e?.code !== 'ACCOUNT_DENOMINATION_MISMATCH') throw e;
+          console.error('[subscriptions] autopay skipped balance update:', e.message);
+        }
         if (bot) {
           const chatRow = await db.get('SELECT chat_id AS chatId FROM users WHERE telegram_id = ? LIMIT 1', [Number(userId)]);
           const cid = Number(chatRow?.chatId);
@@ -3989,7 +4039,17 @@ app.post('/api/transactions', async (req, res) => {
     ...transferFields,
   };
 
-  const overdrafts = await checkDebtOverdrafts(db, userId, [{ tx: transaction, multiplier: 1 }]);
+  const { mismatches, overdrafts } = await checkTransactionPreconditions(db, userId, [
+    { tx: transaction, multiplier: 1 },
+  ]);
+  if (mismatches.length > 0) {
+    res.status(409).json({
+      error: 'transaction currency does not match the account balance unit',
+      code: 'ACCOUNT_DENOMINATION_MISMATCH',
+      accounts: mismatches,
+    });
+    return;
+  }
   if (overdrafts.length > 0) {
     res.status(409).json({
       error: 'this would push a debt balance below zero',
@@ -4118,10 +4178,19 @@ app.patch('/api/transactions/:id', async (req, res) => {
     ...nextTransferFields,
   };
 
-  const patchOverdrafts = await checkDebtOverdrafts(db, userId, [
+  const patchChecks = await checkTransactionPreconditions(db, userId, [
     { tx: current, multiplier: -1 },
     { tx: nextTransaction, multiplier: 1 },
   ]);
+  if (patchChecks.mismatches.length > 0) {
+    res.status(409).json({
+      error: 'transaction currency does not match the account balance unit',
+      code: 'ACCOUNT_DENOMINATION_MISMATCH',
+      accounts: patchChecks.mismatches,
+    });
+    return;
+  }
+  const patchOverdrafts = patchChecks.overdrafts;
   if (patchOverdrafts.length > 0) {
     res.status(409).json({
       error: 'this would push a debt balance below zero',
@@ -4173,7 +4242,16 @@ app.delete('/api/transactions/:id', async (req, res) => {
     res.status(404).json({ error: 'Transaction not found' });
     return;
   }
-  const deleteOverdrafts = await checkDebtOverdrafts(db, userId, [{ tx: current, multiplier: -1 }]);
+  const deleteChecks = await checkTransactionPreconditions(db, userId, [{ tx: current, multiplier: -1 }]);
+  if (deleteChecks.mismatches.length > 0) {
+    res.status(409).json({
+      error: 'transaction currency does not match the account balance unit',
+      code: 'ACCOUNT_DENOMINATION_MISMATCH',
+      accounts: deleteChecks.mismatches,
+    });
+    return;
+  }
+  const deleteOverdrafts = deleteChecks.overdrafts;
   if (deleteOverdrafts.length > 0) {
     res.status(409).json({
       error: 'removing this would push a debt balance below zero; delete the later debt entries first',
