@@ -10,12 +10,11 @@
   overflow: hidden;
   overscroll-behavior: contain;
   touch-action: pan-y;
-  animation: overlayFade 0.16s ease;
+  animation: motion-fade-in var(--motion-fast) var(--ease-out);
 }
 
-@keyframes overlayFade {
-  from { opacity: 0; }
-  to { opacity: 1; }
+.overlayClosing {
+  animation: motion-fade-in var(--motion-fast) var(--ease-in) reverse forwards;
 }
 
 .sheet {
@@ -31,12 +30,13 @@
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-bottom: none;
   padding: 14px 16px 0;
-  animation: sheetUp 0.2s ease;
+  /* Шторка приїздить знизу цілком, а не проявляється на місці. */
+  animation: motion-sheet-in var(--motion-base) var(--ease-out);
+  will-change: transform;
 }
 
-@keyframes sheetUp {
-  from { transform: translateY(12px); opacity: 0.6; }
-  to { transform: translateY(0); opacity: 1; }
+.sheetClosing {
+  animation: motion-sheet-out 180ms var(--ease-in) forwards;
 }
 
 .header {

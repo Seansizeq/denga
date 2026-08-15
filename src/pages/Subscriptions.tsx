@@ -1,14 +1,40 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Plus, X } from 'lucide-react';
+import * as LucideIcons from 'lucide-react';
+import { Plus, Repeat } from 'lucide-react';
 import { formatCurrency, type PlannerCurrency } from '../utils/formatters';
 import { useTranslation } from '../i18n/LanguageContext';
 import { useGoBack } from '../hooks/useGoBack';
 import { showAppConfirm } from '../utils/notify';
 import { apiFetch } from '../api/client';
 import { usePersistedState } from '../hooks/usePersistedState';
-import { CATEGORIES, getCustomCategoryName } from '../constants/categories';
+import { CATEGORIES, findCategory, getCustomCategoryData, inferCustomCategoryIcon } from '../constants/categories';
 import type { CategoryKey } from '../i18n/translations';
+import Switch from '../components/ui/Switch';
 import styles from './Subscriptions.module.css';
+
+const iconRegistry = LucideIcons as unknown as Record<string, React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>>;
+
+const getCategoryVisual = (categoryId: string) => {
+  const customCategory = getCustomCategoryData(categoryId);
+  const category = customCategory ? null : findCategory(categoryId);
+  const iconName = customCategory
+    ? inferCustomCategoryIcon(customCategory.name, customCategory.icon)
+    : category?.icon ?? 'Receipt';
+  const color = customCategory?.color ?? category?.color ?? '#8E8E93';
+  const IconComponent = iconRegistry[iconName] ?? LucideIcons.Receipt;
+  return { IconComponent, color };
+};
+
+const formatShortDate = (iso: string, locale: string): string =>
+  new Date(iso).toLocaleDateString(locale, { day: 'numeric', month: 'short' });
+
+const computeRenewalLabel = (iso: string, cycle: BillingCycle, locale: string): string => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (cycle === 'monthly') d.setMonth(d.getMonth() + 1);
+  else d.setFullYear(d.getFullYear() + 1);
+  return formatShortDate(d.toISOString().slice(0, 10), locale);
+};
 
 const SUBSCRIPTIONS_STORAGE_KEY = 'denga_subscriptions_v1';
 
@@ -61,6 +87,7 @@ const Subscriptions: React.FC = () => {
   const [categoryId, setCategoryId] = useState<string>(DEFAULT_CATEGORY_ID);
   const [cycle, setCycle] = useState<BillingCycle>('monthly');
   const [nextChargeDate, setNextChargeDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [active, setActive] = useState(true);
   const [note, setNote] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -127,20 +154,6 @@ const Subscriptions: React.FC = () => {
     return acc;
   }, [activeItems]);
 
-  const categoryLabel = useCallback(
-    (id: string): string => {
-      const fromLoaded = customCategories.find((c) => c.id === id);
-      if (fromLoaded) return fromLoaded.name;
-      const fromLegacy = getCustomCategoryName(id);
-      if (fromLegacy) return fromLegacy;
-      if (BUILTIN_EXPENSE_CATEGORIES.some((c) => c.id === id)) {
-        return t('categories', id as CategoryKey);
-      }
-      return t('categories', DEFAULT_CATEGORY_ID);
-    },
-    [t, customCategories],
-  );
-
   const resetForm = useCallback(() => {
     setName('');
     setAmount('');
@@ -148,6 +161,7 @@ const Subscriptions: React.FC = () => {
     setCategoryId(DEFAULT_CATEGORY_ID);
     setCycle('monthly');
     setNextChargeDate(new Date().toISOString().slice(0, 10));
+    setActive(true);
     setNote('');
     setEditingId(null);
     setIsFormOpen(false);
@@ -194,6 +208,7 @@ const Subscriptions: React.FC = () => {
             categoryId,
             cycle,
             nextChargeDate,
+            active,
             note: note.trim(),
           }),
         }
@@ -216,61 +231,6 @@ const Subscriptions: React.FC = () => {
       resetForm();
     } catch (error) {
       console.error('Error saving subscription:', error);
-      setActionError(t('subscriptions', 'saveError'));
-    }
-  };
-
-  const onDisable = async (id: string) => {
-    setActionError('');
-    try {
-      const response = await apiFetch(`/api/subscriptions/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ active: false }),
-      });
-      if (!response.ok) {
-        setActionError(t('subscriptions', 'saveError'));
-        return;
-      }
-      setItems((prev) => prev.map((s) => (s.id === id ? { ...s, active: false } : s)));
-    } catch (error) {
-      console.error('Error disabling subscription:', error);
-      setActionError(t('subscriptions', 'saveError'));
-    }
-  };
-
-  const onEnable = async (id: string) => {
-    setActionError('');
-    const sub = items.find((s) => s.id === id);
-    if (!sub) return;
-    try {
-      const response = await apiFetch(`/api/subscriptions/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: sub.name,
-          amount: sub.amount,
-          currency: sub.currency,
-          categoryId: sub.categoryId,
-          cycle: sub.cycle,
-          nextChargeDate: sub.nextChargeDate,
-          note: sub.note ?? '',
-          active: true,
-        }),
-      });
-      if (!response.ok) {
-        setActionError(t('subscriptions', 'saveError'));
-        return;
-      }
-      const updated = (await response.json()) as Subscription;
-      const normalized: Subscription = {
-        ...updated,
-        currency: normalizeSubCurrency(updated.currency),
-        categoryId: normalizeCategoryId(updated.categoryId),
-      };
-      setItems((prev) => prev.map((s) => (s.id === id ? { ...s, ...normalized } : s)));
-    } catch (error) {
-      console.error('Error enabling subscription:', error);
       setActionError(t('subscriptions', 'saveError'));
     }
   };
@@ -304,6 +264,7 @@ const Subscriptions: React.FC = () => {
     setCategoryId(normalizeCategoryId(sub.categoryId));
     setCycle(sub.cycle);
     setNextChargeDate(sub.nextChargeDate);
+    setActive(sub.active);
     setNote(sub.note ?? '');
   };
 
@@ -321,55 +282,35 @@ const Subscriptions: React.FC = () => {
     );
   };
 
-  const renderCard = (sub: Subscription, opts: { showEnable?: boolean }) => {
+  const renderCard = (sub: Subscription, opts: { muted?: boolean }) => {
     const subCurrency = normalizeSubCurrency(sub.currency);
-    const yearlyForItem = sub.cycle === 'yearly' ? sub.amount : sub.amount * 12;
+    const { IconComponent, color } = getCategoryVisual(sub.categoryId);
+    const startDate = formatShortDate(sub.nextChargeDate, locale);
+
     return (
-      <article
+      <button
         key={sub.id}
-        className={`${styles.item} ${opts.showEnable ? styles.itemDisabled : ''}`}
+        type="button"
+        className={`${styles.item} ${opts.muted ? styles.itemDisabled : ''}`}
+        onClick={() => onEdit(sub)}
       >
-        <div className={styles.itemTop}>
+        <div className={styles.itemIcon} style={{ background: color }}>
+          <IconComponent size={20} color="#fff" strokeWidth={2} />
+        </div>
+        <div className={styles.itemInfo}>
           <span className={styles.itemName}>{sub.name}</span>
+          <span className={styles.itemDate}>
+            {t('subscriptions', 'startPrefix')} {startDate}
+          </span>
+        </div>
+        <div className={styles.itemRight}>
           <span className={styles.itemAmount}>{formatCurrency(sub.amount, locale, subCurrency)}</span>
+          <span className={styles.itemCycle}>
+            {sub.cycle === 'monthly' ? t('subscriptions', 'monthly') : t('subscriptions', 'yearly')}
+            <Repeat size={12} strokeWidth={2.2} />
+          </span>
         </div>
-        <div className={styles.itemMeta}>
-          <span>{sub.cycle === 'monthly' ? t('subscriptions', 'monthly') : t('subscriptions', 'yearly')}</span>
-          <span>{new Date(sub.nextChargeDate).toLocaleDateString(locale)}</span>
-        </div>
-        <div className={styles.itemCategoryRow}>
-          <span className={styles.itemCategoryChip}>{categoryLabel(sub.categoryId)}</span>
-        </div>
-        <div className={styles.itemYearlyRow}>
-          <span>{t('subscriptions', 'yearlyForItem')}</span>
-          <strong>{formatCurrency(yearlyForItem, locale, subCurrency)}</strong>
-        </div>
-        {sub.note ? <p className={styles.itemNote}>{sub.note}</p> : null}
-        <div className={styles.itemActions}>
-          {opts.showEnable ? (
-            <>
-              <button type="button" className={styles.enableBtn} onClick={() => void onEnable(sub.id)}>
-                {t('subscriptions', 'enable')}
-              </button>
-              <button type="button" className={styles.deleteBtn} onClick={() => void onDelete(sub.id)}>
-                {t('subscriptions', 'delete')}
-              </button>
-            </>
-          ) : (
-            <>
-              <button type="button" className={styles.editBtn} onClick={() => onEdit(sub)}>
-                {t('subscriptions', 'edit')}
-              </button>
-              <button type="button" className={styles.disableBtn} onClick={() => void onDisable(sub.id)}>
-                {t('subscriptions', 'disable')}
-              </button>
-              <button type="button" className={styles.deleteBtn} onClick={() => void onDelete(sub.id)}>
-                {t('subscriptions', 'delete')}
-              </button>
-            </>
-          )}
-        </div>
-      </article>
+      </button>
     );
   };
 
@@ -422,7 +363,7 @@ const Subscriptions: React.FC = () => {
       {!loading && disabledItems.length > 0 ? (
         <section className={styles.listSection}>
           <h2 className={styles.subsectionTitle}>{t('subscriptions', 'disabledSection')}</h2>
-          <div className={styles.list}>{disabledItems.map((sub) => renderCard(sub, { showEnable: true }))}</div>
+          <div className={styles.list}>{disabledItems.map((sub) => renderCard(sub, { muted: true }))}</div>
         </section>
       ) : null}
 
@@ -437,16 +378,23 @@ const Subscriptions: React.FC = () => {
           >
             <div className={styles.sheetGrabber} aria-hidden="true" />
             <header className={styles.sheetHeader}>
+              <button
+                type="button"
+                className={`${styles.headerPill} ${styles.headerPillGhost}`}
+                onClick={resetForm}
+              >
+                {t('addTx', 'cancel')}
+              </button>
               <h2 id="subscriptions-form-title" className={styles.sheetTitle}>
                 {editingId ? t('subscriptions', 'edit') : t('subscriptions', 'addTitle')}
               </h2>
               <button
                 type="button"
-                className={styles.sheetClose}
-                onClick={resetForm}
-                aria-label={t('addTx', 'cancel')}
+                className={`${styles.headerPill} ${styles.headerPillPrimary}`}
+                disabled={!canSave}
+                onClick={() => void onSave()}
               >
-                <X size={17} strokeWidth={2.6} />
+                {editingId ? t('subscriptions', 'saveChanges') : t('subscriptions', 'add')}
               </button>
             </header>
 
@@ -457,60 +405,19 @@ const Subscriptions: React.FC = () => {
                 </p>
               ) : null}
 
-              <div>
-                <div className={styles.amountRow}>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    className={styles.amountInput}
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value.replace(/[^0-9.,]/g, ''))}
-                    placeholder="0"
-                    aria-label={t('subscriptions', 'amount')}
-                  />
-                  <span className={styles.amountSuffix}>{currency === 'UAH' ? '₴' : 'zł'}</span>
+              <div className={styles.heroCard} style={{ background: getCategoryVisual(categoryId).color }}>
+                <div className={styles.heroIcon}>
+                  {(() => {
+                    const HeroIcon = getCategoryVisual(categoryId).IconComponent;
+                    return <HeroIcon size={22} color="#fff" strokeWidth={2} />;
+                  })()}
                 </div>
-                <div
-                  className={`${styles.segment} ${styles.segmentCompact}`}
-                  role="group"
-                  aria-label="Currency"
-                >
-                  <button
-                    type="button"
-                    className={styles.segmentBtn}
-                    aria-pressed={currency === 'UAH'}
-                    onClick={() => setCurrency('UAH')}
-                  >
-                    ₴
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.segmentBtn}
-                    aria-pressed={currency === 'PLN'}
-                    onClick={() => setCurrency('PLN')}
-                  >
-                    zł
-                  </button>
+                <div className={styles.heroInfo}>
+                  <span className={styles.heroName}>{name.trim() || t('subscriptions', 'addTitle')}</span>
+                  <span className={styles.heroDate}>
+                    {t('subscriptions', 'startPrefix')} {nextChargeDate ? formatShortDate(nextChargeDate, locale) : ''}
+                  </span>
                 </div>
-              </div>
-
-              <div className={styles.segment} role="group" aria-label={t('subscriptions', 'cycle')}>
-                <button
-                  type="button"
-                  className={styles.segmentBtn}
-                  aria-pressed={cycle === 'monthly'}
-                  onClick={() => setCycle('monthly')}
-                >
-                  {t('subscriptions', 'monthly')}
-                </button>
-                <button
-                  type="button"
-                  className={styles.segmentBtn}
-                  aria-pressed={cycle === 'yearly'}
-                  onClick={() => setCycle('yearly')}
-                >
-                  {t('subscriptions', 'yearly')}
-                </button>
               </div>
 
               <div className={styles.group}>
@@ -523,6 +430,31 @@ const Subscriptions: React.FC = () => {
                     onChange={(e) => setName(e.target.value)}
                     placeholder="Netflix"
                   />
+                </label>
+
+                <label className={styles.row}>
+                  <span className={styles.rowLabel}>{t('subscriptions', 'amount')}</span>
+                  <div className={styles.amountFieldGroup}>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      className={styles.amountFieldInput}
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value.replace(/[^0-9.,]/g, ''))}
+                      placeholder="0"
+                      aria-label={t('subscriptions', 'amount')}
+                    />
+                    <span className={styles.amountDivider} aria-hidden="true" />
+                    <select
+                      className={styles.amountCurrencySelect}
+                      value={currency}
+                      onChange={(e) => setCurrency(e.target.value as SubscriptionCurrency)}
+                      aria-label="Currency"
+                    >
+                      <option value="UAH">₴</option>
+                      <option value="PLN">zł</option>
+                    </select>
+                  </div>
                 </label>
 
                 <label className={styles.row}>
@@ -544,17 +476,50 @@ const Subscriptions: React.FC = () => {
                     ))}
                   </select>
                 </label>
+              </div>
 
+              <div className={styles.group}>
                 <label className={styles.row}>
                   <span className={styles.rowLabel}>{t('subscriptions', 'nextChargeDate')}</span>
                   <input
                     type="date"
-                    className={`${styles.rowField} ${styles.rowDate}`}
+                    className={styles.rowDatePill}
                     value={nextChargeDate}
                     onChange={(e) => setNextChargeDate(e.target.value)}
                   />
                 </label>
 
+                <div className={`${styles.row} ${styles.rowSwitch}`}>
+                  <span className={styles.rowLabel}>{t('subscriptions', 'active')}</span>
+                  <Switch checked={active} onChange={setActive} aria-label={t('subscriptions', 'active')} />
+                </div>
+
+                <label className={styles.row}>
+                  <span className={styles.rowLabel}>{t('subscriptions', 'cycle')}</span>
+                  <select
+                    className={`${styles.rowField} ${styles.rowSelect}`}
+                    value={cycle}
+                    onChange={(e) => setCycle(e.target.value as BillingCycle)}
+                  >
+                    <option value="monthly">{t('subscriptions', 'monthly')}</option>
+                    <option value="yearly">{t('subscriptions', 'yearly')}</option>
+                  </select>
+                </label>
+              </div>
+
+              {nextChargeDate ? (
+                <p className={styles.groupCaption}>
+                  {t('subscriptions', 'renewCaption')
+                    .replace('{start}', formatShortDate(nextChargeDate, locale))
+                    .replace('{next}', computeRenewalLabel(nextChargeDate, cycle, locale))
+                    .replace(
+                      '{amount}',
+                      formatCurrency(Number(amount.replace(',', '.')) || 0, locale, currency),
+                    )}
+                </p>
+              ) : null}
+
+              <div className={styles.group}>
                 <label className={styles.row}>
                   <span className={styles.rowLabel}>{t('subscriptions', 'note')}</span>
                   <input
@@ -567,19 +532,11 @@ const Subscriptions: React.FC = () => {
                 </label>
               </div>
 
-              <div className={styles.formActions}>
-                <button
-                  type="button"
-                  className={styles.submitBtn}
-                  disabled={!canSave}
-                  onClick={() => void onSave()}
-                >
-                  {editingId ? t('subscriptions', 'saveChanges') : t('subscriptions', 'add')}
+              {editingId ? (
+                <button type="button" className={styles.deleteRow} onClick={() => void onDelete(editingId)}>
+                  {t('subscriptions', 'delete')}
                 </button>
-                <button type="button" className={styles.cancelBtn} onClick={resetForm}>
-                  {editingId ? t('subscriptions', 'cancelEdit') : t('addTx', 'cancel')}
-                </button>
-              </div>
+              ) : null}
             </div>
           </section>
         </div>
@@ -597,6 +554,7 @@ const Subscriptions: React.FC = () => {
             setCategoryId(DEFAULT_CATEGORY_ID);
             setCycle('monthly');
             setNextChargeDate(new Date().toISOString().slice(0, 10));
+            setActive(true);
             setNote('');
             setEditingId(null);
             setActionError('');

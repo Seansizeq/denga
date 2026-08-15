@@ -1,0 +1,119 @@
+/**
+ * Спільний шар руху.
+ *
+ * Тривалості й криві живуть тут, а не розкидані по файлах (0.16s тут, 0.34s
+ * там) — інакше однакові за змістом рухи виглядають різними. Правило просте:
+ * дрібне й часте — швидко, поява великих поверхонь — повільніше, вихід завжди
+ * трохи швидший за вхід.
+ */
+:root {
+  --motion-instant: 90ms;
+  --motion-fast: 160ms;
+  --motion-base: 240ms;
+  --motion-slow: 340ms;
+
+  /* Стандартний вхід: швидкий старт, м'яке гальмування. */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  /* Вихід: рушає повільно, зникає рішуче. */
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  /* Легкий «перельот» для появи акцентних елементів. */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* Крок затримки в каскаді списку. */
+  --stagger-step: 26ms;
+}
+
+@keyframes motion-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes motion-rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes motion-sheet-in {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@keyframes motion-sheet-out {
+  from { transform: translateY(0); }
+  to { transform: translateY(100%); }
+}
+
+@keyframes motion-drop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes motion-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes motion-shimmer {
+  from { background-position: -160% 0; }
+  to { background-position: 260% 0; }
+}
+
+/**
+ * Каскад появи списку. Індекс задається інлайново (`--i`), стеля в 12 кроків
+ * не дає довгій історії розтягнути появу на секунди.
+ */
+.motion-list-item {
+  /* Без fill-mode свідомо: якщо анімація не відпрацює (фонова вкладка,
+     урізаний WebView, вимкнена композиція), елемент лишається просто
+     видимим. З `both` він застряг би на нульовій прозорості — краще
+     втратити анімацію, ніж показати порожній екран. */
+  animation: motion-rise-in var(--motion-base) var(--ease-out);
+  animation-delay: calc(min(var(--i, 0), 12) * var(--stagger-step));
+}
+
+/** Плейсхолдер завантаження: рух замість слова «Завантаження…». */
+.motion-skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--bg-card) 0%,
+    var(--bg-card-light) 45%,
+    var(--bg-card) 70%
+  );
+  background-size: 220% 100%;
+  animation: motion-shimmer 1.4s linear infinite;
+  border-radius: var(--radius-md);
+}
+
+/**
+ * Системне «менше руху» вимикає все декоративне. Зміни стану лишаються
+ * миттєвими, але не зникають — інакше інтерфейс перестане відповідати.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

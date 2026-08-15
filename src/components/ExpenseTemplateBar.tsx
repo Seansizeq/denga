@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { BookmarkPlus, Pencil, Check, X } from 'lucide-react';
 import type { ExpenseTemplate } from '../hooks/useExpenseTemplates';
 import type { TransactionType } from '../types';
+import { MONEY_MASK, isMoneyHidden } from '../utils/moneyPrivacy';
 import styles from './ExpenseTemplateBar.module.css';
 
 interface Props {
@@ -146,7 +147,10 @@ const ExpenseTemplateBar: React.FC<Props> = ({
                 <span className={styles.chipName}>{tpl.name}</span>
                 {tpl.amount != null && tpl.amount > 0 && (
                   <span className={styles.chipAmount}>
-                    {tpl.amount.toLocaleString('uk-UA', { maximumFractionDigits: 0 })} {tpl.currency}
+                    {isMoneyHidden()
+                      ? MONEY_MASK
+                      : tpl.amount.toLocaleString('uk-UA', { maximumFractionDigits: 0 })}{' '}
+                    {tpl.currency}
                   </span>
                 )}
               </button>

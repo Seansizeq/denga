@@ -47,17 +47,34 @@
 
 .chevron {
   color: var(--text-secondary);
-  transition: transform 0.2s ease;
+  transition: transform var(--motion-base) var(--ease-out);
 }
 
 .chevronClosed {
   transform: rotate(-90deg);
 }
 
+.collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--motion-base) var(--ease-out);
+}
+
+.collapseOpen {
+  grid-template-rows: 1fr;
+}
+
+.collapseInner {
+  min-height: 0;
+  overflow: hidden;
+}
+
 .list {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  /* Верхній відступ живе тут, щоб згорнутий розділ мав нульову висоту. */
+  padding-top: 2px;
 }
 
 .row {
@@ -68,7 +85,9 @@
   background-color: var(--bg-card);
   border: 1px solid rgba(255, 255, 255, 0.04);
   border-radius: 20px;
-  transition: background-color 0.15s ease, transform 0.15s ease;
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
   cursor: pointer;
   width: 100%;
 }

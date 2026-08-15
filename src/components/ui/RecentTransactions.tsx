@@ -102,9 +102,10 @@ const RecentTransactions: React.FC<Props> = ({
         </div>
       ) : (
         <div className={styles.list}>
-          {visible.map((tx) => (
+          {visible.map((tx, i) => (
             <TransactionItem
               key={tx.id}
+              index={i}
               transaction={tx}
               onDelete={onDelete}
               onEdit={onEdit}

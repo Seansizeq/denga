@@ -22,6 +22,8 @@ const GeneralSettingsSection: React.FC = () => {
     setLanguage,
     displayCurrency,
     setDisplayCurrency,
+    moneyHidden,
+    setMoneyHidden,
   } = useTranslation();
   const { isSupported: fsSupported, isFullscreen, toggle: toggleFullscreen } = useTelegramFullscreen();
 
@@ -43,6 +45,20 @@ const GeneralSettingsSection: React.FC = () => {
           value={t('settings', currencyLabelKey(displayCurrency))}
           chevron
           onClick={() => setCurrencySheetOpen(true)}
+        />
+        <SettingsRow
+          label={t('settings', 'hideMoney')}
+          sublabel={t('settings', 'hideMoneyDescription')}
+          trailing={
+            <Switch
+              checked={moneyHidden}
+              onChange={(next) => {
+                setMoneyHidden(next);
+                hapticLight();
+              }}
+              aria-label={t('settings', 'hideMoney')}
+            />
+          }
         />
         <SettingsRow
           label={t('settings', 'fullscreen')}

@@ -1,0 +1,56 @@
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 20px;
+  /* Кожен наступний рядок мерехтить із затримкою — хвиля, а не блимання. */
+  animation-delay: calc(var(--i, 0) * 120ms);
+}
+
+.avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.05);
+  flex-shrink: 0;
+}
+
+.lines {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.lineWide,
+.lineNarrow {
+  height: 12px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.lineWide {
+  width: 55%;
+}
+
+.lineNarrow {
+  width: 32%;
+  height: 10px;
+}
+
+.amount {
+  width: 62px;
+  height: 14px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.05);
+  flex-shrink: 0;
+}

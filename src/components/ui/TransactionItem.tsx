@@ -21,6 +21,8 @@ interface TransactionItemProps {
   onEdit?: (id: string) => void;
   /** У згрупованих списках дату вже написано в заголовку дня. */
   showDate?: boolean;
+  /** Порядковий номер у списку — задає крок каскаду появи. */
+  index?: number;
 }
 
 const TransactionItem: React.FC<TransactionItemProps> = ({
@@ -28,6 +30,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
   onDelete,
   onEdit,
   showDate = true,
+  index = 0,
 }) => {
   const { t, locale, displayCurrency } = useTranslation();
   const { convert } = useDenominationRates();
@@ -91,7 +94,8 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
 
   return (
     <div
-      className={`${styles.row} ${onEdit ? styles.rowTappable : ''}`}
+      className={`${styles.row} motion-list-item ${onEdit ? styles.rowTappable : ''}`}
+      style={{ ['--i' as string]: index }}
       {...(onEdit
         ? {
             role: 'button' as const,

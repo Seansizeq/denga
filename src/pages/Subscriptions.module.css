@@ -103,117 +103,96 @@
 }
 
 .list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  background: var(--bg-card);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
 }
 
 .item {
-  background: var(--bg-card);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 14px;
-  padding: 12px;
-}
-
-.itemDisabled {
-  opacity: 0.88;
-  border-style: dashed;
-}
-
-.itemTop {
+  position: relative;
   display: flex;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.itemName {
-  font-weight: 600;
-}
-
-.itemAmount {
-  font-weight: 700;
-}
-
-.itemMeta {
-  margin-top: 4px;
-  display: flex;
-  justify-content: space-between;
-  color: var(--text-secondary);
-  font-size: 12px;
-}
-
-.itemYearlyRow {
-  margin-top: 6px;
-  display: flex;
-  justify-content: space-between;
   align-items: center;
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.itemYearlyRow strong {
-  color: var(--text-primary);
-  font-size: 13px;
-}
-
-.itemCategoryRow {
-  margin-top: 8px;
-  display: flex;
-}
-
-.itemCategoryChip {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 999px;
-  padding: 3px 10px;
-}
-
-.itemNote {
-  margin: 6px 0 0;
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.itemActions {
-  margin-top: 10px;
-  display: flex;
-  gap: 8px;
-}
-
-.editBtn,
-.disableBtn,
-.enableBtn,
-.deleteBtn {
+  gap: 12px;
+  width: 100%;
+  padding: 14px 16px;
+  background: none;
   border: none;
-  border-radius: 10px;
-  padding: 8px 10px;
-  font-weight: 600;
+  text-align: left;
+  font-family: inherit;
+  color: inherit;
   cursor: pointer;
 }
 
-.deleteBtn {
-  margin-left: auto;
-  background: rgba(255, 255, 255, 0.06);
+.item + .item::before {
+  content: '';
+  position: absolute;
+  left: 16px;
+  right: 0;
+  top: 0;
+  height: 1px;
+  background: var(--border-light);
+}
+
+.item:active {
+  background: var(--bg-card-light);
+}
+
+.itemDisabled {
+  opacity: 0.55;
+}
+
+.itemIcon {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.itemInfo {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.itemName {
+  font-size: 16px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.itemDate {
+  font-size: 13px;
   color: var(--text-secondary);
 }
 
-.editBtn {
-  background: rgba(10, 132, 255, 0.16);
-  color: #59a7ff;
+.itemRight {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
 }
 
-.disableBtn {
-  background: rgba(255, 69, 58, 0.15);
-  color: #ff6b63;
+.itemAmount {
+  font-size: 16px;
+  font-weight: 600;
 }
 
-.enableBtn {
-  flex: 1;
-  background: rgba(48, 209, 88, 0.16);
-  color: #5ad97a;
+.itemCycle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--text-secondary);
 }
 
 .emptyText {
@@ -273,40 +252,119 @@
   position: relative;
   display: flex;
   align-items: center;
-  justify-content: center;
-  padding: 12px 56px 10px;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 14px 14px 10px;
   flex-shrink: 0;
 }
 
 .sheetTitle {
   margin: 0;
-  font-size: 17px;
+  font-size: 15px;
   font-weight: 600;
   letter-spacing: -0.01em;
   text-align: center;
+  color: var(--text-secondary);
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
 }
 
-.sheetClose {
-  position: absolute;
-  right: 16px;
-  top: 8px;
-  width: 30px;
-  height: 30px;
+.headerPill {
   border: none;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
+  padding: 8px 16px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.12s ease, opacity 0.15s ease;
+}
+
+.headerPill:active {
+  transform: scale(0.96);
+}
+
+.headerPillGhost {
   background: rgba(255, 255, 255, 0.08);
-  color: var(--text-secondary);
-  display: inline-flex;
+  color: var(--text-primary);
+}
+
+.headerPillPrimary {
+  background: var(--accent-yellow);
+  color: #1a1200;
+}
+
+.headerPillPrimary:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* Кольорова картка-ідентифікатор підписки вгорі форми */
+.heroCard {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border-radius: var(--radius-lg);
+  color: #fff;
+}
+
+.heroIcon {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.22);
+  display: flex;
   align-items: center;
   justify-content: center;
-  line-height: 0;
-  cursor: pointer;
-  transition: transform 0.12s ease, background 0.15s ease;
+  flex-shrink: 0;
 }
 
-.sheetClose:active {
-  transform: scale(0.92);
-  background: rgba(255, 255, 255, 0.14);
+.heroInfo {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.heroName {
+  font-size: 19px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.heroDate {
+  font-size: 13px;
+  font-weight: 500;
+  opacity: 0.85;
+}
+
+.groupCaption {
+  margin: -10px 4px 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-tertiary);
+}
+
+.deleteRow {
+  width: 100%;
+  border: none;
+  border-radius: var(--radius-lg);
+  background: var(--accent-red-soft);
+  color: var(--accent-red);
+  padding: 14px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.deleteRow:active {
+  opacity: 0.85;
 }
 
 .sheetBody {
@@ -328,89 +386,6 @@
   background: rgba(255, 90, 99, 0.14);
   color: #ffb4b4;
   font-size: 13px;
-}
-
-/* Сума великим шрифтом — головне поле форми */
-.amountRow {
-  display: flex;
-  align-items: baseline;
-  justify-content: center;
-  gap: 6px;
-  padding: 6px 0 2px;
-}
-
-.amountInput {
-  width: min(58%, 210px);
-  border: none;
-  background: transparent;
-  color: var(--text-primary);
-  font-family: inherit;
-  font-size: 44px;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  text-align: right;
-  padding: 0;
-  min-width: 0;
-}
-
-.amountInput:focus {
-  outline: none;
-}
-
-.amountInput::placeholder {
-  color: rgba(255, 255, 255, 0.22);
-}
-
-.amountSuffix {
-  width: 46px;
-  font-size: 24px;
-  font-weight: 600;
-  color: var(--text-tertiary);
-}
-
-/* Сегментний перемикач (валюта, цикл) */
-.segment {
-  display: flex;
-  gap: 2px;
-  padding: 3px;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.06);
-}
-
-.segmentCompact {
-  width: 172px;
-  margin: 0 auto;
-  border-radius: 12px;
-}
-
-.segmentBtn {
-  flex: 1;
-  min-width: 0;
-  border: none;
-  border-radius: 11px;
-  padding: 10px 12px;
-  font-family: inherit;
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  background: transparent;
-  cursor: pointer;
-  transition: background 0.18s ease, color 0.18s ease, transform 0.12s ease;
-}
-
-.segmentBtn:active {
-  transform: scale(0.97);
-}
-
-.segmentBtn[aria-pressed='true'] {
-  background: rgba(255, 255, 255, 0.11);
-  color: var(--text-primary);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
-}
-
-.segmentCompact .segmentBtn {
-  font-size: 17px;
-  font-weight: 700;
 }
 
 /* Згрупований список полів (iOS inset list) */
@@ -482,57 +457,85 @@
   background: #1b1825;
 }
 
-.rowDate {
+.rowDatePill {
   flex: 0 0 auto;
   margin-left: auto;
-  text-align: right;
-  cursor: pointer;
-}
-
-.rowDate::-webkit-calendar-picker-indicator {
-  opacity: 0.45;
-  cursor: pointer;
-}
-
-.submitBtn {
-  width: 100%;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-full);
+  padding: 6px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
   border: none;
-  border-radius: 16px;
-  background: var(--accent-yellow);
-  color: #1a1200;
-  min-height: 52px;
-  font-size: 17px;
-  font-weight: 700;
   cursor: pointer;
-  transition: transform 0.12s ease, opacity 0.15s ease;
+  font-family: inherit;
 }
 
-.submitBtn:active {
-  transform: scale(0.985);
-}
-
-.submitBtn:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
-.cancelBtn {
+.rowDatePill::-webkit-calendar-picker-indicator {
+  opacity: 0;
+  position: absolute;
+  right: 0;
   width: 100%;
+  cursor: pointer;
+}
+
+.rowSwitch {
+  justify-content: space-between;
+}
+
+.amountFieldGroup {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.amountFieldInput {
   border: none;
   background: transparent;
-  color: var(--text-secondary);
-  padding: 4px 0 0;
+  color: var(--text-primary);
   font-family: inherit;
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
+  text-align: right;
+  width: 84px;
+  min-width: 0;
+  padding: 14px 0;
+}
+
+.amountFieldInput:focus {
+  outline: none;
+}
+
+.amountDivider {
+  width: 1px;
+  height: 20px;
+  background: var(--border-light);
+  flex-shrink: 0;
+}
+
+.amountCurrencySelect {
+  flex-shrink: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  padding-right: 16px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236a6478' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right center;
+  background-size: 11px;
   cursor: pointer;
 }
 
-.formActions {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 2px;
+.amountCurrencySelect option {
+  background: #1b1825;
 }
 
 .floatingAddBtn {

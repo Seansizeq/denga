@@ -27,7 +27,9 @@
   align-items: center;
   justify-content: center;
   color: var(--text-primary);
-  transition: background-color 0.15s ease, transform 0.15s ease;
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-spring);
 }
 
 .item:active .circle {

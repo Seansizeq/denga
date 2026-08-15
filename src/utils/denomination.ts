@@ -1,4 +1,5 @@
 import { convertCurrency, type CurrencyCode, type FxRatesPayload } from './currency';
+import { MONEY_MASK, isMoneyHidden } from './moneyPrivacy';
 
 /**
  * A denomination is the unit an account balance or a transaction amount is
@@ -45,10 +46,12 @@ export const denominationPrecision = (denomination: Denomination): number => {
 export const formatDenominationAmount = (amount: number, denomination: Denomination, locale = 'uk-UA'): string => {
   if (!Number.isFinite(amount)) return '—';
   const maximumFractionDigits = denominationPrecision(denomination);
-  const formatted = amount.toLocaleString(locale, {
-    minimumFractionDigits: isCryptoDenomination(denomination) ? 0 : 2,
-    maximumFractionDigits,
-  });
+  const formatted = isMoneyHidden()
+    ? MONEY_MASK
+    : amount.toLocaleString(locale, {
+        minimumFractionDigits: isCryptoDenomination(denomination) ? 0 : 2,
+        maximumFractionDigits,
+      });
   return `${formatted} ${denomination}`;
 };
 

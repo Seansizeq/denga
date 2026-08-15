@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTransactions } from '../context/TransactionContext';
 import TransactionItem from '../components/ui/TransactionItem';
+import RowSkeleton from '../components/ui/RowSkeleton';
 import { useTranslation } from '../i18n/LanguageContext';
 import { showAppAlert } from '../utils/notify';
 import styles from './History.module.css';
@@ -68,25 +69,24 @@ const History: React.FC = () => {
       </header>
 
       {visible.length === 0 ? (
-        <div className={styles.emptyState}>
-          {isBootstrapping ? (
-            <p className={styles.emptyText}>{t('common', 'loading')}</p>
-          ) : (
-            <>
-              <span className={styles.emptyIcon}>📭</span>
-              <p className={styles.emptyText}>{t('history', 'empty')}</p>
-            </>
-          )}
-        </div>
+        isBootstrapping ? (
+          <RowSkeleton count={5} />
+        ) : (
+          <div className={styles.emptyState}>
+            <span className={styles.emptyIcon}>📭</span>
+            <p className={styles.emptyText}>{t('history', 'empty')}</p>
+          </div>
+        )
       ) : (
         <div className={styles.groups}>
           {grouped.map((group) => (
             <section key={group.label} className={styles.group}>
               <h3 className={styles.groupLabel}>{group.label}</h3>
               <div className={styles.list}>
-                {group.items.map((tx) => (
+                {group.items.map((tx, i) => (
                   <TransactionItem
                     key={tx.id}
+                    index={i}
                     transaction={tx}
                     onDelete={handleDelete}
                     onEdit={(id) => navigate(`/add?edit=${id}`)}

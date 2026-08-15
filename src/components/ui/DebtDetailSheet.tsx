@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Pencil, X } from 'lucide-react';
 import { useTranslation } from '../../i18n/LanguageContext';
 import { formatDate } from '../../utils/formatters';
+import { MONEY_MASK, isMoneyHidden } from '../../utils/moneyPrivacy';
 import type { Transaction } from '../../types';
 import type { Denomination } from '../../utils/denomination';
 import { AccountRowAvatar } from './AccountRowAvatar';
@@ -42,10 +43,12 @@ const parseMoney = (raw: string): number | null => {
 };
 
 const formatAmount = (amount: number, currency: string) => {
-  const abs = Math.abs(amount).toLocaleString('ru-RU', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  });
+  const abs = isMoneyHidden()
+    ? MONEY_MASK
+    : Math.abs(amount).toLocaleString('ru-RU', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2,
+      });
   const suffix = currency === 'PLN' ? 'zł' : currency;
   return `${abs} ${suffix}`;
 };

@@ -95,15 +95,20 @@ const AccountsSnapshot: React.FC<AccountsSnapshotProps> = ({ sections, onRowPres
               </div>
             ) : null}
 
-            {showBody ? (
+            {hasBody ? (
+              /* Розділ згортається плавно: рядки лишаються в розмітці, а
+                 висоту анімує grid-template-rows (0fr → 1fr). */
+              <div className={`${styles.collapse} ${showBody ? styles.collapseOpen : ''}`}>
+                <div className={styles.collapseInner}>
               <div className={styles.list}>
-                {group.rows.map((row) => {
+                {group.rows.map((row, i) => {
                   const tone: RowIconTone = row.iconTone ?? 'bank';
                   return (
                     <button
                       key={row.id}
                       type="button"
-                      className={styles.row}
+                      className={`${styles.row} motion-list-item`}
+                      style={{ ['--i' as string]: i }}
                       onClick={() => onRowPress?.(row.id)}
                       disabled={!onRowPress}
                     >
@@ -126,6 +131,8 @@ const AccountsSnapshot: React.FC<AccountsSnapshotProps> = ({ sections, onRowPres
                     </button>
                   );
                 })}
+              </div>
+                </div>
               </div>
             ) : null}
           </div>

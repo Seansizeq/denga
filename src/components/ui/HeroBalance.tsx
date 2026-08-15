@@ -1,6 +1,9 @@
 import React from 'react';
+import { Eye, EyeOff } from 'lucide-react';
 import { useTranslation } from '../../i18n/LanguageContext';
 import { formatCurrency, type DisplayCurrency } from '../../utils/formatters';
+import { SHORT_MASK } from '../../utils/moneyPrivacy';
+import { hapticLight } from '../../utils/notify';
 import styles from './HeroBalance.module.css';
 
 interface HeroBalanceProps {
@@ -33,20 +36,24 @@ const HeroBalance: React.FC<HeroBalanceProps> = ({
   wealthMonthChangePct = null,
   showTapHint = true,
 }) => {
-  const { locale, t, displayCurrency } = useTranslation();
+  const { locale, t, displayCurrency, moneyHidden, toggleMoneyHidden } = useTranslation();
   const lc = localeProp || locale;
 
   const mainFormat: DisplayCurrency = wealthMode
     ? mainAmountCurrency
     : displayCurrency;
 
-  const sign = net < 0 ? '−' : '';
+  // Знак і відсотки — теж дані про баланс, тож ховаються разом із сумами.
+  const sign = !moneyHidden && net < 0 ? '−' : '';
   const ratio = income > 0 ? (net / income) * 100 : 0;
-  const ratioStr = `${ratio >= 0 ? '+' : '−'}${Math.abs(ratio).toFixed(2)}%`;
+  const ratioStr = moneyHidden
+    ? `${SHORT_MASK}%`
+    : `${ratio >= 0 ? '+' : '−'}${Math.abs(ratio).toFixed(2)}%`;
 
   const otherFormat: DisplayCurrency = wealthOther?.currency === 'PLN' ? 'PLN' : 'UAH';
 
   const formatWealthMonthPct = (pct: number) => {
+    if (moneyHidden) return `${SHORT_MASK}%`;
     const abs = Math.abs(pct);
     const body = abs.toLocaleString(lc, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
     if (pct > 0) return `+${body}%`;
@@ -56,23 +63,41 @@ const HeroBalance: React.FC<HeroBalanceProps> = ({
 
   return (
     <div className={styles.hero}>
-      <button
-        type="button"
-        className={styles.amountButton}
-        onClick={onOpenDetails}
-      >
-        <h1 className={styles.amount}>
-          {sign}
-          {formatCurrency(Math.abs(net), lc, mainFormat)}
-        </h1>
-      </button>
+      <div className={styles.amountRow}>
+        <button
+          type="button"
+          className={styles.amountButton}
+          onClick={onOpenDetails}
+        >
+          <h1 className={styles.amount}>
+            {sign}
+            {formatCurrency(Math.abs(net), lc, mainFormat)}
+          </h1>
+        </button>
+        <button
+          type="button"
+          className={styles.eyeBtn}
+          aria-pressed={moneyHidden}
+          aria-label={t('settings', moneyHidden ? 'showMoney' : 'hideMoney')}
+          onClick={() => {
+            hapticLight();
+            toggleMoneyHidden();
+          }}
+        >
+          {moneyHidden ? <EyeOff size={20} strokeWidth={2} /> : <Eye size={20} strokeWidth={2} />}
+        </button>
+      </div>
       {wealthMode &&
       wealthMonthChangePct != null &&
       Number.isFinite(wealthMonthChangePct) ? (
         <div className={styles.monthChangeRow}>
           <span
             className={`${styles.monthChangePill} ${
-              wealthMonthChangePct >= 0 ? styles.positivePill : styles.negativePill
+              moneyHidden
+                ? styles.neutralPill
+                : wealthMonthChangePct >= 0
+                  ? styles.positivePill
+                  : styles.negativePill
             }`}
           >
             {formatWealthMonthPct(wealthMonthChangePct)}
@@ -104,7 +129,9 @@ const HeroBalance: React.FC<HeroBalanceProps> = ({
           )}
           {income > 0 && (
             <span
-              className={`${styles.deltaPill} ${ratio >= 0 ? styles.positivePill : styles.negativePill}`}
+              className={`${styles.deltaPill} ${
+                moneyHidden ? styles.neutralPill : ratio >= 0 ? styles.positivePill : styles.negativePill
+              }`}
             >
               {ratioStr}
             </span>

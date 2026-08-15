@@ -42,10 +42,13 @@
   font-family: inherit;
   text-align: left;
   touch-action: pan-y;
-  transition: background-color 0.12s ease;
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    transform var(--motion-instant) var(--ease-out);
 }
 
 .item:active {
+  transform: scale(0.985);
   background-color: var(--bg-card-light);
 }
 

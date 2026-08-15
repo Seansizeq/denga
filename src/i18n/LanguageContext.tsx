@@ -5,11 +5,13 @@ import type { DisplayCurrency } from '../utils/formatters';
 import type { TelegramWindow } from '../types/telegram';
 import type { CurrencyCode, FxRatesPayload } from '../utils/currency';
 import { convertCurrency, fallbackRates } from '../utils/currency';
+import { setMoneyHiddenFlag } from '../utils/moneyPrivacy';
 import { apiFetch } from '../api/client';
 import { usePersistedState } from '../hooks/usePersistedState';
 
 const STORAGE_KEY = 'denga_lang';
 const CURRENCY_STORAGE_KEY = 'denga_currency';
+const HIDE_MONEY_STORAGE_KEY = 'denga_hide_money';
 const FX_STORAGE_KEY = 'denga_fx_rates_v1';
 const DEFAULT_LANG: Language = 'uk';
 const DEFAULT_CURRENCY: DisplayCurrency = 'UAH';
@@ -39,6 +41,10 @@ interface LanguageContextValue {
   setLanguage: (lang: Language) => void;
   displayCurrency: DisplayCurrency;
   setDisplayCurrency: (currency: DisplayCurrency) => void;
+  /** Режим «приховати баланс»: усі суми показуються крапками. */
+  moneyHidden: boolean;
+  setMoneyHidden: (hidden: boolean) => void;
+  toggleMoneyHidden: () => void;
   t: TFunction;
   locale: string;
   fxRates: FxRatesPayload;
@@ -88,6 +94,13 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
     return DEFAULT_CURRENCY;
   });
+  const [moneyHidden, setMoneyHiddenState] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(HIDE_MONEY_STORAGE_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
   const [fxRates, setFxRates] = usePersistedState<FxRatesPayload>(
     FX_STORAGE_KEY,
     fallbackRates,
@@ -113,6 +126,20 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       /* ignore */
     }
   }, [displayCurrency]);
+
+  // Форматери сум читають прапорець синхронно під час рендера, тому
+  // синхронізуємо його тут, у тілі провайдера: нащадки рендеряться після нас
+  // і вже бачать актуальне значення. В `useEffect` було б запізно — перший
+  // рендер після перемикання показав би старі цифри.
+  setMoneyHiddenFlag(moneyHidden);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(HIDE_MONEY_STORAGE_KEY, moneyHidden ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+  }, [moneyHidden]);
 
   const refreshFxRates = useCallback(async () => {
     try {
@@ -154,6 +181,15 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const setDisplayCurrency = useCallback((currency: DisplayCurrency) => {
     setDisplayCurrencyState(currency);
   }, []);
+
+  const setMoneyHidden = useCallback((hidden: boolean) => {
+    setMoneyHiddenState(hidden);
+  }, []);
+
+  const toggleMoneyHidden = useCallback(() => {
+    setMoneyHiddenState((prev) => !prev);
+  }, []);
+
   const convertAmount = useCallback((amount: number, from: CurrencyCode, to?: CurrencyCode) => {
     return convertCurrency(amount, from, (to ?? displayCurrency) as CurrencyCode, fxRates);
   }, [displayCurrency, fxRates]);
@@ -169,6 +205,9 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setLanguage,
       displayCurrency,
       setDisplayCurrency,
+      moneyHidden,
+      setMoneyHidden,
+      toggleMoneyHidden,
       t,
       locale: LOCALE_MAP[language],
       fxRates,
@@ -176,7 +215,20 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       refreshFxRates,
       convertAmount,
     }),
-    [language, setLanguage, displayCurrency, setDisplayCurrency, t, fxRates, fxStatus, refreshFxRates, convertAmount]
+    [
+      language,
+      setLanguage,
+      displayCurrency,
+      setDisplayCurrency,
+      moneyHidden,
+      setMoneyHidden,
+      toggleMoneyHidden,
+      t,
+      fxRates,
+      fxStatus,
+      refreshFxRates,
+      convertAmount,
+    ]
   );
 
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;

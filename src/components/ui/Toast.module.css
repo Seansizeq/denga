@@ -23,7 +23,7 @@
   font-size: 14px;
   font-weight: 600;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
-  animation: toastIn 0.2s ease;
+  animation: toastIn var(--motion-base) var(--ease-spring);
 }
 
 @keyframes toastIn {

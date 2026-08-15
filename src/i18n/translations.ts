@@ -262,7 +262,10 @@ type Dict = {
     monthly: string;
     yearly: string;
     yearlyForItem: string;
+    startPrefix: string;
     nextChargeDate: string;
+    active: string;
+    renewCaption: string;
     note: string;
     add: string;
     edit: string;
@@ -313,6 +316,9 @@ type Dict = {
     fullscreen: string;
     fullscreenDescription: string;
     fullscreenUnsupported: string;
+    hideMoney: string;
+    hideMoneyDescription: string;
+    showMoney: string;
     automationTitle: string;
     automationGeoTitle: string;
     automationGeoDescription: string;
@@ -725,7 +731,10 @@ const uk: Dict = {
     monthly: 'Щомісяця',
     yearly: 'Щороку',
     yearlyForItem: 'За рік',
+    startPrefix: 'Старт',
     nextChargeDate: 'Наступне списання',
+    active: 'Активна',
+    renewCaption: 'Старт {start}, поновлюється {next} за {amount}.',
     note: 'Нотатка',
     add: 'Додати підписку',
     edit: 'Редагувати',
@@ -776,6 +785,9 @@ const uk: Dict = {
     fullscreen: 'Повноекранний режим',
     fullscreenDescription: 'Розгортає застосунок на весь екран і приховує шапку Telegram',
     fullscreenUnsupported: 'Недоступно у вашій версії Telegram',
+    hideMoney: 'Приховати суми',
+    hideMoneyDescription: 'Усі суми в застосунку показуються крапками',
+    showMoney: 'Показати суми',
     automationTitle: 'Автоматизація Telegram',
     automationGeoTitle: 'Автозміна за геолокацією',
     automationGeoDescription:
@@ -1198,7 +1210,10 @@ const ru: Dict = {
     monthly: 'Ежемесячно',
     yearly: 'Ежегодно',
     yearlyForItem: 'За год',
+    startPrefix: 'Старт',
     nextChargeDate: 'Следующее списание',
+    active: 'Активна',
+    renewCaption: 'Старт {start}, возобновляется {next} за {amount}.',
     note: 'Заметка',
     add: 'Добавить подписку',
     edit: 'Редактировать',
@@ -1249,6 +1264,9 @@ const ru: Dict = {
     fullscreen: 'Полноэкранный режим',
     fullscreenDescription: 'Разворачивает приложение на весь экран и скрывает шапку Telegram',
     fullscreenUnsupported: 'Недоступно в вашей версии Telegram',
+    hideMoney: 'Скрыть суммы',
+    hideMoneyDescription: 'Все суммы в приложении показываются точками',
+    showMoney: 'Показать суммы',
     automationTitle: 'Автоматизация Telegram',
     automationGeoTitle: 'Автосмена по геолокации',
     automationGeoDescription:
@@ -1671,7 +1689,10 @@ const en: Dict = {
     monthly: 'Monthly',
     yearly: 'Yearly',
     yearlyForItem: 'Per year',
+    startPrefix: 'Start',
     nextChargeDate: 'Next charge date',
+    active: 'Active',
+    renewCaption: 'Started {start}, renews {next} for {amount}.',
     note: 'Note',
     add: 'Add subscription',
     edit: 'Edit',
@@ -1722,6 +1743,9 @@ const en: Dict = {
     fullscreen: 'Fullscreen mode',
     fullscreenDescription: 'Expands the app to the whole screen and hides the Telegram header',
     fullscreenUnsupported: 'Not available in your version of Telegram',
+    hideMoney: 'Hide amounts',
+    hideMoneyDescription: 'Every amount in the app is shown as dots',
+    showMoney: 'Show amounts',
     automationTitle: 'Telegram automation',
     automationGeoTitle: 'Auto shift by location',
     automationGeoDescription:

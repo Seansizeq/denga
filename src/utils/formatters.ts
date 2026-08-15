@@ -1,13 +1,23 @@
 import { denominationPrecision, isCryptoDenomination, type Denomination } from './denomination';
+import { MONEY_MASK, isMoneyHidden } from './moneyPrivacy';
 
 export type PlannerCurrency = 'UAH' | 'PLN';
 export type DisplayCurrency = PlannerCurrency | 'USD';
 
-export const formatPlannerMoney = (amount: number, locale: string, currency: PlannerCurrency): string => {
-  const formatted = Math.abs(amount).toLocaleString(locale, {
+/**
+ * Саме число суми — або крапки, якщо увімкнено «приховати баланс».
+ * Символ валюти лишається на місці, щоб верстка не стрибала при перемиканні.
+ */
+const amountBody = (amount: number, locale: string, maximumFractionDigits: number): string => {
+  if (isMoneyHidden()) return MONEY_MASK;
+  return Math.abs(amount).toLocaleString(locale, {
     minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
+    maximumFractionDigits,
   });
+};
+
+export const formatPlannerMoney = (amount: number, locale: string, currency: PlannerCurrency): string => {
+  const formatted = amountBody(amount, locale, 2);
   return currency === 'PLN' ? `${formatted} zł` : `${formatted} ₴`;
 };
 
@@ -20,10 +30,7 @@ export const formatCurrency = (
   locale = 'uk-UA',
   currency: Denomination = 'UAH'
 ): string => {
-  const formatted = Math.abs(amount).toLocaleString(locale, {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: denominationPrecision(currency),
-  });
+  const formatted = amountBody(amount, locale, denominationPrecision(currency));
   if (currency === 'PLN') return `${formatted} zł`;
   if (currency === 'USD') return `$${formatted}`;
   if (isCryptoDenomination(currency)) return `${formatted} ${currency}`;
@@ -35,7 +42,8 @@ export const formatSignedCurrency = (
   locale = 'uk-UA',
   currency: DisplayCurrency = 'UAH'
 ): string => {
-  const sign = amount < 0 ? '-' : '';
+  // Знак теж ховаємо: «−•••• ₴» видало б, що баланс у мінусі.
+  const sign = !isMoneyHidden() && amount < 0 ? '-' : '';
   return sign + formatCurrency(amount, locale, currency);
 };
 

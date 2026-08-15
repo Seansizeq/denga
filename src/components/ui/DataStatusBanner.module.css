@@ -1,4 +1,6 @@
 .banner {
+  /* Смужка з'їжджає згори, а не виникає посеред екрана. */
+  animation: motion-drop-in var(--motion-base) var(--ease-out);
   position: sticky;
   top: 0;
   z-index: 60;
@@ -34,6 +36,12 @@
   font-weight: 600;
   cursor: pointer;
   flex-shrink: 0;
+  transition: background-color var(--motion-fast) var(--ease-out), transform var(--motion-instant) var(--ease-out);
+}
+
+.retry:active:not(:disabled) {
+  transform: scale(0.96);
+  background: rgba(255, 196, 107, 0.14);
 }
 
 .retry:disabled {
@@ -49,3 +57,4 @@
     transform: rotate(360deg);
   }
 }
+

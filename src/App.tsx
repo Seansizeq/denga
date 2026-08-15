@@ -7,6 +7,7 @@ import BottomNavigation from './components/BottomNavigation';
 import { ToastProvider } from './components/ui/Toast';
 import DataStatusBanner from './components/ui/DataStatusBanner';
 import TelegramBackButton from './components/TelegramBackButton';
+import RouteTransition from './components/ui/RouteTransition';
 import Dashboard from './pages/Dashboard';
 import Accounts from './pages/Accounts';
 import AddTransaction from './pages/AddTransaction';
@@ -117,21 +118,23 @@ const TelegramApp: React.FC<{ onReady: () => void }> = ({ onReady }) => {
             <div className="app-content">
               <TelegramBackButton />
               <DataStatusBanner />
-              <Routes>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/accounts" element={<Accounts />} />
-                <Route path="/history" element={<History />} />
-                <Route path="/calendar" element={<CalendarPlanner />} />
-                <Route path="/subscriptions" element={<Subscriptions />} />
-                <Route path="/add" element={<AddTransaction />} />
-                <Route path="/scan" element={<ScanReceipt />} />
-                <Route path="/stats" element={<Stats />} />
-                <Route path="/settings" element={<Settings />} />
-                <Route path="/budgets" element={<Budgets />} />
-                <Route path="/goals" element={<Goals />} />
-                <Route path="/goals/:id" element={<GoalDetail />} />
-                <Route path="*" element={<NotFound />} />
-              </Routes>
+              <RouteTransition>
+                <Routes>
+                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/accounts" element={<Accounts />} />
+                  <Route path="/history" element={<History />} />
+                  <Route path="/calendar" element={<CalendarPlanner />} />
+                  <Route path="/subscriptions" element={<Subscriptions />} />
+                  <Route path="/add" element={<AddTransaction />} />
+                  <Route path="/scan" element={<ScanReceipt />} />
+                  <Route path="/stats" element={<Stats />} />
+                  <Route path="/settings" element={<Settings />} />
+                  <Route path="/budgets" element={<Budgets />} />
+                  <Route path="/goals" element={<Goals />} />
+                  <Route path="/goals/:id" element={<GoalDetail />} />
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+              </RouteTransition>
               <BottomNavigation />
             </div>
           </Router>

@@ -6,6 +6,7 @@ import AccountEditSheet, { type EditableAccount } from '../components/ui/Account
 import DebtDetailSheet from '../components/ui/DebtDetailSheet';
 import SectionPickerSheet, { type PickableSection } from '../components/ui/SectionPickerSheet';
 import AssetRing from '../components/ui/AssetRing';
+import RowSkeleton from '../components/ui/RowSkeleton';
 import { usePortfolio } from '../context/PortfolioContext';
 import { useTransactions } from '../context/TransactionContext';
 import { useTranslation } from '../i18n/LanguageContext';
@@ -18,6 +19,7 @@ import {
 } from '../utils/denomination';
 import { useDenominationRates } from '../hooks/useDenominationRates';
 import { formatCurrency } from '../utils/formatters';
+import { isMoneyHidden } from '../utils/moneyPrivacy';
 import styles from './Accounts.module.css';
 
 type PortfolioSection = 'bank' | 'cash' | 'crypto' | 'stocks' | 'debt';
@@ -136,7 +138,8 @@ const SECTION_COLORS: Record<string, string> = {
  */
 const formatGroupAmount = (amount: number, currency: string, locale: string) => {
   const normalized = Number.isFinite(amount) ? amount : 0;
-  const sign = normalized < 0 ? '−' : '';
+  // У прихованому режимі мінус теж мовчить — інакше видно, що група в боргах.
+  const sign = !isMoneyHidden() && normalized < 0 ? '−' : '';
   return `${sign}${formatCurrency(Math.abs(normalized), locale, normalizeDenomination(currency))}`;
 };
 
@@ -411,17 +414,13 @@ const Accounts: React.FC = () => {
           <Plus size={18} strokeWidth={2.6} />
           <span>{t('balance', 'accountsAdd')}</span>
         </button>
-        {portfolio.length === 0 ? (
+        {portfolio.length === 0 && !accountsLoaded ? (
+          // Поки не прийшла перша відповідь, «рахунків немає» було б брехнею.
+          <RowSkeleton count={4} />
+        ) : portfolio.length === 0 ? (
           <div className={styles.emptyState}>
-            {accountsLoaded ? (
-              <>
-                <p className={styles.emptyTitle}>{t('balance', 'accountsEmptyTitle')}</p>
-                <p className={styles.emptyHint}>{t('balance', 'accountsEmptyHint')}</p>
-              </>
-            ) : (
-              // Поки не прийшла перша відповідь, «рахунків немає» було б брехнею.
-              <p className={styles.emptyHint}>{t('common', 'loading')}</p>
-            )}
+            <p className={styles.emptyTitle}>{t('balance', 'accountsEmptyTitle')}</p>
+            <p className={styles.emptyHint}>{t('balance', 'accountsEmptyHint')}</p>
           </div>
         ) : (
           <>

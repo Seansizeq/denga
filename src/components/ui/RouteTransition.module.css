@@ -1,0 +1,5 @@
+.screenEntering {
+  /* Так само без fill-mode: екран не має шансу лишитися невидимим. */
+  animation: motion-rise-in var(--motion-base) var(--ease-out);
+  will-change: opacity, transform;
+}
