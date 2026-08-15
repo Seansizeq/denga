@@ -3,9 +3,7 @@
   padding: 32px 0 32px;
 }
 
-/* Сума лишається строго по центру, «око» висить праворуч поверх ряду. */
 .amountRow {
-  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -17,32 +15,23 @@
   padding: 0;
   margin: 0;
   cursor: pointer;
+  /* Утримання не має виділяти текст суми чи кликати системне меню. */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  transition: transform 0.12s ease;
 }
 
-.eyeBtn {
-  position: absolute;
-  right: 0;
-  width: 38px;
-  height: 38px;
-  border: none;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.07);
-  color: var(--text-secondary);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 0;
-  cursor: pointer;
-  transition: transform 0.12s ease, background 0.15s ease, color 0.15s ease;
+.amountButton:active {
+  transform: scale(0.97);
 }
 
-.eyeBtn:active {
-  transform: scale(0.92);
-}
-
-.eyeBtn[aria-pressed='true'] {
-  background: rgba(124, 92, 255, 0.18);
-  color: var(--accent-primary-strong);
+/* Позначка «суми приховані» — щоб крапки не читалися як збій. */
+.hiddenMark {
+  align-self: center;
+  margin-left: 10px;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
 }
 
 .amount {

@@ -1,6 +1,7 @@
 import React from 'react';
-import { Eye, EyeOff } from 'lucide-react';
+import { EyeOff } from 'lucide-react';
 import { useTranslation } from '../../i18n/LanguageContext';
+import { useLongPress } from '../../hooks/useLongPress';
 import { formatCurrency, type DisplayCurrency } from '../../utils/formatters';
 import { SHORT_MASK } from '../../utils/moneyPrivacy';
 import { hapticLight } from '../../utils/notify';
@@ -50,6 +51,11 @@ const HeroBalance: React.FC<HeroBalanceProps> = ({
     ? `${SHORT_MASK}%`
     : `${ratio >= 0 ? '+' : '−'}${Math.abs(ratio).toFixed(2)}%`;
 
+  const longPress = useLongPress(() => {
+    hapticLight();
+    toggleMoneyHidden();
+  }, onOpenDetails);
+
   const otherFormat: DisplayCurrency = wealthOther?.currency === 'PLN' ? 'PLN' : 'UAH';
 
   const formatWealthMonthPct = (pct: number) => {
@@ -64,27 +70,20 @@ const HeroBalance: React.FC<HeroBalanceProps> = ({
   return (
     <div className={styles.hero}>
       <div className={styles.amountRow}>
+        {/* Тап — деталі рахунків, утримання — сховати/показати суми. */}
         <button
           type="button"
           className={styles.amountButton}
-          onClick={onOpenDetails}
+          aria-label={t('settings', moneyHidden ? 'showMoney' : 'hideMoney')}
+          {...longPress}
         >
           <h1 className={styles.amount}>
             {sign}
             {formatCurrency(Math.abs(net), lc, mainFormat)}
+            {moneyHidden ? (
+              <EyeOff className={styles.hiddenMark} size={20} strokeWidth={2} aria-hidden="true" />
+            ) : null}
           </h1>
-        </button>
-        <button
-          type="button"
-          className={styles.eyeBtn}
-          aria-pressed={moneyHidden}
-          aria-label={t('settings', moneyHidden ? 'showMoney' : 'hideMoney')}
-          onClick={() => {
-            hapticLight();
-            toggleMoneyHidden();
-          }}
-        >
-          {moneyHidden ? <EyeOff size={20} strokeWidth={2} /> : <Eye size={20} strokeWidth={2} />}
         </button>
       </div>
       {wealthMode &&
