@@ -401,6 +401,57 @@
   font-size: 13px;
 }
 
+/* Каталог сервісів: горизонтальна стрічка над полями форми. */
+.serviceRow {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  /* Щоб перший і останній чіп не липли до країв шита під час прокрутки. */
+  margin: 0 -16px;
+  padding: 2px 16px 4px;
+  scroll-snap-type: x proximity;
+}
+
+.serviceChip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  width: 68px;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  font-family: inherit;
+  cursor: pointer;
+  scroll-snap-align: start;
+  transition: transform 0.12s ease, color 0.15s ease;
+}
+
+.serviceChip:active {
+  transform: scale(0.94);
+}
+
+.serviceChipActive {
+  color: var(--text-primary);
+}
+
+.serviceChipActive span:last-child {
+  font-weight: 600;
+}
+
+.serviceChipName {
+  max-width: 100%;
+  font-size: 11px;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Згрупований список полів (iOS inset list) */
 .group {
   border-radius: 16px;

@@ -3,13 +3,15 @@ import { Plus, Repeat } from 'lucide-react';
 import { formatCurrency, type PlannerCurrency } from '../utils/formatters';
 import { useTranslation } from '../i18n/LanguageContext';
 import { useGoBack } from '../hooks/useGoBack';
-import { showAppConfirm } from '../utils/notify';
+import { hapticLight, showAppConfirm } from '../utils/notify';
 import { apiFetch } from '../api/client';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { CATEGORIES, findCategory, getCustomCategoryData, inferCustomCategoryIcon } from '../constants/categories';
 import { getCategoryIcon } from '../constants/categoryIcons';
 import type { CategoryKey } from '../i18n/translations';
 import Switch from '../components/ui/Switch';
+import SubscriptionIcon from '../components/ui/SubscriptionIcon';
+import { findCatalogService, searchCatalog, type CatalogService } from '../constants/subscriptionCatalog';
 import styles from './Subscriptions.module.css';
 
 const getCategoryVisual = (categoryId: string) => {
@@ -197,6 +199,18 @@ const Subscriptions: React.FC = () => {
     window.setTimeout(() => field.scrollIntoView({ block: 'nearest' }), 300);
   }, []);
 
+  /** Сервіс, який відповідає введеній назві: з нього беремо логотип і колір. */
+  const pickedService = useMemo(() => findCatalogService(name), [name]);
+
+  /** Поки назва порожня — показуємо весь каталог, далі звужуємо під набране. */
+  const serviceMatches = useMemo(() => searchCatalog(name, 8), [name]);
+
+  const applyService = useCallback((service: CatalogService) => {
+    setName(service.name);
+    setCategoryId(service.categoryId);
+    hapticLight();
+  }, []);
+
   const canSave = useMemo(() => {
     const numericAmount = Number(amount.replace(',', '.'));
     return Boolean(name.trim()) && numericAmount > 0 && Boolean(nextChargeDate);
@@ -295,7 +309,6 @@ const Subscriptions: React.FC = () => {
 
   const renderCard = (sub: Subscription, opts: { muted?: boolean }) => {
     const subCurrency = normalizeSubCurrency(sub.currency);
-    const { IconComponent, color } = getCategoryVisual(sub.categoryId);
     const startDate = formatShortDate(sub.nextChargeDate, locale);
 
     return (
@@ -305,9 +318,7 @@ const Subscriptions: React.FC = () => {
         className={`${styles.item} ${opts.muted ? styles.itemDisabled : ''}`}
         onClick={() => onEdit(sub)}
       >
-        <div className={styles.itemIcon} style={{ background: color }}>
-          <IconComponent size={20} color="#fff" strokeWidth={2} />
-        </div>
+        <SubscriptionIcon name={sub.name} categoryId={sub.categoryId} size={46} />
         <div className={styles.itemInfo}>
           <span className={styles.itemName}>{sub.name}</span>
           <span className={styles.itemDate}>
@@ -417,13 +428,16 @@ const Subscriptions: React.FC = () => {
                 </p>
               ) : null}
 
-              <div className={styles.heroCard} style={{ background: getCategoryVisual(categoryId).color }}>
-                <div className={styles.heroIcon}>
-                  {(() => {
-                    const HeroIcon = getCategoryVisual(categoryId).IconComponent;
-                    return <HeroIcon size={22} color="#fff" strokeWidth={2} />;
-                  })()}
-                </div>
+              <div
+                className={styles.heroCard}
+                style={{ background: pickedService?.color ?? getCategoryVisual(categoryId).color }}
+              >
+                <SubscriptionIcon
+                  name={name}
+                  categoryId={categoryId}
+                  service={pickedService}
+                  size={46}
+                />
                 <div className={styles.heroInfo}>
                   <span className={styles.heroName}>{name.trim() || t('subscriptions', 'addTitle')}</span>
                   <span className={styles.heroDate}>
@@ -431,6 +445,30 @@ const Subscriptions: React.FC = () => {
                   </span>
                 </div>
               </div>
+
+              {serviceMatches.length > 0 ? (
+                <div className={styles.serviceRow} role="list">
+                  {serviceMatches.map((service) => (
+                    <button
+                      key={service.id}
+                      type="button"
+                      role="listitem"
+                      className={`${styles.serviceChip} ${
+                        pickedService?.id === service.id ? styles.serviceChipActive : ''
+                      }`}
+                      onClick={() => applyService(service)}
+                    >
+                      <SubscriptionIcon
+                        name={service.name}
+                        categoryId={service.categoryId}
+                        service={service}
+                        size={44}
+                      />
+                      <span className={styles.serviceChipName}>{service.name}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
 
               <div className={styles.group}>
                 <label className={styles.row}>
