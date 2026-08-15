@@ -2001,15 +2001,6 @@ const parseCustomCategoryId = (id) => {
     return null;
   }
 };
-const botMainMenuKeyboard = {
-  keyboard: [
-    [{ text: '📊 Тижневий звіт' }, { text: '📅 Місячний звіт' }],
-    [{ text: '🟢 Почати зміну' }],
-    [{ text: '🔴 Завершити зміну' }],
-  ],
-  resize_keyboard: true,
-  is_persistent: true,
-};
 const reportSettingsInlineKeyboard = (settings) => ({
   inline_keyboard: [
     [{ text: `Тижневий авто: ${settings.autoWeekly ? 'ON' : 'OFF'}`, callback_data: 'rep_toggle_weekly' }],
@@ -2023,9 +2014,25 @@ const reportSettingsInlineKeyboard = (settings) => ({
     [{ text: 'Надіслати місячний зараз', callback_data: 'rep_send_monthly' }],
   ],
 });
-const sendBotMainMenu = async (chatId, text = 'Оберіть дію:') => {
+const BOT_COMMAND_LIST = [
+  'Команди:',
+  '/report_week — тижневий звіт',
+  '/report_month — місячний звіт',
+  '/advice — рекомендації по витратах',
+  '/shift_start — почати зміну',
+  '/shift_end — завершити зміну',
+  '«налаштування звітів» — авто-звіти й час надсилання',
+].join('\n');
+
+/**
+ * Раніше тут висіла закріплена клавіатура з чотирма кнопками. Вона займала
+ * пів екрана в чаті, куди й так приходять звіти, а всі її дії доступні
+ * командами й звичайним текстом. `remove_keyboard` прибирає її і в тих чатах,
+ * де Telegram уже встиг її запам'ятати.
+ */
+const sendBotCommandList = async (chatId) => {
   if (!bot) return;
-  await bot.sendMessage(chatId, text, { reply_markup: botMainMenuKeyboard });
+  await bot.sendMessage(chatId, BOT_COMMAND_LIST, { reply_markup: { remove_keyboard: true } });
 };
 const sendReportSettingsPanel = async (chatId, userId, editMessageId) => {
   if (!bot) return;
@@ -2064,7 +2071,7 @@ if (bot) {
   });
   bot.onText(/\/menu/i, async (msg) => {
     if (!msg.chat?.id) return;
-    await sendBotMainMenu(msg.chat.id);
+    await sendBotCommandList(msg.chat.id);
   });
   bot.onText(/\/report_week/i, async (msg) => {
     if (!msg.from?.id || !msg.chat?.id) return;
