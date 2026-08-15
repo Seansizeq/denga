@@ -20,9 +20,33 @@
   position: relative;
 }
 
+/**
+ * Підкладка активної вкладки їздить трансформацією, а не властивістю `left`:
+ * зсув по `left` — це перерахунок розкладки на кожному кадрі, тоді як
+ * transform композитор рухає сам, не турбуючи головний потік.
+ *
+ * Сам елемент завширшки з колонку (тому `100%` усередині translate дорівнює
+ * рівно одному кроку), а видима пігулка малюється по центру псевдоелементом.
+ */
 .activeIndicator {
   --indicator-size: 44px;
   position: absolute;
+  left: var(--bar-side-padding);
+  top: 50%;
+  width: calc((100% - var(--bar-side-padding) * 2) / 5);
+  height: var(--indicator-size);
+  transform: translate3d(calc(100% * (var(--indicator-col) - 1)), -50%, 0);
+  transition: transform var(--motion-slow) var(--ease-out);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.activeIndicator::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  margin-left: calc(var(--indicator-size) / -2);
   width: var(--indicator-size);
   height: var(--indicator-size);
   border-radius: 14px;
@@ -30,14 +54,6 @@
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.06),
     0 6px 14px rgba(0, 0, 0, 0.22);
-  left: calc(
-    var(--bar-side-padding) +
-    ((100% - (var(--bar-side-padding) * 2)) / 5) * (var(--indicator-col) - 0.5)
-  );
-  top: 50%;
-  transform: translate(-50%, -50%);
-  transition: left 0.34s cubic-bezier(0.22, 1, 0.36, 1);
-  z-index: 0;
 }
 
 .link,

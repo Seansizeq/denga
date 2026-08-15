@@ -22,10 +22,9 @@
   box-shadow:
     0 8px 22px rgba(255, 213, 59, 0.28),
     0 2px 8px rgba(0, 0, 0, 0.22);
-  transition:
-    transform var(--motion-fast) var(--ease-out),
-    box-shadow var(--motion-base) var(--ease-out),
-    filter var(--motion-base) var(--ease-out);
+  /* Тільки transform: анімація тіні чи фільтра — це перемальовування
+     великої розмитої області на кожному кадрі. */
+  transition: transform var(--motion-fast) var(--ease-out);
   /* Кнопка з'являється з легким пружним доростанням, а не виникає готовою.
      Без затримки й fill-mode — щоб за жодних умов не зникнути з екрана. */
   animation: motion-pop-in var(--motion-slow) var(--ease-spring);
@@ -33,10 +32,6 @@
 
 .fabAdd:active {
   transform: scale(0.95);
-  box-shadow:
-    0 4px 12px rgba(255, 213, 59, 0.22),
-    0 1px 4px rgba(0, 0, 0, 0.16);
-  filter: brightness(0.98);
 }
 
 .fabAdd:focus-visible {

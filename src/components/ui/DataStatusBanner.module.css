@@ -9,12 +9,13 @@
   gap: 8px;
   padding: 8px 14px;
   padding-top: calc(8px + var(--tg-content-safe-area-top, 0px));
-  background: rgba(255, 159, 10, 0.16);
+  /* Щільний фон замість backdrop-filter: розмиття під липкою смужкою
+     перемальовується на кожному кадрі прокрутки. */
+  background: #3a2a10;
   border-bottom: 1px solid rgba(255, 159, 10, 0.28);
   color: #ffc46b;
   font-size: 12.5px;
   line-height: 1.35;
-  backdrop-filter: blur(8px);
 }
 
 .text {

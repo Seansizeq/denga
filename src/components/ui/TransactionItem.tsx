@@ -15,6 +15,9 @@ import styles from './TransactionItem.module.css';
 
 const iconRegistry = LucideIcons as unknown as Record<string, React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>>;
 
+/** Скільки рядків з'являються каскадом — приблизно один екран. */
+const ANIMATED_ROWS = 8;
+
 interface TransactionItemProps {
   transaction: Transaction;
   onDelete?: (id: string) => void;
@@ -94,8 +97,11 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
 
   return (
     <div
-      className={`${styles.row} motion-list-item ${onEdit ? styles.rowTappable : ''}`}
-      style={{ ['--i' as string]: index }}
+      // Каскад лише для перших рядків: анімувати всю історію одночасно —
+      // це десятки шарів на кожен кадр, з чого й береться смикання. Далі за
+      // межами першого екрана анімація нічого не додає.
+      className={`${styles.row} ${index < ANIMATED_ROWS ? 'motion-list-item' : ''} ${onEdit ? styles.rowTappable : ''}`}
+      style={index < ANIMATED_ROWS ? { ['--i' as string]: index } : undefined}
       {...(onEdit
         ? {
             role: 'button' as const,

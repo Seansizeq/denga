@@ -54,21 +54,6 @@
   transform: rotate(-90deg);
 }
 
-.collapse {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows var(--motion-base) var(--ease-out);
-}
-
-.collapseOpen {
-  grid-template-rows: 1fr;
-}
-
-.collapseInner {
-  min-height: 0;
-  overflow: hidden;
-}
-
 .list {
   display: flex;
   flex-direction: column;

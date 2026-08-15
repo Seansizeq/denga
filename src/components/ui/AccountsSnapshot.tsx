@@ -95,11 +95,10 @@ const AccountsSnapshot: React.FC<AccountsSnapshotProps> = ({ sections, onRowPres
               </div>
             ) : null}
 
-            {hasBody ? (
-              /* Розділ згортається плавно: рядки лишаються в розмітці, а
-                 висоту анімує grid-template-rows (0fr → 1fr). */
-              <div className={`${styles.collapse} ${showBody ? styles.collapseOpen : ''}`}>
-                <div className={styles.collapseInner}>
+            {showBody ? (
+              /* Розкриття показує рядки одразу, а їхня поява анімується
+                 каскадом (motion-list-item). Анімувати саму висоту було б
+                 дорого: це розкладка на кожному кадрі. */
               <div className={styles.list}>
                 {group.rows.map((row, i) => {
                   const tone: RowIconTone = row.iconTone ?? 'bank';
@@ -107,8 +106,8 @@ const AccountsSnapshot: React.FC<AccountsSnapshotProps> = ({ sections, onRowPres
                     <button
                       key={row.id}
                       type="button"
-                      className={`${styles.row} motion-list-item`}
-                      style={{ ['--i' as string]: i }}
+                      className={`${styles.row} ${i < 8 ? 'motion-list-item' : ''}`}
+                      style={i < 8 ? { ['--i' as string]: i } : undefined}
                       onClick={() => onRowPress?.(row.id)}
                       disabled={!onRowPress}
                     >
@@ -131,8 +130,6 @@ const AccountsSnapshot: React.FC<AccountsSnapshotProps> = ({ sections, onRowPres
                     </button>
                   );
                 })}
-              </div>
-                </div>
               </div>
             ) : null}
           </div>

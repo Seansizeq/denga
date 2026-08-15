@@ -1019,7 +1019,6 @@
   background: var(--bg-card);
   border: 1px solid var(--border-light);
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(8px);
 }
 
 .activeShiftStickyInfo {

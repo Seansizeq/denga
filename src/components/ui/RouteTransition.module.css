@@ -1,5 +1,6 @@
 .screenEntering {
-  /* Так само без fill-mode: екран не має шансу лишитися невидимим. */
-  animation: motion-rise-in var(--motion-base) var(--ease-out);
-  will-change: opacity, transform;
+  /* Без fill-mode: екран не має шансу лишитися невидимим.
+     Тривалість навмисно коротка — це найважчий кадр у застосунку, бо
+     анімується весь екран одразу. */
+  animation: motion-rise-in var(--motion-fast) var(--ease-out);
 }

@@ -79,13 +79,25 @@ body {
   -moz-osx-font-smoothing: grayscale;
   user-select: none;
   overflow-x: hidden;
-  background: var(--gradient-ambient);
-  background-attachment: fixed;
+  /* Сам фон — прозорий; градієнт малює закріплений шар нижче. */
+  background: var(--bg-primary);
 }
 
-/* Ambient purple radial glow sitting behind the page */
+/**
+ * Градієнт живе на власному нерухомому шарі замість `background-attachment:
+ * fixed` у body. Той режим змушує мобільний браузер перемальовувати весь
+ * градієнт на кожному кадрі прокрутки — саме звідти бралося відчуття
+ * «підлагувань» під час скролу й анімацій. Окремий `position: fixed` шар
+ * композитор малює один раз.
+ */
 body::before {
-  display: none;
+  content: '';
+  display: block;
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--gradient-ambient);
 }
 
 #root {
