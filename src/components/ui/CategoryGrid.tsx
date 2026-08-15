@@ -168,16 +168,18 @@ const CategoryGrid: React.FC<CategoryGridProps> = ({
           </CategoryButton>
         );
       })}
-      <button
-        type="button"
-        className={styles.categoryBtn}
-        onClick={onAddCustom}
-      >
-        <div className={`${styles.iconBox} ${styles.addIconBox}`}>
-          <Plus size={24} color="#FFD53B" strokeWidth={2} />
-        </div>
-        <span className={styles.name}>+</span>
-      </button>
+      {onAddCustom ? (
+        <button
+          type="button"
+          className={styles.categoryBtn}
+          onClick={onAddCustom}
+        >
+          <div className={`${styles.iconBox} ${styles.addIconBox}`}>
+            <Plus size={24} color="#FFD53B" strokeWidth={2} />
+          </div>
+          <span className={styles.name}>+</span>
+        </button>
+      ) : null}
     </div>
   );
 };

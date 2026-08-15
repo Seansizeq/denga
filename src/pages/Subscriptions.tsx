@@ -1,16 +1,23 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Plus, Repeat } from 'lucide-react';
+import { ChevronRight, Plus, Repeat } from 'lucide-react';
 import { formatCurrency, type PlannerCurrency } from '../utils/formatters';
 import { useTranslation } from '../i18n/LanguageContext';
 import { useGoBack } from '../hooks/useGoBack';
 import { hapticLight, showAppConfirm } from '../utils/notify';
 import { apiFetch } from '../api/client';
 import { usePersistedState } from '../hooks/usePersistedState';
-import { CATEGORIES, findCategory, getCustomCategoryData, inferCustomCategoryIcon } from '../constants/categories';
+import {
+  CATEGORIES,
+  findCategory,
+  getCustomCategoryData,
+  inferCustomCategoryColor,
+  inferCustomCategoryIcon,
+} from '../constants/categories';
 import { getCategoryIcon } from '../constants/categoryIcons';
 import type { CategoryKey } from '../i18n/translations';
 import Switch from '../components/ui/Switch';
 import SubscriptionIcon from '../components/ui/SubscriptionIcon';
+import CategoryGrid from '../components/ui/CategoryGrid';
 import { findCatalogService, searchCatalog, type CatalogService } from '../constants/subscriptionCatalog';
 import styles from './Subscriptions.module.css';
 
@@ -93,7 +100,10 @@ const Subscriptions: React.FC = () => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [listError, setListError] = useState('');
   const [actionError, setActionError] = useState('');
-  const [customCategories, setCustomCategories] = useState<Array<{ id: string; name: string }>>([]);
+  const [customCategories, setCustomCategories] = useState<
+    Array<{ id: string; name: string; icon: string; color: string }>
+  >([]);
+  const [categorySheetOpen, setCategorySheetOpen] = useState(false);
 
   const load = useCallback(async () => {
     setListError('');
@@ -127,7 +137,14 @@ const Subscriptions: React.FC = () => {
       .then((r) => r.ok ? r.json() : [])
       .then((data: unknown) => {
         if (Array.isArray(data)) {
-          setCustomCategories(data.map((c: { id: string; name: string }) => ({ id: c.id, name: c.name })));
+          setCustomCategories(
+            data.map((c: { id: string; name: string; icon?: string; color?: string }) => ({
+              id: c.id,
+              name: c.name,
+              icon: inferCustomCategoryIcon(c.name, c.icon),
+              color: inferCustomCategoryColor(c.name, c.color),
+            })),
+          );
         }
       })
       .catch(() => {});
@@ -210,6 +227,20 @@ const Subscriptions: React.FC = () => {
     setCategoryId(service.categoryId);
     hapticLight();
   }, []);
+
+  const categoryDisplayName = useCallback(
+    (id: string): string => {
+      const fromLoaded = customCategories.find((c) => c.id === id);
+      if (fromLoaded) return fromLoaded.name;
+      const fromLegacy = getCustomCategoryData(id)?.name;
+      if (fromLegacy) return fromLegacy;
+      if (BUILTIN_EXPENSE_CATEGORIES.some((c) => c.id === id)) {
+        return t('categories', id as CategoryKey);
+      }
+      return t('categories', DEFAULT_CATEGORY_ID);
+    },
+    [t, customCategories],
+  );
 
   const canSave = useMemo(() => {
     const numericAmount = Number(amount.replace(',', '.'));
@@ -507,25 +538,17 @@ const Subscriptions: React.FC = () => {
                   </div>
                 </label>
 
-                <label className={styles.row}>
+                <button
+                  type="button"
+                  className={styles.row}
+                  onClick={() => setCategorySheetOpen(true)}
+                >
                   <span className={styles.rowLabel}>{t('subscriptions', 'category')}</span>
-                  <select
-                    className={`${styles.rowField} ${styles.rowSelect}`}
-                    value={categoryId}
-                    onChange={(e) => setCategoryId(e.target.value)}
-                  >
-                    {BUILTIN_EXPENSE_CATEGORIES.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {t('categories', c.id as CategoryKey)}
-                      </option>
-                    ))}
-                    {customCategories.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                  <span className={styles.rowValue}>
+                    {categoryDisplayName(categoryId)}
+                    <ChevronRight size={18} strokeWidth={2} className={styles.rowChevron} />
+                  </span>
+                </button>
               </div>
 
               <div className={styles.group}>
@@ -587,6 +610,56 @@ const Subscriptions: React.FC = () => {
                   {t('subscriptions', 'delete')}
                 </button>
               ) : null}
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {categorySheetOpen ? (
+        <div
+          className={styles.categoryOverlay}
+          role="presentation"
+          onClick={() => setCategorySheetOpen(false)}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="subscriptions-category-title"
+            className={styles.categorySheet}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className={styles.sheetGrabber} aria-hidden="true" />
+            <header className={styles.sheetHeader}>
+              {/* Невидима пілюля-дублікат праворуч — щоб заголовок лишався по центру,
+                  як у формі підписки, навіть без кнопки збереження зліва. */}
+              <span
+                className={`${styles.headerPill} ${styles.headerPillGhost}`}
+                style={{ visibility: 'hidden' }}
+                aria-hidden="true"
+              >
+                {t('addTx', 'cancel')}
+              </span>
+              <h2 id="subscriptions-category-title" className={styles.sheetTitle}>
+                {t('subscriptions', 'category')}
+              </h2>
+              <button
+                type="button"
+                className={`${styles.headerPill} ${styles.headerPillGhost}`}
+                onClick={() => setCategorySheetOpen(false)}
+              >
+                {t('addTx', 'cancel')}
+              </button>
+            </header>
+            <div className={styles.categorySheetBody}>
+              <CategoryGrid
+                type="expense"
+                selectedId={categoryId}
+                customCategories={customCategories}
+                onSelect={(id) => {
+                  setCategoryId(id);
+                  setCategorySheetOpen(false);
+                }}
+              />
             </div>
           </section>
         </div>
