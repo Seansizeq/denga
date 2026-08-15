@@ -463,9 +463,22 @@
   position: relative;
   display: flex;
   align-items: center;
+  width: 100%;
   gap: 12px;
   min-height: 50px;
   padding: 0 14px;
+  /* .row подвоюється і на <button> (рядок категорії) — без цього скидання
+     браузер домальовує власну рамку й фон кнопки поверх нашої вёрстки. */
+  appearance: none;
+  -webkit-appearance: none;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  font-family: inherit;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
 }
 
 .row + .row::before {
