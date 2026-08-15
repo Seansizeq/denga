@@ -11,6 +11,7 @@ import QuickActions from '../components/ui/QuickActions';
 import RecentTransactions from '../components/ui/RecentTransactions';
 import type { RangeFilter } from '../components/ui/RecentTransactions';
 import { isWithinLastDays } from '../utils/dateRanges';
+import { isBalanceCorrection } from '../utils/transactionUtils';
 import {
   computePortfolioMonthStartUahPln,
   computeWealthMonthChangePercent,
@@ -76,6 +77,8 @@ const Dashboard: React.FC = () => {
   const summary = useMemo(() => {
     const totals = filtered.reduce(
       (acc, tx) => {
+        // Корекція балансу не є ні доходом, ні витратою.
+        if (isBalanceCorrection(tx)) return acc;
         // Crypto-denominated rows are skipped when unpriced rather than
         // counted as if one token were one hryvnia.
         const amountInDisplay = convert(tx.amount, tx.currency) ?? 0;

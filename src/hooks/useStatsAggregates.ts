@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import type { Transaction } from '../types';
 import type { Denomination } from '../utils/denomination';
 import { isInPeriod, type PeriodBounds } from '../utils/statsPeriod';
+import { isBalanceCorrection } from '../utils/transactionUtils';
 
 export interface CategoryTotal {
   id: string;
@@ -37,6 +38,8 @@ const sumByType = (
   let expense = 0;
   for (const tx of transactions) {
     if (!isInPeriod(tx.date, bounds)) continue;
+    // Корекція балансу — не рух грошей, а виправлення обліку.
+    if (isBalanceCorrection(tx)) continue;
     const amount = convertAmount(tx.amount, tx.currency);
     if (amount === null) continue;
     if (tx.type === 'income') income += amount;
@@ -63,6 +66,7 @@ export const useStatsAggregates = (params: {
     let transactionCount = 0;
 
     for (const tx of filtered) {
+      if (isBalanceCorrection(tx)) continue;
       const amount = convertAmount(tx.amount, tx.currency);
       if (amount === null) continue;
       if (tx.type === 'income') income += amount;

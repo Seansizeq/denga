@@ -212,6 +212,9 @@
   display: flex;
   align-items: flex-end;
   justify-content: center;
+  /* `bottom` задає JS: коли відкрита клавіатура, оверлей закінчується над нею,
+     і шит разом із ним піднімається. */
+  padding-top: calc(var(--safe-area-inset-top) + 24px);
   animation: sheetFade 0.18s ease;
 }
 
@@ -223,7 +226,8 @@
 .sheet {
   color-scheme: dark;
   width: min(100%, 520px);
-  max-height: calc(100dvh - var(--safe-area-inset-top) - 24px);
+  /* Відносно оверлея, а не вікна: із відкритою клавіатурою він нижчий. */
+  max-height: 100%;
   display: flex;
   flex-direction: column;
   background: #1b1825;
@@ -248,30 +252,33 @@
   flex-shrink: 0;
 }
 
+/* Три частини в одному ряду: заголовок стискається сам, а не лізе на кнопки. */
 .sheetHeader {
-  position: relative;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  gap: 10px;
   padding: 14px 14px 10px;
   flex-shrink: 0;
 }
 
 .sheetTitle {
+  flex: 1 1 auto;
+  min-width: 0;
   margin: 0;
   font-size: 15px;
   font-weight: 600;
   letter-spacing: -0.01em;
   text-align: center;
   color: var(--text-secondary);
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   pointer-events: none;
 }
 
 .headerPill {
+  flex: 0 0 auto;
+  white-space: nowrap;
   border: none;
   border-radius: var(--radius-full);
   padding: 8px 16px;

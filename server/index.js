@@ -10,6 +10,8 @@ import { createReceiptScanHandler } from './receipt-scan.js';
 import {
   collectDebtOverdrafts,
   collectDenominationMismatches,
+  isBalanceCorrection,
+  BALANCE_CORRECTION_CATEGORY_ID,
   computeNetDeltas,
   getTransactionAccountEffects,
   resolveEffectDelta,
@@ -122,22 +124,12 @@ const mergeAccountIntoNote = (note, accountKey) => {
   if (!key) return withoutAccount;
   return `${withoutAccount ? `${withoutAccount} ` : ''}Account: ${key}`.trim();
 };
-const resolveBalanceCorrectionCategoryId = async (dbConn, userId, type) => {
-  const normalizedCandidates = [
-    normalizeCategoryName('Balance correction'),
-    normalizeCategoryName('Корекція балансу'),
-  ];
-  const custom = await dbConn.get(
-    `SELECT id
-     FROM custom_categories
-     WHERE user_id = ? AND normalized_name IN (?, ?)
-     ORDER BY updatedAt DESC
-     LIMIT 1`,
-    [userId, normalizedCandidates[0], normalizedCandidates[1]]
-  );
-  if (custom?.id) return custom.id;
-  return 'balance_correction';
-};
+/**
+ * Корекція завжди пишеться під вбудованою категорією. Раніше вона могла
+ * потрапити в однойменну користувацьку категорію — і тоді жоден підрахунок не
+ * впізнавав її як корекцію, тож вона рахувалася звичайним доходом чи витратою.
+ */
+const resolveBalanceCorrectionCategoryId = () => BALANCE_CORRECTION_CATEGORY_ID;
 const getCurrencyFromNote = (note) => {
   if (typeof note !== 'string') return null;
   const m = note.match(/\bCurrency:\s*([A-Za-z]{3})\b/i);
@@ -1147,6 +1139,9 @@ const summarizeTransactions = (txs, targetCurrency = 'UAH', fxPayload = FX_FALLB
   const reportCurrency = normalizeCurrency(targetCurrency);
   for (const tx of txs) {
     if (tx.type === 'transfer') continue;
+    // Корекція балансу виправляє облік, а не описує рух грошей: у звіті вона
+    // роздувала б доходи або витрати на розмір розбіжності.
+    if (isBalanceCorrection(tx)) continue;
     const amount = convertAmountServer(Number(tx.amount) || 0, tx.currency, reportCurrency, fxPayload);
     if (tx.type === 'income') {
       income += amount;
@@ -3784,7 +3779,7 @@ app.put('/api/accounts/:key', async (req, res) => {
   } else if (section !== 'debt' && Number.isFinite(delta) && Math.abs(delta) > 0.000001) {
     const txType = delta > 0 ? 'income' : 'expense';
     const txAmount = Math.abs(delta);
-    const correctionCategoryId = await resolveBalanceCorrectionCategoryId(db, userId, txType);
+    const correctionCategoryId = resolveBalanceCorrectionCategoryId();
     const txCurrency = primaryCurrency || prevPrimaryCurrency;
     const txNote = mergeAccountIntoNote('Корекція балансу', accountKey);
     await db.run(

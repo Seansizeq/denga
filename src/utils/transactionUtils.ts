@@ -7,6 +7,22 @@ export const isExpenseTransaction = (tx: Pick<Transaction, 'type'>): boolean => 
 
 export const isTransferTransaction = (tx: Pick<Transaction, 'type'>): boolean => tx.type === 'transfer';
 
+/** Категорія, під якою записується ручна корекція залишку рахунку. */
+export const BALANCE_CORRECTION_CATEGORY_ID = 'balance_correction';
+
+/**
+ * Корекція балансу — не дохід і не витрата, а виправлення обліку: гроші не
+ * приходили й не йшли, просто цифра в застосунку розійшлася з реальністю.
+ * Тому в історії вона лишається (це слід того, що сталося), але в суми
+ * доходів/витрат і в статистику за категоріями не потрапляє.
+ *
+ * На баланс рахунку вона при цьому впливає як звичайний запис: саме так її
+ * бачить перерахунок «скільки було на початку місяця», інакше виправлення
+ * розбіжності показувалося б як зростання капіталу.
+ */
+export const isBalanceCorrection = (tx: Pick<Transaction, 'categoryId'>): boolean =>
+  tx.categoryId === BALANCE_CORRECTION_CATEGORY_ID;
+
 export const getTransferSourceAccountKey = (tx: Pick<Transaction, 'type' | 'fromAccountKey'>): string | null => {
   if (!isTransferTransaction(tx)) return null;
   const key = String(tx.fromAccountKey ?? '').trim().toLowerCase();
@@ -28,7 +44,6 @@ export type TransactionAccountEffect = {
 export const getTransactionAccountEffects = (tx: Transaction): TransactionAccountEffect[] => {
   const amount = Number(tx.amount);
   if (!Number.isFinite(amount) || amount <= 0) return [];
-
   if (isTransferTransaction(tx)) {
     const source = getTransferSourceAccountKey(tx);
     const destination = getTransferDestinationAccountKey(tx);

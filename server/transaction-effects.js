@@ -12,10 +12,18 @@ const getAccountSlugFromNote = (note) => {
 
 const isTransferType = (value) => value === 'transfer';
 
+export const BALANCE_CORRECTION_CATEGORY_ID = 'balance_correction';
+
+/**
+ * Ручна корекція залишку. Це не дохід і не витрата, а виправлення обліку, тож
+ * вона не рухає баланс (баланс уже виставлено напряму) і не потрапляє в суми
+ * доходів/витрат у звітах.
+ */
+export const isBalanceCorrection = (tx) => tx?.categoryId === BALANCE_CORRECTION_CATEGORY_ID;
+
 export const getTransactionAccountEffects = (tx) => {
   const amount = Number(tx?.amount);
   if (!Number.isFinite(amount) || amount <= 0) return [];
-
   if (isTransferType(tx?.type)) {
     const fromAccountKey = normalizeAccountKey(tx?.fromAccountKey);
     const toAccountKey = normalizeAccountKey(tx?.toAccountKey);
