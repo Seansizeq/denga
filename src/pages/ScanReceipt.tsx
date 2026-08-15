@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import * as LucideIcons from 'lucide-react';
 import { Camera, ScanLine, X } from 'lucide-react';
 import { useTranslation } from '../i18n/LanguageContext';
 import { useTransactions } from '../context/TransactionContext';
 import { usePortfolio } from '../context/PortfolioContext';
 import { CATEGORIES, findCategory, getCustomCategoryData, inferCustomCategoryIcon } from '../constants/categories';
+import { getCategoryIcon } from '../constants/categoryIcons';
 import type { CategoryKey } from '../i18n/translations';
 import { compressImage } from '../utils/imageCompress';
 import { scanReceipt, type ScanReceiptError, type ScannedReceipt } from '../api/receipts';
@@ -13,11 +13,6 @@ import { formatCurrency } from '../utils/formatters';
 import { mergeAccountIntoNoteLimited } from '../utils/transactionAccount';
 import { usePaymentAccountOptions } from '../hooks/usePaymentAccountOptions';
 import styles from './ScanReceipt.module.css';
-
-const iconRegistry = LucideIcons as unknown as Record<
-  string,
-  React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>
->;
 
 type ViewState = 'idle' | 'loading' | 'result' | 'review' | 'error';
 
@@ -215,7 +210,7 @@ const ScanReceipt: React.FC = () => {
     const customData = getCustomCategoryData(categoryId);
     if (customData) {
       const customIcon = inferCustomCategoryIcon(customData.name, customData.icon);
-      const IconComponent = iconRegistry[customIcon] ?? LucideIcons.Tag;
+      const IconComponent = getCategoryIcon(customIcon, 'Tag');
       return (
         <span className={styles.categoryChip}>
           <IconComponent size={16} color={customData.color} strokeWidth={2} />
@@ -224,7 +219,7 @@ const ScanReceipt: React.FC = () => {
       );
     }
     const def = findCategory(categoryId);
-    const IconComponent = iconRegistry[def.icon] ?? LucideIcons.Circle;
+    const IconComponent = getCategoryIcon(def.icon, 'Circle');
     const name = t('categories', def.id as CategoryKey);
     return (
       <span className={styles.categoryChip}>

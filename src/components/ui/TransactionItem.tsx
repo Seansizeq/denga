@@ -1,8 +1,8 @@
 import React from 'react';
-import * as LucideIcons from 'lucide-react';
 import { Pencil, Trash2 } from 'lucide-react';
 import type { Transaction } from '../../types';
 import { findCategory, getCustomCategoryData, inferCustomCategoryIcon } from '../../constants/categories';
+import { getCategoryIcon } from '../../constants/categoryIcons';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { useTranslation } from '../../i18n/LanguageContext';
 import type { CategoryKey } from '../../i18n/translations';
@@ -12,8 +12,6 @@ import { useDenominationRates } from '../../hooks/useDenominationRates';
 import { useAccountNames } from '../../hooks/useAccountNames';
 import { hapticResult, showAppConfirm } from '../../utils/notify';
 import styles from './TransactionItem.module.css';
-
-const iconRegistry = LucideIcons as unknown as Record<string, React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>>;
 
 /** Скільки рядків з'являються каскадом — приблизно один екран. */
 const ANIMATED_ROWS = 8;
@@ -44,8 +42,8 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
     : findCategory(transaction.categoryId);
   const resolvedCustomIcon = customCategory ? inferCustomCategoryIcon(customCategory.name, customCategory.icon) : null;
   const IconComponent = customCategory
-    ? (iconRegistry[resolvedCustomIcon ?? 'Tag'] ?? LucideIcons.Tag)
-    : (iconRegistry[category.icon] ?? LucideIcons.Circle);
+    ? getCategoryIcon(resolvedCustomIcon, 'Tag')
+    : getCategoryIcon(category.icon, 'Circle');
 
   const handleDelete = async () => {
     if (!onDelete) return;
@@ -117,6 +115,9 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
         : {})}
     >
       <div className={styles.iconCircle}>
+        {/* Не створений тут компонент, а вибірка зі статичної таблиці іконок:
+            посилання те саме від рендера до рендера, стан не скидається. */}
+        {/* eslint-disable-next-line react-hooks/static-components */}
         <IconComponent size={22} color={customCategory?.color ?? category.color} strokeWidth={2} />
       </div>
 

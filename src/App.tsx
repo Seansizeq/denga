@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import SplashScreen from './components/SplashScreen';
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import { TransactionProvider } from './context/TransactionContext';
@@ -9,17 +9,24 @@ import DataStatusBanner from './components/ui/DataStatusBanner';
 import TelegramBackButton from './components/TelegramBackButton';
 import RouteTransition from './components/ui/RouteTransition';
 import Dashboard from './pages/Dashboard';
-import Accounts from './pages/Accounts';
-import AddTransaction from './pages/AddTransaction';
-import History from './pages/History';
-import CalendarPlanner from './pages/CalendarPlanner';
-import Subscriptions from './pages/Subscriptions';
-import Settings from './pages/Settings';
-import Stats from './pages/Stats';
-import ScanReceipt from './pages/ScanReceipt';
-import Budgets from './pages/Budgets';
-import Goals from './pages/Goals';
-import GoalDetail from './pages/GoalDetail';
+
+/**
+ * Головна вантажиться одразу — з неї починається кожен запуск. Решта екранів
+ * приїжджають окремими чанками в момент переходу: інакше перше відкриття
+ * тягне код сканера чеків, календаря і статистики, який більшості потрібен
+ * далеко не в першу секунду.
+ */
+const Accounts = lazy(() => import('./pages/Accounts'));
+const AddTransaction = lazy(() => import('./pages/AddTransaction'));
+const History = lazy(() => import('./pages/History'));
+const CalendarPlanner = lazy(() => import('./pages/CalendarPlanner'));
+const Subscriptions = lazy(() => import('./pages/Subscriptions'));
+const Settings = lazy(() => import('./pages/Settings'));
+const Stats = lazy(() => import('./pages/Stats'));
+const ScanReceipt = lazy(() => import('./pages/ScanReceipt'));
+const Budgets = lazy(() => import('./pages/Budgets'));
+const Goals = lazy(() => import('./pages/Goals'));
+const GoalDetail = lazy(() => import('./pages/GoalDetail'));
 import { useTranslation } from './i18n/LanguageContext';
 import { useTelegramFullscreen } from './hooks/useTelegramFullscreen';
 import type { TelegramWindow } from './types/telegram';
@@ -84,6 +91,9 @@ const BrowserStub = () => {
   );
 };
 
+/** Порожнє тло на час, поки довантажується чанк екрана. */
+const RouteFallback: React.FC = () => <div style={{ minHeight: '100vh' }} />;
+
 /** Невідомий шлях більше не дає порожній екран під нижньою навігацією. */
 const NotFound: React.FC = () => {
   const { t } = useTranslation();
@@ -119,6 +129,7 @@ const TelegramApp: React.FC<{ onReady: () => void }> = ({ onReady }) => {
               <TelegramBackButton />
               <DataStatusBanner />
               <RouteTransition>
+                <Suspense fallback={<RouteFallback />}>
                 <Routes>
                   <Route path="/" element={<Dashboard />} />
                   <Route path="/accounts" element={<Accounts />} />
@@ -134,6 +145,7 @@ const TelegramApp: React.FC<{ onReady: () => void }> = ({ onReady }) => {
                   <Route path="/goals/:id" element={<GoalDetail />} />
                   <Route path="*" element={<NotFound />} />
                 </Routes>
+                </Suspense>
               </RouteTransition>
               <BottomNavigation />
             </div>

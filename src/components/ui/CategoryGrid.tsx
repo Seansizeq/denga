@@ -1,11 +1,10 @@
 import React, { useRef, useCallback } from 'react';
-import * as LucideIcons from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { CATEGORIES, inferCustomCategoryColor, inferCustomCategoryIcon } from '../../constants/categories';
+import { getCategoryIcon } from '../../constants/categoryIcons';
 import { useTranslation } from '../../i18n/LanguageContext';
 import type { CategoryKey } from '../../i18n/translations';
 import styles from './CategoryGrid.module.css';
-
-const iconRegistry = LucideIcons as unknown as Record<string, React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>>;
 
 const LONG_PRESS_MS = 500;
 
@@ -116,7 +115,7 @@ const CategoryGrid: React.FC<CategoryGridProps> = ({
         const iconName = override.icon ?? category.icon;
         const iconColor = override.color ?? category.color;
         const displayName = override.name?.trim() || t('categories', category.id as CategoryKey);
-        const IconComponent = iconRegistry[iconName] ?? LucideIcons.Circle;
+        const IconComponent = getCategoryIcon(iconName, 'Circle');
         const selected = selectedId === category.id;
         const managePayload: ManageableCategory = {
           id: category.id,
@@ -147,7 +146,7 @@ const CategoryGrid: React.FC<CategoryGridProps> = ({
         seenCustomNames.add(normalized);
         const resolvedIcon = inferCustomCategoryIcon(category.name, category.icon);
         const resolvedColor = inferCustomCategoryColor(category.name, category.color);
-        const IconComponent = iconRegistry[resolvedIcon] ?? LucideIcons.Tag;
+        const IconComponent = getCategoryIcon(resolvedIcon, 'Tag');
         const selected = selectedId === category.id;
         const managePayload: ManageableCategory = {
           ...category,
@@ -175,7 +174,7 @@ const CategoryGrid: React.FC<CategoryGridProps> = ({
         onClick={onAddCustom}
       >
         <div className={`${styles.iconBox} ${styles.addIconBox}`}>
-          <LucideIcons.Plus size={24} color="#FFD53B" strokeWidth={2} />
+          <Plus size={24} color="#FFD53B" strokeWidth={2} />
         </div>
         <span className={styles.name}>+</span>
       </button>

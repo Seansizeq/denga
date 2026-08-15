@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import * as LucideIcons from 'lucide-react';
 import { Plus, Repeat } from 'lucide-react';
 import { formatCurrency, type PlannerCurrency } from '../utils/formatters';
 import { useTranslation } from '../i18n/LanguageContext';
@@ -8,11 +7,10 @@ import { showAppConfirm } from '../utils/notify';
 import { apiFetch } from '../api/client';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { CATEGORIES, findCategory, getCustomCategoryData, inferCustomCategoryIcon } from '../constants/categories';
+import { getCategoryIcon } from '../constants/categoryIcons';
 import type { CategoryKey } from '../i18n/translations';
 import Switch from '../components/ui/Switch';
 import styles from './Subscriptions.module.css';
-
-const iconRegistry = LucideIcons as unknown as Record<string, React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>>;
 
 const getCategoryVisual = (categoryId: string) => {
   const customCategory = getCustomCategoryData(categoryId);
@@ -21,7 +19,7 @@ const getCategoryVisual = (categoryId: string) => {
     ? inferCustomCategoryIcon(customCategory.name, customCategory.icon)
     : category?.icon ?? 'Receipt';
   const color = customCategory?.color ?? category?.color ?? '#8E8E93';
-  const IconComponent = iconRegistry[iconName] ?? LucideIcons.Receipt;
+  const IconComponent = getCategoryIcon(iconName, 'Receipt');
   return { IconComponent, color };
 };
 

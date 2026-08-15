@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import * as LucideIcons from 'lucide-react';
 import { X, ChevronRight } from 'lucide-react';
 import { useTransactions } from '../context/TransactionContext';
 import { usePortfolio } from '../context/PortfolioContext';
@@ -18,6 +17,7 @@ import {
   CATEGORIES,
   type CustomCategoryIcon,
 } from '../constants/categories';
+import { getCategoryIcon } from '../constants/categoryIcons';
 import { useTranslation } from '../i18n/LanguageContext';
 import type { CategoryKey } from '../i18n/translations';
 import type { TransactionType } from '../types';
@@ -54,8 +54,6 @@ import {
   type AccountSection,
 } from '../utils/accountPicker';
 import styles from './AddTransaction.module.css';
-
-const iconRegistry = LucideIcons as unknown as Record<string, React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>>;
 
 const AddTransaction: React.FC = () => {
   const navigate = useNavigate();
@@ -1004,7 +1002,7 @@ const AddTransaction: React.FC = () => {
             <p className={styles.iconPickerLabel}>{t('addTx', 'chooseIcon')}</p>
             <div className={styles.iconPickerGrid}>
               {CUSTOM_CATEGORY_ICONS.map((iconName) => {
-                const IconComponent = iconRegistry[iconName] ?? LucideIcons.Tag;
+                const IconComponent = getCategoryIcon(iconName, 'Tag');
                 const selected = newCategoryIcon === iconName;
                 return (
                   <button
