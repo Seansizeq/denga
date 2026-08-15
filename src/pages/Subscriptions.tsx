@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import * as LucideIcons from 'lucide-react';
 import { Plus, Repeat } from 'lucide-react';
 import { formatCurrency, type PlannerCurrency } from '../utils/formatters';
@@ -7,7 +7,6 @@ import { useGoBack } from '../hooks/useGoBack';
 import { showAppConfirm } from '../utils/notify';
 import { apiFetch } from '../api/client';
 import { usePersistedState } from '../hooks/usePersistedState';
-import { useKeyboardInset } from '../hooks/useKeyboardInset';
 import { CATEGORIES, findCategory, getCustomCategoryData, inferCustomCategoryIcon } from '../constants/categories';
 import type { CategoryKey } from '../i18n/translations';
 import Switch from '../components/ui/Switch';
@@ -95,7 +94,6 @@ const Subscriptions: React.FC = () => {
   const [listError, setListError] = useState('');
   const [actionError, setActionError] = useState('');
   const [customCategories, setCustomCategories] = useState<Array<{ id: string; name: string }>>([]);
-  const sheetRef = useRef<HTMLElement>(null);
 
   const load = useCallback(async () => {
     setListError('');
@@ -188,17 +186,18 @@ const Subscriptions: React.FC = () => {
     };
   }, [isFormOpen]);
 
-  // Клавіатура перекриває низ шита, тож піднімаємо його рівно на її висоту
-  // і дотягуємо активне поле у видиму частину.
-  const keyboardInset = useKeyboardInset(isFormOpen);
-
-  useEffect(() => {
-    if (!keyboardInset) return;
-    const active = document.activeElement;
-    if (active instanceof HTMLElement && sheetRef.current?.contains(active)) {
-      active.scrollIntoView({ block: 'center' });
-    }
-  }, [keyboardInset]);
+  /**
+   * Telegram сам зменшує вікно під клавіатуру — шит уже стає рівно над нею.
+   * Рахувати висоту клавіатури вручну не можна: компенсація накладалася на
+   * системну і піднімала шит удвічі вище, аж поки від нього лишалася шапка.
+   * Лишається тільки дотягнути поле, на яке щойно натиснули, у видиму частину.
+   */
+  const scrollFieldIntoView = useCallback((e: React.FocusEvent) => {
+    const field = e.target;
+    if (!(field instanceof HTMLElement)) return;
+    // Із затримкою: до кінця анімації клавіатури висота ще змінюється.
+    window.setTimeout(() => field.scrollIntoView({ block: 'nearest' }), 300);
+  }, []);
 
   const canSave = useMemo(() => {
     const numericAmount = Number(amount.replace(',', '.'));
@@ -382,14 +381,8 @@ const Subscriptions: React.FC = () => {
       ) : null}
 
       {isFormOpen ? (
-        <div
-          className={styles.sheetOverlay}
-          role="presentation"
-          onClick={resetForm}
-          style={{ bottom: keyboardInset }}
-        >
+        <div className={styles.sheetOverlay} role="presentation" onClick={resetForm}>
           <section
-            ref={sheetRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="subscriptions-form-title"
@@ -419,7 +412,7 @@ const Subscriptions: React.FC = () => {
               </button>
             </header>
 
-            <div className={styles.sheetBody}>
+            <div className={styles.sheetBody} onFocus={scrollFieldIntoView}>
               {actionError ? (
                 <p className={styles.formError} role="alert">
                   {actionError}
