@@ -3126,6 +3126,7 @@ const GOAL_COLOR_RE = /^#[0-9A-Fa-f]{6}$/;
 const mapGoalRow = (row, saved, contributionsCount) => ({
   id: row.id,
   name: row.name,
+  type: row.type === 'income' ? 'income' : 'savings',
   targetAmount: Number(row.target_amount) || 0,
   saved: Number(saved) || 0,
   contributionsCount: Number(contributionsCount) || 0,
@@ -3138,6 +3139,18 @@ const mapGoalRow = (row, saved, contributionsCount) => ({
   updatedAt: row.updated_at,
 });
 
+// Contributions can be logged in a different currency than the goal (e.g. a
+// UAH income logged against a USD goal), so "saved" is a live FX conversion
+// sum rather than a plain SQL SUM.
+const sumGoalContributions = (contribRows, goalCurrency, fx) => {
+  let saved = 0;
+  for (const r of contribRows || []) {
+    const cur = r.currency ? normalizeCurrency(r.currency) : goalCurrency;
+    saved += convertCurrencyServer(Number(r.amount) || 0, cur, goalCurrency, fx);
+  }
+  return saved;
+};
+
 app.get('/api/goals', async (req, res) => {
   const userId = String(req.authUserId ?? '').trim();
   if (!userId) {
@@ -3145,18 +3158,32 @@ app.get('/api/goals', async (req, res) => {
     return;
   }
   const rows = await db.all(
-    `SELECT g.id, g.user_id, g.name, g.target_amount, g.currency, g.deadline, g.icon, g.color, g.archived, g.created_at, g.updated_at,
-            COALESCE((SELECT SUM(amount) FROM goal_contributions WHERE goal_id = g.id), 0) AS saved,
-            COALESCE((SELECT COUNT(*) FROM goal_contributions WHERE goal_id = g.id), 0) AS contributions_count
+    `SELECT g.id, g.user_id, g.name, g.type, g.target_amount, g.currency, g.deadline, g.icon, g.color, g.archived, g.created_at, g.updated_at
      FROM goals g
      WHERE g.user_id = ?
      ORDER BY g.archived ASC, g.updated_at DESC`,
     [userId]
   );
+  const contribRows = await db.all(
+    `SELECT gc.goal_id AS goalId, gc.amount, gc.currency
+     FROM goal_contributions gc
+     JOIN goals g ON g.id = gc.goal_id
+     WHERE g.user_id = ?`,
+    [userId]
+  );
+  const fx = await fetchFxRates().catch(() => FX_FALLBACK);
+  const byGoal = new Map();
+  for (const c of contribRows || []) {
+    if (!byGoal.has(c.goalId)) byGoal.set(c.goalId, []);
+    byGoal.get(c.goalId).push(c);
+  }
   res.json(
-    (rows || []).map((r) =>
-      mapGoalRow(r, r.saved, r.contributions_count)
-    )
+    (rows || []).map((r) => {
+      const goalCurrency = normalizeCurrency(r.currency);
+      const list = byGoal.get(r.id) || [];
+      const saved = sumGoalContributions(list, goalCurrency, fx);
+      return mapGoalRow(r, saved, list.length);
+    })
   );
 });
 
@@ -3167,6 +3194,7 @@ app.post('/api/goals', async (req, res) => {
     return;
   }
   const name = typeof req.body?.name === 'string' ? req.body.name.trim().replace(/\s+/g, ' ') : '';
+  const type = req.body?.type === 'income' ? 'income' : 'savings';
   const targetAmount = Number(req.body?.targetAmount);
   const currency = normalizeCurrency(req.body?.currency);
   const deadlineRaw = req.body?.deadline;
@@ -3178,6 +3206,10 @@ app.post('/api/goals', async (req, res) => {
         : undefined;
   if (deadline === undefined && deadlineRaw !== null && deadlineRaw !== undefined && deadlineRaw !== '') {
     res.status(400).json({ error: 'deadline must be YYYY-MM-DD or empty' });
+    return;
+  }
+  if (type === 'income' && !deadline) {
+    res.status(400).json({ error: 'deadline is required for income goals', code: 'DEADLINE_REQUIRED' });
     return;
   }
   const icon = typeof req.body?.icon === 'string' && req.body.icon.trim() ? req.body.icon.trim().slice(0, 48) : 'target';
@@ -3196,13 +3228,12 @@ app.post('/api/goals', async (req, res) => {
   const id = uuidv4();
   const now = new Date().toISOString();
   await db.run(
-    `INSERT INTO goals (id, user_id, name, target_amount, currency, deadline, icon, color, archived, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
-    [id, userId, name, targetAmount, currency, deadline, icon, color, now, now]
+    `INSERT INTO goals (id, user_id, name, type, target_amount, currency, deadline, icon, color, archived, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+    [id, userId, name, type, targetAmount, currency, deadline, icon, color, now, now]
   );
   const row = await db.get(
-    `SELECT g.id, g.user_id, g.name, g.target_amount, g.currency, g.deadline, g.icon, g.color, g.archived, g.created_at, g.updated_at,
-            0 AS saved, 0 AS contributions_count
+    `SELECT g.id, g.user_id, g.name, g.type, g.target_amount, g.currency, g.deadline, g.icon, g.color, g.archived, g.created_at, g.updated_at
      FROM goals g WHERE g.id = ? AND g.user_id = ?`,
     [id, userId]
   );
@@ -3226,6 +3257,7 @@ app.patch('/api/goals/:id', async (req, res) => {
     typeof req.body?.name === 'string'
       ? req.body.name.trim().replace(/\s+/g, ' ')
       : current.name;
+  const type = req.body?.type === undefined ? (current.type === 'income' ? 'income' : 'savings') : (req.body.type === 'income' ? 'income' : 'savings');
   const targetAmount =
     req.body?.targetAmount === undefined ? Number(current.target_amount) : Number(req.body.targetAmount);
   const currency = req.body?.currency === undefined ? normalizeCurrency(current.currency) : normalizeCurrency(req.body.currency);
@@ -3238,6 +3270,10 @@ app.patch('/api/goals/:id', async (req, res) => {
       res.status(400).json({ error: 'deadline must be YYYY-MM-DD or null' });
       return;
     }
+  }
+  if (type === 'income' && !deadline) {
+    res.status(400).json({ error: 'deadline is required for income goals', code: 'DEADLINE_REQUIRED' });
+    return;
   }
   const icon =
     typeof req.body?.icon === 'string' && req.body.icon.trim()
@@ -3258,21 +3294,20 @@ app.patch('/api/goals/:id', async (req, res) => {
 
   const now = new Date().toISOString();
   await db.run(
-    `UPDATE goals SET name = ?, target_amount = ?, currency = ?, deadline = ?, icon = ?, color = ?, archived = ?, updated_at = ?
+    `UPDATE goals SET name = ?, type = ?, target_amount = ?, currency = ?, deadline = ?, icon = ?, color = ?, archived = ?, updated_at = ?
      WHERE id = ? AND user_id = ?`,
-    [name, targetAmount, currency, deadline, icon, color, archived ? 1 : 0, now, id, userId]
+    [name, type, targetAmount, currency, deadline, icon, color, archived ? 1 : 0, now, id, userId]
   );
 
-  const agg = await db.get(
-    `SELECT COALESCE(SUM(amount), 0) AS saved, COUNT(*) AS cnt FROM goal_contributions WHERE goal_id = ?`,
-    [id]
-  );
+  const contribRows = await db.all(`SELECT amount, currency FROM goal_contributions WHERE goal_id = ?`, [id]);
+  const fx = await fetchFxRates().catch(() => FX_FALLBACK);
+  const saved = sumGoalContributions(contribRows, currency, fx);
   const row = await db.get(
-    `SELECT g.id, g.user_id, g.name, g.target_amount, g.currency, g.deadline, g.icon, g.color, g.archived, g.created_at, g.updated_at
+    `SELECT g.id, g.user_id, g.name, g.type, g.target_amount, g.currency, g.deadline, g.icon, g.color, g.archived, g.created_at, g.updated_at
      FROM goals g WHERE g.id = ? AND g.user_id = ?`,
     [id, userId]
   );
-  res.json(mapGoalRow(row, agg?.saved, agg?.cnt));
+  res.json(mapGoalRow(row, saved, (contribRows || []).length));
 });
 
 app.delete('/api/goals/:id', async (req, res) => {
@@ -3305,6 +3340,25 @@ app.delete('/api/goals/:id', async (req, res) => {
   res.status(204).end();
 });
 
+app.get('/api/goals/contribution-sources', async (req, res) => {
+  const userId = String(req.authUserId ?? '').trim();
+  if (!userId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const rows = await db.all(
+    `SELECT gc.source AS source, MAX(gc.created_at) AS lastUsed
+     FROM goal_contributions gc
+     JOIN goals g ON g.id = gc.goal_id
+     WHERE g.user_id = ? AND gc.source IS NOT NULL AND TRIM(gc.source) <> ''
+     GROUP BY gc.source
+     ORDER BY lastUsed DESC
+     LIMIT 12`,
+    [userId]
+  );
+  res.json((rows || []).map((r) => r.source));
+});
+
 app.get('/api/goals/:id', async (req, res) => {
   const userId = String(req.authUserId ?? '').trim();
   const id = String(req.params.id ?? '').trim();
@@ -3313,9 +3367,7 @@ app.get('/api/goals/:id', async (req, res) => {
     return;
   }
   const row = await db.get(
-    `SELECT g.id, g.user_id, g.name, g.target_amount, g.currency, g.deadline, g.icon, g.color, g.archived, g.created_at, g.updated_at,
-            COALESCE((SELECT SUM(amount) FROM goal_contributions WHERE goal_id = g.id), 0) AS saved,
-            COALESCE((SELECT COUNT(*) FROM goal_contributions WHERE goal_id = g.id), 0) AS contributions_count
+    `SELECT g.id, g.user_id, g.name, g.type, g.target_amount, g.currency, g.deadline, g.icon, g.color, g.archived, g.created_at, g.updated_at
      FROM goals g
      WHERE g.user_id = ? AND g.id = ?`,
     [userId, id]
@@ -3324,7 +3376,11 @@ app.get('/api/goals/:id', async (req, res) => {
     res.status(404).json({ error: 'Goal not found' });
     return;
   }
-  res.json(mapGoalRow(row, row.saved, row.contributions_count));
+  const goalCurrency = normalizeCurrency(row.currency);
+  const contribRows = await db.all(`SELECT amount, currency FROM goal_contributions WHERE goal_id = ?`, [id]);
+  const fx = await fetchFxRates().catch(() => FX_FALLBACK);
+  const saved = sumGoalContributions(contribRows, goalCurrency, fx);
+  res.json(mapGoalRow(row, saved, (contribRows || []).length));
 });
 
 app.get('/api/goals/:id/contributions', async (req, res) => {
@@ -3334,28 +3390,37 @@ app.get('/api/goals/:id/contributions', async (req, res) => {
     res.status(400).json({ error: 'invalid id' });
     return;
   }
-  const goal = await db.get('SELECT id FROM goals WHERE user_id = ? AND id = ?', [userId, goalId]);
+  const goal = await db.get('SELECT id, currency FROM goals WHERE user_id = ? AND id = ?', [userId, goalId]);
   if (!goal) {
     res.status(404).json({ error: 'Goal not found' });
     return;
   }
+  const goalCurrency = normalizeCurrency(goal.currency);
+  const fx = await fetchFxRates().catch(() => FX_FALLBACK);
   const rows = await db.all(
-    `SELECT id, goal_id AS goalId, amount, date, note, created_at AS createdAt, transaction_id AS transactionId
+    `SELECT id, goal_id AS goalId, amount, currency, source, date, note, created_at AS createdAt, transaction_id AS transactionId
      FROM goal_contributions
      WHERE goal_id = ? AND user_id = ?
      ORDER BY date DESC, created_at DESC`,
     [goalId, userId]
   );
   res.json(
-    (rows || []).map((r) => ({
-      id: r.id,
-      goalId: r.goalId,
-      amount: Number(r.amount) || 0,
-      date: r.date,
-      note: r.note ?? '',
-      createdAt: r.createdAt,
-      transactionId: r.transactionId ? String(r.transactionId) : null,
-    }))
+    (rows || []).map((r) => {
+      const cur = r.currency ? normalizeCurrency(r.currency) : goalCurrency;
+      const amount = Number(r.amount) || 0;
+      return {
+        id: r.id,
+        goalId: r.goalId,
+        amount,
+        currency: cur,
+        convertedAmount: convertCurrencyServer(amount, cur, goalCurrency, fx),
+        source: r.source ?? null,
+        date: r.date,
+        note: r.note ?? '',
+        createdAt: r.createdAt,
+        transactionId: r.transactionId ? String(r.transactionId) : null,
+      };
+    })
   );
 });
 
@@ -3377,6 +3442,7 @@ app.post('/api/goals/:id/contributions', async (req, res) => {
   const amount = Number(req.body?.amount);
   const date = typeof req.body?.date === 'string' ? req.body.date : '';
   const note = typeof req.body?.note === 'string' ? req.body.note.trim().slice(0, 500) : '';
+  const source = typeof req.body?.source === 'string' ? req.body.source.trim().slice(0, 60) : '';
   const accountKeyRaw = req.body?.accountKey;
   const accountKey =
     typeof accountKeyRaw === 'string' && accountKeyRaw.trim()
@@ -3393,9 +3459,14 @@ app.post('/api/goals/:id/contributions', async (req, res) => {
   }
 
   const goalCurrency = normalizeCurrency(goalRow.currency);
+  // The currency the money actually came in as — may differ from the goal's
+  // own currency (e.g. earned in UAH toward a USD goal); converted for
+  // display/aggregation, never on write.
+  const enteredCurrency = req.body?.currency !== undefined ? normalizeCurrency(req.body.currency) : goalCurrency;
   const goalName = String(goalRow.name || '').trim().slice(0, 80);
   const cid = uuidv4();
   const now = new Date().toISOString();
+  const fx = await fetchFxRates().catch(() => FX_FALLBACK);
 
   if (accountKey) {
     const acct = await db.get(
@@ -3410,16 +3481,20 @@ app.post('/api/goals/:id/contributions', async (req, res) => {
       return;
     }
     const acctKey = String(acct.k).trim().toLowerCase();
-    // Compared as a denomination, so a crypto account is not mistaken for UAH
-    // and silently accepted against a hryvnia goal.
-    const acctCur = normalizeDenomination(acct.pc);
-    if (acctCur !== goalCurrency) {
+    const acctDenom = normalizeDenomination(acct.pc);
+    // A crypto-denominated account has no live conversion path here, so it
+    // stays a hard block rather than a currency-mismatch auto-convert.
+    if (isCryptoDenomination(acctDenom)) {
       res.status(400).json({
-        error: 'account primary currency must match goal currency',
-        code: 'ACCOUNT_CURRENCY_MISMATCH',
+        error: 'crypto accounts cannot pay into a goal',
+        code: 'ACCOUNT_CURRENCY_UNSUPPORTED',
       });
       return;
     }
+    // The transaction is denominated in the account's own currency — that's
+    // what actually leaves the account — and converted into goalCurrency for
+    // the goal's progress the same way budgets/reports convert transactions.
+    const acctCur = normalizeCurrency(acctDenom);
     const userNote = note.slice(0, 80);
     const goalPrefix = `Ціль: ${goalName}`.slice(0, 80);
     const baseNote = userNote ? `${goalPrefix}. ${userNote}` : goalPrefix;
@@ -3433,19 +3508,19 @@ app.post('/api/goals/:id/contributions', async (req, res) => {
       await db.run(
         `INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, note)
          VALUES (?, ?, ?, ?, 'other_expense', 'expense', ?, ?)`,
-        [txId, userId, amount, goalCurrency, txDate, txNote]
+        [txId, userId, amount, acctCur, txDate, txNote]
       );
       await applyTransactionEffects(db, userId, {
         amount,
-        currency: goalCurrency,
+        currency: acctCur,
         type: 'expense',
         note: txNote,
       });
       await checkBudgetThresholdsAfterExpense(userId, 'other_expense');
       await db.run(
-        `INSERT INTO goal_contributions (id, goal_id, user_id, amount, date, note, created_at, transaction_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [cid, goalId, userId, amount, date, note || null, now, txId]
+        `INSERT INTO goal_contributions (id, goal_id, user_id, amount, currency, source, date, note, created_at, transaction_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [cid, goalId, userId, amount, acctCur, source || null, date, note || null, now, txId]
       );
       await db.run('UPDATE goals SET updated_at = ? WHERE id = ? AND user_id = ?', [now, goalId, userId]);
       await db.run('COMMIT');
@@ -3464,6 +3539,9 @@ app.post('/api/goals/:id/contributions', async (req, res) => {
       id: cid,
       goalId,
       amount,
+      currency: acctCur,
+      convertedAmount: convertCurrencyServer(amount, acctCur, goalCurrency, fx),
+      source: source || null,
       date,
       note,
       createdAt: now,
@@ -3473,9 +3551,9 @@ app.post('/api/goals/:id/contributions', async (req, res) => {
   }
 
   await db.run(
-    `INSERT INTO goal_contributions (id, goal_id, user_id, amount, date, note, created_at, transaction_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, NULL)`,
-    [cid, goalId, userId, amount, date, note || null, now]
+    `INSERT INTO goal_contributions (id, goal_id, user_id, amount, currency, source, date, note, created_at, transaction_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+    [cid, goalId, userId, amount, enteredCurrency, source || null, date, note || null, now]
   );
   await db.run('UPDATE goals SET updated_at = ? WHERE id = ? AND user_id = ?', [now, goalId, userId]);
 
@@ -3483,6 +3561,9 @@ app.post('/api/goals/:id/contributions', async (req, res) => {
     id: cid,
     goalId,
     amount,
+    currency: enteredCurrency,
+    convertedAmount: convertCurrencyServer(amount, enteredCurrency, goalCurrency, fx),
+    source: source || null,
     date,
     note,
     createdAt: now,

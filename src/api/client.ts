@@ -217,10 +217,12 @@ export const deleteExpenseTemplate = async (id: string): Promise<void> => {
 };
 
 export type GoalCurrency = 'UAH' | 'PLN' | 'USD';
+export type GoalType = 'savings' | 'income';
 
 export type Goal = {
   id: string;
   name: string;
+  type: GoalType;
   targetAmount: number;
   saved: number;
   contributionsCount: number;
@@ -236,7 +238,13 @@ export type Goal = {
 export type GoalContribution = {
   id: string;
   goalId: string;
+  /** Сума в тій валюті, в якій її внесено — може відрізнятись від валюти цілі. */
   amount: number;
+  currency: GoalCurrency;
+  /** Сума, конвертована у валюту цілі за поточним курсом. */
+  convertedAmount: number;
+  /** Довільний тег джерела доходу (наприклад "AI automation"). */
+  source?: string | null;
   date: string;
   note: string;
   createdAt: string;
@@ -258,6 +266,7 @@ export const getGoal = async (id: string): Promise<Goal> => {
 
 export const createGoal = async (body: {
   name: string;
+  type?: GoalType;
   targetAmount: number;
   currency: GoalCurrency;
   deadline?: string | null;
@@ -269,7 +278,16 @@ export const createGoal = async (body: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error('failed to create goal');
+  if (!res.ok) {
+    const err = new Error('failed to create goal') as Error & { code?: string };
+    try {
+      const j = (await res.json()) as { code?: string };
+      if (typeof j?.code === 'string') err.code = j.code;
+    } catch {
+      /* ignore */
+    }
+    throw err;
+  }
   return res.json();
 };
 
@@ -277,6 +295,7 @@ export const updateGoal = async (
   id: string,
   patch: Partial<{
     name: string;
+    type: GoalType;
     targetAmount: number;
     currency: GoalCurrency;
     deadline: string | null;
@@ -290,7 +309,16 @@ export const updateGoal = async (
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(patch),
   });
-  if (!res.ok) throw new Error('failed to update goal');
+  if (!res.ok) {
+    const err = new Error('failed to update goal') as Error & { code?: string };
+    try {
+      const j = (await res.json()) as { code?: string };
+      if (typeof j?.code === 'string') err.code = j.code;
+    } catch {
+      /* ignore */
+    }
+    throw err;
+  }
   return res.json();
 };
 
@@ -305,9 +333,22 @@ export const getContributions = async (goalId: string): Promise<GoalContribution
   return res.json();
 };
 
+export const getContributionSources = async (): Promise<string[]> => {
+  const res = await apiFetch('/api/goals/contribution-sources');
+  if (!res.ok) return [];
+  return res.json();
+};
+
 export const addContribution = async (
   goalId: string,
-  body: { amount: number; date: string; note?: string; accountKey?: string | null }
+  body: {
+    amount: number;
+    date: string;
+    note?: string;
+    accountKey?: string | null;
+    currency?: GoalCurrency;
+    source?: string;
+  }
 ): Promise<GoalContribution> => {
   const res = await apiFetch(`/api/goals/${encodeURIComponent(goalId)}/contributions`, {
     method: 'POST',

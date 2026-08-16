@@ -592,6 +592,21 @@ export async function initDb() {
   } catch {
     /* already exists */
   }
+  try {
+    await db.exec(`ALTER TABLE goals ADD COLUMN type TEXT NOT NULL DEFAULT 'savings'`);
+  } catch {
+    /* already exists */
+  }
+  try {
+    await db.exec(`ALTER TABLE goal_contributions ADD COLUMN currency TEXT`);
+  } catch {
+    /* already exists */
+  }
+  try {
+    await db.exec(`ALTER TABLE goal_contributions ADD COLUMN source TEXT`);
+  } catch {
+    /* already exists */
+  }
 
   await removeRetiredBybitIntegration(db);
 

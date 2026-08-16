@@ -7,6 +7,7 @@ import {
   getGoals,
   type Goal,
   type GoalCurrency,
+  type GoalType,
 } from '../api/client';
 import { formatCurrency } from '../utils/formatters';
 import type { DisplayCurrency } from '../utils/formatters';
@@ -66,6 +67,7 @@ const Goals: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState('');
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [goalType, setGoalType] = useState<GoalType>('savings');
   const [name, setName] = useState('');
   const [target, setTarget] = useState('');
   const [currency, setCurrency] = useState<GoalCurrency>(displayCurrency as GoalCurrency);
@@ -101,6 +103,7 @@ const Goals: React.FC = () => {
 
   const openSheet = () => {
     setSaveError('');
+    setGoalType('savings');
     setName('');
     setTarget('');
     setCurrency(displayCurrency as GoalCurrency);
@@ -110,13 +113,20 @@ const Goals: React.FC = () => {
     setSheetOpen(true);
   };
 
+  const deadlineMissing = goalType === 'income' && !deadline.trim();
+
   const onCreate = async () => {
     setSaveError('');
     const n = parseFloat(String(target).replace(',', '.'));
     if (!name.trim() || !Number.isFinite(n) || n <= 0) return;
+    if (deadlineMissing) {
+      setSaveError(t('goals', 'deadlineRequiredForIncome'));
+      return;
+    }
     try {
       await createGoal({
         name: name.trim(),
+        type: goalType,
         targetAmount: n,
         currency,
         deadline: deadline.trim() || null,
@@ -155,6 +165,7 @@ const Goals: React.FC = () => {
           <h2 className={styles.goalCardTitle}>{g.name}</h2>
         </div>
         <div className={styles.badgeRow}>
+          {g.type === 'income' ? <span className={styles.badge}>{t('goals', 'typeIncome')}</span> : null}
           {pct >= 100 ? <span className={`${styles.badge} ${styles.badgeDone}`}>{t('goals', 'completed')}</span> : null}
           {g.archived ? <span className={styles.badge}>{t('goals', 'archived')}</span> : null}
         </div>
@@ -219,7 +230,7 @@ const Goals: React.FC = () => {
           onSubmit={() => void onCreate()}
           submitLabel={t('goals', 'save')}
           cancelLabel={t('goals', 'cancel')}
-          submitDisabled={!name.trim() || !(Number(target.replace(',', '.')) > 0)}
+          submitDisabled={!name.trim() || !(Number(target.replace(',', '.')) > 0) || deadlineMissing}
           error={saveError || undefined}
         >
           <div className={sheet.heroCard} style={{ background: color }}>
@@ -234,6 +245,25 @@ const Goals: React.FC = () => {
                   : t('goals', 'target')}
               </span>
             </div>
+          </div>
+
+          <div className={sheet.segment} role="group" aria-label={t('goals', 'goalType')}>
+            <button
+              type="button"
+              className={sheet.segmentBtn}
+              aria-pressed={goalType === 'savings'}
+              onClick={() => setGoalType('savings')}
+            >
+              {t('goals', 'typeSavings')}
+            </button>
+            <button
+              type="button"
+              className={sheet.segmentBtn}
+              aria-pressed={goalType === 'income'}
+              onClick={() => setGoalType('income')}
+            >
+              {t('goals', 'typeIncome')}
+            </button>
           </div>
 
           <div className={sheet.group}>
@@ -281,7 +311,9 @@ const Goals: React.FC = () => {
               />
             </label>
           </div>
-          <p className={sheet.groupCaption}>{t('goals', 'deadlineOptional')}</p>
+          <p className={sheet.groupCaption}>
+            {goalType === 'income' ? t('goals', 'deadlineRequiredForIncome') : t('goals', 'deadlineOptional')}
+          </p>
 
           <div>
             <p className={sheet.blockLabel}>{t('goals', 'color')}</p>

@@ -409,6 +409,26 @@ type Dict = {
     saveError: string;
     back: string;
     archived: string;
+    goalType: string;
+    typeSavings: string;
+    typeIncome: string;
+    deadlineRequiredForIncome: string;
+    cryptoAccountUnsupported: string;
+    roadTo: string;
+    aheadOfPlan: string;
+    aheadOfPlanHint: string;
+    behindPlan: string;
+    behindPlanHint: string;
+    progressSection: string;
+    earnedToday: string;
+    earnedWeek: string;
+    earnedMonth: string;
+    neededPerDay: string;
+    incomeSources: string;
+    sourceOther: string;
+    contributionCurrency: string;
+    contributionSource: string;
+    contributionSourcePlaceholder: string;
   };
   categories: {
     food: string;
@@ -879,7 +899,7 @@ const uk: Dict = {
     deleteContribConfirm: 'Видалити цей внесок?',
     payFromAccount: 'Зняти з рахунку',
     payFromHint:
-      'Лише рахунки в тій самій валюті, що й ціль. З’явиться витрата в історії; при видаленні внеску вона теж зникне.',
+      'Рахунок у будь-якій валюті — сума конвертується за поточним курсом. З’явиться витрата в історії; при видаленні внеску вона теж зникне.',
     fromAccountShort: 'З рахунку',
     accountMismatch: 'Валюта рахунку не збігається з валютою цілі.',
     payFromUsdManual: 'Для цілі в USD рахунок не вибирається — лише ручний внесок.',
@@ -891,6 +911,26 @@ const uk: Dict = {
     saveError: 'Не вдалося зберегти',
     back: 'Назад',
     archived: 'Архів',
+    goalType: 'Тип цілі',
+    typeSavings: 'Накопичення',
+    typeIncome: 'Дохід',
+    deadlineRequiredForIncome: 'Для доходної цілі дедлайн обов’язковий',
+    cryptoAccountUnsupported: 'Крипторахунок не можна використати для внеску в ціль.',
+    roadTo: 'Шлях до',
+    aheadOfPlan: 'Ти на {amount} попереду графіка',
+    aheadOfPlanHint: 'Так тримати — можеш навіть трохи скинути темп.',
+    behindPlan: 'Відстаєш від графіка на {amount}',
+    behindPlanHint: 'Щоб повернутись у графік: +{amount}/день понад звичайний темп.',
+    progressSection: 'Прогрес',
+    earnedToday: 'Зароблено сьогодні',
+    earnedWeek: 'За цей тиждень',
+    earnedMonth: 'За цей місяць',
+    neededPerDay: 'Треба в середньому',
+    incomeSources: 'Джерела доходу',
+    sourceOther: 'Інше',
+    contributionCurrency: 'Валюта внеску',
+    contributionSource: 'Джерело доходу',
+    contributionSourcePlaceholder: 'Напр. AI automation',
   },
   categories: {
     food: 'Продукти',
@@ -1365,7 +1405,7 @@ const ru: Dict = {
     deleteContribConfirm: 'Удалить этот взнос?',
     payFromAccount: 'Списать со счёта',
     payFromHint:
-      'Только счета в валюте цели. Появится расход в истории; при удалении взноса он тоже удалится.',
+      'Счёт в любой валюте — сумма конвертируется по текущему курсу. Появится расход в истории; при удалении взноса он тоже удалится.',
     fromAccountShort: 'Со счёта',
     accountMismatch: 'Валюта счёта не совпадает с валютой цели.',
     payFromUsdManual: 'Для цели в USD счёт не выбирается — только ручной взнос.',
@@ -1377,6 +1417,26 @@ const ru: Dict = {
     saveError: 'Не удалось сохранить',
     back: 'Назад',
     archived: 'Архив',
+    goalType: 'Тип цели',
+    typeSavings: 'Накопление',
+    typeIncome: 'Доход',
+    deadlineRequiredForIncome: 'Для доходной цели дедлайн обязателен',
+    cryptoAccountUnsupported: 'Криптосчёт нельзя использовать для взноса в цель.',
+    roadTo: 'Путь к',
+    aheadOfPlan: 'Ты на {amount} впереди графика',
+    aheadOfPlanHint: 'Так держать — можешь даже немного сбавить темп.',
+    behindPlan: 'Отстаёшь от графика на {amount}',
+    behindPlanHint: 'Чтобы вернуться в график: +{amount}/день сверх обычного темпа.',
+    progressSection: 'Прогресс',
+    earnedToday: 'Заработано сегодня',
+    earnedWeek: 'За эту неделю',
+    earnedMonth: 'За этот месяц',
+    neededPerDay: 'Нужно в среднем',
+    incomeSources: 'Источники дохода',
+    sourceOther: 'Другое',
+    contributionCurrency: 'Валюта взноса',
+    contributionSource: 'Источник дохода',
+    contributionSourcePlaceholder: 'Напр. AI automation',
   },
   categories: {
     food: 'Продукты',
@@ -1851,7 +1911,7 @@ const en: Dict = {
     deleteContribConfirm: 'Delete this contribution?',
     payFromAccount: 'Debit an account',
     payFromHint:
-      'Only accounts in the goal’s currency. Creates an expense in history; deleting the contribution removes it too.',
+      'Any account, any currency — converted at the current rate. Creates an expense in history; deleting the contribution removes it too.',
     fromAccountShort: 'From account',
     accountMismatch: 'Account currency does not match the goal currency.',
     payFromUsdManual: 'USD goals use manual contributions only (no account debit).',
@@ -1863,6 +1923,26 @@ const en: Dict = {
     saveError: 'Failed to save',
     back: 'Back',
     archived: 'Archived',
+    goalType: 'Goal type',
+    typeSavings: 'Savings',
+    typeIncome: 'Income',
+    deadlineRequiredForIncome: 'Income goals require a deadline',
+    cryptoAccountUnsupported: 'A crypto account can’t pay into a goal.',
+    roadTo: 'Road to',
+    aheadOfPlan: 'You’re {amount} ahead of plan',
+    aheadOfPlanHint: 'Keep it up — you could even ease off a bit.',
+    behindPlan: 'You’re {amount} behind plan',
+    behindPlanHint: 'To catch up: +{amount}/day on top of the usual pace.',
+    progressSection: 'Progress',
+    earnedToday: 'Earned today',
+    earnedWeek: 'This week',
+    earnedMonth: 'This month',
+    neededPerDay: 'Needed on average',
+    incomeSources: 'Income sources',
+    sourceOther: 'Other',
+    contributionCurrency: 'Contribution currency',
+    contributionSource: 'Income source',
+    contributionSourcePlaceholder: 'e.g. AI automation',
   },
   categories: {
     food: 'Groceries',
