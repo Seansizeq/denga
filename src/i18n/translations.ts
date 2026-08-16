@@ -266,6 +266,8 @@ type Dict = {
     nextChargeDate: string;
     active: string;
     renewCaption: string;
+    customIconTitle: string;
+    resetIcon: string;
     note: string;
     add: string;
     edit: string;
@@ -458,6 +460,11 @@ type Dict = {
   stub: { title: string; description: string; openButton: string };
   /** Редактор рахунку: кольори, іконки, підказки полів. */
   accountEditor: {
+    fieldName: string;
+    fieldAmount: string;
+    fieldCurrency: string;
+    fieldSection: string;
+    iconAuto: string;
     colorBank: string;
     colorCash: string;
     colorCrypto: string;
@@ -735,6 +742,8 @@ const uk: Dict = {
     nextChargeDate: 'Наступне списання',
     active: 'Активна',
     renewCaption: 'Старт {start}, поновлюється {next} за {amount}.',
+    customIconTitle: 'Свій значок',
+    resetIcon: 'Скинути до автоматичного',
     note: 'Нотатка',
     add: 'Додати підписку',
     edit: 'Редагувати',
@@ -937,6 +946,11 @@ const uk: Dict = {
     openButton: 'Відкрити в Telegram',
   },
   accountEditor: {
+    fieldName: 'Назва',
+    fieldAmount: 'Сума',
+    fieldCurrency: 'Валюта',
+    fieldSection: 'Розділ',
+    iconAuto: 'Авто',
     colorBank: 'Жовтий',
     colorCash: 'Фіолетовий',
     colorCrypto: 'Блакитний',
@@ -1214,6 +1228,8 @@ const ru: Dict = {
     nextChargeDate: 'Следующее списание',
     active: 'Активна',
     renewCaption: 'Старт {start}, возобновляется {next} за {amount}.',
+    customIconTitle: 'Свой значок',
+    resetIcon: 'Сбросить до автоматического',
     note: 'Заметка',
     add: 'Добавить подписку',
     edit: 'Редактировать',
@@ -1416,6 +1432,11 @@ const ru: Dict = {
     openButton: 'Открыть в Telegram',
   },
   accountEditor: {
+    fieldName: 'Название',
+    fieldAmount: 'Сумма',
+    fieldCurrency: 'Валюта',
+    fieldSection: 'Раздел',
+    iconAuto: 'Авто',
     colorBank: 'Жёлтый',
     colorCash: 'Фиолетовый',
     colorCrypto: 'Голубой',
@@ -1693,6 +1714,8 @@ const en: Dict = {
     nextChargeDate: 'Next charge date',
     active: 'Active',
     renewCaption: 'Started {start}, renews {next} for {amount}.',
+    customIconTitle: 'Custom icon',
+    resetIcon: 'Reset to automatic',
     note: 'Note',
     add: 'Add subscription',
     edit: 'Edit',
@@ -1895,6 +1918,11 @@ const en: Dict = {
     openButton: 'Open in Telegram',
   },
   accountEditor: {
+    fieldName: 'Name',
+    fieldAmount: 'Amount',
+    fieldCurrency: 'Currency',
+    fieldSection: 'Section',
+    iconAuto: 'Auto',
     colorBank: 'Yellow',
     colorCash: 'Purple',
     colorCrypto: 'Blue',

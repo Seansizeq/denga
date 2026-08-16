@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { ChevronDown, ChevronUp, Sparkles, X } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import { useTranslation } from '../../i18n/LanguageContext';
 import { AccountIconGlyph, type AccountIconKey } from '../../utils/accountIcons';
 import {
@@ -10,7 +10,8 @@ import {
 } from '../../utils/denomination';
 import { AccountRowAvatar } from './AccountRowAvatar';
 import { showAppConfirm } from '../../utils/notify';
-import styles from './AccountEditSheet.module.css';
+import FormSheet from './FormSheet';
+import styles from './FormSheet.module.css';
 
 export type EditableAccount = {
   accountKey: string;
@@ -54,6 +55,16 @@ const COLOR_OPTIONS: Array<{
   { tone: 'debt',    labelKey: 'colorDebt',    swatch: '#ff6b6b' },
   { tone: 'neutral', labelKey: 'colorNeutral', swatch: '#73737c' },
 ];
+
+/** Той самий колір, що й у кружечку вибору — картка вгорі форми ним заливається. */
+const COLOR_BY_TONE: Record<EditableAccount['iconTone'], string> = {
+  bank: '#ffb020',
+  cash: '#8f74ff',
+  crypto: '#58b7ff',
+  stocks: '#4ade80',
+  debt: '#ff6b6b',
+  neutral: '#73737c',
+};
 
 const LUCIDE_PICKS: Array<{
   key: Exclude<AccountIconKey, 'auto'>;
@@ -107,7 +118,6 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
   );
   const [iconTone, setIconTone] = useState<EditableAccount['iconTone']>(() => initial.iconTone);
 
-  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -175,214 +185,161 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
     }
   };
 
+  const canSave = Boolean(name.trim()) && parseMoney(amount) !== null && !saving;
+
   return (
-    <div className={styles.overlay} role="dialog" aria-modal="true">
-      <button type="button" className={styles.scrim} onClick={onClose} aria-label={t('addTx', 'cancel')} />
-
-      <div className={styles.sheet}>
-        <div className={styles.sheetHeader}>
-          <button type="button" className={styles.iconBtn} onClick={onClose} aria-label={t('addTx', 'cancel')}>
-            <X size={18} strokeWidth={2.4} />
-          </button>
-          <h2 className={styles.title}>
-            {t('balance', isCreateMode ? 'accountNewTitle' : 'accountEditTitle')}
-          </h2>
-          <span className={styles.headerSpacer} />
+    <FormSheet
+      title={t('balance', isCreateMode ? 'accountNewTitle' : 'accountEditTitle')}
+      onClose={onClose}
+      onSubmit={() => void handleSave()}
+      submitLabel={isCreateMode ? t('addTx', 'create') : t('addTx', 'save')}
+      cancelLabel={t('addTx', 'cancel')}
+      submitDisabled={!canSave}
+      error={error || undefined}
+    >
+      <div className={styles.heroCard} style={{ background: COLOR_BY_TONE[iconTone] }}>
+        <AccountRowAvatar
+          accountKey={previewAccountKey}
+          iconTone={iconTone}
+          section={section}
+          iconKey={iconKey || null}
+          cryptoSymbol={previewCryptoSymbol}
+          glyphSize={24}
+        />
+        <div className={styles.heroInfo}>
+          <span className={styles.heroName}>{name.trim() || t('balance', 'accountNewTitle')}</span>
+          <span className={styles.heroCaption}>{t('balance', SECTION_LABEL_KEYS[section])}</span>
         </div>
+      </div>
 
-        {error ? <p className={styles.errorText}>{error}</p> : null}
+      <div className={styles.group}>
+        <label className={styles.row}>
+          <span className={styles.rowLabel}>{t('accountEditor', 'fieldName')}</span>
+          <input
+            className={styles.rowField}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            maxLength={40}
+            placeholder={t('accountEditor', SECTION_PLACEHOLDER_KEYS[section])}
+            autoFocus={isCreateMode}
+          />
+        </label>
 
-        <div className={styles.body}>
-          {/* Big preview card */}
-          <div className={styles.previewCard}>
-            <div className={styles.previewAvatarWrap}>
-              <AccountRowAvatar
-                accountKey={previewAccountKey}
-                iconTone={iconTone}
-                section={section}
-                iconKey={iconKey || null}
-                cryptoSymbol={previewCryptoSymbol}
-                glyphSize={24}
-              />
-            </div>
-            <div className={styles.previewInfo}>
-              <span className={styles.previewName}>{name.trim() || t('balance', 'accountNewTitle')}</span>
-              <span className={styles.previewSection}>{t('balance', SECTION_LABEL_KEYS[section])}</span>
-            </div>
-          </div>
+        <label className={styles.row}>
+          <span className={styles.rowLabel}>{t('accountEditor', 'fieldAmount')}</span>
+          <input
+            className={styles.rowField}
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            inputMode="decimal"
+          />
+        </label>
 
-          {/* Name */}
-          <label className={styles.label}>
-            Назва
-            <input
-              className={styles.input}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              maxLength={40}
-              placeholder={t('accountEditor', SECTION_PLACEHOLDER_KEYS[section])}
-              autoFocus={isCreateMode}
-            />
-          </label>
+        <label className={styles.row}>
+          <span className={styles.rowLabel}>{t('accountEditor', 'fieldCurrency')}</span>
+          <select
+            className={`${styles.rowField} ${styles.rowSelect}`}
+            value={currency}
+            onChange={(e) => setCurrency(normalizeDenomination(e.target.value))}
+          >
+            {DENOMINATIONS.map((code) => (
+              <option key={code} value={code}>
+                {code === 'UAH' ? 'UAH (₴)' : code === 'PLN' ? 'PLN (zł)' : code === 'USD' ? 'USD ($)' : code}
+              </option>
+            ))}
+          </select>
+        </label>
 
-          {/* Amount + Currency */}
-          <div className={styles.row2}>
-            <label className={styles.label}>
-              Сума
-              <input
-                className={styles.input}
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                inputMode="decimal"
-              />
-            </label>
-            <label className={styles.label}>
-              Валюта / актив
-              <select
-                className={styles.select}
-                value={currency}
-                onChange={(e) => setCurrency(normalizeDenomination(e.target.value))}
-              >
-                {DENOMINATIONS.map((code) => (
-                  <option key={code} value={code}>
-                    {code === 'UAH' ? 'UAH (₴)' : code === 'PLN' ? 'PLN (zł)' : code === 'USD' ? 'USD ($)' : code}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
+        <label className={styles.row}>
+          <span className={styles.rowLabel}>{t('accountEditor', 'fieldSection')}</span>
+          <select
+            className={`${styles.rowField} ${styles.rowSelect}`}
+            value={section}
+            onChange={(e) => setSection(e.target.value as EditableAccount['section'])}
+          >
+            {(Object.keys(SECTION_LABEL_KEYS) as Array<EditableAccount['section']>).map((key) => (
+              <option key={key} value={key}>{t('balance', SECTION_LABEL_KEYS[key])}</option>
+            ))}
+          </select>
+        </label>
+      </div>
 
-
-          {/* Compact color circles */}
-          <div className={styles.colorSection}>
-            <span className={styles.colorLabel}>{t('balance', 'accountColorLabel')}</span>
-            <div className={styles.colorRow}>
-              {COLOR_OPTIONS.map((opt) => (
-                <button
-                  key={opt.tone}
-                  type="button"
-                  className={`${styles.colorDot} ${iconTone === opt.tone ? styles.colorDotActive : ''}`}
-                  style={{ backgroundColor: opt.swatch }}
-                  onClick={() => setIconTone(opt.tone)}
-                  aria-label={t('accountEditor', opt.labelKey)}
-                  title={t('accountEditor', opt.labelKey)}
-                />
-              ))}
-            </div>
-          </div>
-
-          {/* Debt direction — only for debt section */}
-          {section === 'debt' ? (
-            <div className={styles.label}>
-              <span>{t('balance', 'debtDirectionLabel')}</span>
-              <div
-                className={styles.directionSegment}
-                role="group"
-                aria-label={t('balance', 'debtDirectionLabel')}
-              >
-                <button
-                  type="button"
-                  className={styles.directionSegmentBtn}
-                  aria-pressed={debtDirection === 'owed_to_me'}
-                  onClick={() => setDebtDirection('owed_to_me')}
-                >
-                  {t('balance', 'debtDirectionOwedToMe')}
-                </button>
-                <button
-                  type="button"
-                  className={styles.directionSegmentBtn}
-                  aria-pressed={debtDirection === 'owed_by_me'}
-                  onClick={() => setDebtDirection('owed_by_me')}
-                >
-                  {t('balance', 'debtDirectionOwedByMe')}
-                </button>
-              </div>
-            </div>
-          ) : null}
-
-          {/* Collapsible: icon + section */}
-          <div className={styles.expandSection}>
-            <button
-              type="button"
-              className={styles.expandBtn}
-              onClick={() => setAdvancedOpen((v) => !v)}
-            >
-              <span>{t('balance', 'accountIconSectionTitle')}</span>
-              {advancedOpen ? (
-                <ChevronUp size={15} strokeWidth={2.4} />
-              ) : (
-                <ChevronDown size={15} strokeWidth={2.4} />
-              )}
-            </button>
-
-            {advancedOpen ? (
-              <div className={styles.expandContent}>
-                <fieldset className={styles.colorFieldset}>
-                  <legend className={styles.label}>{t('balance', 'accountIconLabel')}</legend>
-                  <div className={styles.iconGrid}>
-                    <button
-                      type="button"
-                      className={`${styles.iconOption} ${styles.iconOptionWide} ${!iconKey ? styles.iconOptionActive : ''}`}
-                      onClick={() => setIconKey('')}
-                      aria-pressed={!iconKey}
-                    >
-                      <Sparkles size={18} strokeWidth={2.2} />
-                      Авто
-                    </button>
-                    {LUCIDE_PICKS.map((opt) => {
-                      const active = iconKey === opt.key;
-                      return (
-                        <button
-                          key={opt.key}
-                          type="button"
-                          className={`${styles.iconOption} ${active ? styles.iconOptionActive : ''}`}
-                          onClick={() => setIconKey(opt.key)}
-                          aria-pressed={active}
-                        >
-                          <AccountIconGlyph iconKey={opt.key} size={18} strokeWidth={2.2} />
-                          {t('accountEditor', opt.labelKey)}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </fieldset>
-
-                <label className={styles.label}>
-                  Розділ
-                  <select
-                    className={styles.select}
-                    value={section}
-                    onChange={(e) => setSection(e.target.value as EditableAccount['section'])}
-                  >
-                    {(Object.keys(SECTION_LABEL_KEYS) as Array<EditableAccount['section']>).map((key) => (
-                      <option key={key} value={key}>{t('balance', SECTION_LABEL_KEYS[key])}</option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-            ) : null}
-          </div>
-        </div>
-
-        <div className={styles.footer}>
-          {!isCreateMode && onDelete ? (
-            <button type="button" className={styles.danger} onClick={handleDelete} disabled={saving}>
-              {t('history', 'delete')}
-            </button>
-          ) : null}
-          <button type="button" className={styles.secondary} onClick={onClose} disabled={saving}>
-            {t('addTx', 'cancel')}
+      {section === 'debt' ? (
+        <div className={styles.segment} role="group" aria-label={t('balance', 'debtDirectionLabel')}>
+          <button
+            type="button"
+            className={styles.segmentBtn}
+            aria-pressed={debtDirection === 'owed_to_me'}
+            onClick={() => setDebtDirection('owed_to_me')}
+          >
+            {t('balance', 'debtDirectionOwedToMe')}
           </button>
           <button
             type="button"
-            className={styles.primary}
-            onClick={handleSave}
-            disabled={saving || !name.trim() || parseMoney(amount) === null}
+            className={styles.segmentBtn}
+            aria-pressed={debtDirection === 'owed_by_me'}
+            onClick={() => setDebtDirection('owed_by_me')}
           >
-            {saving ? `${t('addTx', 'save')}...` : isCreateMode ? t('addTx', 'create') : t('addTx', 'save')}
+            {t('balance', 'debtDirectionOwedByMe')}
           </button>
         </div>
+      ) : null}
+
+      <div>
+        <p className={styles.blockLabel}>{t('balance', 'accountColorLabel')}</p>
+        <div className={styles.colorRow}>
+          {COLOR_OPTIONS.map((opt) => (
+            <button
+              key={opt.tone}
+              type="button"
+              className={`${styles.colorDot} ${iconTone === opt.tone ? styles.colorDotActive : ''}`}
+              style={{ backgroundColor: opt.swatch }}
+              onClick={() => setIconTone(opt.tone)}
+              aria-label={t('accountEditor', opt.labelKey)}
+              title={t('accountEditor', opt.labelKey)}
+            />
+          ))}
+        </div>
       </div>
-    </div>
+
+      <div>
+        <p className={styles.blockLabel}>{t('balance', 'accountIconLabel')}</p>
+        <div className={styles.iconGrid}>
+          <button
+            type="button"
+            className={`${styles.iconOption} ${!iconKey ? styles.iconOptionActive : ''}`}
+            onClick={() => setIconKey('')}
+            aria-pressed={!iconKey}
+            title={t('accountEditor', 'iconAuto')}
+          >
+            <Sparkles size={20} strokeWidth={2.2} />
+          </button>
+          {LUCIDE_PICKS.map((opt) => (
+            <button
+              key={opt.key}
+              type="button"
+              className={`${styles.iconOption} ${iconKey === opt.key ? styles.iconOptionActive : ''}`}
+              onClick={() => setIconKey(opt.key)}
+              aria-pressed={iconKey === opt.key}
+              title={t('accountEditor', opt.labelKey)}
+            >
+              <AccountIconGlyph iconKey={opt.key} size={20} strokeWidth={2.2} />
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {!isCreateMode && onDelete ? (
+        <button
+          type="button"
+          className={styles.deleteRow}
+          onClick={() => void handleDelete()}
+          disabled={saving}
+        >
+          {t('history', 'delete')}
+        </button>
+      ) : null}
+    </FormSheet>
   );
 };
 

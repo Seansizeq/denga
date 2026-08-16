@@ -329,6 +329,40 @@
   flex-shrink: 0;
 }
 
+/* Значок героя тепер ще й кнопка (відкриває пікер) — скидаємо чужий button-chrome,
+   інакше браузер домальовує рамку поверх кола (як уже було з рядком категорії). */
+.heroIconBtn {
+  position: relative;
+  appearance: none;
+  -webkit-appearance: none;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.heroIconEditBadge {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #1b1825;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  color: #1b1825;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.heroIconEditBadge svg {
+  color: var(--text-primary);
+}
+
 .heroInfo {
   flex: 1;
   min-width: 0;
@@ -588,6 +622,86 @@
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   padding: 4px 16px calc(20px + var(--safe-area-inset-bottom));
+}
+
+.iconPickerLabel {
+  margin: 4px 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.iconPickerGrid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 10px;
+  margin-bottom: 22px;
+}
+
+.iconPickBtn {
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.iconPickBtn:active {
+  transform: scale(0.95);
+}
+
+.iconPickBtnSelected {
+  border-color: rgba(255, 213, 59, 0.6);
+  color: #ffd53b;
+  background: rgba(255, 213, 59, 0.1);
+}
+
+.colorPickerGrid {
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.colorPickBtn {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  cursor: pointer;
+}
+
+.colorPickBtn:active {
+  transform: scale(0.92);
+}
+
+.colorPickBtnSelected {
+  border-color: #ffffff;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.2);
+}
+
+.resetIconRow {
+  margin-top: 22px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border-light);
+}
+
+.resetIconBtn {
+  width: 100%;
+  padding: 14px 0;
+  border: none;
+  background: none;
+  color: var(--accent-red);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 .rowDatePill {

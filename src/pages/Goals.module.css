@@ -528,3 +528,15 @@
   font-weight: 600;
   color: var(--accent-primary-strong);
 }
+
+/* Скляне коло під іконкою в картці-заголовку форми цілі. */
+.heroGlyph {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.22);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}

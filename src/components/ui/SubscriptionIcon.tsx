@@ -26,6 +26,9 @@ interface SubscriptionIconProps {
   size?: number;
   /** Готовий сервіс, якщо його вже знайшли (списки, чіпи вибору). */
   service?: CatalogService | null;
+  /** Значок, вибраний користувачем вручну — має пріоритет над каталогом і категорією. */
+  icon?: string | null;
+  color?: string | null;
 }
 
 const SubscriptionIcon: React.FC<SubscriptionIconProps> = ({
@@ -33,9 +36,22 @@ const SubscriptionIcon: React.FC<SubscriptionIconProps> = ({
   categoryId,
   size = 46,
   service: serviceProp,
+  icon: customIcon,
+  color: customColor,
 }) => {
   const service = serviceProp !== undefined ? serviceProp : findCatalogService(name);
   const glyph = Math.round(size * 0.48);
+
+  if (customIcon) {
+    const CustomIconComponent = getCategoryIcon(customIcon, 'Tag');
+    const background = customColor || '#8E8E93';
+    return (
+      <span className={styles.circle} style={{ width: size, height: size, background }}>
+        {/* eslint-disable-next-line react-hooks/static-components */}
+        <CustomIconComponent size={glyph} color="#fff" strokeWidth={2} />
+      </span>
+    );
+  }
 
   if (service) {
     const inverted = isTooDark(service.color);

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronRight, Plus, Repeat } from 'lucide-react';
+import { ChevronRight, Pencil, Plus, Repeat } from 'lucide-react';
 import { formatCurrency, type PlannerCurrency } from '../utils/formatters';
 import { useTranslation } from '../i18n/LanguageContext';
 import { useGoBack } from '../hooks/useGoBack';
@@ -8,6 +8,8 @@ import { apiFetch } from '../api/client';
 import { usePersistedState } from '../hooks/usePersistedState';
 import {
   CATEGORIES,
+  CUSTOM_CATEGORY_COLORS,
+  CUSTOM_CATEGORY_ICONS,
   findCategory,
   getCustomCategoryData,
   inferCustomCategoryColor,
@@ -61,6 +63,9 @@ interface Subscription {
   nextChargeDate: string;
   note?: string;
   active: boolean;
+  /** Значок, вибраний вручну — якщо є, має пріоритет над каталогом сервісів і категорією. */
+  icon?: string | null;
+  color?: string | null;
 }
 
 const normalizeSubCurrency = (raw: unknown): SubscriptionCurrency =>
@@ -104,6 +109,9 @@ const Subscriptions: React.FC = () => {
     Array<{ id: string; name: string; icon: string; color: string }>
   >([]);
   const [categorySheetOpen, setCategorySheetOpen] = useState(false);
+  const [customIcon, setCustomIcon] = useState<string | null>(null);
+  const [customColor, setCustomColor] = useState<string | null>(null);
+  const [iconSheetOpen, setIconSheetOpen] = useState(false);
 
   const load = useCallback(async () => {
     setListError('');
@@ -180,6 +188,8 @@ const Subscriptions: React.FC = () => {
     setNextChargeDate(new Date().toISOString().slice(0, 10));
     setActive(true);
     setNote('');
+    setCustomIcon(null);
+    setCustomColor(null);
     setEditingId(null);
     setIsFormOpen(false);
   }, []);
@@ -265,6 +275,8 @@ const Subscriptions: React.FC = () => {
             cycle,
             nextChargeDate,
             active,
+            icon: customIcon,
+            color: customColor,
             note: note.trim(),
           }),
         }
@@ -321,6 +333,8 @@ const Subscriptions: React.FC = () => {
     setCycle(sub.cycle);
     setNextChargeDate(sub.nextChargeDate);
     setActive(sub.active);
+    setCustomIcon(sub.icon ?? null);
+    setCustomColor(sub.color ?? null);
     setNote(sub.note ?? '');
   };
 
@@ -349,7 +363,13 @@ const Subscriptions: React.FC = () => {
         className={`${styles.item} ${opts.muted ? styles.itemDisabled : ''}`}
         onClick={() => onEdit(sub)}
       >
-        <SubscriptionIcon name={sub.name} categoryId={sub.categoryId} size={46} />
+        <SubscriptionIcon
+          name={sub.name}
+          categoryId={sub.categoryId}
+          icon={sub.icon}
+          color={sub.color}
+          size={46}
+        />
         <div className={styles.itemInfo}>
           <span className={styles.itemName}>{sub.name}</span>
           <span className={styles.itemDate}>
@@ -461,14 +481,26 @@ const Subscriptions: React.FC = () => {
 
               <div
                 className={styles.heroCard}
-                style={{ background: pickedService?.color ?? getCategoryVisual(categoryId).color }}
+                style={{ background: customColor ?? pickedService?.color ?? getCategoryVisual(categoryId).color }}
               >
-                <SubscriptionIcon
-                  name={name}
-                  categoryId={categoryId}
-                  service={pickedService}
-                  size={46}
-                />
+                <button
+                  type="button"
+                  className={styles.heroIconBtn}
+                  onClick={() => setIconSheetOpen(true)}
+                  aria-label={t('addTx', 'chooseIcon')}
+                >
+                  <SubscriptionIcon
+                    name={name}
+                    categoryId={categoryId}
+                    service={pickedService}
+                    icon={customIcon}
+                    color={customColor}
+                    size={46}
+                  />
+                  <span className={styles.heroIconEditBadge} aria-hidden="true">
+                    <Pencil size={11} strokeWidth={2.4} />
+                  </span>
+                </button>
                 <div className={styles.heroInfo}>
                   <span className={styles.heroName}>{name.trim() || t('subscriptions', 'addTitle')}</span>
                   <span className={styles.heroDate}>
@@ -665,6 +697,94 @@ const Subscriptions: React.FC = () => {
         </div>
       ) : null}
 
+      {iconSheetOpen ? (
+        <div
+          className={styles.categoryOverlay}
+          role="presentation"
+          onClick={() => setIconSheetOpen(false)}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="subscriptions-icon-title"
+            className={styles.categorySheet}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className={styles.sheetGrabber} aria-hidden="true" />
+            <header className={styles.sheetHeader}>
+              <span
+                className={`${styles.headerPill} ${styles.headerPillGhost}`}
+                style={{ visibility: 'hidden' }}
+                aria-hidden="true"
+              >
+                {t('addTx', 'cancel')}
+              </span>
+              <h2 id="subscriptions-icon-title" className={styles.sheetTitle}>
+                {t('subscriptions', 'customIconTitle')}
+              </h2>
+              <button
+                type="button"
+                className={`${styles.headerPill} ${styles.headerPillGhost}`}
+                onClick={() => setIconSheetOpen(false)}
+              >
+                {t('addTx', 'cancel')}
+              </button>
+            </header>
+            <div className={styles.categorySheetBody}>
+              <p className={styles.iconPickerLabel}>{t('addTx', 'chooseIcon')}</p>
+              <div className={styles.iconPickerGrid}>
+                {CUSTOM_CATEGORY_ICONS.map((iconName) => {
+                  const IconComponent = getCategoryIcon(iconName, 'Tag');
+                  const selected = customIcon === iconName;
+                  return (
+                    <button
+                      key={iconName}
+                      type="button"
+                      className={`${styles.iconPickBtn} ${selected ? styles.iconPickBtnSelected : ''}`}
+                      onClick={() => {
+                        setCustomIcon(iconName);
+                        if (!customColor) setCustomColor(CUSTOM_CATEGORY_COLORS[0]);
+                      }}
+                    >
+                      <IconComponent size={20} strokeWidth={1.8} />
+                    </button>
+                  );
+                })}
+              </div>
+
+              <p className={styles.iconPickerLabel}>{t('addTx', 'chooseColor')}</p>
+              <div className={styles.colorPickerGrid}>
+                {CUSTOM_CATEGORY_COLORS.map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    className={`${styles.colorPickBtn} ${customColor === color ? styles.colorPickBtnSelected : ''}`}
+                    style={{ backgroundColor: color }}
+                    onClick={() => setCustomColor(color)}
+                  />
+                ))}
+              </div>
+
+              {customIcon ? (
+                <div className={styles.resetIconRow}>
+                  <button
+                    type="button"
+                    className={styles.resetIconBtn}
+                    onClick={() => {
+                      setCustomIcon(null);
+                      setCustomColor(null);
+                      setIconSheetOpen(false);
+                    }}
+                  >
+                    {t('subscriptions', 'resetIcon')}
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          </section>
+        </div>
+      ) : null}
+
       <button
         type="button"
         className={styles.floatingAddBtn}
@@ -679,6 +799,8 @@ const Subscriptions: React.FC = () => {
             setNextChargeDate(new Date().toISOString().slice(0, 10));
             setActive(true);
             setNote('');
+            setCustomIcon(null);
+            setCustomColor(null);
             setEditingId(null);
             setActionError('');
           }

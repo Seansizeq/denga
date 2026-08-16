@@ -12,6 +12,8 @@ import { formatCurrency } from '../utils/formatters';
 import type { DisplayCurrency } from '../utils/formatters';
 import { useTranslation } from '../i18n/LanguageContext';
 import { useGoBack } from '../hooks/useGoBack';
+import FormSheet from '../components/ui/FormSheet';
+import sheet from '../components/ui/FormSheet.module.css';
 import styles from './Goals.module.css';
 
 const SWATCHES = ['#7C5CFF', '#22c55e', '#06b6d4', '#eab308', '#f97316', '#ec4899'] as const;
@@ -71,12 +73,6 @@ const Goals: React.FC = () => {
   const [color, setColor] = useState<string>(SWATCHES[0]);
   const [iconKey, setIconKey] = useState<(typeof ICON_KEYS)[number]>('target');
   const [saveError, setSaveError] = useState('');
-
-  const ensureFieldVisible = (el: HTMLElement) => {
-    window.setTimeout(() => {
-      el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
-    }, 120);
-  };
 
   const load = useCallback(async () => {
     setListError('');
@@ -196,12 +192,6 @@ const Goals: React.FC = () => {
           {listError}
         </p>
       ) : null}
-      {saveError && sheetOpen ? (
-        <p className={styles.bannerError} role="alert">
-          {saveError}
-        </p>
-      ) : null}
-
       {loading ? (
         <p className={styles.emptyText}>{t('common', 'loading')}</p>
       ) : goals.length === 0 ? (
@@ -223,115 +213,110 @@ const Goals: React.FC = () => {
       </button>
 
       {sheetOpen ? (
-        <div
-          className={styles.overlay}
-          role="presentation"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setSheetOpen(false);
-          }}
+        <FormSheet
+          title={t('goals', 'addGoal')}
+          onClose={() => setSheetOpen(false)}
+          onSubmit={() => void onCreate()}
+          submitLabel={t('goals', 'save')}
+          cancelLabel={t('goals', 'cancel')}
+          submitDisabled={!name.trim() || !(Number(target.replace(',', '.')) > 0)}
+          error={saveError || undefined}
         >
-          <div className={styles.sheet} onClick={(e) => e.stopPropagation()}>
-            <h2 className={styles.sheetTitle}>{t('goals', 'addGoal')}</h2>
-            <div className={styles.field}>
-              <label className={styles.label} htmlFor="goal-name">
-                {t('goals', 'name')}
-              </label>
+          <div className={sheet.heroCard} style={{ background: color }}>
+            <span className={styles.heroGlyph}>
+              <GoalIcon name={iconKey} color="#fff" size={24} />
+            </span>
+            <div className={sheet.heroInfo}>
+              <span className={sheet.heroName}>{name.trim() || t('goals', 'addGoal')}</span>
+              <span className={sheet.heroCaption}>
+                {Number(target.replace(',', '.')) > 0
+                  ? formatCurrency(Number(target.replace(',', '.')), locale, currency as DisplayCurrency)
+                  : t('goals', 'target')}
+              </span>
+            </div>
+          </div>
+
+          <div className={sheet.group}>
+            <label className={sheet.row}>
+              <span className={sheet.rowLabel}>{t('goals', 'name')}</span>
               <input
-                id="goal-name"
-                className={styles.input}
+                className={sheet.rowField}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                onFocus={(e) => ensureFieldVisible(e.currentTarget)}
                 placeholder={t('goals', 'name')}
               />
-            </div>
-            <div className={styles.row2}>
-              <div className={styles.field}>
-                <label className={styles.label} htmlFor="goal-target">
-                  {t('goals', 'target')}
-                </label>
-                <input
-                  id="goal-target"
-                  className={styles.input}
-                  inputMode="decimal"
-                  value={target}
-                  onChange={(e) => setTarget(e.target.value)}
-                  onFocus={(e) => ensureFieldVisible(e.currentTarget)}
-                  placeholder="0"
-                />
-              </div>
-              <div className={styles.field}>
-                <label className={styles.label} htmlFor="goal-cur">
-                  {t('goals', 'currency')}
-                </label>
-                <select
-                  id="goal-cur"
-                  className={styles.input}
-                  value={currency}
-                  onChange={(e) => setCurrency(e.target.value as GoalCurrency)}
-                  onFocus={(e) => ensureFieldVisible(e.currentTarget)}
-                >
-                  <option value="UAH">UAH</option>
-                  <option value="PLN">PLN</option>
-                  <option value="USD">USD</option>
-                </select>
-              </div>
-            </div>
-            <div className={styles.field}>
-              <label className={styles.label} htmlFor="goal-deadline">
-                {t('goals', 'deadline')} ({t('goals', 'deadlineOptional')})
-              </label>
+            </label>
+
+            <label className={sheet.row}>
+              <span className={sheet.rowLabel}>{t('goals', 'target')}</span>
               <input
-                id="goal-deadline"
-                className={`${styles.input} ${styles.dateInput}`}
+                className={sheet.rowField}
+                inputMode="decimal"
+                value={target}
+                onChange={(e) => setTarget(e.target.value)}
+                placeholder="0"
+              />
+            </label>
+
+            <label className={sheet.row}>
+              <span className={sheet.rowLabel}>{t('goals', 'currency')}</span>
+              <select
+                className={`${sheet.rowField} ${sheet.rowSelect}`}
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value as GoalCurrency)}
+              >
+                <option value="UAH">UAH</option>
+                <option value="PLN">PLN</option>
+                <option value="USD">USD</option>
+              </select>
+            </label>
+
+            <label className={sheet.row}>
+              <span className={sheet.rowLabel}>{t('goals', 'deadline')}</span>
+              <input
+                className={sheet.rowDatePill}
                 type="date"
                 value={deadline}
                 onChange={(e) => setDeadline(e.target.value)}
-                onFocus={(e) => ensureFieldVisible(e.currentTarget)}
               />
-            </div>
-            <div className={styles.field}>
-              <span className={styles.label}>{t('goals', 'color')}</span>
-              <div className={styles.swatches}>
-                {SWATCHES.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    className={`${styles.swatch} ${color === c ? styles.swatchActive : ''}`}
-                    style={{ backgroundColor: c }}
-                    aria-label={c}
-                    onClick={() => setColor(c)}
-                  />
-                ))}
-              </div>
-            </div>
-            <div className={styles.field}>
-              <span className={styles.label}>{t('addTx', 'chooseIcon')}</span>
-              <div className={styles.swatches}>
-                {ICON_KEYS.map((k) => (
-                  <button
-                    key={k}
-                    type="button"
-                    className={`${styles.swatch} ${iconKey === k ? styles.swatchActive : ''}`}
-                    style={{ backgroundColor: 'rgba(255,255,255,0.08)' }}
-                    onClick={() => setIconKey(k)}
-                    aria-label={k}
-                  >
-                    <GoalIcon name={k} color={color} size={18} />
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className={styles.sheetActions}>
-              <button type="button" className={styles.btnGhost} onClick={() => setSheetOpen(false)}>
-                {t('goals', 'cancel')}
-              </button>
-              <button type="button" className={styles.btnPrimary} onClick={() => void onCreate()}>
-                {t('goals', 'save')}
-              </button>
+            </label>
+          </div>
+          <p className={sheet.groupCaption}>{t('goals', 'deadlineOptional')}</p>
+
+          <div>
+            <p className={sheet.blockLabel}>{t('goals', 'color')}</p>
+            <div className={sheet.colorRow}>
+              {SWATCHES.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  className={`${sheet.colorDot} ${color === c ? sheet.colorDotActive : ''}`}
+                  style={{ backgroundColor: c }}
+                  aria-label={c}
+                  onClick={() => setColor(c)}
+                />
+              ))}
             </div>
           </div>
-        </div>
+
+          <div>
+            <p className={sheet.blockLabel}>{t('addTx', 'chooseIcon')}</p>
+            <div className={sheet.iconGrid}>
+              {ICON_KEYS.map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  className={`${sheet.iconOption} ${iconKey === k ? sheet.iconOptionActive : ''}`}
+                  onClick={() => setIconKey(k)}
+                  aria-pressed={iconKey === k}
+                  aria-label={k}
+                >
+                  <GoalIcon name={k} color={iconKey === k ? color : 'currentColor'} size={20} />
+                </button>
+              ))}
+            </div>
+          </div>
+        </FormSheet>
       ) : null}
     </div>
   );

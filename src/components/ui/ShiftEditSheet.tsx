@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import BottomSheet from './BottomSheet';
+import FormSheet from './FormSheet';
 import { useTranslation } from '../../i18n/LanguageContext';
 import { formatWorkedHoursInput, parseWorkedHoursInput } from '../../utils/workedHours';
-import styles from './ShiftEditSheet.module.css';
+import styles from './FormSheet.module.css';
 
 export interface EditableShift {
   id: string;
@@ -63,19 +63,20 @@ const ShiftEditSheet: React.FC<ShiftEditSheetProps> = ({ shift, onClose, onSave 
   };
 
   return (
-    <BottomSheet
-      open
+    <FormSheet
       title={t('planner', 'editShift')}
       onClose={onClose}
-      closeLabel={t('addTx', 'cancel')}
+      onSubmit={() => void handleSave()}
+      submitLabel={t('addTx', 'save')}
+      cancelLabel={t('addTx', 'cancel')}
+      submitDisabled={saving}
+      error={error || undefined}
     >
-      <div className={styles.form}>
-        {error ? <p className={styles.error}>{error}</p> : null}
-
-        <label className={styles.field}>
-          <span className={styles.label}>{t('planner', 'editShiftHoursPrompt')}</span>
+      <div className={styles.group}>
+        <label className={styles.row}>
+          <span className={styles.rowLabel}>{t('planner', 'editShiftHoursPrompt')}</span>
           <input
-            className={styles.input}
+            className={styles.rowField}
             value={hours}
             onChange={(e) => setHours(e.target.value)}
             inputMode="numeric"
@@ -83,10 +84,10 @@ const ShiftEditSheet: React.FC<ShiftEditSheetProps> = ({ shift, onClose, onSave 
           />
         </label>
 
-        <label className={styles.field}>
-          <span className={styles.label}>{t('planner', 'editShiftAmountPrompt')}</span>
+        <label className={styles.row}>
+          <span className={styles.rowLabel}>{t('planner', 'editShiftAmountPrompt')}</span>
           <input
-            className={styles.input}
+            className={styles.rowField}
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             inputMode="decimal"
@@ -94,26 +95,18 @@ const ShiftEditSheet: React.FC<ShiftEditSheetProps> = ({ shift, onClose, onSave 
           />
         </label>
 
-        <label className={styles.field}>
-          <span className={styles.label}>{t('planner', 'editShiftNotePrompt')}</span>
+        <label className={styles.row}>
+          <span className={styles.rowLabel}>{t('planner', 'editShiftNotePrompt')}</span>
           <input
-            className={styles.input}
+            className={styles.rowField}
             value={note}
             onChange={(e) => setNote(e.target.value)}
             maxLength={120}
+            placeholder="—"
           />
         </label>
-
-        <button
-          type="button"
-          className={styles.saveBtn}
-          onClick={() => void handleSave()}
-          disabled={saving}
-        >
-          {t('addTx', 'save')}
-        </button>
       </div>
-    </BottomSheet>
+    </FormSheet>
   );
 };
 

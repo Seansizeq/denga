@@ -1,0 +1,429 @@
+/* ---------- Спільний bottom sheet форм у стилі iOS ----------
+   Один вигляд для всіх форм застосунку: підписки, рахунки, цілі. Раніше кожне
+   вікно мало власну верстку — десь заголовки над полями, десь модалка по
+   центру, десь три кнопки внизу, — і жодне не було схоже на інше. */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 5, 10, 0.55);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  z-index: 1300;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-top: calc(var(--safe-area-inset-top) + 24px);
+  animation: sheetFade 0.18s ease;
+}
+
+@keyframes sheetFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.sheet {
+  color-scheme: dark;
+  width: min(100%, 520px);
+  /* Відносно оверлея, а не вікна: із відкритою клавіатурою він нижчий. */
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #1b1825;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-bottom: none;
+  border-radius: 28px 28px 0 0;
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.5);
+  animation: sheetUp 0.26s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+@keyframes sheetUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.grabber {
+  width: 36px;
+  height: 5px;
+  margin: 8px auto 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  flex-shrink: 0;
+}
+
+/* Три частини в одному ряду: заголовок стискається сам, а не лізе на кнопки. */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 14px 10px;
+  flex-shrink: 0;
+}
+
+.title {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-align: center;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+.headerPill {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  border: none;
+  border-radius: var(--radius-full);
+  padding: 8px 16px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.12s ease, opacity 0.15s ease;
+}
+
+.headerPill:active {
+  transform: scale(0.96);
+}
+
+.headerPillGhost {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
+.headerPillPrimary {
+  background: var(--accent-yellow);
+  color: #1a1200;
+}
+
+.headerPillPrimary:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding: 4px 16px calc(20px + var(--safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* Блоки форми не стискаються під висоту шита — інакше з відкритою клавіатурою
+   останній рядок сплющувався і обрізався замість того, щоб з'явився скрол. */
+.body > * {
+  flex-shrink: 0;
+}
+
+.error {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 90, 99, 0.14);
+  color: #ffb4b4;
+  font-size: 13px;
+}
+
+/* ---------- Кольорова картка-ідентифікатор угорі форми ---------- */
+
+.heroCard {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border-radius: var(--radius-lg);
+  color: #fff;
+}
+
+.heroInfo {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.heroName {
+  font-size: 19px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.heroCaption {
+  font-size: 13px;
+  font-weight: 500;
+  opacity: 0.85;
+}
+
+/* ---------- Згрупований список полів (iOS inset list) ---------- */
+
+.group {
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+}
+
+.row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 12px;
+  min-height: 50px;
+  padding: 0 14px;
+  /* .row трапляється і на <button> — без цього скидання браузер домальовує
+     власну рамку й фон кнопки поверх нашої верстки. */
+  appearance: none;
+  -webkit-appearance: none;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  font-family: inherit;
+  text-align: left;
+  color: inherit;
+}
+
+.row + .row::before {
+  content: '';
+  position: absolute;
+  left: 14px;
+  right: 0;
+  top: 0;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.rowTappable {
+  cursor: pointer;
+}
+
+.rowTappable:active {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.rowLabel {
+  flex-shrink: 0;
+  font-size: 15px;
+  color: var(--text-secondary);
+}
+
+.rowField {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 16px;
+  text-align: right;
+  padding: 14px 0;
+}
+
+.rowField:focus {
+  outline: none;
+}
+
+.rowField::placeholder {
+  color: var(--text-tertiary);
+}
+
+/* `direction: rtl` — єдиний спосіб притиснути текст <select> праворуч у
+   WebKit, який ігнорує тут text-align. Стрілку домальовуємо самі. */
+.rowSelect {
+  appearance: none;
+  -webkit-appearance: none;
+  direction: rtl;
+  padding-right: 18px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236a6478' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right center;
+  background-size: 12px;
+  cursor: pointer;
+}
+
+.rowSelect option {
+  direction: ltr;
+  background: #1b1825;
+}
+
+.rowValue {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  color: var(--text-primary);
+  font-size: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rowChevron {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+}
+
+/* Дата виглядає як пілюля, а не як поле вводу з системною іконкою. */
+.rowDatePill {
+  flex: 0 0 auto;
+  margin-left: auto;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-full);
+  padding: 6px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.rowDatePill::-webkit-calendar-picker-indicator {
+  opacity: 0;
+  position: absolute;
+  right: 0;
+  width: 100%;
+  cursor: pointer;
+}
+
+.groupCaption {
+  margin: -10px 4px 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-tertiary);
+}
+
+/* Підпис над блоком, коли рядок-мітка не підходить (кольори, іконки). */
+.blockLabel {
+  margin: 0 4px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+/* ---------- Сегментний перемикач ---------- */
+
+.segment {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.segmentBtn {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  border-radius: 11px;
+  padding: 10px 12px;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease, transform 0.12s ease;
+}
+
+.segmentBtn:active {
+  transform: scale(0.97);
+}
+
+.segmentBtn[aria-pressed='true'] {
+  background: rgba(255, 255, 255, 0.11);
+  color: var(--text-primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
+}
+
+/* ---------- Сітки вибору кольору та іконки ---------- */
+
+.colorRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.colorDot {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  padding: 0;
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+
+.colorDot:active {
+  transform: scale(0.92);
+}
+
+.colorDotActive {
+  border-color: #ffffff;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.18);
+}
+
+.iconGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(46px, 1fr));
+  gap: 10px;
+}
+
+.iconOption {
+  height: 46px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.12s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.iconOption:active {
+  transform: scale(0.95);
+}
+
+.iconOptionActive {
+  border-color: rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+}
+
+/* ---------- Небезпечна дія внизу форми ---------- */
+
+.deleteRow {
+  width: 100%;
+  border: none;
+  border-radius: var(--radius-lg);
+  background: var(--accent-red-soft);
+  color: var(--accent-red);
+  padding: 14px;
+  font-size: 15px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.deleteRow:active {
+  opacity: 0.85;
+}
