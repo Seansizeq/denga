@@ -20,6 +20,8 @@ import {
   Tag,
   Trophy,
   CalendarX,
+  Plus,
+  Pencil,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import {
@@ -144,12 +146,6 @@ const GoalDetail: React.FC = () => {
   const [editColor, setEditColor] = useState<string>(SWATCHES[0]);
   const [editIcon, setEditIcon] = useState<(typeof ICON_KEYS)[number]>('target');
   const [editArchived, setEditArchived] = useState(false);
-
-  const ensureFieldVisible = (el: HTMLElement) => {
-    window.setTimeout(() => {
-      el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
-    }, 120);
-  };
 
   // Кожен рахунок можна списати в будь-яку ціль незалежно від валюти —
   // сервер конвертує суму за поточним курсом.
@@ -681,15 +677,18 @@ const GoalDetail: React.FC = () => {
         </div>
       )}
 
-      <div className={styles.toolbar}>
-        <button type="button" className={styles.toolbarBtn} onClick={openContribute}>
+      <div className={styles.actions}>
+        <button type="button" className={`${styles.actionBtn} ${styles.actionPrimary}`} onClick={openContribute}>
+          <Plus size={20} strokeWidth={2.4} />
           {t('goals', 'contribute')}
         </button>
-        <button type="button" className={styles.toolbarBtn} onClick={openEdit}>
-          {t('goals', 'edit')}
-        </button>
-        <button type="button" className={`${styles.toolbarBtn} ${styles.toolbarBtnDanger}`} onClick={() => void onDeleteGoal()}>
-          {t('goals', 'delete')}
+        <button
+          type="button"
+          className={`${styles.actionBtn} ${styles.actionIcon}`}
+          onClick={openEdit}
+          aria-label={t('goals', 'edit')}
+        >
+          <Pencil size={19} strokeWidth={2.2} />
         </button>
       </div>
 
@@ -828,133 +827,153 @@ const GoalDetail: React.FC = () => {
       ) : null}
 
       {editOpen ? (
-        <div
-          className={styles.overlay}
-          role="presentation"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setEditOpen(false);
-          }}
+        <FormSheet
+          title={t('goals', 'edit')}
+          onClose={() => setEditOpen(false)}
+          onSubmit={() => void onSaveEdit()}
+          submitLabel={t('goals', 'save')}
+          cancelLabel={t('goals', 'cancel')}
+          submitDisabled={!editName.trim() || !(Number(editTarget.replace(',', '.')) > 0)}
+          error={actionError || undefined}
         >
-          <div className={styles.sheet} onClick={(e) => e.stopPropagation()}>
-            <h2 className={styles.sheetTitle}>{t('goals', 'edit')}</h2>
-            <div className={styles.field}>
-              <label className={styles.label} htmlFor="e-name">
-                {t('goals', 'name')}
-              </label>
+          <div className={sheet.heroCard} style={{ background: editColor }}>
+            <span className={styles.heroGlyph}>
+              <GoalIcon name={editIcon} color="#fff" size={24} />
+            </span>
+            <div className={sheet.heroInfo}>
+              <span className={sheet.heroName}>{editName.trim() || t('goals', 'edit')}</span>
+              <span className={sheet.heroCaption}>
+                {Number(editTarget.replace(',', '.')) > 0
+                  ? formatCurrency(Number(editTarget.replace(',', '.')), locale, editCurrency as DisplayCurrency)
+                  : t('goals', 'target')}
+              </span>
+            </div>
+          </div>
+
+          <div className={sheet.group}>
+            <label className={sheet.row}>
+              <span className={sheet.rowLabel}>{t('goals', 'name')}</span>
               <input
-                id="e-name"
-                className={styles.input}
+                className={sheet.rowField}
                 value={editName}
                 onChange={(e) => setEditName(e.target.value)}
-                onFocus={(e) => ensureFieldVisible(e.currentTarget)}
+                placeholder={t('goals', 'name')}
               />
-            </div>
-            <div className={styles.row2}>
-              <div className={styles.field}>
-                <label className={styles.label} htmlFor="e-target">
-                  {t('goals', 'target')}
-                </label>
-                <input
-                  id="e-target"
-                  className={styles.input}
-                  inputMode="decimal"
-                  value={editTarget}
-                  onChange={(e) => setEditTarget(e.target.value)}
-                  onFocus={(e) => ensureFieldVisible(e.currentTarget)}
-                />
-              </div>
-              <div className={styles.field}>
-                <label className={styles.label} htmlFor="e-baseline">
-                  {goal.type === 'income' ? t('goals', 'baselineEarned') : t('goals', 'baselineSaved')}
-                </label>
-                <input
-                  id="e-baseline"
-                  className={styles.input}
-                  inputMode="decimal"
-                  value={editBaseline}
-                  onChange={(e) => setEditBaseline(e.target.value)}
-                  onFocus={(e) => ensureFieldVisible(e.currentTarget)}
-                  placeholder="0"
-                />
-              </div>
-              <div className={styles.field}>
-                <label className={styles.label} htmlFor="e-cur">
-                  {t('goals', 'currency')}
-                </label>
-                <select
-                  id="e-cur"
-                  className={styles.input}
-                  value={editCurrency}
-                  onChange={(e) => setEditCurrency(e.target.value as GoalCurrency)}
-                  onFocus={(e) => ensureFieldVisible(e.currentTarget)}
-                >
-                  <option value="UAH">UAH</option>
-                  <option value="PLN">PLN</option>
-                  <option value="USD">USD</option>
-                </select>
-              </div>
-            </div>
-            <div className={styles.field}>
-              <label className={styles.label} htmlFor="e-deadline">
-                {t('goals', 'deadline')}
-              </label>
+            </label>
+
+            <label className={sheet.row}>
+              <span className={sheet.rowLabel}>{t('goals', 'target')}</span>
               <input
-                id="e-deadline"
-                className={`${styles.input} ${styles.dateInput}`}
+                className={sheet.rowField}
+                inputMode="decimal"
+                value={editTarget}
+                onChange={(e) => setEditTarget(e.target.value)}
+                placeholder="0"
+              />
+            </label>
+
+            <label className={sheet.row}>
+              <span className={sheet.rowLabel}>
+                {goal.type === 'income' ? t('goals', 'baselineEarned') : t('goals', 'baselineSaved')}
+              </span>
+              <input
+                className={sheet.rowField}
+                inputMode="decimal"
+                value={editBaseline}
+                onChange={(e) => setEditBaseline(e.target.value)}
+                placeholder="0"
+              />
+            </label>
+
+            <label className={sheet.row}>
+              <span className={sheet.rowLabel}>{t('goals', 'currency')}</span>
+              <select
+                className={`${sheet.rowField} ${sheet.rowSelect}`}
+                value={editCurrency}
+                onChange={(e) => setEditCurrency(e.target.value as GoalCurrency)}
+              >
+                <option value="UAH">UAH</option>
+                <option value="PLN">PLN</option>
+                <option value="USD">USD</option>
+              </select>
+            </label>
+
+            <label className={sheet.row}>
+              <span className={sheet.rowLabel}>{t('goals', 'deadline')}</span>
+              <input
+                className={sheet.rowDatePill}
                 type="date"
                 min={goalStartedOn}
                 value={editDeadline}
                 onChange={(e) => setEditDeadline(e.target.value)}
-                onFocus={(e) => ensureFieldVisible(e.currentTarget)}
               />
-              {goal.type === 'income' ? <p className={styles.meta}>{t('goals', 'deadlineRequiredForIncome')}</p> : null}
-            </div>
-            <div className={styles.field}>
-              <span className={styles.label}>{t('goals', 'color')}</span>
-              <div className={styles.swatches}>
-                {SWATCHES.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    className={`${styles.swatch} ${editColor === c ? styles.swatchActive : ''}`}
-                    style={{ backgroundColor: c }}
-                    aria-label={c}
-                    onClick={() => setEditColor(c)}
-                  />
-                ))}
-              </div>
-            </div>
-            <div className={styles.field}>
-              <span className={styles.label}>{t('addTx', 'chooseIcon')}</span>
-              <div className={styles.swatches}>
-                {ICON_KEYS.map((k) => (
-                  <button
-                    key={k}
-                    type="button"
-                    className={`${styles.swatch} ${editIcon === k ? styles.swatchActive : ''}`}
-                    style={{ backgroundColor: 'rgba(255,255,255,0.08)' }}
-                    onClick={() => setEditIcon(k)}
-                    aria-label={k}
-                  >
-                    <GoalIcon name={k} color={editColor} size={18} />
-                  </button>
-                ))}
-              </div>
-            </div>
-            <label className={styles.field} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-              <input type="checkbox" checked={editArchived} onChange={(e) => setEditArchived(e.target.checked)} />
-              <span>{t('goals', 'archived')}</span>
             </label>
-            <div className={styles.sheetActions}>
-              <button type="button" className={styles.btnGhost} onClick={() => setEditOpen(false)}>
-                {t('goals', 'cancel')}
+          </div>
+          <p className={sheet.groupCaption}>
+            {goal.type === 'income' ? t('goals', 'baselineIncomeHint') : t('goals', 'baselineSavingsHint')}{' '}
+            {goal.type === 'income' ? t('goals', 'deadlineRequiredForIncome') : t('goals', 'deadlineOptional')}
+          </p>
+
+          <div>
+            <p className={sheet.blockLabel}>{t('goals', 'goalState')}</p>
+            <div className={sheet.segment} role="group" aria-label={t('goals', 'goalState')}>
+              <button
+                type="button"
+                className={sheet.segmentBtn}
+                aria-pressed={!editArchived}
+                onClick={() => setEditArchived(false)}
+              >
+                {t('goals', 'stateActive')}
               </button>
-              <button type="button" className={styles.btnPrimary} onClick={() => void onSaveEdit()}>
-                {t('goals', 'save')}
+              <button
+                type="button"
+                className={sheet.segmentBtn}
+                aria-pressed={editArchived}
+                onClick={() => setEditArchived(true)}
+              >
+                {t('goals', 'archived')}
               </button>
             </div>
           </div>
-        </div>
+
+          <div>
+            <p className={sheet.blockLabel}>{t('goals', 'color')}</p>
+            <div className={sheet.colorRow}>
+              {SWATCHES.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  className={`${sheet.colorDot} ${editColor === c ? sheet.colorDotActive : ''}`}
+                  style={{ backgroundColor: c }}
+                  aria-label={c}
+                  onClick={() => setEditColor(c)}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className={sheet.blockLabel}>{t('addTx', 'chooseIcon')}</p>
+            <div className={sheet.iconGrid}>
+              {ICON_KEYS.map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  className={`${sheet.iconOption} ${editIcon === k ? sheet.iconOptionActive : ''}`}
+                  onClick={() => setEditIcon(k)}
+                  aria-pressed={editIcon === k}
+                  aria-label={k}
+                >
+                  <GoalIcon name={k} color={editIcon === k ? editColor : 'currentColor'} size={20} />
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <button type="button" className={sheet.deleteRow} onClick={() => void onDeleteGoal()}>
+            {t('goals', 'delete')}
+          </button>
+        </FormSheet>
       ) : null}
     </div>
   );

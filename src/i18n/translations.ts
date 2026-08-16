@@ -422,6 +422,8 @@ type Dict = {
     baselineSourceLabel: string;
     incomeNoWalletHint: string;
     accountNotForIncome: string;
+    goalState: string;
+    stateActive: string;
     cryptoAccountUnsupported: string;
     roadTo: string;
     aheadOfPlan: string;
@@ -940,6 +942,8 @@ const uk: Dict = {
     baselineSourceLabel: 'Стартова сума',
     incomeNoWalletHint: 'Дохід не списується з рахунку — це нові гроші, тож гаманець лишається без змін.',
     accountNotForIncome: 'Доходну ціль не поповнюють з рахунку.',
+    goalState: 'Стан',
+    stateActive: 'Активна',
     cryptoAccountUnsupported: 'Крипторахунок не можна використати для внеску в ціль.',
     roadTo: 'Шлях до',
     aheadOfPlan: 'Ти на {amount} попереду графіка',
@@ -1462,6 +1466,8 @@ const ru: Dict = {
     baselineSourceLabel: 'Стартовая сумма',
     incomeNoWalletHint: 'Доход не списывается со счёта — это новые деньги, кошелёк остаётся без изменений.',
     accountNotForIncome: 'Доходную цель не пополняют со счёта.',
+    goalState: 'Состояние',
+    stateActive: 'Активная',
     cryptoAccountUnsupported: 'Криптосчёт нельзя использовать для взноса в цель.',
     roadTo: 'Путь к',
     aheadOfPlan: 'Ты на {amount} впереди графика',
@@ -1984,6 +1990,8 @@ const en: Dict = {
     baselineSourceLabel: 'Starting amount',
     incomeNoWalletHint: 'Income is not withdrawn from an account — it is new money, so your wallet stays untouched.',
     accountNotForIncome: 'An income goal is not funded from an account.',
+    goalState: 'State',
+    stateActive: 'Active',
     cryptoAccountUnsupported: 'A crypto account can’t pay into a goal.',
     roadTo: 'Road to',
     aheadOfPlan: 'You’re {amount} ahead of plan',
