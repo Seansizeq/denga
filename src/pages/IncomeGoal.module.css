@@ -234,6 +234,44 @@
   text-transform: uppercase;
 }
 
+/* ---------- Компактні показники ----------
+   Три плитки замість списку на п'ять рядків: сьогоднішній заробіток майже
+   завжди нуль і так видно у внесках, а залишок — це віднімання з шапки. */
+
+.statRow {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 22px;
+}
+
+.statTile {
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 16px;
+  padding: 13px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.statValue {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.statLabel {
+  font-size: 11.5px;
+  line-height: 1.3;
+  color: var(--text-tertiary);
+}
+
 /* ---------- iOS grouped inset list (stat rows) ---------- */
 
 .group {

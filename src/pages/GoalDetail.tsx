@@ -12,26 +12,20 @@ import {
   Heart,
   Gift,
   Rocket,
-  CalendarDays,
   TrendingUp,
   TrendingDown,
-  Flag,
-  Gauge,
   Tag,
   Trophy,
   CalendarX,
   Plus,
-  Pencil,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import {
   addContribution,
   deleteContribution,
-  deleteGoal,
   getContributions,
   getContributionSources,
   getGoal,
-  updateGoal,
   type Goal,
   type GoalContribution,
   type GoalCurrency,
@@ -58,8 +52,6 @@ const SOURCE_PALETTE = [
   'var(--accent-yellow)',
 ];
 
-const GOAL_COLOR_RE = /^#[0-9A-Fa-f]{6}$/;
-const SWATCHES = ['#7C5CFF', '#22c55e', '#06b6d4', '#eab308', '#f97316', '#ec4899'] as const;
 const ICON_KEYS = ['target', 'car', 'plane', 'shield', 'home', 'briefcase', 'wallet', 'heart', 'gift'] as const;
 const ICON_MAP: Record<(typeof ICON_KEYS)[number], LucideIcon> = {
   target: Target,
@@ -137,15 +129,6 @@ const GoalDetail: React.FC = () => {
     [rawAccounts],
   );
   const [actionError, setActionError] = useState('');
-  const [editOpen, setEditOpen] = useState(false);
-  const [editName, setEditName] = useState('');
-  const [editTarget, setEditTarget] = useState('');
-  const [editBaseline, setEditBaseline] = useState('');
-  const [editCurrency, setEditCurrency] = useState<GoalCurrency>('UAH');
-  const [editDeadline, setEditDeadline] = useState('');
-  const [editColor, setEditColor] = useState<string>(SWATCHES[0]);
-  const [editIcon, setEditIcon] = useState<(typeof ICON_KEYS)[number]>('target');
-  const [editArchived, setEditArchived] = useState(false);
 
   // Кожен рахунок можна списати в будь-яку ціль незалежно від валюти —
   // сервер конвертує суму за поточним курсом.
@@ -199,9 +182,6 @@ const GoalDetail: React.FC = () => {
   const fill = goal ? fillColorForPct(pct, goal.color) : '#7C5CFF';
   const remaining = goal ? Math.max(0, goal.targetAmount - goal.saved) : 0;
   const days = goal ? deadlineDeltaDays(goal.deadline) : null;
-  // Дедлайн раніше старту зробив би забіг від'ємної довжини — саме цю межу
-  // (а не «сьогодні») тримає редактор, щоб прострочену ціль можна було правити.
-  const goalStartedOn = goal ? String(goal.createdAt).slice(0, 10) : '';
 
   const incomeStats = useMemo(() => {
     if (!goal || goal.type !== 'income') return null;
@@ -300,54 +280,6 @@ const GoalDetail: React.FC = () => {
     };
   }, [goal, contributions, days, remaining, t]);
 
-  const openEdit = () => {
-    if (!goal) return;
-    setActionError('');
-    setEditName(goal.name);
-    setEditTarget(String(goal.targetAmount));
-    setEditBaseline(goal.baselineAmount > 0 ? String(goal.baselineAmount) : '');
-    setEditCurrency(goal.currency);
-    setEditDeadline(goal.deadline ?? '');
-    setEditColor(GOAL_COLOR_RE.test(goal.color) ? goal.color : SWATCHES[0]);
-    setEditIcon(
-      ICON_KEYS.includes(goal.icon as (typeof ICON_KEYS)[number]) ? (goal.icon as (typeof ICON_KEYS)[number]) : 'target'
-    );
-    setEditArchived(goal.archived);
-    setEditOpen(true);
-  };
-
-  const onSaveEdit = async () => {
-    if (!id || !goal) return;
-    setActionError('');
-    const n = parseFloat(String(editTarget).replace(',', '.'));
-    if (!editName.trim() || !Number.isFinite(n) || n <= 0) return;
-    if (editDeadline.trim() && goalStartedOn && editDeadline < goalStartedOn) {
-      setActionError(t('goals', 'deadlineBeforeStart'));
-      return;
-    }
-    try {
-      const base = parseFloat(String(editBaseline).replace(',', '.'));
-      const updated = await updateGoal(id, {
-        name: editName.trim(),
-        targetAmount: n,
-        baselineAmount: Number.isFinite(base) && base > 0 ? base : 0,
-        currency: editCurrency,
-        deadline: editDeadline.trim() || null,
-        color: editColor,
-        icon: editIcon,
-        archived: editArchived,
-      });
-      setGoal(updated);
-      setEditOpen(false);
-    } catch (e: unknown) {
-      const code =
-        e && typeof e === 'object' && 'code' in e ? String((e as { code?: string }).code) : '';
-      if (code === 'DEADLINE_REQUIRED') setActionError(t('goals', 'deadlineRequiredForIncome'));
-      else if (code === 'DEADLINE_BEFORE_START') setActionError(t('goals', 'deadlineBeforeStart'));
-      else setActionError(t('goals', 'saveError'));
-    }
-  };
-
   const openContribute = () => {
     if (!goal) return;
     setActionError('');
@@ -398,17 +330,6 @@ const GoalDetail: React.FC = () => {
     try {
       await deleteContribution(id, contribId);
       await load();
-    } catch {
-      setActionError(t('goals', 'saveError'));
-    }
-  };
-
-  const onDeleteGoal = async () => {
-    if (!id) return;
-    if (!(await showAppConfirm(t('goals', 'deleteConfirm')))) return;
-    try {
-      await deleteGoal(id);
-      navigate('/goals');
     } catch {
       setActionError(t('goals', 'saveError'));
     }
@@ -557,49 +478,32 @@ const GoalDetail: React.FC = () => {
             </div>
           ) : null}
 
-          <h2 className={income.sectionTitle}>{t('goals', 'progressSection')}</h2>
-          <div className={income.group}>
-            <div className={income.row}>
-              <div className={income.rowIcon} style={{ background: 'var(--accent-green)' }}>
-                <Wallet size={16} strokeWidth={2.2} />
-              </div>
-              <span className={income.rowLabel}>{t('goals', 'earnedToday')}</span>
-              <span className={income.rowValue}>{formatCurrency(incomeStats.todayEarned, locale, cur)}</span>
+          <div className={styles.actions}>
+            <button type="button" className={`${styles.actionBtn} ${styles.actionPrimary}`} onClick={openContribute}>
+              <Plus size={20} strokeWidth={2.4} />
+              {t('goals', 'contribute')}
+            </button>
+          </div>
+
+          <div className={income.statRow}>
+            <div className={income.statTile}>
+              <span className={income.statValue}>{formatCurrency(incomeStats.weekEarned, locale, cur)}</span>
+              <span className={income.statLabel}>{t('goals', 'earnedWeek')}</span>
             </div>
-            <div className={income.row}>
-              <div className={income.rowIcon} style={{ background: 'var(--accent-blue)' }}>
-                <CalendarDays size={16} strokeWidth={2.2} />
-              </div>
-              <span className={income.rowLabel}>{t('goals', 'earnedWeek')}</span>
-              <span className={income.rowValue}>{formatCurrency(incomeStats.weekEarned, locale, cur)}</span>
+            <div className={income.statTile}>
+              <span className={income.statValue}>{formatCurrency(incomeStats.monthEarned, locale, cur)}</span>
+              <span className={income.statLabel}>{t('goals', 'earnedMonth')}</span>
             </div>
-            <div className={income.row}>
-              <div className={income.rowIcon} style={{ background: 'var(--accent-primary-strong)' }}>
-                <TrendingUp size={16} strokeWidth={2.2} />
-              </div>
-              <span className={income.rowLabel}>{t('goals', 'earnedMonth')}</span>
-              <span className={income.rowValue}>{formatCurrency(incomeStats.monthEarned, locale, cur)}</span>
-            </div>
-            <div className={income.row}>
-              <div className={income.rowIcon} style={{ background: 'var(--accent-orange)' }}>
-                <Flag size={16} strokeWidth={2.2} />
-              </div>
-              <span className={income.rowLabel}>{t('goals', 'remaining')}</span>
-              <span className={income.rowValue}>{formatCurrency(remaining, locale, cur)}</span>
-            </div>
-            <div className={income.row}>
-              <div className={income.rowIcon} style={{ background: 'var(--accent-yellow)', color: '#1a1200' }}>
-                <Gauge size={16} strokeWidth={2.2} />
-              </div>
-              <span className={income.rowLabel}>
-                {incomeStats.phase === 'running' ? t('goals', 'neededPerDay') : t('goals', 'actualPerDay')}
-              </span>
-              <span className={income.rowValue}>
+            <div className={income.statTile}>
+              <span className={income.statValue}>
                 {formatCurrency(
                   incomeStats.phase === 'running' ? incomeStats.neededPerDay : incomeStats.actualPerDay,
                   locale,
                   cur
                 )}
+              </span>
+              <span className={income.statLabel}>
+                {incomeStats.phase === 'running' ? t('goals', 'neededPerDay') : t('goals', 'actualPerDay')}
               </span>
             </div>
           </div>
@@ -677,20 +581,14 @@ const GoalDetail: React.FC = () => {
         </div>
       )}
 
-      <div className={styles.actions}>
-        <button type="button" className={`${styles.actionBtn} ${styles.actionPrimary}`} onClick={openContribute}>
-          <Plus size={20} strokeWidth={2.4} />
-          {t('goals', 'contribute')}
-        </button>
-        <button
-          type="button"
-          className={`${styles.actionBtn} ${styles.actionIcon}`}
-          onClick={openEdit}
-          aria-label={t('goals', 'edit')}
-        >
-          <Pencil size={19} strokeWidth={2.2} />
-        </button>
-      </div>
+      {goal.type === 'income' ? null : (
+        <div className={styles.actions}>
+          <button type="button" className={`${styles.actionBtn} ${styles.actionPrimary}`} onClick={openContribute}>
+            <Plus size={20} strokeWidth={2.4} />
+            {t('goals', 'contribute')}
+          </button>
+        </div>
+      )}
 
       <h2 className={styles.sectionTitle}>{t('goals', 'contributionsTitle')}</h2>
       {contributions.length === 0 ? (
@@ -826,155 +724,6 @@ const GoalDetail: React.FC = () => {
         </FormSheet>
       ) : null}
 
-      {editOpen ? (
-        <FormSheet
-          title={t('goals', 'edit')}
-          onClose={() => setEditOpen(false)}
-          onSubmit={() => void onSaveEdit()}
-          submitLabel={t('goals', 'save')}
-          cancelLabel={t('goals', 'cancel')}
-          submitDisabled={!editName.trim() || !(Number(editTarget.replace(',', '.')) > 0)}
-          error={actionError || undefined}
-        >
-          <div className={sheet.heroCard} style={{ background: editColor }}>
-            <span className={styles.heroGlyph}>
-              <GoalIcon name={editIcon} color="#fff" size={24} />
-            </span>
-            <div className={sheet.heroInfo}>
-              <span className={sheet.heroName}>{editName.trim() || t('goals', 'edit')}</span>
-              <span className={sheet.heroCaption}>
-                {Number(editTarget.replace(',', '.')) > 0
-                  ? formatCurrency(Number(editTarget.replace(',', '.')), locale, editCurrency as DisplayCurrency)
-                  : t('goals', 'target')}
-              </span>
-            </div>
-          </div>
-
-          <div className={sheet.group}>
-            <label className={sheet.row}>
-              <span className={sheet.rowLabel}>{t('goals', 'name')}</span>
-              <input
-                className={sheet.rowField}
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-                placeholder={t('goals', 'name')}
-              />
-            </label>
-
-            <label className={sheet.row}>
-              <span className={sheet.rowLabel}>{t('goals', 'target')}</span>
-              <input
-                className={sheet.rowField}
-                inputMode="decimal"
-                value={editTarget}
-                onChange={(e) => setEditTarget(e.target.value)}
-                placeholder="0"
-              />
-            </label>
-
-            <label className={sheet.row}>
-              <span className={sheet.rowLabel}>
-                {goal.type === 'income' ? t('goals', 'baselineEarned') : t('goals', 'baselineSaved')}
-              </span>
-              <input
-                className={sheet.rowField}
-                inputMode="decimal"
-                value={editBaseline}
-                onChange={(e) => setEditBaseline(e.target.value)}
-                placeholder="0"
-              />
-            </label>
-
-            <label className={sheet.row}>
-              <span className={sheet.rowLabel}>{t('goals', 'currency')}</span>
-              <select
-                className={`${sheet.rowField} ${sheet.rowSelect}`}
-                value={editCurrency}
-                onChange={(e) => setEditCurrency(e.target.value as GoalCurrency)}
-              >
-                <option value="UAH">UAH</option>
-                <option value="PLN">PLN</option>
-                <option value="USD">USD</option>
-              </select>
-            </label>
-
-            <label className={sheet.row}>
-              <span className={sheet.rowLabel}>{t('goals', 'deadline')}</span>
-              <input
-                className={sheet.rowDatePill}
-                type="date"
-                min={goalStartedOn}
-                value={editDeadline}
-                onChange={(e) => setEditDeadline(e.target.value)}
-              />
-            </label>
-          </div>
-          <p className={sheet.groupCaption}>
-            {goal.type === 'income' ? t('goals', 'baselineIncomeHint') : t('goals', 'baselineSavingsHint')}{' '}
-            {goal.type === 'income' ? t('goals', 'deadlineRequiredForIncome') : t('goals', 'deadlineOptional')}
-          </p>
-
-          <div>
-            <p className={sheet.blockLabel}>{t('goals', 'goalState')}</p>
-            <div className={sheet.segment} role="group" aria-label={t('goals', 'goalState')}>
-              <button
-                type="button"
-                className={sheet.segmentBtn}
-                aria-pressed={!editArchived}
-                onClick={() => setEditArchived(false)}
-              >
-                {t('goals', 'stateActive')}
-              </button>
-              <button
-                type="button"
-                className={sheet.segmentBtn}
-                aria-pressed={editArchived}
-                onClick={() => setEditArchived(true)}
-              >
-                {t('goals', 'archived')}
-              </button>
-            </div>
-          </div>
-
-          <div>
-            <p className={sheet.blockLabel}>{t('goals', 'color')}</p>
-            <div className={sheet.colorRow}>
-              {SWATCHES.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  className={`${sheet.colorDot} ${editColor === c ? sheet.colorDotActive : ''}`}
-                  style={{ backgroundColor: c }}
-                  aria-label={c}
-                  onClick={() => setEditColor(c)}
-                />
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <p className={sheet.blockLabel}>{t('addTx', 'chooseIcon')}</p>
-            <div className={sheet.iconGrid}>
-              {ICON_KEYS.map((k) => (
-                <button
-                  key={k}
-                  type="button"
-                  className={`${sheet.iconOption} ${editIcon === k ? sheet.iconOptionActive : ''}`}
-                  onClick={() => setEditIcon(k)}
-                  aria-pressed={editIcon === k}
-                  aria-label={k}
-                >
-                  <GoalIcon name={k} color={editIcon === k ? editColor : 'currentColor'} size={20} />
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <button type="button" className={sheet.deleteRow} onClick={() => void onDeleteGoal()}>
-            {t('goals', 'delete')}
-          </button>
-        </FormSheet>
-      ) : null}
     </div>
   );
 };

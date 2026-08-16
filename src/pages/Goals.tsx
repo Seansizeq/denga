@@ -1,14 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Target, Car, Plane, Shield, Home, Briefcase, Wallet, Heart, Gift } from 'lucide-react';
+import { Plus, Target, Car, Plane, Shield, Home, Briefcase, Wallet, Heart, Gift, Pencil } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import {
   createGoal,
+  deleteGoal,
   getGoals,
+  updateGoal,
   type Goal,
   type GoalCurrency,
   type GoalType,
 } from '../api/client';
+import { showAppConfirm } from '../utils/notify';
 import { formatCurrency } from '../utils/formatters';
 import type { DisplayCurrency } from '../utils/formatters';
 import { useTranslation } from '../i18n/LanguageContext';
@@ -18,6 +21,7 @@ import sheet from '../components/ui/FormSheet.module.css';
 import styles from './Goals.module.css';
 
 const SWATCHES = ['#7C5CFF', '#22c55e', '#06b6d4', '#eab308', '#f97316', '#ec4899'] as const;
+const GOAL_COLOR_RE = /^#[0-9A-Fa-f]{6}$/;
 
 const ICON_KEYS = ['target', 'car', 'plane', 'shield', 'home', 'briefcase', 'wallet', 'heart', 'gift'] as const;
 const ICON_MAP: Record<(typeof ICON_KEYS)[number], LucideIcon> = {
@@ -74,6 +78,9 @@ const Goals: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState('');
   const [sheetOpen, setSheetOpen] = useState(false);
+  /** null — створення нової цілі, інакше редагування наявної. */
+  const [editing, setEditing] = useState<Goal | null>(null);
+  const [archived, setArchived] = useState(false);
   const [goalType, setGoalType] = useState<GoalType>('savings');
   const [name, setName] = useState('');
   const [target, setTarget] = useState('');
@@ -111,6 +118,8 @@ const Goals: React.FC = () => {
 
   const openSheet = () => {
     setSaveError('');
+    setEditing(null);
+    setArchived(false);
     setGoalType('savings');
     setName('');
     setTarget('');
@@ -122,10 +131,28 @@ const Goals: React.FC = () => {
     setSheetOpen(true);
   };
 
-  const deadlineMissing = goalType === 'income' && !deadline.trim();
-  const deadlineInPast = Boolean(deadline.trim()) && deadline < todayIso();
+  const openEditSheet = (g: Goal) => {
+    setSaveError('');
+    setEditing(g);
+    setArchived(g.archived);
+    setGoalType(g.type);
+    setName(g.name);
+    setTarget(String(g.targetAmount));
+    setBaseline(g.baselineAmount > 0 ? String(g.baselineAmount) : '');
+    setCurrency(g.currency);
+    setDeadline(g.deadline ?? '');
+    setColor(GOAL_COLOR_RE.test(g.color) ? g.color : SWATCHES[0]);
+    setIconKey(ICON_KEYS.includes(g.icon as (typeof ICON_KEYS)[number]) ? (g.icon as (typeof ICON_KEYS)[number]) : 'target');
+    setSheetOpen(true);
+  };
 
-  const onCreate = async () => {
+  // Нова ціль не може стартувати в минулому; наявна лишає свій дедлайн, і
+  // межа для неї — день створення, інакше забіг вийшов би від'ємної довжини.
+  const deadlineFloor = editing ? String(editing.createdAt).slice(0, 10) : todayIso();
+  const deadlineMissing = goalType === 'income' && !deadline.trim();
+  const deadlineTooEarly = Boolean(deadline.trim()) && deadline < deadlineFloor;
+
+  const onSubmitSheet = async () => {
     setSaveError('');
     const n = parseFloat(String(target).replace(',', '.'));
     if (!name.trim() || !Number.isFinite(n) || n <= 0) return;
@@ -133,22 +160,35 @@ const Goals: React.FC = () => {
       setSaveError(t('goals', 'deadlineRequiredForIncome'));
       return;
     }
-    if (deadlineInPast) {
-      setSaveError(t('goals', 'deadlineInPast'));
+    if (deadlineTooEarly) {
+      setSaveError(t('goals', editing ? 'deadlineBeforeStart' : 'deadlineInPast'));
       return;
     }
+    const base = parseFloat(String(baseline).replace(',', '.'));
+    const payload = {
+      name: name.trim(),
+      targetAmount: n,
+      baselineAmount: Number.isFinite(base) && base > 0 ? base : 0,
+      currency,
+      deadline: deadline.trim() || null,
+      color,
+      icon: iconKey,
+    };
     try {
-      const base = parseFloat(String(baseline).replace(',', '.'));
-      await createGoal({
-        name: name.trim(),
-        type: goalType,
-        targetAmount: n,
-        baselineAmount: Number.isFinite(base) && base > 0 ? base : 0,
-        currency,
-        deadline: deadline.trim() || null,
-        color,
-        icon: iconKey,
-      });
+      if (editing) await updateGoal(editing.id, { ...payload, archived });
+      else await createGoal({ ...payload, type: goalType });
+      setSheetOpen(false);
+      await load();
+    } catch {
+      setSaveError(t('goals', 'saveError'));
+    }
+  };
+
+  const onDeleteFromSheet = async () => {
+    if (!editing) return;
+    if (!(await showAppConfirm(t('goals', 'deleteConfirm')))) return;
+    try {
+      await deleteGoal(editing.id);
       setSheetOpen(false);
       await load();
     } catch {
@@ -168,12 +208,20 @@ const Goals: React.FC = () => {
     }
 
     return (
-      <button
-        key={g.id}
-        type="button"
-        className={`${styles.goalCard} ${g.archived ? styles.goalCardArchived : ''}`}
-        onClick={() => navigate(`/goals/${g.id}`)}
-      >
+      <div key={g.id} className={styles.goalCardWrap}>
+        <button
+          type="button"
+          className={styles.goalCardEdit}
+          onClick={() => openEditSheet(g)}
+          aria-label={`${t('goals', 'edit')}: ${g.name}`}
+        >
+          <Pencil size={16} strokeWidth={2.2} />
+        </button>
+        <button
+          type="button"
+          className={`${styles.goalCard} ${g.archived ? styles.goalCardArchived : ''}`}
+          onClick={() => navigate(`/goals/${g.id}`)}
+        >
         <div className={styles.goalCardTop}>
           <div className={styles.iconWrap} style={{ backgroundColor: `${g.color}22` }}>
             <GoalIcon name={g.icon} color={g.color} />
@@ -195,12 +243,13 @@ const Goals: React.FC = () => {
         <div className={styles.progressTrack}>
           <div className={styles.progressFill} style={{ width: `${pct}%`, background: fill }} />
         </div>
-        {deadlineLabel && g.deadline ? (
-          <p className={styles.meta}>
-            {t('goals', 'deadline')}: {new Date(g.deadline + 'T12:00:00').toLocaleDateString(locale)} — {deadlineLabel}
-          </p>
-        ) : null}
-      </button>
+          {deadlineLabel && g.deadline ? (
+            <p className={styles.meta}>
+              {t('goals', 'deadline')}: {new Date(g.deadline + 'T12:00:00').toLocaleDateString(locale)} — {deadlineLabel}
+            </p>
+          ) : null}
+        </button>
+      </div>
     );
   };
 
@@ -241,13 +290,13 @@ const Goals: React.FC = () => {
 
       {sheetOpen ? (
         <FormSheet
-          title={t('goals', 'addGoal')}
+          title={editing ? t('goals', 'edit') : t('goals', 'addGoal')}
           onClose={() => setSheetOpen(false)}
-          onSubmit={() => void onCreate()}
+          onSubmit={() => void onSubmitSheet()}
           submitLabel={t('goals', 'save')}
           cancelLabel={t('goals', 'cancel')}
           submitDisabled={
-            !name.trim() || !(Number(target.replace(',', '.')) > 0) || deadlineMissing || deadlineInPast
+            !name.trim() || !(Number(target.replace(',', '.')) > 0) || deadlineMissing || deadlineTooEarly
           }
           error={saveError || undefined}
         >
@@ -265,24 +314,45 @@ const Goals: React.FC = () => {
             </div>
           </div>
 
-          <div className={sheet.segment} role="group" aria-label={t('goals', 'goalType')}>
-            <button
-              type="button"
-              className={sheet.segmentBtn}
-              aria-pressed={goalType === 'savings'}
-              onClick={() => setGoalType('savings')}
-            >
-              {t('goals', 'typeSavings')}
-            </button>
-            <button
-              type="button"
-              className={sheet.segmentBtn}
-              aria-pressed={goalType === 'income'}
-              onClick={() => setGoalType('income')}
-            >
-              {t('goals', 'typeIncome')}
-            </button>
-          </div>
+          {editing ? (
+            <div className={sheet.segment} role="group" aria-label={t('goals', 'goalState')}>
+              <button
+                type="button"
+                className={sheet.segmentBtn}
+                aria-pressed={!archived}
+                onClick={() => setArchived(false)}
+              >
+                {t('goals', 'stateActive')}
+              </button>
+              <button
+                type="button"
+                className={sheet.segmentBtn}
+                aria-pressed={archived}
+                onClick={() => setArchived(true)}
+              >
+                {t('goals', 'archived')}
+              </button>
+            </div>
+          ) : (
+            <div className={sheet.segment} role="group" aria-label={t('goals', 'goalType')}>
+              <button
+                type="button"
+                className={sheet.segmentBtn}
+                aria-pressed={goalType === 'savings'}
+                onClick={() => setGoalType('savings')}
+              >
+                {t('goals', 'typeSavings')}
+              </button>
+              <button
+                type="button"
+                className={sheet.segmentBtn}
+                aria-pressed={goalType === 'income'}
+                onClick={() => setGoalType('income')}
+              >
+                {t('goals', 'typeIncome')}
+              </button>
+            </div>
+          )}
 
           <div className={sheet.group}>
             <label className={sheet.row}>
@@ -337,7 +407,7 @@ const Goals: React.FC = () => {
               <input
                 className={sheet.rowDatePill}
                 type="date"
-                min={todayIso()}
+                min={deadlineFloor}
                 value={deadline}
                 onChange={(e) => setDeadline(e.target.value)}
               />
@@ -381,6 +451,12 @@ const Goals: React.FC = () => {
               ))}
             </div>
           </div>
+
+          {editing ? (
+            <button type="button" className={sheet.deleteRow} onClick={() => void onDeleteFromSheet()}>
+              {t('goals', 'delete')}
+            </button>
+          ) : null}
         </FormSheet>
       ) : null}
     </div>
