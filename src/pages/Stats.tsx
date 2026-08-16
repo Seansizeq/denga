@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { PieChart } from 'lucide-react';
+import { ImageDown, PieChart } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useTransactions } from '../context/TransactionContext';
 import { useTranslation } from '../i18n/LanguageContext';
@@ -11,6 +11,7 @@ import { toIsoDateParam, type StatsRange } from '../utils/statsPeriod';
 import StatsPeriodNav from '../components/stats/StatsPeriodNav';
 import StatsSummaryStrip from '../components/stats/StatsSummaryStrip';
 import StatsCategoryChart from '../components/stats/StatsCategoryChart';
+import ResultCardSheet from '../components/stats/ResultCardSheet';
 import styles from './Stats.module.css';
 
 const RANGE_OPTIONS: StatsRange[] = ['today', 'week', 'month', 'year'];
@@ -25,6 +26,7 @@ const Stats: React.FC = () => {
     useStatsPeriod();
   const [chartType, setChartType] = useState<'expense' | 'income'>('expense');
   const [budgets, setBudgets] = useState<CategoryBudget[]>([]);
+  const [resultCardOpen, setResultCardOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -98,6 +100,11 @@ const Stats: React.FC = () => {
         net={aggregates.net}
       />
 
+      <button type="button" className={styles.resultImageBtn} onClick={() => setResultCardOpen(true)}>
+        <ImageDown size={19} aria-hidden="true" />
+        {t('stats', 'resultImage')}
+      </button>
+
       <section className={styles.section}>
         <div className={styles.sectionHeaderWithToggle}>
           <h2 className={styles.sectionTitle}>{t('stats', 'byCategory')}</h2>
@@ -139,6 +146,15 @@ const Stats: React.FC = () => {
           </div>
         )}
       </section>
+
+      <ResultCardSheet
+        open={resultCardOpen}
+        onClose={() => setResultCardOpen(false)}
+        range={range}
+        periodLabel={periodLabel}
+        currentNet={aggregates.net}
+        previousNet={aggregates.previousNet}
+      />
     </div>
   );
 };

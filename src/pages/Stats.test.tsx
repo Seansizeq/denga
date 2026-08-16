@@ -45,6 +45,10 @@ vi.mock('../context/PortfolioContext', () => ({
   usePortfolio: () => ({ cryptoPrices: {} }),
 }));
 
+vi.mock('../components/ui/Toast', () => ({
+  useToast: () => ({ show: vi.fn() }),
+}));
+
 function renderStats(initialPath = '/stats') {
   return render(
     <MemoryRouter initialEntries={[initialPath]}>
@@ -70,6 +74,7 @@ describe('Stats page', () => {
     expect(screen.getByRole('tab', { name: 'range.month' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: 'range.year' })).toBeTruthy();
     expect(screen.getByText('stats.byCategory')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'stats.resultImage' })).toBeTruthy();
   });
 
   it('switches range and chart type without crashing', () => {

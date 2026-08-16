@@ -298,6 +298,20 @@ type Dict = {
     goToToday: string;
     showCategory: string;
     hideCategory: string;
+    resultImage: string;
+    resultImageTitle: string;
+    resultImageCaption: string;
+    resultDay: string;
+    resultWeek: string;
+    resultMonth: string;
+    resultYear: string;
+    vsPreviousShort: string;
+    noPreviousComparison: string;
+    nextDesign: string;
+    saveOrShare: string;
+    preparingImage: string;
+    imageSaved: string;
+    imageSaveError: string;
   };
   settings: {
     dangerZone: string;
@@ -812,6 +826,20 @@ const uk: Dict = {
     goToToday: 'До поточного періоду',
     showCategory: 'Показати категорію',
     hideCategory: 'Сховати категорію',
+    resultImage: 'Зберегти результат картинкою',
+    resultImageTitle: 'Картинка результату',
+    resultImageCaption: 'Суми розраховані трекером і накладені на обраний шаблон.',
+    resultDay: 'Результат за день',
+    resultWeek: 'Результат за тиждень',
+    resultMonth: 'Результат за місяць',
+    resultYear: 'Результат за рік',
+    vsPreviousShort: 'до минулого періоду',
+    noPreviousComparison: 'Перший період для порівняння',
+    nextDesign: 'Інший дизайн',
+    saveOrShare: 'Зберегти',
+    preparingImage: 'Готуємо картинку',
+    imageSaved: 'Картинку збережено',
+    imageSaveError: 'Не вдалося підготувати картинку. Спробуйте ще раз.',
   },
   settings: {
     dangerZone: 'Небезпечна зона',
@@ -1336,6 +1364,20 @@ const ru: Dict = {
     goToToday: 'К текущему периоду',
     showCategory: 'Показать категорию',
     hideCategory: 'Скрыть категорию',
+    resultImage: 'Сохранить результат картинкой',
+    resultImageTitle: 'Картинка результата',
+    resultImageCaption: 'Суммы рассчитаны трекером и наложены на выбранный шаблон.',
+    resultDay: 'Результат за день',
+    resultWeek: 'Результат за неделю',
+    resultMonth: 'Результат за месяц',
+    resultYear: 'Результат за год',
+    vsPreviousShort: 'к прошлому периоду',
+    noPreviousComparison: 'Первый период для сравнения',
+    nextDesign: 'Другой дизайн',
+    saveOrShare: 'Сохранить',
+    preparingImage: 'Готовим картинку',
+    imageSaved: 'Картинка сохранена',
+    imageSaveError: 'Не удалось подготовить картинку. Попробуйте ещё раз.',
   },
   settings: {
     dangerZone: 'Опасная зона',
@@ -1860,6 +1902,20 @@ const en: Dict = {
     goToToday: 'Go to current period',
     showCategory: 'Show category',
     hideCategory: 'Hide category',
+    resultImage: 'Save result as an image',
+    resultImageTitle: 'Result image',
+    resultImageCaption: 'The tracker calculates the values and places them on the selected template.',
+    resultDay: 'Daily result',
+    resultWeek: 'Weekly result',
+    resultMonth: 'Monthly result',
+    resultYear: 'Yearly result',
+    vsPreviousShort: 'vs previous period',
+    noPreviousComparison: 'First period to compare',
+    nextDesign: 'Another design',
+    saveOrShare: 'Save',
+    preparingImage: 'Preparing image',
+    imageSaved: 'Image saved',
+    imageSaveError: 'Could not prepare the image. Please try again.',
   },
   settings: {
     dangerZone: 'Danger zone',
