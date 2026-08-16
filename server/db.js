@@ -280,6 +280,17 @@ export async function initDb() {
     /* already exists */
   }
 
+  // Курси й ціни, які пережили б перезапуск. Раніше вони лежали тільки в
+  // пам'яті процесу: після кожного деплою застосунок лишався без цін на крипту
+  // доти, доки не відповість CoinGecko.
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS app_cache (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updatedAt TEXT NOT NULL
+    )
+  `);
+
   await db.exec(`
     CREATE TABLE IF NOT EXISTS planner_user_settings (
       user_id TEXT PRIMARY KEY,

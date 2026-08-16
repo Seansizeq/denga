@@ -401,6 +401,30 @@ const fetchFxRates = async () => {
     return FX_FALLBACK;
   }
 };
+/** Останні відомі ціни переживають перезапуск процесу. */
+const readAppCache = async (key) => {
+  try {
+    const row = await db.get('SELECT value FROM app_cache WHERE key = ?', [key]);
+    return row?.value ? JSON.parse(row.value) : null;
+  } catch {
+    return null;
+  }
+};
+
+const writeAppCache = async (key, value) => {
+  try {
+    await db.run(
+      `INSERT INTO app_cache (key, value, updatedAt) VALUES (?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updatedAt = excluded.updatedAt`,
+      [key, JSON.stringify(value), new Date().toISOString()],
+    );
+  } catch {
+    /* кеш — не критичні дані, збій запису нічого не ламає */
+  }
+};
+
+const CRYPTO_PRICES_CACHE_KEY = 'crypto_usd_prices';
+
 const fetchCryptoUsdPrices = async () => {
   const now = Date.now();
   if (cryptoCache && now - cryptoCacheFetchedAt < CRYPTO_CACHE_TTL_MS) {
@@ -429,11 +453,21 @@ const fetchCryptoUsdPrices = async () => {
       source: 'live',
     };
     cryptoCacheFetchedAt = now;
+    void writeAppCache(CRYPTO_PRICES_CACHE_KEY, cryptoCache);
     return cryptoCache;
   } catch {
     if (cryptoCache) return { ...cryptoCache, source: 'cache' };
+    const stored = await readAppCache(CRYPTO_PRICES_CACHE_KEY);
+    if (stored?.prices) {
+      cryptoCache = stored;
+      cryptoCacheFetchedAt = now;
+      return { ...stored, source: 'cache' };
+    }
+    // Порожньо, а не нулі: ціна 0 для клієнта виглядала б як справжня і
+    // оцінювала б позицію в нуль. Невідома ціна має лишатися невідомою —
+    // застосунок показує «—» замість вигаданої суми.
     return {
-      prices: { BTC: 0, ETH: 0, SOL: 0, TON: 0, USDT: 1 },
+      prices: {},
       updatedAt: new Date(0).toISOString(),
       source: 'fallback',
     };
@@ -5353,4 +5387,7 @@ app.use((req, res) => {
 
 app.listen(port, '0.0.0.0', () => {
   console.log(`Server running at http://0.0.0.0:${port}`);
+  // Прогріваємо ціни одразу: інакше перший після деплою відкритий гаманець
+  // застає порожній кеш і показує крипту без гривневого еквівалента.
+  void fetchCryptoUsdPrices();
 });
