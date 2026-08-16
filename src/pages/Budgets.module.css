@@ -40,40 +40,92 @@
   overflow: hidden;
 }
 
+/* Рядок як у списках iOS: іконка, назва, а сума — просто текст праворуч.
+   Рамка навколо кожного поля вводу перетворювала екран на анкету. */
 .row {
+  position: relative;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
-  padding: 14px 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  padding: 10px 16px;
+  min-height: 58px;
+  cursor: text;
 }
 
-.row:last-child {
-  border-bottom: none;
+.row + .row::before {
+  content: '';
+  position: absolute;
+  left: 60px;
+  right: 0;
+  top: 0;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.rowIcon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
 .name {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 500;
   min-width: 0;
   flex: 1;
-}
-
-.inputWrap {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .input {
-  width: 100px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: var(--bg-card-light);
+  width: 90px;
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-family: inherit;
+  font-size: 17px;
+  font-weight: 600;
+  text-align: right;
+  padding: 6px 0;
+  transition: color 0.2s ease;
+}
+
+.input:focus {
+  outline: none;
   color: var(--text-primary);
-  border-radius: 10px;
-  padding: 8px 10px;
+}
+
+/* Заданий ліміт видно одразу, порожній рядок лишається сірим. */
+.inputSet {
+  color: var(--text-primary);
+}
+
+.currency {
+  flex-shrink: 0;
+  width: 18px;
   font-size: 15px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+}
+
+.skeletonIcon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.skeletonName {
+  height: 14px;
+  flex: 1;
+  border-radius: 999px;
 }
 
 .hint {

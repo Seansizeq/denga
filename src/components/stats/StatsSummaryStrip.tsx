@@ -1,29 +1,17 @@
 import React from 'react';
 import { useTranslation } from '../../i18n/LanguageContext';
 import { formatCurrency } from '../../utils/formatters';
-import { SHORT_MASK } from '../../utils/moneyPrivacy';
 import styles from '../../pages/Stats.module.css';
 
 interface StatsSummaryStripProps {
   income: number;
   expense: number;
   net: number;
-  previousNet: number;
 }
 
-const StatsSummaryStrip: React.FC<StatsSummaryStripProps> = ({ income, expense, net, previousNet }) => {
+const StatsSummaryStrip: React.FC<StatsSummaryStripProps> = ({ income, expense, net }) => {
   const { t, locale, displayCurrency, moneyHidden } = useTranslation();
 
-  const changePct =
-    Math.abs(previousNet) > 0.01 ? ((net - previousNet) / Math.abs(previousNet)) * 100 : null;
-  const changeStr =
-    changePct === null
-      ? null
-      : moneyHidden
-        ? `${SHORT_MASK}%`
-        : `${changePct >= 0 ? '+' : '−'}${Math.abs(changePct).toLocaleString(locale, {
-            maximumFractionDigits: 0,
-          })}%`;
 
   return (
     <>
@@ -49,11 +37,6 @@ const StatsSummaryStrip: React.FC<StatsSummaryStripProps> = ({ income, expense, 
             {moneyHidden ? '' : net < 0 ? '−' : '+'}
             {formatCurrency(net, locale, displayCurrency)}
           </span>
-          {changeStr && (
-            <span className={`${styles.summaryChange} ${changePct! >= 0 ? styles.positive : styles.negative}`}>
-              {changeStr} {t('stats', 'vsPrevious')}
-            </span>
-          )}
         </div>
       </div>
     </>

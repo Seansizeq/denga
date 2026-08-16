@@ -1,11 +1,12 @@
 import React, { useMemo, useState } from 'react';
-import { Pencil, X } from 'lucide-react';
+
 import { useTranslation } from '../../i18n/LanguageContext';
 import { formatDate } from '../../utils/formatters';
 import { MONEY_MASK, isMoneyHidden } from '../../utils/moneyPrivacy';
 import type { Transaction } from '../../types';
 import type { Denomination } from '../../utils/denomination';
 import { AccountRowAvatar } from './AccountRowAvatar';
+import sheetStyles from './FormSheet.module.css';
 import styles from './DebtDetailSheet.module.css';
 
 type DebtAccount = {
@@ -104,21 +105,34 @@ const DebtDetailSheet: React.FC<DebtDetailSheetProps> = ({
   };
 
   return (
-    <div className={styles.overlay} role="dialog" aria-modal="true">
-      <button type="button" className={styles.scrim} onClick={onClose} aria-label={t('balance', 'close')} />
-
-      <div className={styles.sheet}>
-        <div className={styles.header}>
-          <button type="button" className={styles.iconBtn} onClick={onClose} aria-label={t('balance', 'close')}>
-            <X size={18} strokeWidth={2.4} />
+    <div className={sheetStyles.overlay} role="presentation" onClick={onClose}>
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('balance', 'debtSheetTitle')}
+        className={sheetStyles.sheet}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className={sheetStyles.grabber} aria-hidden="true" />
+        <header className={sheetStyles.header}>
+          <button
+            type="button"
+            className={`${sheetStyles.headerPill} ${sheetStyles.headerPillGhost}`}
+            onClick={onClose}
+          >
+            {t('balance', 'close')}
           </button>
-          <span className={styles.title}>{t('balance', 'debtSheetTitle')}</span>
-          <button type="button" className={styles.editBtn} onClick={onEdit} aria-label={t('balance', 'editAriaLabel')}>
-            <Pencil size={15} strokeWidth={2.4} />
+          <h2 className={sheetStyles.title}>{t('balance', 'debtSheetTitle')}</h2>
+          <button
+            type="button"
+            className={`${sheetStyles.headerPill} ${sheetStyles.headerPillGhost}`}
+            onClick={onEdit}
+          >
+            {t('subscriptions', 'edit')}
           </button>
-        </div>
+        </header>
 
-        <div className={styles.body}>
+        <div className={sheetStyles.body}>
           <div className={styles.debtCard}>
             <AccountRowAvatar
               accountKey={account.accountKey}
@@ -168,44 +182,46 @@ const DebtDetailSheet: React.FC<DebtDetailSheetProps> = ({
             </button>
           ) : (
             <div className={styles.payForm}>
-              <label className={styles.label}>
-                {t('balance', 'debtPaymentAmountLabel')}
-                <input
-                  className={styles.input}
-                  value={payAmount}
-                  onChange={(e) => { setPayAmount(e.target.value); setError(''); }}
-                  inputMode="decimal"
-                  placeholder={t('balance', 'debtPaymentAmountPlaceholder').replace('{amount}', formattedBalance)}
-                  autoFocus
-                />
-              </label>
-              <label className={styles.label}>
-                {t('addTx', 'paymentAccount')}
-                <select
-                  className={styles.input}
-                  value={paymentAccountKey}
-                  onChange={(e) => { setPaymentAccountKey(e.target.value); setError(''); }}
-                >
-                  <option value="">{t('addTx', 'paymentAccountNone')}</option>
-                  {paymentAccounts.map((paymentAccount) => (
-                    <option key={paymentAccount.accountKey} value={paymentAccount.accountKey}>
-                      {paymentAccount.name} · {paymentAccount.primaryCurrency}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className={styles.label}>
-                {t('balance', 'debtPaymentNoteLabel')}
-                <input
-                  className={styles.input}
-                  value={payNote}
-                  onChange={(e) => setPayNote(e.target.value)}
-                  placeholder={t('balance', 'debtPaymentNotePlaceholder')}
-                  maxLength={80}
-                />
-              </label>
-              {paymentAccounts.length === 0 ? <p className={styles.error}>{t('balance', 'debtPaymentAccountRequired')}</p> : null}
-              {error ? <p className={styles.error}>{error}</p> : null}
+              <div className={sheetStyles.group}>
+                <label className={sheetStyles.row}>
+                  <span className={sheetStyles.rowLabel}>{t('balance', 'debtPaymentAmountLabel')}</span>
+                  <input
+                    className={sheetStyles.rowField}
+                    value={payAmount}
+                    onChange={(e) => { setPayAmount(e.target.value); setError(''); }}
+                    inputMode="decimal"
+                    placeholder={t('balance', 'debtPaymentAmountPlaceholder').replace('{amount}', formattedBalance)}
+                    autoFocus
+                  />
+                </label>
+                <label className={sheetStyles.row}>
+                  <span className={sheetStyles.rowLabel}>{t('addTx', 'paymentAccount')}</span>
+                  <select
+                    className={`${sheetStyles.rowField} ${sheetStyles.rowSelect}`}
+                    value={paymentAccountKey}
+                    onChange={(e) => { setPaymentAccountKey(e.target.value); setError(''); }}
+                  >
+                    <option value="">{t('addTx', 'paymentAccountNone')}</option>
+                    {paymentAccounts.map((paymentAccount) => (
+                      <option key={paymentAccount.accountKey} value={paymentAccount.accountKey}>
+                        {paymentAccount.name} · {paymentAccount.primaryCurrency}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className={sheetStyles.row}>
+                  <span className={sheetStyles.rowLabel}>{t('balance', 'debtPaymentNoteLabel')}</span>
+                  <input
+                    className={sheetStyles.rowField}
+                    value={payNote}
+                    onChange={(e) => setPayNote(e.target.value)}
+                    placeholder={t('balance', 'debtPaymentNotePlaceholder')}
+                    maxLength={80}
+                  />
+                </label>
+              </div>
+              {paymentAccounts.length === 0 ? <p className={sheetStyles.error}>{t('balance', 'debtPaymentAccountRequired')}</p> : null}
+              {error ? <p className={sheetStyles.error}>{error}</p> : null}
               <div className={styles.payActions}>
                 <button
                   type="button"
@@ -242,7 +258,7 @@ const DebtDetailSheet: React.FC<DebtDetailSheetProps> = ({
             </div>
           ) : null}
         </div>
-      </div>
+      </section>
     </div>
   );
 };

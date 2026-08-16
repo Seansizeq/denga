@@ -96,7 +96,6 @@ const Stats: React.FC = () => {
         income={aggregates.income}
         expense={aggregates.expense}
         net={aggregates.net}
-        previousNet={aggregates.previousNet}
       />
 
       <section className={styles.section}>
