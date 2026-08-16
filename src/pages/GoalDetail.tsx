@@ -414,11 +414,6 @@ const GoalDetail: React.FC = () => {
             </div>
           </div>
 
-          <button type="button" className={styles.goalResultImageBtn} onClick={() => setGoalResultOpen(true)}>
-            <ImageDown size={18} aria-hidden="true" />
-            {t('goals', 'goalResultImage')}
-          </button>
-
           {incomeStats.phase === 'done' ? (
             <div className={`${income.trajectory} ${income.trajectoryAhead}`}>
               <div className={income.trajectoryIcon}>
@@ -493,28 +488,34 @@ const GoalDetail: React.FC = () => {
             </button>
           </div>
 
-          <div className={income.statRow}>
-            <div className={income.statTile}>
-              <span className={income.statValue}>{formatCurrency(incomeStats.weekEarned, locale, cur)}</span>
-              <span className={income.statLabel}>{t('goals', 'earnedWeek')}</span>
-            </div>
-            <div className={income.statTile}>
-              <span className={income.statValue}>{formatCurrency(incomeStats.monthEarned, locale, cur)}</span>
-              <span className={income.statLabel}>{t('goals', 'earnedMonth')}</span>
-            </div>
-            <div className={income.statTile}>
-              <span className={income.statValue}>
-                {formatCurrency(
-                  incomeStats.phase === 'running' ? incomeStats.neededPerDay : incomeStats.actualPerDay,
-                  locale,
-                  cur
-                )}
+          <button type="button" className={income.statCard} onClick={() => setGoalResultOpen(true)}>
+            <span className={income.statRow}>
+              <span className={income.statTile}>
+                <span className={income.statValue}>{formatCurrency(incomeStats.todayEarned, locale, cur)}</span>
+                <span className={income.statLabel}>{t('goals', 'earnedToday')}</span>
               </span>
-              <span className={income.statLabel}>
-                {incomeStats.phase === 'running' ? t('goals', 'neededPerDay') : t('goals', 'actualPerDay')}
+              <span className={income.statTile}>
+                <span className={income.statValue}>{formatCurrency(incomeStats.monthEarned, locale, cur)}</span>
+                <span className={income.statLabel}>{t('goals', 'earnedMonth')}</span>
               </span>
-            </div>
-          </div>
+              <span className={income.statTile}>
+                <span className={income.statValue}>
+                  {formatCurrency(
+                    incomeStats.phase === 'running' ? incomeStats.neededPerDay : incomeStats.actualPerDay,
+                    locale,
+                    cur
+                  )}
+                </span>
+                <span className={income.statLabel}>
+                  {incomeStats.phase === 'running' ? t('goals', 'neededPerDay') : t('goals', 'actualPerDay')}
+                </span>
+              </span>
+            </span>
+            <span className={income.statHint}>
+              <ImageDown size={14} aria-hidden="true" />
+              {t('goals', 'goalResultImage')}
+            </span>
+          </button>
 
           {incomeStats.sources.length > 0
             ? (() => {

@@ -238,11 +238,43 @@
    Три плитки замість списку на п'ять рядків: сьогоднішній заробіток майже
    завжди нуль і так видно у внесках, а залишок — це віднімання з шапки. */
 
+/* Плитки самі відкривають картинку прогресу, тож увесь блок — одна кнопка. */
+.statCard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  margin-bottom: 22px;
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  transition: transform 0.12s ease;
+}
+
+.statCard:active {
+  transform: scale(0.985);
+}
+
 .statRow {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 10px;
-  margin-bottom: 22px;
+}
+
+.statHint {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--accent-primary-strong);
 }
 
 .statTile {
