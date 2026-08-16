@@ -424,6 +424,13 @@ type Dict = {
     earnedWeek: string;
     earnedMonth: string;
     neededPerDay: string;
+    actualPerDay: string;
+    goalReached: string;
+    goalReachedInDays: string;
+    goalReachedHint: string;
+    goalOverachieved: string;
+    deadlinePassed: string;
+    deadlinePassedHint: string;
     incomeSources: string;
     sourceOther: string;
     contributionCurrency: string;
@@ -926,6 +933,13 @@ const uk: Dict = {
     earnedWeek: 'За цей тиждень',
     earnedMonth: 'За цей місяць',
     neededPerDay: 'Треба в середньому',
+    actualPerDay: 'Фактичний темп',
+    goalReached: 'Ціль досягнуто!',
+    goalReachedInDays: 'Ціль досягнуто за {n} дн.',
+    goalReachedHint: 'Внески й далі рахуються — прогрес піде понад 100%.',
+    goalOverachieved: 'Перевиконано на {amount}.',
+    deadlinePassed: 'Дедлайн минув',
+    deadlinePassedHint: 'Зібрано {amount} з {target} — {pct}% за {n} дн.',
     incomeSources: 'Джерела доходу',
     sourceOther: 'Інше',
     contributionCurrency: 'Валюта внеску',
@@ -1432,6 +1446,13 @@ const ru: Dict = {
     earnedWeek: 'За эту неделю',
     earnedMonth: 'За этот месяц',
     neededPerDay: 'Нужно в среднем',
+    actualPerDay: 'Фактический темп',
+    goalReached: 'Цель достигнута!',
+    goalReachedInDays: 'Цель достигнута за {n} дн.',
+    goalReachedHint: 'Взносы продолжают считаться — прогресс пойдёт выше 100%.',
+    goalOverachieved: 'Перевыполнено на {amount}.',
+    deadlinePassed: 'Дедлайн прошёл',
+    deadlinePassedHint: 'Собрано {amount} из {target} — {pct}% за {n} дн.',
     incomeSources: 'Источники дохода',
     sourceOther: 'Другое',
     contributionCurrency: 'Валюта взноса',
@@ -1938,6 +1959,13 @@ const en: Dict = {
     earnedWeek: 'This week',
     earnedMonth: 'This month',
     neededPerDay: 'Needed on average',
+    actualPerDay: 'Actual pace',
+    goalReached: 'Goal reached!',
+    goalReachedInDays: 'Goal reached in {n} days',
+    goalReachedHint: 'Contributions keep counting — progress will go past 100%.',
+    goalOverachieved: 'Exceeded by {amount}.',
+    deadlinePassed: 'Deadline passed',
+    deadlinePassedHint: 'Collected {amount} of {target} — {pct}% over {n} days.',
     incomeSources: 'Income sources',
     sourceOther: 'Other',
     contributionCurrency: 'Contribution currency',

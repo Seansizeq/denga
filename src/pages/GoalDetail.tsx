@@ -18,6 +18,8 @@ import {
   Flag,
   Gauge,
   Tag,
+  Trophy,
+  CalendarX,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import {
@@ -224,25 +226,66 @@ const GoalDetail: React.FC = () => {
       .map(([name, amount]) => ({ name, amount }))
       .sort((a, b) => b.amount - a.amount);
 
+    const created = new Date(goal.createdAt);
+    created.setHours(0, 0, 0, 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const elapsedDays = Math.max(0, Math.round((today.getTime() - created.getTime()) / 86400000));
+    const totalDays = goal.deadline
+      ? Math.max(1, Math.round((new Date(`${goal.deadline}T00:00:00`).getTime() - created.getTime()) / 86400000))
+      : null;
+
+    const rawPct = goal.targetAmount > 0 ? (goal.saved / goal.targetAmount) * 100 : 0;
+    const reached = goal.targetAmount > 0 && goal.saved >= goal.targetAmount;
+    const expired = !reached && days !== null && days < 0;
+    const phase: 'running' | 'done' | 'expired' = reached ? 'done' : expired ? 'expired' : 'running';
+
+    // Скільки днів пішло на ціль: дата внеску, який перетнув планку.
+    let reachedInDays: number | null = null;
+    if (reached) {
+      const ascending = [...contributions].sort((a, b) => a.date.localeCompare(b.date));
+      let running = 0;
+      for (const c of ascending) {
+        running += amountOf(c);
+        if (running >= goal.targetAmount) {
+          const at = new Date(`${c.date}T00:00:00`);
+          reachedInDays = Math.max(0, Math.round((at.getTime() - created.getTime()) / 86400000));
+          break;
+        }
+      }
+    }
+
     const daysLeft = days !== null ? Math.max(0, days) : null;
     const neededPerDay = daysLeft && daysLeft > 0 ? remaining / daysLeft : remaining;
+    // Після фінішу денна норма вже ні до чого — показуємо реальний темп забігу.
+    const paceDays = reached
+      ? Math.max(1, reachedInDays ?? elapsedDays)
+      : Math.max(1, totalDays ?? elapsedDays);
+    const actualPerDay = goal.saved / paceDays;
 
     let trajectory: { ahead: boolean; delta: number; catchUpPerDay: number } | null = null;
-    if (goal.deadline) {
-      const created = new Date(goal.createdAt);
-      created.setHours(0, 0, 0, 0);
-      const deadlineDate = new Date(`${goal.deadline}T00:00:00`);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const totalDays = Math.max(1, Math.round((deadlineDate.getTime() - created.getTime()) / 86400000));
-      const elapsedDays = Math.min(totalDays, Math.max(0, Math.round((today.getTime() - created.getTime()) / 86400000)));
-      const expectedByNow = (goal.targetAmount / totalDays) * elapsedDays;
+    if (phase === 'running' && totalDays !== null) {
+      const cappedElapsed = Math.min(totalDays, elapsedDays);
+      const expectedByNow = (goal.targetAmount / totalDays) * cappedElapsed;
       const delta = goal.saved - expectedByNow;
       const catchUpPerDay = delta < 0 && daysLeft && daysLeft > 0 ? Math.abs(delta) / daysLeft : 0;
       trajectory = { ahead: delta >= 0, delta, catchUpPerDay };
     }
 
-    return { todayEarned, weekEarned, monthEarned, sources, neededPerDay, trajectory };
+    return {
+      todayEarned,
+      weekEarned,
+      monthEarned,
+      sources,
+      neededPerDay,
+      actualPerDay,
+      trajectory,
+      phase,
+      rawPct,
+      reachedInDays,
+      totalDays,
+      overachieved: Math.max(0, goal.saved - goal.targetAmount),
+    };
   }, [goal, contributions, days, remaining, t]);
 
   const openEdit = () => {
@@ -401,16 +444,55 @@ const GoalDetail: React.FC = () => {
               <div className={income.progressFill} style={{ width: `${pct}%` }} />
             </div>
             <div className={income.progressMeta}>
-              <span className={income.progressPct}>{pct.toFixed(1)}%</span>
-              {days !== null ? (
+              <span className={income.progressPct}>{incomeStats.rawPct.toFixed(1)}%</span>
+              {incomeStats.phase === 'running' && days !== null ? (
                 <span className={income.progressDays}>
-                  {days < 0 ? t('goals', 'overdue') : t('goals', 'daysLeft').replace('{n}', String(Math.max(0, days)))}
+                  {t('goals', 'daysLeft').replace('{n}', String(Math.max(0, days)))}
                 </span>
+              ) : incomeStats.phase === 'expired' ? (
+                <span className={income.progressDays}>{t('goals', 'overdue')}</span>
               ) : null}
             </div>
           </div>
 
-          {incomeStats.trajectory ? (
+          {incomeStats.phase === 'done' ? (
+            <div className={`${income.trajectory} ${income.trajectoryAhead}`}>
+              <div className={income.trajectoryIcon}>
+                <Trophy size={17} strokeWidth={2.4} />
+              </div>
+              <div className={income.trajectoryBody}>
+                <p className={income.trajectoryTitle}>
+                  {incomeStats.reachedInDays !== null
+                    ? t('goals', 'goalReachedInDays').replace('{n}', String(incomeStats.reachedInDays))
+                    : t('goals', 'goalReached')}
+                </p>
+                <p className={income.trajectorySub}>
+                  {incomeStats.overachieved > 0
+                    ? t('goals', 'goalOverachieved').replace(
+                        '{amount}',
+                        formatCurrency(incomeStats.overachieved, locale, cur)
+                      )
+                    : t('goals', 'goalReachedHint')}
+                </p>
+              </div>
+            </div>
+          ) : incomeStats.phase === 'expired' ? (
+            <div className={`${income.trajectory} ${income.trajectoryNeutral}`}>
+              <div className={income.trajectoryIcon}>
+                <CalendarX size={17} strokeWidth={2.4} />
+              </div>
+              <div className={income.trajectoryBody}>
+                <p className={income.trajectoryTitle}>{t('goals', 'deadlinePassed')}</p>
+                <p className={income.trajectorySub}>
+                  {t('goals', 'deadlinePassedHint')
+                    .replace('{amount}', formatCurrency(goal.saved, locale, cur))
+                    .replace('{target}', formatCurrency(goal.targetAmount, locale, cur))
+                    .replace('{pct}', incomeStats.rawPct.toFixed(1))
+                    .replace('{n}', String(incomeStats.totalDays ?? 0))}
+                </p>
+              </div>
+            </div>
+          ) : incomeStats.trajectory ? (
             <div
               className={`${income.trajectory} ${incomeStats.trajectory.ahead ? income.trajectoryAhead : income.trajectoryBehind}`}
             >
@@ -474,8 +556,16 @@ const GoalDetail: React.FC = () => {
               <div className={income.rowIcon} style={{ background: 'var(--accent-yellow)', color: '#1a1200' }}>
                 <Gauge size={16} strokeWidth={2.2} />
               </div>
-              <span className={income.rowLabel}>{t('goals', 'neededPerDay')}</span>
-              <span className={income.rowValue}>{formatCurrency(incomeStats.neededPerDay, locale, cur)}</span>
+              <span className={income.rowLabel}>
+                {incomeStats.phase === 'running' ? t('goals', 'neededPerDay') : t('goals', 'actualPerDay')}
+              </span>
+              <span className={income.rowValue}>
+                {formatCurrency(
+                  incomeStats.phase === 'running' ? incomeStats.neededPerDay : incomeStats.actualPerDay,
+                  locale,
+                  cur
+                )}
+              </span>
             </div>
           </div>
 

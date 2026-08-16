@@ -161,6 +161,12 @@
   border-color: rgba(255, 90, 99, 0.28);
 }
 
+/* Дедлайн минув — забіг закінчено, тож не червоний докір, а спокійний підсумок. */
+.trajectoryNeutral {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.09);
+}
+
 .trajectoryIcon {
   width: 32px;
   height: 32px;
@@ -182,6 +188,11 @@
   color: var(--accent-red);
 }
 
+.trajectoryNeutral .trajectoryIcon {
+  background: rgba(255, 255, 255, 0.09);
+  color: var(--text-secondary);
+}
+
 .trajectoryBody {
   min-width: 0;
   flex: 1;
@@ -199,6 +210,10 @@
 
 .trajectoryBehind .trajectoryTitle {
   color: #ff8a90;
+}
+
+.trajectoryNeutral .trajectoryTitle {
+  color: var(--text-primary);
 }
 
 .trajectorySub {
