@@ -42,6 +42,8 @@ import { useTranslation } from '../i18n/LanguageContext';
 import { useGoBack } from '../hooks/useGoBack';
 import { showAppConfirm } from '../utils/notify';
 import { usePortfolio } from '../context/PortfolioContext';
+import FormSheet from '../components/ui/FormSheet';
+import sheet from '../components/ui/FormSheet.module.css';
 import styles from './Goals.module.css';
 import income from './IncomeGoal.module.css';
 
@@ -110,6 +112,7 @@ const GoalDetail: React.FC = () => {
   const [contribAccountKey, setContribAccountKey] = useState('');
   const [contribCurrency, setContribCurrency] = useState<GoalCurrency>('UAH');
   const [contribSource, setContribSource] = useState('');
+  const [contributeOpen, setContributeOpen] = useState(false);
   const [sourceSuggestions, setSourceSuggestions] = useState<string[]>([]);
   const { accounts: rawAccounts } = usePortfolio();
   const portfolioAccounts = useMemo<Array<{ key: string; name: string; currency: GoalCurrency }>>(
@@ -135,6 +138,7 @@ const GoalDetail: React.FC = () => {
   const [editOpen, setEditOpen] = useState(false);
   const [editName, setEditName] = useState('');
   const [editTarget, setEditTarget] = useState('');
+  const [editBaseline, setEditBaseline] = useState('');
   const [editCurrency, setEditCurrency] = useState<GoalCurrency>('UAH');
   const [editDeadline, setEditDeadline] = useState('');
   const [editColor, setEditColor] = useState<string>(SWATCHES[0]);
@@ -225,6 +229,12 @@ const GoalDetail: React.FC = () => {
       const key = c.source && c.source.trim() ? c.source.trim() : t('goals', 'sourceOther');
       sourceTotals.set(key, (sourceTotals.get(key) || 0) + amt);
     }
+    // Стартова сума не має джерела, але без неї відсотки не збігались би з
+    // сумою цілі — тож вона стоїть у розбивці окремим рядком.
+    if (goal.baselineAmount > 0) {
+      const label = t('goals', 'baselineSourceLabel');
+      sourceTotals.set(label, (sourceTotals.get(label) || 0) + goal.baselineAmount);
+    }
     const sources = Array.from(sourceTotals.entries())
       .map(([name, amount]) => ({ name, amount }))
       .sort((a, b) => b.amount - a.amount);
@@ -247,7 +257,7 @@ const GoalDetail: React.FC = () => {
     let reachedInDays: number | null = null;
     if (reached) {
       const ascending = [...contributions].sort((a, b) => a.date.localeCompare(b.date));
-      let running = 0;
+      let running = goal.baselineAmount;
       for (const c of ascending) {
         running += amountOf(c);
         if (running >= goal.targetAmount) {
@@ -261,15 +271,18 @@ const GoalDetail: React.FC = () => {
     const daysLeft = days !== null ? Math.max(0, days) : null;
     const neededPerDay = daysLeft && daysLeft > 0 ? remaining / daysLeft : remaining;
     // Після фінішу денна норма вже ні до чого — показуємо реальний темп забігу.
+    // Стартова сума в темп не входить: її не заробляли протягом цих днів.
     const paceDays = reached
       ? Math.max(1, reachedInDays ?? elapsedDays)
       : Math.max(1, totalDays ?? elapsedDays);
-    const actualPerDay = goal.saved / paceDays;
+    const actualPerDay = Math.max(0, goal.saved - goal.baselineAmount) / paceDays;
 
     let trajectory: { ahead: boolean; delta: number; catchUpPerDay: number } | null = null;
     if (phase === 'running' && totalDays !== null) {
       const cappedElapsed = Math.min(totalDays, elapsedDays);
-      const expectedByNow = (goal.targetAmount / totalDays) * cappedElapsed;
+      // План стартує не з нуля, а зі стартової суми.
+      const expectedByNow =
+        goal.baselineAmount + ((goal.targetAmount - goal.baselineAmount) / totalDays) * cappedElapsed;
       const delta = goal.saved - expectedByNow;
       const catchUpPerDay = delta < 0 && daysLeft && daysLeft > 0 ? Math.abs(delta) / daysLeft : 0;
       trajectory = { ahead: delta >= 0, delta, catchUpPerDay };
@@ -296,6 +309,7 @@ const GoalDetail: React.FC = () => {
     setActionError('');
     setEditName(goal.name);
     setEditTarget(String(goal.targetAmount));
+    setEditBaseline(goal.baselineAmount > 0 ? String(goal.baselineAmount) : '');
     setEditCurrency(goal.currency);
     setEditDeadline(goal.deadline ?? '');
     setEditColor(GOAL_COLOR_RE.test(goal.color) ? goal.color : SWATCHES[0]);
@@ -316,9 +330,11 @@ const GoalDetail: React.FC = () => {
       return;
     }
     try {
+      const base = parseFloat(String(editBaseline).replace(',', '.'));
       const updated = await updateGoal(id, {
         name: editName.trim(),
         targetAmount: n,
+        baselineAmount: Number.isFinite(base) && base > 0 ? base : 0,
         currency: editCurrency,
         deadline: editDeadline.trim() || null,
         color: editColor,
@@ -334,6 +350,17 @@ const GoalDetail: React.FC = () => {
       else if (code === 'DEADLINE_BEFORE_START') setActionError(t('goals', 'deadlineBeforeStart'));
       else setActionError(t('goals', 'saveError'));
     }
+  };
+
+  const openContribute = () => {
+    if (!goal) return;
+    setActionError('');
+    setContribAmount('');
+    setContribNote('');
+    setContribSource('');
+    setContribAccountKey('');
+    setContribCurrency(goal.currency);
+    setContributeOpen(true);
   };
 
   const onAddContribution = async () => {
@@ -354,12 +381,15 @@ const GoalDetail: React.FC = () => {
       setContribAmount('');
       setContribNote('');
       setContribSource('');
+      setContributeOpen(false);
       await load();
     } catch (e: unknown) {
       const code =
         e && typeof e === 'object' && 'code' in e ? String((e as { code?: string }).code) : '';
       if (code === 'ACCOUNT_CURRENCY_UNSUPPORTED') {
         setActionError(t('goals', 'cryptoAccountUnsupported'));
+      } else if (code === 'ACCOUNT_NOT_FOR_INCOME') {
+        setActionError(t('goals', 'accountNotForIncome'));
       } else {
         setActionError(t('goals', 'saveError'));
       }
@@ -652,119 +682,14 @@ const GoalDetail: React.FC = () => {
       )}
 
       <div className={styles.toolbar}>
+        <button type="button" className={styles.toolbarBtn} onClick={openContribute}>
+          {t('goals', 'contribute')}
+        </button>
         <button type="button" className={styles.toolbarBtn} onClick={openEdit}>
           {t('goals', 'edit')}
         </button>
         <button type="button" className={`${styles.toolbarBtn} ${styles.toolbarBtnDanger}`} onClick={() => void onDeleteGoal()}>
           {t('goals', 'delete')}
-        </button>
-      </div>
-
-      <div className={styles.formCard}>
-        <h2 className={styles.sectionTitle}>{t('goals', 'contribute')}</h2>
-        <div className={styles.field}>
-          <label className={styles.label} htmlFor="c-amt">
-            {t('goals', 'contributionAmount')}
-          </label>
-          <input
-            id="c-amt"
-            className={styles.input}
-            inputMode="decimal"
-            value={contribAmount}
-            onChange={(e) => setContribAmount(e.target.value)}
-            onFocus={(e) => ensureFieldVisible(e.currentTarget)}
-            placeholder="0"
-          />
-        </div>
-        <div className={styles.field}>
-          <label className={styles.label} id="c-pay-label">
-            {t('goals', 'payFromAccount')}
-          </label>
-          <p className={styles.goalPayHint} id="c-pay-hint">
-            {t('goals', 'payFromHint')}
-          </p>
-          <div className={styles.goalPayChips} role="group" aria-labelledby="c-pay-label c-pay-hint">
-            <button
-              type="button"
-              className={`${styles.goalPayChip} ${contribAccountKey === '' ? styles.goalPayChipActive : ''}`}
-              onClick={() => setContribAccountKey('')}
-            >
-              {t('addTx', 'paymentAccountNone')}
-            </button>
-            {accountPayOptions.map(({ key, name }) => (
-              <button
-                key={key}
-                type="button"
-                className={`${styles.goalPayChip} ${contribAccountKey === key ? styles.goalPayChipActive : ''}`}
-                onClick={() => setContribAccountKey(key)}
-              >
-                {name}
-              </button>
-            ))}
-          </div>
-        </div>
-        {contribAccountKey === '' ? (
-          <div className={styles.field}>
-            <label className={styles.label} id="c-cur-label">
-              {t('goals', 'contributionCurrency')}
-            </label>
-            <div className={styles.goalPayChips} role="group" aria-labelledby="c-cur-label">
-              {CURRENCY_OPTIONS.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  className={`${styles.goalPayChip} ${contribCurrency === c ? styles.goalPayChipActive : ''}`}
-                  onClick={() => setContribCurrency(c)}
-                >
-                  {c}
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : null}
-        {goal.type === 'income' ? (
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="c-source">
-              {t('goals', 'contributionSource')}
-            </label>
-            {sourceSuggestions.length > 0 ? (
-              <div className={styles.goalPayChips} style={{ marginBottom: 8 }}>
-                {sourceSuggestions.map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    className={`${styles.goalPayChip} ${contribSource === s ? styles.goalPayChipActive : ''}`}
-                    onClick={() => setContribSource(s)}
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-            <input
-              id="c-source"
-              className={styles.input}
-              value={contribSource}
-              onChange={(e) => setContribSource(e.target.value)}
-              onFocus={(e) => ensureFieldVisible(e.currentTarget)}
-              placeholder={t('goals', 'contributionSourcePlaceholder')}
-            />
-          </div>
-        ) : null}
-        <div className={styles.field}>
-          <label className={styles.label} htmlFor="c-note">
-            {t('goals', 'contributionNote')}
-          </label>
-          <input
-            id="c-note"
-            className={styles.input}
-            value={contribNote}
-            onChange={(e) => setContribNote(e.target.value)}
-            onFocus={(e) => ensureFieldVisible(e.currentTarget)}
-          />
-        </div>
-        <button type="button" className={styles.btnPrimary} style={{ width: '100%', marginTop: 8 }} onClick={() => void onAddContribution()}>
-          {t('goals', 'contribute')}
         </button>
       </div>
 
@@ -798,6 +723,109 @@ const GoalDetail: React.FC = () => {
           })}
         </div>
       )}
+
+      {contributeOpen ? (
+        <FormSheet
+          title={t('goals', 'contribute')}
+          onClose={() => setContributeOpen(false)}
+          onSubmit={() => void onAddContribution()}
+          submitLabel={t('goals', 'save')}
+          cancelLabel={t('goals', 'cancel')}
+          submitDisabled={!(Number(contribAmount.replace(',', '.')) > 0)}
+          error={actionError || undefined}
+        >
+          <div className={sheet.group}>
+            <label className={sheet.row}>
+              <span className={sheet.rowLabel}>{t('goals', 'contributionAmount')}</span>
+              <input
+                className={sheet.rowField}
+                inputMode="decimal"
+                value={contribAmount}
+                onChange={(e) => setContribAmount(e.target.value)}
+                placeholder="0"
+              />
+            </label>
+
+            <label className={sheet.row}>
+              <span className={sheet.rowLabel}>{t('goals', 'contributionCurrency')}</span>
+              <select
+                className={`${sheet.rowField} ${sheet.rowSelect}`}
+                value={contribCurrency}
+                onChange={(e) => setContribCurrency(e.target.value as GoalCurrency)}
+                disabled={contribAccountKey !== ''}
+              >
+                {CURRENCY_OPTIONS.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {goal.type === 'savings' ? (
+              <label className={sheet.row}>
+                <span className={sheet.rowLabel}>{t('goals', 'payFromAccount')}</span>
+                <select
+                  className={`${sheet.rowField} ${sheet.rowSelect}`}
+                  value={contribAccountKey}
+                  onChange={(e) => setContribAccountKey(e.target.value)}
+                >
+                  <option value="">{t('addTx', 'paymentAccountNone')}</option>
+                  {accountPayOptions.map(({ key, name, currency: accCur }) => (
+                    <option key={key} value={key}>
+                      {name} · {accCur}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+
+            <label className={sheet.row}>
+              <span className={sheet.rowLabel}>{t('goals', 'contributionNote')}</span>
+              <input
+                className={sheet.rowField}
+                value={contribNote}
+                onChange={(e) => setContribNote(e.target.value)}
+                placeholder={t('goals', 'contributionNote')}
+              />
+            </label>
+          </div>
+          <p className={sheet.groupCaption}>
+            {goal.type === 'income' ? t('goals', 'incomeNoWalletHint') : t('goals', 'payFromHint')}
+          </p>
+
+          {goal.type === 'income' ? (
+            <div>
+              <p className={sheet.blockLabel}>{t('goals', 'contributionSource')}</p>
+              <div className={sheet.group}>
+                <label className={sheet.row}>
+                  <input
+                    className={sheet.rowField}
+                    style={{ textAlign: 'left' }}
+                    value={contribSource}
+                    onChange={(e) => setContribSource(e.target.value)}
+                    placeholder={t('goals', 'contributionSourcePlaceholder')}
+                  />
+                </label>
+              </div>
+              {sourceSuggestions.length > 0 ? (
+                <div className={styles.goalPayChips} style={{ marginTop: 10 }}>
+                  {sourceSuggestions.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      className={`${styles.goalPayChip} ${contribSource === s ? styles.goalPayChipActive : ''}`}
+                      onClick={() => setContribSource(s)}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </FormSheet>
+      ) : null}
 
       {editOpen ? (
         <div
@@ -833,6 +861,20 @@ const GoalDetail: React.FC = () => {
                   value={editTarget}
                   onChange={(e) => setEditTarget(e.target.value)}
                   onFocus={(e) => ensureFieldVisible(e.currentTarget)}
+                />
+              </div>
+              <div className={styles.field}>
+                <label className={styles.label} htmlFor="e-baseline">
+                  {goal.type === 'income' ? t('goals', 'baselineEarned') : t('goals', 'baselineSaved')}
+                </label>
+                <input
+                  id="e-baseline"
+                  className={styles.input}
+                  inputMode="decimal"
+                  value={editBaseline}
+                  onChange={(e) => setEditBaseline(e.target.value)}
+                  onFocus={(e) => ensureFieldVisible(e.currentTarget)}
+                  placeholder="0"
                 />
               </div>
               <div className={styles.field}>

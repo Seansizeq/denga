@@ -224,6 +224,8 @@ export type Goal = {
   name: string;
   type: GoalType;
   targetAmount: number;
+  /** Стартовий прогрес: гроші, вже зароблені/відкладені до створення цілі. Не транзакція. */
+  baselineAmount: number;
   saved: number;
   contributionsCount: number;
   currency: GoalCurrency;
@@ -268,6 +270,7 @@ export const createGoal = async (body: {
   name: string;
   type?: GoalType;
   targetAmount: number;
+  baselineAmount?: number;
   currency: GoalCurrency;
   deadline?: string | null;
   icon?: string;
@@ -297,6 +300,7 @@ export const updateGoal = async (
     name: string;
     type: GoalType;
     targetAmount: number;
+    baselineAmount: number;
     currency: GoalCurrency;
     deadline: string | null;
     icon: string;

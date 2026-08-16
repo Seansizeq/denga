@@ -77,6 +77,7 @@ const Goals: React.FC = () => {
   const [goalType, setGoalType] = useState<GoalType>('savings');
   const [name, setName] = useState('');
   const [target, setTarget] = useState('');
+  const [baseline, setBaseline] = useState('');
   const [currency, setCurrency] = useState<GoalCurrency>(displayCurrency as GoalCurrency);
   const [deadline, setDeadline] = useState('');
   const [color, setColor] = useState<string>(SWATCHES[0]);
@@ -113,6 +114,7 @@ const Goals: React.FC = () => {
     setGoalType('savings');
     setName('');
     setTarget('');
+    setBaseline('');
     setCurrency(displayCurrency as GoalCurrency);
     setDeadline('');
     setColor(SWATCHES[0]);
@@ -136,10 +138,12 @@ const Goals: React.FC = () => {
       return;
     }
     try {
+      const base = parseFloat(String(baseline).replace(',', '.'));
       await createGoal({
         name: name.trim(),
         type: goalType,
         targetAmount: n,
+        baselineAmount: Number.isFinite(base) && base > 0 ? base : 0,
         currency,
         deadline: deadline.trim() || null,
         color,
@@ -303,6 +307,19 @@ const Goals: React.FC = () => {
             </label>
 
             <label className={sheet.row}>
+              <span className={sheet.rowLabel}>
+                {goalType === 'income' ? t('goals', 'baselineEarned') : t('goals', 'baselineSaved')}
+              </span>
+              <input
+                className={sheet.rowField}
+                inputMode="decimal"
+                value={baseline}
+                onChange={(e) => setBaseline(e.target.value)}
+                placeholder="0"
+              />
+            </label>
+
+            <label className={sheet.row}>
               <span className={sheet.rowLabel}>{t('goals', 'currency')}</span>
               <select
                 className={`${sheet.rowField} ${sheet.rowSelect}`}
@@ -327,6 +344,7 @@ const Goals: React.FC = () => {
             </label>
           </div>
           <p className={sheet.groupCaption}>
+            {goalType === 'income' ? t('goals', 'baselineIncomeHint') : t('goals', 'baselineSavingsHint')}{' '}
             {goalType === 'income' ? t('goals', 'deadlineRequiredForIncome') : t('goals', 'deadlineOptional')}
           </p>
 

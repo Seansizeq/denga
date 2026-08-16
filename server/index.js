@@ -1319,17 +1319,19 @@ const collectBudgetRisks = async (dbConn, userId, txs, today, tz, fxPayload) => 
 };
 const getGoalNudge = async (dbConn, userId, freeCash) => {
   if (!(Number(freeCash) > 0)) return null;
+  // Income goals are deliberately excluded: they track money coming in, so
+  // "put your spare cash here" is the wrong advice for them.
   const rows = await dbConn.all(
     `SELECT
        g.id AS id,
        g.name AS name,
        g.target_amount AS targetAmount,
        g.currency AS currency,
-       COALESCE(SUM(c.amount), 0) AS saved
+       g.baseline_amount + COALESCE(SUM(c.amount), 0) AS saved
      FROM goals g
      LEFT JOIN goal_contributions c ON c.goal_id = g.id AND c.user_id = g.user_id
-     WHERE g.user_id = ? AND g.archived = 0
-     GROUP BY g.id, g.name, g.target_amount, g.currency
+     WHERE g.user_id = ? AND g.archived = 0 AND g.type <> 'income'
+     GROUP BY g.id, g.name, g.target_amount, g.baseline_amount, g.currency
      ORDER BY g.updated_at DESC`,
     [userId]
   );
@@ -3128,6 +3130,7 @@ const mapGoalRow = (row, saved, contributionsCount) => ({
   name: row.name,
   type: row.type === 'income' ? 'income' : 'savings',
   targetAmount: Number(row.target_amount) || 0,
+  baselineAmount: Number(row.baseline_amount) || 0,
   saved: Number(saved) || 0,
   contributionsCount: Number(contributionsCount) || 0,
   currency: normalizeCurrency(row.currency),
@@ -3148,9 +3151,10 @@ const earliestAllowedDeadline = () => new Date(Date.now() - 86400000).toISOStrin
 
 // Contributions can be logged in a different currency than the goal (e.g. a
 // UAH income logged against a USD goal), so "saved" is a live FX conversion
-// sum rather than a plain SQL SUM.
-const sumGoalContributions = (contribRows, goalCurrency, fx) => {
-  let saved = 0;
+// sum rather than a plain SQL SUM. The baseline is already in the goal's own
+// currency and joins the total untouched.
+const sumGoalContributions = (contribRows, goalCurrency, fx, baseline = 0) => {
+  let saved = Number(baseline) || 0;
   for (const r of contribRows || []) {
     const cur = r.currency ? normalizeCurrency(r.currency) : goalCurrency;
     saved += convertCurrencyServer(Number(r.amount) || 0, cur, goalCurrency, fx);
@@ -3165,7 +3169,7 @@ app.get('/api/goals', async (req, res) => {
     return;
   }
   const rows = await db.all(
-    `SELECT g.id, g.user_id, g.name, g.type, g.target_amount, g.currency, g.deadline, g.icon, g.color, g.archived, g.created_at, g.updated_at
+    `SELECT g.id, g.user_id, g.name, g.type, g.target_amount, g.baseline_amount, g.currency, g.deadline, g.icon, g.color, g.archived, g.created_at, g.updated_at
      FROM goals g
      WHERE g.user_id = ?
      ORDER BY g.archived ASC, g.updated_at DESC`,
@@ -3188,7 +3192,7 @@ app.get('/api/goals', async (req, res) => {
     (rows || []).map((r) => {
       const goalCurrency = normalizeCurrency(r.currency);
       const list = byGoal.get(r.id) || [];
-      const saved = sumGoalContributions(list, goalCurrency, fx);
+      const saved = sumGoalContributions(list, goalCurrency, fx, r.baseline_amount);
       return mapGoalRow(r, saved, list.length);
     })
   );
@@ -3203,6 +3207,7 @@ app.post('/api/goals', async (req, res) => {
   const name = typeof req.body?.name === 'string' ? req.body.name.trim().replace(/\s+/g, ' ') : '';
   const type = req.body?.type === 'income' ? 'income' : 'savings';
   const targetAmount = Number(req.body?.targetAmount);
+  const baselineAmount = req.body?.baselineAmount === undefined ? 0 : Number(req.body.baselineAmount);
   const currency = normalizeCurrency(req.body?.currency);
   const deadlineRaw = req.body?.deadline;
   const deadline =
@@ -3235,20 +3240,24 @@ app.post('/api/goals', async (req, res) => {
     res.status(400).json({ error: 'targetAmount must be > 0' });
     return;
   }
+  if (!Number.isFinite(baselineAmount) || baselineAmount < 0) {
+    res.status(400).json({ error: 'baselineAmount must be >= 0' });
+    return;
+  }
 
   const id = uuidv4();
   const now = new Date().toISOString();
   await db.run(
-    `INSERT INTO goals (id, user_id, name, type, target_amount, currency, deadline, icon, color, archived, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
-    [id, userId, name, type, targetAmount, currency, deadline, icon, color, now, now]
+    `INSERT INTO goals (id, user_id, name, type, target_amount, baseline_amount, currency, deadline, icon, color, archived, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+    [id, userId, name, type, targetAmount, baselineAmount, currency, deadline, icon, color, now, now]
   );
   const row = await db.get(
-    `SELECT g.id, g.user_id, g.name, g.type, g.target_amount, g.currency, g.deadline, g.icon, g.color, g.archived, g.created_at, g.updated_at
+    `SELECT g.id, g.user_id, g.name, g.type, g.target_amount, g.baseline_amount, g.currency, g.deadline, g.icon, g.color, g.archived, g.created_at, g.updated_at
      FROM goals g WHERE g.id = ? AND g.user_id = ?`,
     [id, userId]
   );
-  res.status(201).json(mapGoalRow(row, 0, 0));
+  res.status(201).json(mapGoalRow(row, baselineAmount, 0));
 });
 
 app.patch('/api/goals/:id', async (req, res) => {
@@ -3271,6 +3280,8 @@ app.patch('/api/goals/:id', async (req, res) => {
   const type = req.body?.type === undefined ? (current.type === 'income' ? 'income' : 'savings') : (req.body.type === 'income' ? 'income' : 'savings');
   const targetAmount =
     req.body?.targetAmount === undefined ? Number(current.target_amount) : Number(req.body.targetAmount);
+  const baselineAmount =
+    req.body?.baselineAmount === undefined ? Number(current.baseline_amount) || 0 : Number(req.body.baselineAmount);
   const currency = req.body?.currency === undefined ? normalizeCurrency(current.currency) : normalizeCurrency(req.body.currency);
   let deadline = current.deadline;
   if (req.body?.deadline !== undefined) {
@@ -3310,19 +3321,23 @@ app.patch('/api/goals/:id', async (req, res) => {
     res.status(400).json({ error: 'targetAmount must be > 0' });
     return;
   }
+  if (!Number.isFinite(baselineAmount) || baselineAmount < 0) {
+    res.status(400).json({ error: 'baselineAmount must be >= 0' });
+    return;
+  }
 
   const now = new Date().toISOString();
   await db.run(
-    `UPDATE goals SET name = ?, type = ?, target_amount = ?, currency = ?, deadline = ?, icon = ?, color = ?, archived = ?, updated_at = ?
+    `UPDATE goals SET name = ?, type = ?, target_amount = ?, baseline_amount = ?, currency = ?, deadline = ?, icon = ?, color = ?, archived = ?, updated_at = ?
      WHERE id = ? AND user_id = ?`,
-    [name, type, targetAmount, currency, deadline, icon, color, archived ? 1 : 0, now, id, userId]
+    [name, type, targetAmount, baselineAmount, currency, deadline, icon, color, archived ? 1 : 0, now, id, userId]
   );
 
   const contribRows = await db.all(`SELECT amount, currency FROM goal_contributions WHERE goal_id = ?`, [id]);
   const fx = await fetchFxRates().catch(() => FX_FALLBACK);
-  const saved = sumGoalContributions(contribRows, currency, fx);
+  const saved = sumGoalContributions(contribRows, currency, fx, baselineAmount);
   const row = await db.get(
-    `SELECT g.id, g.user_id, g.name, g.type, g.target_amount, g.currency, g.deadline, g.icon, g.color, g.archived, g.created_at, g.updated_at
+    `SELECT g.id, g.user_id, g.name, g.type, g.target_amount, g.baseline_amount, g.currency, g.deadline, g.icon, g.color, g.archived, g.created_at, g.updated_at
      FROM goals g WHERE g.id = ? AND g.user_id = ?`,
     [id, userId]
   );
@@ -3386,7 +3401,7 @@ app.get('/api/goals/:id', async (req, res) => {
     return;
   }
   const row = await db.get(
-    `SELECT g.id, g.user_id, g.name, g.type, g.target_amount, g.currency, g.deadline, g.icon, g.color, g.archived, g.created_at, g.updated_at
+    `SELECT g.id, g.user_id, g.name, g.type, g.target_amount, g.baseline_amount, g.currency, g.deadline, g.icon, g.color, g.archived, g.created_at, g.updated_at
      FROM goals g
      WHERE g.user_id = ? AND g.id = ?`,
     [userId, id]
@@ -3398,7 +3413,7 @@ app.get('/api/goals/:id', async (req, res) => {
   const goalCurrency = normalizeCurrency(row.currency);
   const contribRows = await db.all(`SELECT amount, currency FROM goal_contributions WHERE goal_id = ?`, [id]);
   const fx = await fetchFxRates().catch(() => FX_FALLBACK);
-  const saved = sumGoalContributions(contribRows, goalCurrency, fx);
+  const saved = sumGoalContributions(contribRows, goalCurrency, fx, row.baseline_amount);
   res.json(mapGoalRow(row, saved, (contribRows || []).length));
 });
 
@@ -3451,7 +3466,7 @@ app.post('/api/goals/:id/contributions', async (req, res) => {
     return;
   }
   const goalRow = await db.get(
-    'SELECT id, name, currency FROM goals WHERE user_id = ? AND id = ?',
+    'SELECT id, name, type, currency FROM goals WHERE user_id = ? AND id = ?',
     [userId, goalId]
   );
   if (!goalRow) {
@@ -3474,6 +3489,15 @@ app.post('/api/goals/:id/contributions', async (req, res) => {
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     res.status(400).json({ error: 'date must be YYYY-MM-DD' });
+    return;
+  }
+  // An income goal counts money coming in, so nothing is withdrawn to feed it:
+  // no expense, no account touched. Only a savings goal moves money aside.
+  if (goalRow.type === 'income' && accountKey) {
+    res.status(400).json({
+      error: 'income goals are not funded from an account',
+      code: 'ACCOUNT_NOT_FOR_INCOME',
+    });
     return;
   }
 

@@ -607,6 +607,13 @@ export async function initDb() {
   } catch {
     /* already exists */
   }
+  // Progress a goal starts with — money already earned or already put aside
+  // before the goal existed. Counts toward the bar, never a transaction.
+  try {
+    await db.exec(`ALTER TABLE goals ADD COLUMN baseline_amount REAL NOT NULL DEFAULT 0`);
+  } catch {
+    /* already exists */
+  }
 
   await removeRetiredBybitIntegration(db);
 

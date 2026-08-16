@@ -415,6 +415,13 @@ type Dict = {
     deadlineRequiredForIncome: string;
     deadlineInPast: string;
     deadlineBeforeStart: string;
+    baselineEarned: string;
+    baselineSaved: string;
+    baselineIncomeHint: string;
+    baselineSavingsHint: string;
+    baselineSourceLabel: string;
+    incomeNoWalletHint: string;
+    accountNotForIncome: string;
     cryptoAccountUnsupported: string;
     roadTo: string;
     aheadOfPlan: string;
@@ -926,6 +933,13 @@ const uk: Dict = {
     deadlineRequiredForIncome: 'Для доходної цілі дедлайн обов’язковий',
     deadlineInPast: 'Дедлайн не може бути в минулому',
     deadlineBeforeStart: 'Дедлайн не може бути раніше за дату створення цілі',
+    baselineEarned: 'Вже зароблено',
+    baselineSaved: 'Вже накопичено',
+    baselineIncomeHint: 'Стартова сума — це вже зароблені гроші, вона лише зсуває шкалу й не чіпає гаманець.',
+    baselineSavingsHint: 'Стартова сума — це вже відкладені гроші, вона лише зсуває шкалу й не чіпає гаманець.',
+    baselineSourceLabel: 'Стартова сума',
+    incomeNoWalletHint: 'Дохід не списується з рахунку — це нові гроші, тож гаманець лишається без змін.',
+    accountNotForIncome: 'Доходну ціль не поповнюють з рахунку.',
     cryptoAccountUnsupported: 'Крипторахунок не можна використати для внеску в ціль.',
     roadTo: 'Шлях до',
     aheadOfPlan: 'Ти на {amount} попереду графіка',
@@ -1441,6 +1455,13 @@ const ru: Dict = {
     deadlineRequiredForIncome: 'Для доходной цели дедлайн обязателен',
     deadlineInPast: 'Дедлайн не может быть в прошлом',
     deadlineBeforeStart: 'Дедлайн не может быть раньше даты создания цели',
+    baselineEarned: 'Уже заработано',
+    baselineSaved: 'Уже накоплено',
+    baselineIncomeHint: 'Стартовая сумма — это уже заработанные деньги, она лишь сдвигает шкалу и не трогает кошелёк.',
+    baselineSavingsHint: 'Стартовая сумма — это уже отложенные деньги, она лишь сдвигает шкалу и не трогает кошелёк.',
+    baselineSourceLabel: 'Стартовая сумма',
+    incomeNoWalletHint: 'Доход не списывается со счёта — это новые деньги, кошелёк остаётся без изменений.',
+    accountNotForIncome: 'Доходную цель не пополняют со счёта.',
     cryptoAccountUnsupported: 'Криптосчёт нельзя использовать для взноса в цель.',
     roadTo: 'Путь к',
     aheadOfPlan: 'Ты на {amount} впереди графика',
@@ -1956,6 +1977,13 @@ const en: Dict = {
     deadlineRequiredForIncome: 'Income goals require a deadline',
     deadlineInPast: 'The deadline cannot be in the past',
     deadlineBeforeStart: 'The deadline cannot precede the goal start date',
+    baselineEarned: 'Already earned',
+    baselineSaved: 'Already saved',
+    baselineIncomeHint: 'The starting amount is money already earned — it only shifts the bar and never touches your wallet.',
+    baselineSavingsHint: 'The starting amount is money already put aside — it only shifts the bar and never touches your wallet.',
+    baselineSourceLabel: 'Starting amount',
+    incomeNoWalletHint: 'Income is not withdrawn from an account — it is new money, so your wallet stays untouched.',
+    accountNotForIncome: 'An income goal is not funded from an account.',
     cryptoAccountUnsupported: 'A crypto account can’t pay into a goal.',
     roadTo: 'Road to',
     aheadOfPlan: 'You’re {amount} ahead of plan',
