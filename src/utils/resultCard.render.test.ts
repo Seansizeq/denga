@@ -115,16 +115,17 @@ describe('result card PNG renderer', () => {
       period: '137 days left',
     });
 
+    // Каптится лише службова мітка зверху — решта рядків лишається як є.
     expect(textCalls).toEqual(expect.arrayContaining([
       'FINANCIAL GOAL',
-      'ROAD TO 30K DOLLARS',
+      'Road to 30K Dollars',
       '$1 074.30',
       'of $30 000',
-      '4% COMPLETED',
-      '137 DAYS LEFT',
+      '4% completed',
+      '137 days left',
     ]));
     expect(textCalls).not.toContain('DENGA');
-    expect(lineTo).toHaveBeenCalledWith(994, 445);
-    expect(lineTo).toHaveBeenCalledWith(122.32, 445);
+    expect(lineTo).toHaveBeenCalledWith(1000, 372);
+    expect(lineTo).toHaveBeenCalledWith(116.8, 372);
   });
 });

@@ -6,7 +6,6 @@ import {
   selectResultCardGroup,
   selectGoalResultCardGroup,
   resultValueColor,
-  stableResultCardIndex,
 } from './resultCard';
 
 describe('result card templates', () => {
@@ -45,11 +44,11 @@ describe('result card templates', () => {
     expect(resultValueColor(0)).toBe('#050505');
   });
 
-  it('keeps deterministic selection inside a group and builds a public URL', () => {
-    const index = stableResultCardIndex('great', 'August 2026');
-    expect(index).toBeGreaterThanOrEqual(0);
-    expect(index).toBeLessThan(5);
-    expect(getResultCardTemplateUrl('great', index)).toMatch(/\/result-cards\/great\/great-.+\.png$/);
+  it('builds a public URL and wraps an out-of-range index', () => {
+    expect(getResultCardTemplateUrl('great', 0)).toMatch(/\/result-cards\/great\/great-.+\.png$/);
+    // Індекс тепер випадковий, тож URL має витримати будь-яке число.
+    expect(getResultCardTemplateUrl('great', 99)).toMatch(/\/result-cards\/great\/great-.+\.png$/);
+    expect(getResultCardTemplateUrl('great', -3)).toMatch(/\/result-cards\/great\/great-.+\.png$/);
   });
 
   it('selects goal templates from progress against the deadline', () => {

@@ -53,7 +53,6 @@ const ResultCardSheet: React.FC<ResultCardSheetProps> = ({
       sheetTitle={t('stats', 'resultImageTitle')}
       imageAlt={title}
       group={group}
-      periodKey={periodLabel}
       filenameKey={`${range}-${periodLabel}`}
       cardTitle={title}
       amount={amount}

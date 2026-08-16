@@ -122,13 +122,6 @@ export const getResultCardTemplateUrl = (group: ResultCardGroup, index: number):
   return `${base}result-cards/${group}/${templates[normalizedIndex]}`;
 };
 
-export const stableResultCardIndex = (group: ResultCardGroup, periodKey: string): number => {
-  const templates = RESULT_CARD_TEMPLATES[group];
-  let hash = 0;
-  for (const char of `${group}:${periodKey}`) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  return hash % templates.length;
-};
-
 const loadImage = (url: string): Promise<HTMLImageElement> =>
   new Promise((resolve, reject) => {
     const image = new Image();
@@ -186,30 +179,29 @@ export const renderResultCardPng = async (options: RenderResultCardOptions): Pro
   ctx.textBaseline = 'top';
 
   if (options.layout === 'goal') {
-    ctx.letterSpacing = '1px';
-    ctx.fillStyle = 'rgba(5, 5, 5, 0.52)';
-    drawFittedText(ctx, (options.eyebrow ?? '').toLocaleUpperCase(), 76, 68, 928, 27, 22, 800);
+    // Один гучний рядок — сума. Решта тихіша: дрібний підпис, тонка шкала,
+    // сірі допоміжні рядки, і жодного капсу, крім службової мітки зверху.
+    ctx.letterSpacing = '1.5px';
+    ctx.fillStyle = 'rgba(5, 5, 5, 0.42)';
+    drawFittedText(ctx, (options.eyebrow ?? '').toLocaleUpperCase(), 76, 72, 928, 23, 18, 700);
 
     ctx.letterSpacing = '0px';
-    ctx.fillStyle = '#050505';
-    drawFittedText(ctx, options.title.toLocaleUpperCase(), 76, 111, 928, 50, 30, 900);
+    ctx.fillStyle = 'rgba(5, 5, 5, 0.9)';
+    drawFittedText(ctx, options.title, 76, 110, 928, 40, 26, 600);
 
     ctx.fillStyle = options.amountColor ?? '#050505';
-    drawFittedText(ctx, options.amount, 72, 182, 936, 122, 70, 900);
+    drawFittedText(ctx, options.amount, 72, 176, 936, 124, 70, 800);
 
-    ctx.fillStyle = 'rgba(5, 5, 5, 0.5)';
-    drawFittedText(ctx, options.secondaryAmount ?? '', 78, 310, 924, 38, 28, 800);
-
-    ctx.fillStyle = options.comparisonColor ?? '#050505';
-    drawFittedText(ctx, options.comparison.toLocaleUpperCase(), 78, 371, 924, 42, 30, 900);
+    ctx.fillStyle = 'rgba(5, 5, 5, 0.4)';
+    drawFittedText(ctx, options.secondaryAmount ?? '', 78, 308, 924, 32, 24, 500);
 
     const progress = Math.max(0, Math.min(100, options.progress ?? 0));
-    const barStart = 86;
-    const barEnd = 994;
-    const barY = 445;
-    ctx.lineWidth = 18;
+    const barStart = 80;
+    const barEnd = 1000;
+    const barY = 372;
+    ctx.lineWidth = 8;
     ctx.lineCap = 'round';
-    ctx.strokeStyle = '#E5E7EB';
+    ctx.strokeStyle = 'rgba(5, 5, 5, 0.1)';
     ctx.beginPath();
     ctx.moveTo(barStart, barY);
     ctx.lineTo(barEnd, barY);
@@ -222,8 +214,13 @@ export const renderResultCardPng = async (options: RenderResultCardOptions): Pro
       ctx.stroke();
     }
 
-    ctx.fillStyle = options.periodColor ?? 'rgba(5, 5, 5, 0.52)';
-    drawFittedText(ctx, options.period.toLocaleUpperCase(), 78, 477, 924, 30, 23, 800);
+    ctx.fillStyle = options.comparisonColor ?? '#050505';
+    drawFittedText(ctx, options.comparison, 78, 404, 560, 30, 22, 600);
+
+    ctx.textAlign = 'right';
+    ctx.fillStyle = options.periodColor ?? 'rgba(5, 5, 5, 0.42)';
+    drawFittedText(ctx, options.period, 1000, 406, 360, 27, 20, 500);
+    ctx.textAlign = 'left';
 
     return new Promise((resolve, reject) => {
       canvas.toBlob((blob) => {

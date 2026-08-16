@@ -307,7 +307,6 @@ type Dict = {
     resultYear: string;
     vsPreviousShort: string;
     noPreviousComparison: string;
-    nextDesign: string;
     saveOrShare: string;
     preparingImage: string;
     imageSaved: string;
@@ -841,7 +840,6 @@ const uk: Dict = {
     resultYear: 'Результат за рік',
     vsPreviousShort: 'до минулого періоду',
     noPreviousComparison: 'Перший період для порівняння',
-    nextDesign: 'Інший дизайн',
     saveOrShare: 'Зберегти',
     preparingImage: 'Готуємо картинку',
     imageSaved: 'Картинку збережено',
@@ -1385,7 +1383,6 @@ const ru: Dict = {
     resultYear: 'Результат за год',
     vsPreviousShort: 'к прошлому периоду',
     noPreviousComparison: 'Первый период для сравнения',
-    nextDesign: 'Другой дизайн',
     saveOrShare: 'Сохранить',
     preparingImage: 'Готовим картинку',
     imageSaved: 'Картинка сохранена',
@@ -1929,7 +1926,6 @@ const en: Dict = {
     resultYear: 'Yearly result',
     vsPreviousShort: 'vs previous period',
     noPreviousComparison: 'First period to compare',
-    nextDesign: 'Another design',
     saveOrShare: 'Save',
     preparingImage: 'Preparing image',
     imageSaved: 'Image saved',

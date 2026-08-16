@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { LoaderCircle, RefreshCw, Share2 } from 'lucide-react';
+import { LoaderCircle, Share2 } from 'lucide-react';
 import BottomSheet from '../ui/BottomSheet';
 import { useTranslation } from '../../i18n/LanguageContext';
 import { useToast } from '../ui/Toast';
@@ -7,7 +7,6 @@ import {
   getResultCardTemplates,
   getResultCardTemplateUrl,
   renderResultCardPng,
-  stableResultCardIndex,
   type ResultCardGroup,
 } from '../../utils/resultCard';
 import styles from './ResultCardSheet.module.css';
@@ -18,7 +17,6 @@ interface ResultImageSheetProps {
   sheetTitle: string;
   imageAlt: string;
   group: ResultCardGroup;
-  periodKey: string;
   filenameKey: string;
   cardTitle: string;
   amount: string;
@@ -40,6 +38,9 @@ const safeFilePart = (value: string): string =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '') || 'result';
 
+/** Шаблон тягнеться наново на кожне відкриття — жодної прив'язки до періоду. */
+const randomTemplateIndex = (count: number): number => (count > 0 ? Math.floor(Math.random() * count) : 0);
+
 const downloadBlob = (blob: Blob, filename: string): void => {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
@@ -57,7 +58,6 @@ const ResultImageSheet: React.FC<ResultImageSheetProps> = ({
   sheetTitle,
   imageAlt,
   group,
-  periodKey,
   filenameKey,
   cardTitle,
   amount,
@@ -73,16 +73,16 @@ const ResultImageSheet: React.FC<ResultImageSheetProps> = ({
 }) => {
   const { t } = useTranslation();
   const toast = useToast();
-  const templates = getResultCardTemplates(group);
-  const [templateIndex, setTemplateIndex] = useState(() => stableResultCardIndex(group, periodKey));
+  const templateCount = getResultCardTemplates(group).length;
+  const [templateIndex, setTemplateIndex] = useState(() => randomTemplateIndex(templateCount));
   const [blob, setBlob] = useState<Blob | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [error, setError] = useState(false);
 
   useEffect(() => {
     if (!open) return;
-    setTemplateIndex(stableResultCardIndex(group, periodKey));
-  }, [open, group, periodKey]);
+    setTemplateIndex(randomTemplateIndex(templateCount));
+  }, [open, group, templateCount]);
 
   useEffect(() => {
     if (!open) return;
@@ -137,10 +137,6 @@ const ResultImageSheet: React.FC<ResultImageSheetProps> = ({
     periodColor,
   ]);
 
-  const showNextTemplate = useCallback(() => {
-    setTemplateIndex((current) => (current + 1) % templates.length);
-  }, [templates.length]);
-
   const shareOrDownload = useCallback(async () => {
     if (!blob) return;
     const filename = `denga-${safeFilePart(filenameKey)}.png`;
@@ -177,15 +173,6 @@ const ResultImageSheet: React.FC<ResultImageSheetProps> = ({
         {error ? <p className={styles.error}>{t('stats', 'imageSaveError')}</p> : null}
 
         <div className={styles.actions}>
-          <button
-            type="button"
-            className={`${styles.button} ${styles.secondaryButton}`}
-            onClick={showNextTemplate}
-            disabled={!blob || error}
-          >
-            <RefreshCw size={17} />
-            {t('stats', 'nextDesign')}
-          </button>
           <button
             type="button"
             className={`${styles.button} ${styles.primaryButton}`}

@@ -5,20 +5,23 @@
   gap: 14px;
 }
 
+/* Ані підкладки, ані щільної тіні: на 4:5-картці вони проступали темним
+   обідком по краю й читались як рамка навколо картинки. */
 .preview {
   width: min(72vw, 276px);
   aspect-ratio: 4 / 5;
   border-radius: 26px;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.06);
-  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.34);
+  background: transparent;
 }
 
 .previewImage {
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  /* cover, а не contain: картка й контейнер обидва 4:5, і при дробових
+     розмірах contain лишав по краю смужку тла. */
+  object-fit: cover;
 }
 
 .loading {
@@ -48,7 +51,6 @@
 .actions {
   width: 100%;
   display: grid;
-  grid-template-columns: 1fr 1.35fr;
   gap: 10px;
 }
 
