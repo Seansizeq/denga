@@ -50,37 +50,35 @@ describe('result card PNG renderer', () => {
 
     await renderResultCardPng({
       templateUrl: '/result-cards/normal/normal-skeleton.png',
-      title: 'Monthly result',
+      label: 'Monthly result',
       amount: '+1 000 ₴',
-      comparison: '-20% vs previous period',
-      period: 'August 2026',
       amountColor: '#16A34A',
-      comparisonColor: '#DC2626',
     });
 
-    expect(textCalls).toContainEqual({ text: '+1 000 ₴', color: '#16A34A' });
-    expect(textCalls).toContainEqual({ text: '-20% VS PREVIOUS PERIOD', color: '#DC2626' });
+    // Рівно два рядки: підпис і сума, без капсу й без службових написів.
+    expect(textCalls).toEqual([
+      { text: 'Monthly result', color: '#050505' },
+      { text: '+1 000 ₴', color: '#16A34A' },
+    ]);
   });
 
-  it('renders goal hierarchy and a proportional progress bar without branding', async () => {
-    const textCalls: string[] = [];
-    const lineTo = vi.fn();
+  it('keeps a negative amount red and never draws branding', async () => {
+    const textCalls: Array<{ text: string; color: string }> = [];
+    let activeColor = '#050505';
     const context = {
-      fillStyle: '#050505',
-      strokeStyle: '#050505',
+      get fillStyle() {
+        return activeColor;
+      },
+      set fillStyle(value: string | CanvasGradient | CanvasPattern) {
+        activeColor = String(value);
+      },
       textBaseline: 'top',
       textAlign: 'left',
       letterSpacing: '0px',
       font: '',
-      lineWidth: 1,
-      lineCap: 'butt',
       drawImage: vi.fn(),
       measureText: (text: string) => ({ width: text.length * 20 }),
-      fillText: (text: string) => textCalls.push(text),
-      beginPath: vi.fn(),
-      moveTo: vi.fn(),
-      lineTo,
-      stroke: vi.fn(),
+      fillText: (text: string) => textCalls.push({ text, color: activeColor }),
     } as unknown as CanvasRenderingContext2D;
     const canvas = {
       width: 0,
@@ -104,28 +102,13 @@ describe('result card PNG renderer', () => {
     vi.stubGlobal('Image', LoadedImage);
 
     await renderResultCardPng({
-      templateUrl: '/result-cards/normal/normal-skeleton.png',
-      layout: 'goal',
-      eyebrow: 'Financial goal',
-      title: 'Road to 30K Dollars',
-      amount: '$1 074.30',
-      secondaryAmount: 'of $30 000',
-      comparison: '4% completed',
-      progress: 4,
-      period: '137 days left',
+      templateUrl: '/result-cards/bad/bad-kitten.png',
+      label: 'day result:',
+      amount: '-10$',
+      amountColor: '#DC2626',
     });
 
-    // Каптится лише службова мітка зверху — решта рядків лишається як є.
-    expect(textCalls).toEqual(expect.arrayContaining([
-      'FINANCIAL GOAL',
-      'Road to 30K Dollars',
-      '$1 074.30',
-      'of $30 000',
-      '4% completed',
-      '137 days left',
-    ]));
-    expect(textCalls).not.toContain('DENGA');
-    expect(lineTo).toHaveBeenCalledWith(1000, 372);
-    expect(lineTo).toHaveBeenCalledWith(116.8, 372);
+    expect(textCalls).toContainEqual({ text: '-10$', color: '#DC2626' });
+    expect(textCalls.map((call) => call.text)).not.toContain('DENGA');
   });
 });

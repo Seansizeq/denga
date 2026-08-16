@@ -10,7 +10,7 @@ import {
 
 describe('result card templates', () => {
   it('exposes every imported template exactly once in its result group', () => {
-    expect(getResultCardTemplates('great')).toHaveLength(5);
+    expect(getResultCardTemplates('great')).toHaveLength(4);
     expect(getResultCardTemplates('normal')).toHaveLength(4);
     expect(getResultCardTemplates('bad')).toHaveLength(4);
     expect(getResultCardTemplates('very-bad')).toHaveLength(3);
@@ -18,7 +18,7 @@ describe('result card templates', () => {
 
     const all = (['great', 'normal', 'bad', 'very-bad', 'week-bad'] as const)
       .flatMap((group) => getResultCardTemplates(group));
-    expect(new Set(all).size).toBe(23);
+    expect(new Set(all).size).toBe(22);
   });
 
   it('uses the weekly negative collection for a losing week', () => {

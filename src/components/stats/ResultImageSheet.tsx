@@ -18,17 +18,10 @@ interface ResultImageSheetProps {
   imageAlt: string;
   group: ResultCardGroup;
   filenameKey: string;
-  cardTitle: string;
+  /** Дрібний рядок над сумою. */
+  label: string;
   amount: string;
-  comparison: string;
-  period: string;
-  cardLayout?: 'period' | 'goal';
-  eyebrow?: string;
-  secondaryAmount?: string;
-  progress?: number;
   amountColor?: string;
-  comparisonColor?: string;
-  periodColor?: string;
 }
 
 const safeFilePart = (value: string): string =>
@@ -59,17 +52,9 @@ const ResultImageSheet: React.FC<ResultImageSheetProps> = ({
   imageAlt,
   group,
   filenameKey,
-  cardTitle,
+  label,
   amount,
-  comparison,
-  period,
-  cardLayout,
-  eyebrow,
-  secondaryAmount,
-  progress,
   amountColor,
-  comparisonColor,
-  periodColor,
 }) => {
   const { t } = useTranslation();
   const toast = useToast();
@@ -94,17 +79,9 @@ const ResultImageSheet: React.FC<ResultImageSheetProps> = ({
 
     void renderResultCardPng({
       templateUrl: getResultCardTemplateUrl(group, templateIndex),
-      title: cardTitle,
+      label,
       amount,
-      comparison,
-      period,
-      layout: cardLayout,
-      eyebrow,
-      secondaryAmount,
-      progress,
       amountColor,
-      comparisonColor,
-      periodColor,
     })
       .then((nextBlob) => {
         if (cancelled) return;
@@ -120,22 +97,7 @@ const ResultImageSheet: React.FC<ResultImageSheetProps> = ({
       cancelled = true;
       if (nextUrl) URL.revokeObjectURL(nextUrl);
     };
-  }, [
-    open,
-    group,
-    templateIndex,
-    cardTitle,
-    amount,
-    comparison,
-    period,
-    cardLayout,
-    eyebrow,
-    secondaryAmount,
-    progress,
-    amountColor,
-    comparisonColor,
-    periodColor,
-  ]);
+  }, [open, group, templateIndex, label, amount, amountColor]);
 
   const shareOrDownload = useCallback(async () => {
     if (!blob) return;

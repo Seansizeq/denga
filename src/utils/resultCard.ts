@@ -7,7 +7,6 @@ const RESULT_CARD_TEMPLATES: Record<ResultCardGroup, readonly string[]> = {
     'great-haunter.png',
     'great-eyes.png',
     'great-anime.png',
-    'great-castle.png',
     'great-ghostface.png',
   ],
   normal: [
@@ -152,17 +151,11 @@ const drawFittedText = (
 
 export interface RenderResultCardOptions {
   templateUrl: string;
-  title: string;
+  /** Дрібний рядок над сумою: «Результат за день», «Зароблено сьогодні». */
+  label: string;
+  /** Уже відформатована й підписана сума — єдиний гучний елемент картки. */
   amount: string;
-  comparison: string;
-  period: string;
-  layout?: 'period' | 'goal';
-  eyebrow?: string;
-  secondaryAmount?: string;
-  progress?: number;
   amountColor?: string;
-  comparisonColor?: string;
-  periodColor?: string;
 }
 
 /** Draws exact tracker values over a static template; no AI-generated text or numbers. */
@@ -175,75 +168,21 @@ export const renderResultCardPng = async (options: RenderResultCardOptions): Pro
   if (!ctx) throw new Error('Canvas is unavailable');
 
   ctx.drawImage(template, 0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = '#050505';
   ctx.textBaseline = 'top';
 
-  if (options.layout === 'goal') {
-    // Один гучний рядок — сума. Решта тихіша: дрібний підпис, тонка шкала,
-    // сірі допоміжні рядки, і жодного капсу, крім службової мітки зверху.
-    ctx.letterSpacing = '1.5px';
-    ctx.fillStyle = 'rgba(5, 5, 5, 0.42)';
-    drawFittedText(ctx, (options.eyebrow ?? '').toLocaleUpperCase(), 76, 72, 928, 23, 18, 700);
+  // Два рядки по центру над малюнком — підпис і сума. Ні назви, ні шкали,
+  // ні порівнянь: усе це лишається в застосунку, а не на картинці.
+  const centerX = canvas.width / 2;
+  ctx.textAlign = 'center';
+  ctx.letterSpacing = '0px';
 
-    ctx.letterSpacing = '0px';
-    ctx.fillStyle = 'rgba(5, 5, 5, 0.9)';
-    drawFittedText(ctx, options.title, 76, 110, 928, 40, 26, 600);
+  ctx.fillStyle = '#050505';
+  drawFittedText(ctx, options.label, centerX, 250, 900, 46, 30, 700);
 
-    ctx.fillStyle = options.amountColor ?? '#050505';
-    drawFittedText(ctx, options.amount, 72, 176, 936, 124, 70, 800);
-
-    ctx.fillStyle = 'rgba(5, 5, 5, 0.4)';
-    drawFittedText(ctx, options.secondaryAmount ?? '', 78, 308, 924, 32, 24, 500);
-
-    const progress = Math.max(0, Math.min(100, options.progress ?? 0));
-    const barStart = 80;
-    const barEnd = 1000;
-    const barY = 372;
-    ctx.lineWidth = 8;
-    ctx.lineCap = 'round';
-    ctx.strokeStyle = 'rgba(5, 5, 5, 0.1)';
-    ctx.beginPath();
-    ctx.moveTo(barStart, barY);
-    ctx.lineTo(barEnd, barY);
-    ctx.stroke();
-    if (progress > 0) {
-      ctx.strokeStyle = options.comparisonColor ?? '#16A34A';
-      ctx.beginPath();
-      ctx.moveTo(barStart, barY);
-      ctx.lineTo(barStart + ((barEnd - barStart) * progress) / 100, barY);
-      ctx.stroke();
-    }
-
-    ctx.fillStyle = options.comparisonColor ?? '#050505';
-    drawFittedText(ctx, options.comparison, 78, 404, 560, 30, 22, 600);
-
-    ctx.textAlign = 'right';
-    ctx.fillStyle = options.periodColor ?? 'rgba(5, 5, 5, 0.42)';
-    drawFittedText(ctx, options.period, 1000, 406, 360, 27, 20, 500);
-    ctx.textAlign = 'left';
-
-    return new Promise((resolve, reject) => {
-      canvas.toBlob((blob) => {
-        if (blob) resolve(blob);
-        else reject(new Error('Could not encode result card'));
-      }, 'image/png');
-    });
-  }
-
-  ctx.letterSpacing = '1px';
-  drawFittedText(ctx, options.title.toLocaleUpperCase(), 76, 72, 928, 34, 24, 800);
+  ctx.fillStyle = options.amountColor ?? '#050505';
+  drawFittedText(ctx, options.amount, centerX, 340, 900, 150, 80, 800);
 
   ctx.textAlign = 'left';
-  ctx.letterSpacing = '0px';
-  ctx.fillStyle = options.amountColor ?? '#050505';
-  drawFittedText(ctx, options.amount, 72, 156, 936, 132, 72, 900);
-
-  ctx.fillStyle = options.comparisonColor ?? '#050505';
-  drawFittedText(ctx, options.comparison.toLocaleUpperCase(), 78, 318, 924, 44, 30, 800);
-
-  ctx.fillStyle = options.periodColor ?? 'rgba(5, 5, 5, 0.58)';
-  ctx.font = '700 31px Arial, sans-serif';
-  drawFittedText(ctx, options.period.toLocaleUpperCase(), 78, 382, 924, 31, 24, 700);
 
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
