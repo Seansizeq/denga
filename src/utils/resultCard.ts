@@ -163,8 +163,13 @@ export interface RenderResultCardOptions {
   amount: string;
   comparison: string;
   period: string;
+  layout?: 'period' | 'goal';
+  eyebrow?: string;
+  secondaryAmount?: string;
+  progress?: number;
   amountColor?: string;
   comparisonColor?: string;
+  periodColor?: string;
 }
 
 /** Draws exact tracker values over a static template; no AI-generated text or numbers. */
@@ -180,11 +185,56 @@ export const renderResultCardPng = async (options: RenderResultCardOptions): Pro
   ctx.fillStyle = '#050505';
   ctx.textBaseline = 'top';
 
+  if (options.layout === 'goal') {
+    ctx.letterSpacing = '1px';
+    ctx.fillStyle = 'rgba(5, 5, 5, 0.52)';
+    drawFittedText(ctx, (options.eyebrow ?? '').toLocaleUpperCase(), 76, 68, 928, 27, 22, 800);
+
+    ctx.letterSpacing = '0px';
+    ctx.fillStyle = '#050505';
+    drawFittedText(ctx, options.title.toLocaleUpperCase(), 76, 111, 928, 50, 30, 900);
+
+    ctx.fillStyle = options.amountColor ?? '#050505';
+    drawFittedText(ctx, options.amount, 72, 182, 936, 122, 70, 900);
+
+    ctx.fillStyle = 'rgba(5, 5, 5, 0.5)';
+    drawFittedText(ctx, options.secondaryAmount ?? '', 78, 310, 924, 38, 28, 800);
+
+    ctx.fillStyle = options.comparisonColor ?? '#050505';
+    drawFittedText(ctx, options.comparison.toLocaleUpperCase(), 78, 371, 924, 42, 30, 900);
+
+    const progress = Math.max(0, Math.min(100, options.progress ?? 0));
+    const barStart = 86;
+    const barEnd = 994;
+    const barY = 445;
+    ctx.lineWidth = 18;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#E5E7EB';
+    ctx.beginPath();
+    ctx.moveTo(barStart, barY);
+    ctx.lineTo(barEnd, barY);
+    ctx.stroke();
+    if (progress > 0) {
+      ctx.strokeStyle = options.comparisonColor ?? '#16A34A';
+      ctx.beginPath();
+      ctx.moveTo(barStart, barY);
+      ctx.lineTo(barStart + ((barEnd - barStart) * progress) / 100, barY);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = options.periodColor ?? 'rgba(5, 5, 5, 0.52)';
+    drawFittedText(ctx, options.period.toLocaleUpperCase(), 78, 477, 924, 30, 23, 800);
+
+    return new Promise((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error('Could not encode result card'));
+      }, 'image/png');
+    });
+  }
+
   ctx.letterSpacing = '1px';
-  drawFittedText(ctx, options.title.toLocaleUpperCase(), 76, 72, 710, 34, 24, 800);
-  ctx.textAlign = 'right';
-  ctx.font = '900 30px Arial, sans-serif';
-  ctx.fillText('DENGA', 1004, 74);
+  drawFittedText(ctx, options.title.toLocaleUpperCase(), 76, 72, 928, 34, 24, 800);
 
   ctx.textAlign = 'left';
   ctx.letterSpacing = '0px';
@@ -194,7 +244,7 @@ export const renderResultCardPng = async (options: RenderResultCardOptions): Pro
   ctx.fillStyle = options.comparisonColor ?? '#050505';
   drawFittedText(ctx, options.comparison.toLocaleUpperCase(), 78, 318, 924, 44, 30, 800);
 
-  ctx.fillStyle = 'rgba(5, 5, 5, 0.58)';
+  ctx.fillStyle = options.periodColor ?? 'rgba(5, 5, 5, 0.58)';
   ctx.font = '700 31px Arial, sans-serif';
   drawFittedText(ctx, options.period.toLocaleUpperCase(), 78, 382, 924, 31, 24, 700);
 

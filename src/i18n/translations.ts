@@ -465,6 +465,8 @@ type Dict = {
     goalResultImageTitle: string;
     goalResultPrefix: string;
     goalCompletedShort: string;
+    goalResultEyebrow: string;
+    goalOfTarget: string;
   };
   categories: {
     food: string;
@@ -1003,6 +1005,8 @@ const uk: Dict = {
     goalResultImageTitle: 'Картинка фінансової цілі',
     goalResultPrefix: 'Ціль',
     goalCompletedShort: 'виконано',
+    goalResultEyebrow: 'Фінансова ціль',
+    goalOfTarget: 'з',
   },
   categories: {
     food: 'Продукти',
@@ -1545,6 +1549,8 @@ const ru: Dict = {
     goalResultImageTitle: 'Картинка финансовой цели',
     goalResultPrefix: 'Цель',
     goalCompletedShort: 'выполнено',
+    goalResultEyebrow: 'Финансовая цель',
+    goalOfTarget: 'из',
   },
   categories: {
     food: 'Продукты',
@@ -2087,6 +2093,8 @@ const en: Dict = {
     goalResultImageTitle: 'Financial goal image',
     goalResultPrefix: 'Goal',
     goalCompletedShort: 'complete',
+    goalResultEyebrow: 'Financial goal',
+    goalOfTarget: 'of',
   },
   categories: {
     food: 'Groceries',

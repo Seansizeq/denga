@@ -24,8 +24,13 @@ interface ResultImageSheetProps {
   amount: string;
   comparison: string;
   period: string;
+  cardLayout?: 'period' | 'goal';
+  eyebrow?: string;
+  secondaryAmount?: string;
+  progress?: number;
   amountColor?: string;
   comparisonColor?: string;
+  periodColor?: string;
 }
 
 const safeFilePart = (value: string): string =>
@@ -58,8 +63,13 @@ const ResultImageSheet: React.FC<ResultImageSheetProps> = ({
   amount,
   comparison,
   period,
+  cardLayout,
+  eyebrow,
+  secondaryAmount,
+  progress,
   amountColor,
   comparisonColor,
+  periodColor,
 }) => {
   const { t } = useTranslation();
   const toast = useToast();
@@ -88,8 +98,13 @@ const ResultImageSheet: React.FC<ResultImageSheetProps> = ({
       amount,
       comparison,
       period,
+      layout: cardLayout,
+      eyebrow,
+      secondaryAmount,
+      progress,
       amountColor,
       comparisonColor,
+      periodColor,
     })
       .then((nextBlob) => {
         if (cancelled) return;
@@ -113,8 +128,13 @@ const ResultImageSheet: React.FC<ResultImageSheetProps> = ({
     amount,
     comparison,
     period,
+    cardLayout,
+    eyebrow,
+    secondaryAmount,
+    progress,
     amountColor,
     comparisonColor,
+    periodColor,
   ]);
 
   const showNextTemplate = useCallback(() => {
