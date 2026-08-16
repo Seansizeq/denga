@@ -269,6 +269,16 @@ export async function initDb() {
   } catch {
     /* already exists */
   }
+  try {
+    await db.exec(`ALTER TABLE subscriptions ADD COLUMN icon TEXT`);
+  } catch {
+    /* already exists */
+  }
+  try {
+    await db.exec(`ALTER TABLE subscriptions ADD COLUMN color TEXT`);
+  } catch {
+    /* already exists */
+  }
 
   await db.exec(`
     CREATE TABLE IF NOT EXISTS planner_user_settings (

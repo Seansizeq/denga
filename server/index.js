@@ -4480,7 +4480,7 @@ app.get('/api/subscriptions', async (req, res) => {
   const userId = req.authUserId;
   await runSubscriptionAutopayForUser(userId);
   const rows = await db.all(
-    `SELECT id, name, amount, currency, categoryId, cycle, nextChargeDate, note, active, createdAt, updatedAt
+    `SELECT id, name, amount, currency, categoryId, cycle, nextChargeDate, note, active, icon, color, createdAt, updatedAt
      FROM subscriptions
      WHERE user_id = ?
      ORDER BY active DESC, nextChargeDate ASC, createdAt DESC`
@@ -4509,6 +4509,8 @@ app.post('/api/subscriptions', async (req, res) => {
   const cycle = req.body?.cycle === 'yearly' ? 'yearly' : 'monthly';
   const nextChargeDate = typeof req.body?.nextChargeDate === 'string' ? req.body.nextChargeDate : '';
   const note = typeof req.body?.note === 'string' ? req.body.note.trim() : '';
+  const icon = typeof req.body?.icon === 'string' && req.body.icon.trim() ? req.body.icon.trim() : null;
+  const color = typeof req.body?.color === 'string' && req.body.color.trim() ? req.body.color.trim() : null;
 
   if (!name) {
     res.status(400).json({ error: 'name is required' });
@@ -4526,9 +4528,9 @@ app.post('/api/subscriptions', async (req, res) => {
   const id = uuidv4();
   const now = new Date().toISOString();
   await db.run(
-    `INSERT INTO subscriptions (id, user_id, name, amount, currency, categoryId, cycle, nextChargeDate, note, active, createdAt, updatedAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
-    [id, userId, name, amount, currency, categoryId, cycle, nextChargeDate, note, now, now]
+    `INSERT INTO subscriptions (id, user_id, name, amount, currency, categoryId, cycle, nextChargeDate, note, active, icon, color, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)`,
+    [id, userId, name, amount, currency, categoryId, cycle, nextChargeDate, note, icon, color, now, now]
   );
 
   res.status(201).json({
@@ -4541,6 +4543,8 @@ app.post('/api/subscriptions', async (req, res) => {
     nextChargeDate,
     note,
     active: true,
+    icon,
+    color,
     createdAt: now,
     updatedAt: now,
   });
@@ -4573,6 +4577,12 @@ app.patch('/api/subscriptions/:id', async (req, res) => {
     : String(req.body.nextChargeDate);
   const note = typeof req.body?.note === 'string' ? req.body.note.trim() : (current.note ?? '');
   const active = req.body?.active === undefined ? Boolean(current.active) : Boolean(req.body.active);
+  const icon = req.body?.icon === undefined
+    ? current.icon ?? null
+    : (typeof req.body.icon === 'string' && req.body.icon.trim() ? req.body.icon.trim() : null);
+  const color = req.body?.color === undefined
+    ? current.color ?? null
+    : (typeof req.body.color === 'string' && req.body.color.trim() ? req.body.color.trim() : null);
 
   if (!name) {
     res.status(400).json({ error: 'name is required' });
@@ -4590,9 +4600,9 @@ app.patch('/api/subscriptions/:id', async (req, res) => {
   const now = new Date().toISOString();
   await db.run(
     `UPDATE subscriptions
-     SET name = ?, amount = ?, currency = ?, categoryId = ?, cycle = ?, nextChargeDate = ?, note = ?, active = ?, updatedAt = ?
+     SET name = ?, amount = ?, currency = ?, categoryId = ?, cycle = ?, nextChargeDate = ?, note = ?, active = ?, icon = ?, color = ?, updatedAt = ?
      WHERE user_id = ? AND id = ?`,
-    [name, amount, currency, categoryId, cycle, nextChargeDate, note, active ? 1 : 0, now, userId, id]
+    [name, amount, currency, categoryId, cycle, nextChargeDate, note, active ? 1 : 0, icon, color, now, userId, id]
   );
   res.json({
     ...current,
@@ -4604,6 +4614,8 @@ app.patch('/api/subscriptions/:id', async (req, res) => {
     nextChargeDate,
     note,
     active,
+    icon,
+    color,
     updatedAt: now,
   });
 });
