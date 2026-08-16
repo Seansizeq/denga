@@ -3139,6 +3139,13 @@ const mapGoalRow = (row, saved, contributionsCount) => ({
   updatedAt: row.updated_at,
 });
 
+/**
+ * Earliest deadline a new goal may carry. The server clock is UTC while the
+ * date picker offers the user's local day, so a client an hour ahead of UTC
+ * would otherwise have "today" rejected — hence the day of slack.
+ */
+const earliestAllowedDeadline = () => new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+
 // Contributions can be logged in a different currency than the goal (e.g. a
 // UAH income logged against a USD goal), so "saved" is a live FX conversion
 // sum rather than a plain SQL SUM.
@@ -3212,6 +3219,10 @@ app.post('/api/goals', async (req, res) => {
     res.status(400).json({ error: 'deadline is required for income goals', code: 'DEADLINE_REQUIRED' });
     return;
   }
+  if (deadline && deadline < earliestAllowedDeadline()) {
+    res.status(400).json({ error: 'deadline cannot be in the past', code: 'DEADLINE_IN_PAST' });
+    return;
+  }
   const icon = typeof req.body?.icon === 'string' && req.body.icon.trim() ? req.body.icon.trim().slice(0, 48) : 'target';
   const colorRaw = typeof req.body?.color === 'string' ? req.body.color.trim() : '';
   const color = GOAL_COLOR_RE.test(colorRaw) ? colorRaw : '#7C5CFF';
@@ -3273,6 +3284,14 @@ app.patch('/api/goals/:id', async (req, res) => {
   }
   if (type === 'income' && !deadline) {
     res.status(400).json({ error: 'deadline is required for income goals', code: 'DEADLINE_REQUIRED' });
+    return;
+  }
+  // An already-expired goal keeps its past deadline, so the bound here is the
+  // start of the run, not today: a deadline before it makes the run negative
+  // and blows up the per-day pace.
+  const startedOn = String(current.created_at ?? '').slice(0, 10);
+  if (deadline && startedOn && deadline < startedOn) {
+    res.status(400).json({ error: 'deadline cannot precede the goal start', code: 'DEADLINE_BEFORE_START' });
     return;
   }
   const icon =

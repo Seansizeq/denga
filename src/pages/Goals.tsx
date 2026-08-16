@@ -48,6 +48,13 @@ const deadlineDeltaDays = (deadline: string | null): number | null => {
   return Math.round((end.getTime() - start.getTime()) / 86400000);
 };
 
+/** Локальна «сьогодні» — щоб дата-пікер не відсікав поточний день у чужому часовому поясі. */
+const todayIso = (): string => {
+  const d = new Date();
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 10);
+};
+
 const progressPct = (saved: number, target: number): number => {
   if (!target || target <= 0) return 0;
   return Math.min(100, (saved / target) * 100);
@@ -114,6 +121,7 @@ const Goals: React.FC = () => {
   };
 
   const deadlineMissing = goalType === 'income' && !deadline.trim();
+  const deadlineInPast = Boolean(deadline.trim()) && deadline < todayIso();
 
   const onCreate = async () => {
     setSaveError('');
@@ -121,6 +129,10 @@ const Goals: React.FC = () => {
     if (!name.trim() || !Number.isFinite(n) || n <= 0) return;
     if (deadlineMissing) {
       setSaveError(t('goals', 'deadlineRequiredForIncome'));
+      return;
+    }
+    if (deadlineInPast) {
+      setSaveError(t('goals', 'deadlineInPast'));
       return;
     }
     try {
@@ -230,7 +242,9 @@ const Goals: React.FC = () => {
           onSubmit={() => void onCreate()}
           submitLabel={t('goals', 'save')}
           cancelLabel={t('goals', 'cancel')}
-          submitDisabled={!name.trim() || !(Number(target.replace(',', '.')) > 0) || deadlineMissing}
+          submitDisabled={
+            !name.trim() || !(Number(target.replace(',', '.')) > 0) || deadlineMissing || deadlineInPast
+          }
           error={saveError || undefined}
         >
           <div className={sheet.heroCard} style={{ background: color }}>
@@ -306,6 +320,7 @@ const Goals: React.FC = () => {
               <input
                 className={sheet.rowDatePill}
                 type="date"
+                min={todayIso()}
                 value={deadline}
                 onChange={(e) => setDeadline(e.target.value)}
               />

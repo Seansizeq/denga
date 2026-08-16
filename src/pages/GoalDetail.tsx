@@ -199,6 +199,9 @@ const GoalDetail: React.FC = () => {
   const fill = goal ? fillColorForPct(pct, goal.color) : '#7C5CFF';
   const remaining = goal ? Math.max(0, goal.targetAmount - goal.saved) : 0;
   const days = goal ? deadlineDeltaDays(goal.deadline) : null;
+  // Дедлайн раніше старту зробив би забіг від'ємної довжини — саме цю межу
+  // (а не «сьогодні») тримає редактор, щоб прострочену ціль можна було правити.
+  const goalStartedOn = goal ? String(goal.createdAt).slice(0, 10) : '';
 
   const incomeStats = useMemo(() => {
     if (!goal || goal.type !== 'income') return null;
@@ -308,6 +311,10 @@ const GoalDetail: React.FC = () => {
     setActionError('');
     const n = parseFloat(String(editTarget).replace(',', '.'));
     if (!editName.trim() || !Number.isFinite(n) || n <= 0) return;
+    if (editDeadline.trim() && goalStartedOn && editDeadline < goalStartedOn) {
+      setActionError(t('goals', 'deadlineBeforeStart'));
+      return;
+    }
     try {
       const updated = await updateGoal(id, {
         name: editName.trim(),
@@ -323,7 +330,9 @@ const GoalDetail: React.FC = () => {
     } catch (e: unknown) {
       const code =
         e && typeof e === 'object' && 'code' in e ? String((e as { code?: string }).code) : '';
-      setActionError(code === 'DEADLINE_REQUIRED' ? t('goals', 'deadlineRequiredForIncome') : t('goals', 'saveError'));
+      if (code === 'DEADLINE_REQUIRED') setActionError(t('goals', 'deadlineRequiredForIncome'));
+      else if (code === 'DEADLINE_BEFORE_START') setActionError(t('goals', 'deadlineBeforeStart'));
+      else setActionError(t('goals', 'saveError'));
     }
   };
 
@@ -851,6 +860,7 @@ const GoalDetail: React.FC = () => {
                 id="e-deadline"
                 className={`${styles.input} ${styles.dateInput}`}
                 type="date"
+                min={goalStartedOn}
                 value={editDeadline}
                 onChange={(e) => setEditDeadline(e.target.value)}
                 onFocus={(e) => ensureFieldVisible(e.currentTarget)}

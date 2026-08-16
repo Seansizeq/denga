@@ -413,6 +413,8 @@ type Dict = {
     typeSavings: string;
     typeIncome: string;
     deadlineRequiredForIncome: string;
+    deadlineInPast: string;
+    deadlineBeforeStart: string;
     cryptoAccountUnsupported: string;
     roadTo: string;
     aheadOfPlan: string;
@@ -922,6 +924,8 @@ const uk: Dict = {
     typeSavings: 'Накопичення',
     typeIncome: 'Дохід',
     deadlineRequiredForIncome: 'Для доходної цілі дедлайн обов’язковий',
+    deadlineInPast: 'Дедлайн не може бути в минулому',
+    deadlineBeforeStart: 'Дедлайн не може бути раніше за дату створення цілі',
     cryptoAccountUnsupported: 'Крипторахунок не можна використати для внеску в ціль.',
     roadTo: 'Шлях до',
     aheadOfPlan: 'Ти на {amount} попереду графіка',
@@ -1435,6 +1439,8 @@ const ru: Dict = {
     typeSavings: 'Накопление',
     typeIncome: 'Доход',
     deadlineRequiredForIncome: 'Для доходной цели дедлайн обязателен',
+    deadlineInPast: 'Дедлайн не может быть в прошлом',
+    deadlineBeforeStart: 'Дедлайн не может быть раньше даты создания цели',
     cryptoAccountUnsupported: 'Криптосчёт нельзя использовать для взноса в цель.',
     roadTo: 'Путь к',
     aheadOfPlan: 'Ты на {amount} впереди графика',
@@ -1948,6 +1954,8 @@ const en: Dict = {
     typeSavings: 'Savings',
     typeIncome: 'Income',
     deadlineRequiredForIncome: 'Income goals require a deadline',
+    deadlineInPast: 'The deadline cannot be in the past',
+    deadlineBeforeStart: 'The deadline cannot precede the goal start date',
     cryptoAccountUnsupported: 'A crypto account can’t pay into a goal.',
     roadTo: 'Road to',
     aheadOfPlan: 'You’re {amount} ahead of plan',
