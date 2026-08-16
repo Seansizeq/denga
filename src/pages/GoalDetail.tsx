@@ -41,6 +41,7 @@ import { showAppConfirm } from '../utils/notify';
 import { usePortfolio } from '../context/PortfolioContext';
 import FormSheet from '../components/ui/FormSheet';
 import GoalResultCardSheet from '../components/goals/GoalResultCardSheet';
+import type { GoalResultScope } from '../components/goals/GoalResultCardSheet';
 import sheet from '../components/ui/FormSheet.module.css';
 import styles from './Goals.module.css';
 import income from './IncomeGoal.module.css';
@@ -109,7 +110,8 @@ const GoalDetail: React.FC = () => {
   const [contribCurrency, setContribCurrency] = useState<GoalCurrency>('UAH');
   const [contribSource, setContribSource] = useState('');
   const [contributeOpen, setContributeOpen] = useState(false);
-  const [goalResultOpen, setGoalResultOpen] = useState(false);
+  /** null — картинку закрито; інакше що саме вона показує. */
+  const [resultScope, setResultScope] = useState<GoalResultScope | null>(null);
   const [sourceSuggestions, setSourceSuggestions] = useState<string[]>([]);
   const { accounts: rawAccounts } = usePortfolio();
   const portfolioAccounts = useMemo<Array<{ key: string; name: string; currency: GoalCurrency }>>(
@@ -196,15 +198,25 @@ const GoalDetail: React.FC = () => {
     weekAgo.setDate(weekAgo.getDate() - 6);
     const weekAgoIso = weekAgo.toISOString().slice(0, 10);
 
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayIso = yesterday.toISOString().slice(0, 10);
+    const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const prevMonthPrefix = `${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth() + 1).padStart(2, '0')}`;
+
     let todayEarned = 0;
     let weekEarned = 0;
     let monthEarned = 0;
+    let yesterdayEarned = 0;
+    let prevMonthEarned = 0;
     const sourceTotals = new Map<string, number>();
     for (const c of contributions) {
       const amt = amountOf(c);
       if (c.date === todayIso) todayEarned += amt;
+      if (c.date === yesterdayIso) yesterdayEarned += amt;
       if (c.date >= weekAgoIso) weekEarned += amt;
       if (c.date.startsWith(monthPrefix)) monthEarned += amt;
+      if (c.date.startsWith(prevMonthPrefix)) prevMonthEarned += amt;
       const key = c.source && c.source.trim() ? c.source.trim() : t('goals', 'sourceOther');
       sourceTotals.set(key, (sourceTotals.get(key) || 0) + amt);
     }
@@ -271,6 +283,8 @@ const GoalDetail: React.FC = () => {
       todayEarned,
       weekEarned,
       monthEarned,
+      yesterdayEarned,
+      prevMonthEarned,
       sources,
       neededPerDay,
       actualPerDay,
@@ -488,34 +502,38 @@ const GoalDetail: React.FC = () => {
             </button>
           </div>
 
-          <button type="button" className={income.statCard} onClick={() => setGoalResultOpen(true)}>
-            <span className={income.statRow}>
-              <span className={income.statTile}>
-                <span className={income.statValue}>{formatCurrency(incomeStats.todayEarned, locale, cur)}</span>
-                <span className={income.statLabel}>{t('goals', 'earnedToday')}</span>
+          <div className={income.statRow}>
+            <button
+              type="button"
+              className={`${income.statTile} ${income.statTileTappable}`}
+              onClick={() => setResultScope('today')}
+            >
+              <span className={income.statValue}>{formatCurrency(incomeStats.todayEarned, locale, cur)}</span>
+              <span className={income.statLabel}>{t('goals', 'earnedToday')}</span>
+              <ImageDown className={income.statTileGlyph} size={13} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className={`${income.statTile} ${income.statTileTappable}`}
+              onClick={() => setResultScope('month')}
+            >
+              <span className={income.statValue}>{formatCurrency(incomeStats.monthEarned, locale, cur)}</span>
+              <span className={income.statLabel}>{t('goals', 'earnedMonth')}</span>
+              <ImageDown className={income.statTileGlyph} size={13} aria-hidden="true" />
+            </button>
+            <div className={income.statTile}>
+              <span className={income.statValue}>
+                {formatCurrency(
+                  incomeStats.phase === 'running' ? incomeStats.neededPerDay : incomeStats.actualPerDay,
+                  locale,
+                  cur
+                )}
               </span>
-              <span className={income.statTile}>
-                <span className={income.statValue}>{formatCurrency(incomeStats.monthEarned, locale, cur)}</span>
-                <span className={income.statLabel}>{t('goals', 'earnedMonth')}</span>
+              <span className={income.statLabel}>
+                {incomeStats.phase === 'running' ? t('goals', 'neededPerDay') : t('goals', 'actualPerDay')}
               </span>
-              <span className={income.statTile}>
-                <span className={income.statValue}>
-                  {formatCurrency(
-                    incomeStats.phase === 'running' ? incomeStats.neededPerDay : incomeStats.actualPerDay,
-                    locale,
-                    cur
-                  )}
-                </span>
-                <span className={income.statLabel}>
-                  {incomeStats.phase === 'running' ? t('goals', 'neededPerDay') : t('goals', 'actualPerDay')}
-                </span>
-              </span>
-            </span>
-            <span className={income.statHint}>
-              <ImageDown size={14} aria-hidden="true" />
-              {t('goals', 'goalResultImage')}
-            </span>
-          </button>
+            </div>
+          </div>
 
           {incomeStats.sources.length > 0
             ? (() => {
@@ -589,7 +607,7 @@ const GoalDetail: React.FC = () => {
             </p>
           ) : null}
           </div>
-          <button type="button" className={styles.goalResultImageBtn} onClick={() => setGoalResultOpen(true)}>
+          <button type="button" className={styles.goalResultImageBtn} onClick={() => setResultScope('total')}>
             <ImageDown size={18} aria-hidden="true" />
             {t('goals', 'goalResultImage')}
           </button>
@@ -637,9 +655,14 @@ const GoalDetail: React.FC = () => {
       )}
 
       <GoalResultCardSheet
-        open={goalResultOpen}
-        onClose={() => setGoalResultOpen(false)}
+        open={resultScope !== null}
+        onClose={() => setResultScope(null)}
         goal={goal}
+        scope={resultScope ?? 'total'}
+        periodEarned={resultScope === 'month' ? incomeStats?.monthEarned ?? 0 : incomeStats?.todayEarned ?? 0}
+        previousEarned={
+          resultScope === 'month' ? incomeStats?.prevMonthEarned ?? 0 : incomeStats?.yesterdayEarned ?? 0
+        }
       />
 
       {contributeOpen ? (

@@ -238,46 +238,15 @@
    Три плитки замість списку на п'ять рядків: сьогоднішній заробіток майже
    завжди нуль і так видно у внесках, а залишок — це віднімання з шапки. */
 
-/* Плитки самі відкривають картинку прогресу, тож увесь блок — одна кнопка. */
-.statCard {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  width: 100%;
-  margin-bottom: 22px;
-  padding: 0;
-  border: none;
-  background: none;
-  font-family: inherit;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-  -webkit-appearance: none;
-  appearance: none;
-  transition: transform 0.12s ease;
-}
-
-.statCard:active {
-  transform: scale(0.985);
-}
-
 .statRow {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 10px;
-}
-
-.statHint {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--accent-primary-strong);
+  margin-bottom: 22px;
 }
 
 .statTile {
+  position: relative;
   min-width: 0;
   background: rgba(255, 255, 255, 0.05);
   border-radius: 16px;
@@ -285,6 +254,31 @@
   display: flex;
   flex-direction: column;
   gap: 3px;
+}
+
+/* Плитки періодів відкривають свою картинку; плитка темпу — просто число. */
+.statTileTappable {
+  border: none;
+  font-family: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  transition: transform 0.12s ease, background-color 0.15s ease;
+}
+
+.statTileTappable:active {
+  transform: scale(0.96);
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.statTileGlyph {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  color: var(--accent-primary-strong);
+  opacity: 0.75;
 }
 
 .statValue {
