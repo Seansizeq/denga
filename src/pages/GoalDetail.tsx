@@ -18,6 +18,7 @@ import {
   Trophy,
   CalendarX,
   Plus,
+  ImageDown,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import {
@@ -39,6 +40,7 @@ import { useGoBack } from '../hooks/useGoBack';
 import { showAppConfirm } from '../utils/notify';
 import { usePortfolio } from '../context/PortfolioContext';
 import FormSheet from '../components/ui/FormSheet';
+import GoalResultCardSheet from '../components/goals/GoalResultCardSheet';
 import sheet from '../components/ui/FormSheet.module.css';
 import styles from './Goals.module.css';
 import income from './IncomeGoal.module.css';
@@ -107,6 +109,7 @@ const GoalDetail: React.FC = () => {
   const [contribCurrency, setContribCurrency] = useState<GoalCurrency>('UAH');
   const [contribSource, setContribSource] = useState('');
   const [contributeOpen, setContributeOpen] = useState(false);
+  const [goalResultOpen, setGoalResultOpen] = useState(false);
   const [sourceSuggestions, setSourceSuggestions] = useState<string[]>([]);
   const { accounts: rawAccounts } = usePortfolio();
   const portfolioAccounts = useMemo<Array<{ key: string; name: string; currency: GoalCurrency }>>(
@@ -411,6 +414,11 @@ const GoalDetail: React.FC = () => {
             </div>
           </div>
 
+          <button type="button" className={styles.goalResultImageBtn} onClick={() => setGoalResultOpen(true)}>
+            <ImageDown size={18} aria-hidden="true" />
+            {t('goals', 'goalResultImage')}
+          </button>
+
           {incomeStats.phase === 'done' ? (
             <div className={`${income.trajectory} ${income.trajectoryAhead}`}>
               <div className={income.trajectoryIcon}>
@@ -541,7 +549,8 @@ const GoalDetail: React.FC = () => {
             : null}
         </>
       ) : (
-        <div className={styles.detailHero}>
+        <>
+          <div className={styles.detailHero}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
             <div className={styles.iconWrap} style={{ backgroundColor: `${goal.color}22` }}>
               <GoalIcon name={goal.icon} color={goal.color} />
@@ -578,7 +587,12 @@ const GoalDetail: React.FC = () => {
               ) : null}
             </p>
           ) : null}
-        </div>
+          </div>
+          <button type="button" className={styles.goalResultImageBtn} onClick={() => setGoalResultOpen(true)}>
+            <ImageDown size={18} aria-hidden="true" />
+            {t('goals', 'goalResultImage')}
+          </button>
+        </>
       )}
 
       {goal.type === 'income' ? null : (
@@ -620,6 +634,12 @@ const GoalDetail: React.FC = () => {
           })}
         </div>
       )}
+
+      <GoalResultCardSheet
+        open={goalResultOpen}
+        onClose={() => setGoalResultOpen(false)}
+        goal={goal}
+      />
 
       {contributeOpen ? (
         <FormSheet

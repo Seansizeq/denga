@@ -4,6 +4,8 @@ import {
   getResultCardTemplates,
   getResultCardTemplateUrl,
   selectResultCardGroup,
+  selectGoalResultCardGroup,
+  resultValueColor,
   stableResultCardIndex,
 } from './resultCard';
 
@@ -37,10 +39,42 @@ describe('result card templates', () => {
     expect(calculateResultChange(50, 0)).toBeNull();
   });
 
+  it('colors positive values green and negative values red', () => {
+    expect(resultValueColor(1)).toBe('#16A34A');
+    expect(resultValueColor(-1)).toBe('#DC2626');
+    expect(resultValueColor(0)).toBe('#050505');
+  });
+
   it('keeps deterministic selection inside a group and builds a public URL', () => {
     const index = stableResultCardIndex('great', 'August 2026');
     expect(index).toBeGreaterThanOrEqual(0);
     expect(index).toBeLessThan(5);
     expect(getResultCardTemplateUrl('great', index)).toMatch(/\/result-cards\/great\/great-.+\.png$/);
+  });
+
+  it('selects goal templates from progress against the deadline', () => {
+    const now = new Date('2026-08-16T12:00:00');
+    const base = {
+      target: 1000,
+      createdAt: '2026-08-01T00:00:00.000Z',
+      deadline: '2026-08-31',
+      now,
+    };
+
+    expect(selectGoalResultCardGroup({ ...base, saved: 900 })).toBe('great');
+    expect(selectGoalResultCardGroup({ ...base, saved: 500 })).toBe('normal');
+    expect(selectGoalResultCardGroup({ ...base, saved: 300 })).toBe('bad');
+    expect(selectGoalResultCardGroup({ ...base, saved: 100 })).toBe('very-bad');
+    expect(selectGoalResultCardGroup({ ...base, saved: 1000 })).toBe('great');
+  });
+
+  it('uses a very bad template for an overdue unfinished goal', () => {
+    expect(selectGoalResultCardGroup({
+      saved: 800,
+      target: 1000,
+      createdAt: '2026-07-01T00:00:00.000Z',
+      deadline: '2026-07-31',
+      now: new Date('2026-08-16T12:00:00'),
+    })).toBe('very-bad');
   });
 });

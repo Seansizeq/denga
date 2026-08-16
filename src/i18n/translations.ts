@@ -461,6 +461,10 @@ type Dict = {
     contributionCurrency: string;
     contributionSource: string;
     contributionSourcePlaceholder: string;
+    goalResultImage: string;
+    goalResultImageTitle: string;
+    goalResultPrefix: string;
+    goalCompletedShort: string;
   };
   categories: {
     food: string;
@@ -995,6 +999,10 @@ const uk: Dict = {
     contributionCurrency: 'Валюта внеску',
     contributionSource: 'Джерело доходу',
     contributionSourcePlaceholder: 'Напр. AI automation',
+    goalResultImage: 'Зберегти прогрес картинкою',
+    goalResultImageTitle: 'Картинка фінансової цілі',
+    goalResultPrefix: 'Ціль',
+    goalCompletedShort: 'виконано',
   },
   categories: {
     food: 'Продукти',
@@ -1533,6 +1541,10 @@ const ru: Dict = {
     contributionCurrency: 'Валюта взноса',
     contributionSource: 'Источник дохода',
     contributionSourcePlaceholder: 'Напр. AI automation',
+    goalResultImage: 'Сохранить прогресс картинкой',
+    goalResultImageTitle: 'Картинка финансовой цели',
+    goalResultPrefix: 'Цель',
+    goalCompletedShort: 'выполнено',
   },
   categories: {
     food: 'Продукты',
@@ -2071,6 +2083,10 @@ const en: Dict = {
     contributionCurrency: 'Contribution currency',
     contributionSource: 'Income source',
     contributionSourcePlaceholder: 'e.g. AI automation',
+    goalResultImage: 'Save progress as an image',
+    goalResultImageTitle: 'Financial goal image',
+    goalResultPrefix: 'Goal',
+    goalCompletedShort: 'complete',
   },
   categories: {
     food: 'Groceries',

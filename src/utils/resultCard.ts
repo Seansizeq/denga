@@ -40,6 +40,12 @@ const RESULT_CARD_TEMPLATES: Record<ResultCardGroup, readonly string[]> = {
 
 const nearlyZero = (value: number): boolean => Math.abs(value) < 0.005;
 
+export const resultValueColor = (value: number): string => {
+  if (value > 0) return '#16A34A';
+  if (value < 0) return '#DC2626';
+  return '#050505';
+};
+
 /**
  * Positive means the result improved, including when both periods are negative
  * (for example -50 after -100 is a +50% improvement).
@@ -65,6 +71,45 @@ export const selectResultCardGroup = (
   const becameNegative = previousNet >= 0;
   const materiallyWorse = previousNet < 0 && Math.abs(currentNet) >= Math.abs(previousNet) * 1.5;
   return becameNegative || materiallyWorse ? 'very-bad' : 'bad';
+};
+
+const parseCalendarDate = (value: string | null): Date | null => {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  date.setHours(23, 59, 59, 999);
+  return Number.isFinite(date.getTime()) ? date : null;
+};
+
+export const selectGoalResultCardGroup = (params: {
+  saved: number;
+  target: number;
+  createdAt: string;
+  deadline: string | null;
+  now?: Date;
+}): ResultCardGroup => {
+  const { saved, target, createdAt, deadline, now = new Date() } = params;
+  if (!(target > 0)) return 'normal';
+  const progress = Math.max(0, (saved / target) * 100);
+  if (progress >= 100) return 'great';
+
+  const deadlineDate = parseCalendarDate(deadline);
+  const createdDate = new Date(createdAt);
+  if (deadlineDate && Number.isFinite(createdDate.getTime()) && deadlineDate > createdDate) {
+    if (now > deadlineDate) return 'very-bad';
+    const expected = Math.min(
+      100,
+      Math.max(0, ((now.getTime() - createdDate.getTime()) / (deadlineDate.getTime() - createdDate.getTime())) * 100),
+    );
+    const delta = progress - expected;
+    if (delta >= 10) return 'great';
+    if (delta >= -10) return 'normal';
+    return delta >= -30 ? 'bad' : 'very-bad';
+  }
+
+  if (progress >= 75) return 'great';
+  if (progress >= 25 || nearlyZero(progress)) return 'normal';
+  return 'bad';
 };
 
 export const getResultCardTemplates = (group: ResultCardGroup): readonly string[] =>
@@ -118,6 +163,8 @@ export interface RenderResultCardOptions {
   amount: string;
   comparison: string;
   period: string;
+  amountColor?: string;
+  comparisonColor?: string;
 }
 
 /** Draws exact tracker values over a static template; no AI-generated text or numbers. */
@@ -133,18 +180,18 @@ export const renderResultCardPng = async (options: RenderResultCardOptions): Pro
   ctx.fillStyle = '#050505';
   ctx.textBaseline = 'top';
 
-  ctx.font = '800 34px Arial, sans-serif';
   ctx.letterSpacing = '1px';
-  ctx.fillText(options.title.toLocaleUpperCase(), 76, 72);
+  drawFittedText(ctx, options.title.toLocaleUpperCase(), 76, 72, 710, 34, 24, 800);
   ctx.textAlign = 'right';
   ctx.font = '900 30px Arial, sans-serif';
   ctx.fillText('DENGA', 1004, 74);
 
   ctx.textAlign = 'left';
   ctx.letterSpacing = '0px';
+  ctx.fillStyle = options.amountColor ?? '#050505';
   drawFittedText(ctx, options.amount, 72, 156, 936, 132, 72, 900);
 
-  ctx.font = '800 44px Arial, sans-serif';
+  ctx.fillStyle = options.comparisonColor ?? '#050505';
   drawFittedText(ctx, options.comparison.toLocaleUpperCase(), 78, 318, 924, 44, 30, 800);
 
   ctx.fillStyle = 'rgba(5, 5, 5, 0.58)';
