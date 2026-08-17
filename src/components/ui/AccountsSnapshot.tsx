@@ -3,7 +3,7 @@ import { ChevronDown } from 'lucide-react';
 import { AccountRowAvatar } from './AccountRowAvatar';
 import styles from './AccountsSnapshot.module.css';
 
-type RowIconTone = 'bank' | 'cash' | 'crypto' | 'stocks' | 'debt' | 'neutral';
+type RowIconTone = 'bank' | 'cash' | 'crypto' | 'stocks' | 'debt' | 'goal' | 'neutral';
 
 type AccountRow = {
   id: string;
@@ -12,7 +12,7 @@ type AccountRow = {
   subAmount?: string;
   badge?: string;
   iconTone?: RowIconTone;
-  section?: 'bank' | 'cash' | 'crypto' | 'stocks' | 'debt';
+  section?: 'bank' | 'cash' | 'crypto' | 'stocks' | 'debt' | 'goal';
   iconKey?: string | null;
   cryptoSymbol?: string | null;
 };

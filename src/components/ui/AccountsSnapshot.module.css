@@ -133,6 +133,11 @@
   color: #220607;
 }
 
+.iconGoal {
+  background: linear-gradient(180deg, rgba(255, 236, 132, 0.95) 0%, rgba(247, 227, 77, 0.9) 100%);
+  color: #221d00;
+}
+
 .iconNeutral {
   background: rgba(255, 255, 255, 0.10);
   color: #ffffff;

@@ -47,7 +47,7 @@ export function parseStoredIconKey(raw: string | null | undefined): AccountIconK
   return isAccountIconKey(s) ? s : null;
 }
 
-type AccountSection = 'bank' | 'cash' | 'crypto' | 'stocks' | 'debt';
+type AccountSection = 'bank' | 'cash' | 'crypto' | 'stocks' | 'debt' | 'goal';
 
 export function defaultAccountIconKey(
   accountKey: string,
@@ -70,6 +70,7 @@ export function defaultAccountIconKey(
   }
   if (section === 'stocks') return 'TrendingUp';
   if (section === 'debt') return 'HandCoins';
+  if (section === 'goal') return 'PiggyBank';
   return 'CreditCard';
 }
 

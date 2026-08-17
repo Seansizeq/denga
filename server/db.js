@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { resolveDebtDirectionForMigration } from './debt-direction.js';
 import { runCryptoDenominationMigration } from './crypto-denomination-migration.js';
+import { runGoalContributionTransferMigration } from './goal-contribution-migration.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -614,6 +615,27 @@ export async function initDb() {
   } catch {
     /* already exists */
   }
+  // Курс фіксується на момент внеску. Доки конверсія рахувалася наживо при
+  // кожному читанні, вже зроблений внесок «дихав» разом із курсом і прогрес
+  // цілі переписувався заднім числом. Legacy-рядки лишаються з NULL: історичних
+  // курсів немає, тож для них конверсія й далі жива (див. sumGoalContributions).
+  try {
+    await db.exec(`ALTER TABLE goal_contributions ADD COLUMN converted_amount REAL`);
+  } catch {
+    /* already exists */
+  }
+  try {
+    await db.exec(`ALTER TABLE goal_contributions ADD COLUMN fx_rate REAL`);
+  } catch {
+    /* already exists */
+  }
+  // Рахунок цілі в гаманці. Прогрес цілі — це його баланс, тож відкладені гроші
+  // більше не зникають із капіталу, а лежать на власному рахунку.
+  try {
+    await db.exec(`ALTER TABLE goals ADD COLUMN account_key TEXT`);
+  } catch {
+    /* already exists */
+  }
 
   await removeRetiredBybitIntegration(db);
 
@@ -621,6 +643,11 @@ export async function initDb() {
   // file backup first and is a no-op once every crypto account is already
   // denominated in its asset.
   await runCryptoDenominationMigration(db, dbPath);
+
+  // Внески в цілі з рахунку були витратами «Інше» — з'їдали бюджет і статистику,
+  // хоча гроші не витрачені, а переклалися. Робить із них перекази; баланси при
+  // цьому не рухаються, бо delta списання однакова в обох формах.
+  await runGoalContributionTransferMigration(db, dbPath);
 
   await db.exec(`
     CREATE INDEX IF NOT EXISTS idx_transactions_user_date

@@ -17,7 +17,7 @@ type DebtAccount = {
   debtDirection: 'owed_to_me' | 'owed_by_me' | null;
   debtInitialAmount: number | null;
   debtCreatedAt: string | null;
-  iconTone: 'bank' | 'cash' | 'crypto' | 'stocks' | 'debt' | 'neutral';
+  iconTone: 'bank' | 'cash' | 'crypto' | 'stocks' | 'debt' | 'goal' | 'neutral';
   iconKey: string | null;
 };
 

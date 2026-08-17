@@ -49,6 +49,7 @@ type Dict = {
     sectionCash: string;
     sectionCrypto: string;
     sectionStocks: string;
+    sectionGoals: string;
     sectionDebt: string;
     accountsAdd: string;
     accountsEmptyTitle: string;
@@ -404,7 +405,6 @@ type Dict = {
     deleteConfirm: string;
     contribute: string;
     contributionAmount: string;
-    contributionDate: string;
     contributionNote: string;
     contributionsTitle: string;
     noContributions: string;
@@ -412,16 +412,17 @@ type Dict = {
     payFromAccount: string;
     payFromHint: string;
     fromAccountShort: string;
-    accountMismatch: string;
-    payFromUsdManual: string;
     completed: string;
     daysLeft: string;
     overdue: string;
     remaining: string;
     loadError: string;
     saveError: string;
-    back: string;
     archived: string;
+    archivedNoContribute: string;
+    accountMovements: string;
+    accountMovementsHint: string;
+    goalArchivedError: string;
     goalType: string;
     typeSavings: string;
     typeIncome: string;
@@ -439,13 +440,11 @@ type Dict = {
     stateActive: string;
     cryptoAccountUnsupported: string;
     roadTo: string;
-    aheadOfPlan: string;
-    aheadOfPlanHint: string;
-    behindPlan: string;
-    behindPlanHint: string;
-    progressSection: string;
+    savingUpFor: string;
+    forecastLabel: string;
+    forecastTitle: string;
+    forecastHint: string;
     earnedToday: string;
-    earnedWeek: string;
     earnedMonth: string;
     neededPerDay: string;
     actualPerDay: string;
@@ -464,8 +463,6 @@ type Dict = {
     goalResultImageTitle: string;
     goalResultPrefix: string;
     goalCompletedShort: string;
-    goalResultEyebrow: string;
-    goalOfTarget: string;
   };
   categories: {
     food: string;
@@ -582,6 +579,7 @@ const uk: Dict = {
     sectionCash: 'Готівка',
     sectionCrypto: 'Крипта',
     sectionStocks: 'Акції',
+    sectionGoals: 'Цілі',
     sectionDebt: 'Борг',
     accountsAdd: 'Додати рахунок',
     accountsEmptyTitle: 'Рахунків ще немає',
@@ -942,25 +940,25 @@ const uk: Dict = {
     deleteConfirm: 'Видалити цю ціль і всі внески?',
     contribute: 'Додати внесок',
     contributionAmount: 'Сума',
-    contributionDate: 'Дата',
     contributionNote: 'Примітка',
     contributionsTitle: 'Внески',
     noContributions: 'Поки немає внесків',
     deleteContribConfirm: 'Видалити цей внесок?',
     payFromAccount: 'Зняти з рахунку',
     payFromHint:
-      'Рахунок у будь-якій валюті — сума конвертується за поточним курсом. З’явиться витрата в історії; при видаленні внеску вона теж зникне.',
+      'Рахунок у будь-якій валюті — сума конвертується за поточним курсом. У історії з’явиться переказ, а не витрата: гроші не витрачені, а переклалися в ціль. При видаленні внеску він теж зникне.',
     fromAccountShort: 'З рахунку',
-    accountMismatch: 'Валюта рахунку не збігається з валютою цілі.',
-    payFromUsdManual: 'Для цілі в USD рахунок не вибирається — лише ручний внесок.',
     completed: 'Готово',
     daysLeft: 'Залишилось {n} дн.',
     overdue: 'Прострочено',
     remaining: 'Залишилось',
     loadError: 'Не вдалося завантажити',
     saveError: 'Не вдалося зберегти',
-    back: 'Назад',
     archived: 'Архів',
+    archivedNoContribute: 'Ціль в архіві — забіг закінчено, нові внески не приймаються.',
+    accountMovements: 'Інші рухи на рахунку цілі',
+    accountMovementsHint: 'Витрати з цілі та перекази з неї — вони теж змінюють її прогрес.',
+    goalArchivedError: 'Ціль в архіві. Поверніть її в активні, щоб додати внесок.',
     goalType: 'Тип цілі',
     typeSavings: 'Накопичення',
     typeIncome: 'Дохід',
@@ -978,13 +976,11 @@ const uk: Dict = {
     stateActive: 'Активна',
     cryptoAccountUnsupported: 'Крипторахунок не можна використати для внеску в ціль.',
     roadTo: 'Шлях до',
-    aheadOfPlan: 'Ти на {amount} попереду графіка',
-    aheadOfPlanHint: 'Так тримати — можеш навіть трохи скинути темп.',
-    behindPlan: 'Відстаєш від графіка на {amount}',
-    behindPlanHint: 'Щоб повернутись у графік: +{amount}/день понад звичайний темп.',
-    progressSection: 'Прогрес',
+    savingUpFor: 'Накопичую на',
+    forecastLabel: 'Закриєш до',
+    forecastTitle: 'За поточним темпом — до {date}',
+    forecastHint: 'Виходить {amount}/день за поточним темпом.',
     earnedToday: 'Зароблено сьогодні',
-    earnedWeek: 'За цей тиждень',
     earnedMonth: 'За цей місяць',
     neededPerDay: 'Треба в середньому',
     actualPerDay: 'Фактичний темп',
@@ -1003,8 +999,6 @@ const uk: Dict = {
     goalResultImageTitle: 'Картинка фінансової цілі',
     goalResultPrefix: 'Ціль',
     goalCompletedShort: 'виконано',
-    goalResultEyebrow: 'Фінансова ціль',
-    goalOfTarget: 'з',
   },
   categories: {
     food: 'Продукти',
@@ -1125,6 +1119,7 @@ const ru: Dict = {
     sectionCash: 'Наличные',
     sectionCrypto: 'Крипта',
     sectionStocks: 'Акции',
+    sectionGoals: 'Цели',
     sectionDebt: 'Долг',
     accountsAdd: 'Добавить счёт',
     accountsEmptyTitle: 'Счетов пока нет',
@@ -1485,25 +1480,25 @@ const ru: Dict = {
     deleteConfirm: 'Удалить эту цель и все взносы?',
     contribute: 'Добавить взнос',
     contributionAmount: 'Сумма',
-    contributionDate: 'Дата',
     contributionNote: 'Заметка',
     contributionsTitle: 'Взносы',
     noContributions: 'Пока нет взносов',
     deleteContribConfirm: 'Удалить этот взнос?',
     payFromAccount: 'Списать со счёта',
     payFromHint:
-      'Счёт в любой валюте — сумма конвертируется по текущему курсу. Появится расход в истории; при удалении взноса он тоже удалится.',
+      'Счёт в любой валюте — сумма конвертируется по текущему курсу. В истории появится перевод, а не расход: деньги не потрачены, а переложены в цель. При удалении взноса он тоже удалится.',
     fromAccountShort: 'Со счёта',
-    accountMismatch: 'Валюта счёта не совпадает с валютой цели.',
-    payFromUsdManual: 'Для цели в USD счёт не выбирается — только ручной взнос.',
     completed: 'Готово',
     daysLeft: 'Осталось {n} дн.',
     overdue: 'Просрочено',
     remaining: 'Осталось',
     loadError: 'Не удалось загрузить',
     saveError: 'Не удалось сохранить',
-    back: 'Назад',
     archived: 'Архив',
+    archivedNoContribute: 'Цель в архиве — забег закончен, новые взносы не принимаются.',
+    accountMovements: 'Другие движения по счёту цели',
+    accountMovementsHint: 'Расходы из цели и переводы из неё — они тоже меняют её прогресс.',
+    goalArchivedError: 'Цель в архиве. Верните её в активные, чтобы добавить взнос.',
     goalType: 'Тип цели',
     typeSavings: 'Накопление',
     typeIncome: 'Доход',
@@ -1521,13 +1516,11 @@ const ru: Dict = {
     stateActive: 'Активная',
     cryptoAccountUnsupported: 'Криптосчёт нельзя использовать для взноса в цель.',
     roadTo: 'Путь к',
-    aheadOfPlan: 'Ты на {amount} впереди графика',
-    aheadOfPlanHint: 'Так держать — можешь даже немного сбавить темп.',
-    behindPlan: 'Отстаёшь от графика на {amount}',
-    behindPlanHint: 'Чтобы вернуться в график: +{amount}/день сверх обычного темпа.',
-    progressSection: 'Прогресс',
+    savingUpFor: 'Накопление на',
+    forecastLabel: 'Закроешь к',
+    forecastTitle: 'При текущем темпе — к {date}',
+    forecastHint: 'Выходит {amount}/день при текущем темпе.',
     earnedToday: 'Заработано сегодня',
-    earnedWeek: 'За эту неделю',
     earnedMonth: 'За этот месяц',
     neededPerDay: 'Нужно в среднем',
     actualPerDay: 'Фактический темп',
@@ -1546,8 +1539,6 @@ const ru: Dict = {
     goalResultImageTitle: 'Картинка финансовой цели',
     goalResultPrefix: 'Цель',
     goalCompletedShort: 'выполнено',
-    goalResultEyebrow: 'Финансовая цель',
-    goalOfTarget: 'из',
   },
   categories: {
     food: 'Продукты',
@@ -1668,6 +1659,7 @@ const en: Dict = {
     sectionCash: 'Cash',
     sectionCrypto: 'Crypto',
     sectionStocks: 'Stocks',
+    sectionGoals: 'Goals',
     sectionDebt: 'Debt',
     accountsAdd: 'Add account',
     accountsEmptyTitle: 'No accounts yet',
@@ -2028,25 +2020,25 @@ const en: Dict = {
     deleteConfirm: 'Delete this goal and all contributions?',
     contribute: 'Add contribution',
     contributionAmount: 'Amount',
-    contributionDate: 'Date',
     contributionNote: 'Note',
     contributionsTitle: 'Contributions',
     noContributions: 'No contributions yet',
     deleteContribConfirm: 'Delete this contribution?',
     payFromAccount: 'Debit an account',
     payFromHint:
-      'Any account, any currency — converted at the current rate. Creates an expense in history; deleting the contribution removes it too.',
+      'Any account, any currency — converted at the current rate. History shows a transfer, not an expense: the money was not spent, it moved into the goal. Deleting the contribution removes it too.',
     fromAccountShort: 'From account',
-    accountMismatch: 'Account currency does not match the goal currency.',
-    payFromUsdManual: 'USD goals use manual contributions only (no account debit).',
     completed: 'Done',
     daysLeft: '{n} days left',
     overdue: 'Overdue',
     remaining: 'Remaining',
     loadError: 'Failed to load',
     saveError: 'Failed to save',
-    back: 'Back',
     archived: 'Archived',
+    archivedNoContribute: 'This goal is archived — the run is over, so new contributions are closed.',
+    accountMovements: 'Other movements on the goal account',
+    accountMovementsHint: 'Spending from the goal and transfers out — these change its progress too.',
+    goalArchivedError: 'This goal is archived. Make it active again to add a contribution.',
     goalType: 'Goal type',
     typeSavings: 'Savings',
     typeIncome: 'Income',
@@ -2064,13 +2056,11 @@ const en: Dict = {
     stateActive: 'Active',
     cryptoAccountUnsupported: 'A crypto account can’t pay into a goal.',
     roadTo: 'Road to',
-    aheadOfPlan: 'You’re {amount} ahead of plan',
-    aheadOfPlanHint: 'Keep it up — you could even ease off a bit.',
-    behindPlan: 'You’re {amount} behind plan',
-    behindPlanHint: 'To catch up: +{amount}/day on top of the usual pace.',
-    progressSection: 'Progress',
+    savingUpFor: 'Saving up for',
+    forecastLabel: 'On track for',
+    forecastTitle: 'At the current pace — by {date}',
+    forecastHint: 'That’s {amount}/day at the current pace.',
     earnedToday: 'Earned today',
-    earnedWeek: 'This week',
     earnedMonth: 'This month',
     neededPerDay: 'Needed on average',
     actualPerDay: 'Actual pace',
@@ -2089,8 +2079,6 @@ const en: Dict = {
     goalResultImageTitle: 'Financial goal image',
     goalResultPrefix: 'Goal',
     goalCompletedShort: 'complete',
-    goalResultEyebrow: 'Financial goal',
-    goalOfTarget: 'of',
   },
   categories: {
     food: 'Groceries',

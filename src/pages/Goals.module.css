@@ -44,9 +44,9 @@
   margin: 0 0 12px;
   padding: 10px 12px;
   border-radius: 12px;
-  background: rgba(255, 80, 80, 0.12);
-  border: 1px solid rgba(255, 100, 100, 0.35);
-  color: #ffb4b4;
+  background: var(--accent-red-soft);
+  border: 1px solid rgba(255, 90, 99, 0.35);
+  color: var(--accent-red);
   font-size: 14px;
 }
 
@@ -93,26 +93,46 @@
   position: relative;
 }
 
+/* Кнопка тримає повні 44px тач-таргета, а видима плашка лишається 34px:
+   решта — прозорий відступ, тож палець не мусить бути снайпером. */
 .goalCardEdit {
   position: absolute;
-  top: 12px;
-  right: 12px;
+  top: 7px;
+  right: 7px;
   z-index: 1;
-  width: 34px;
-  height: 34px;
+  width: 44px;
+  height: 44px;
+  padding: 5px;
   border: none;
-  border-radius: 11px;
-  background: rgba(255, 255, 255, 0.07);
+  background: none;
   color: var(--text-secondary);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: transform 0.12s ease, background-color 0.15s ease;
+  transition: transform 0.12s ease;
+}
+
+.goalCardEdit::before {
+  content: '';
+  position: absolute;
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.07);
+  transition: background-color 0.15s ease;
+}
+
+/* Іконка лежить над плашкою, а не під нею. */
+.goalCardEdit > svg {
+  position: relative;
 }
 
 .goalCardEdit:active {
   transform: scale(0.92);
+}
+
+.goalCardEdit:active::before {
   background: rgba(255, 255, 255, 0.12);
 }
 
@@ -121,7 +141,7 @@
   align-items: flex-start;
   gap: 12px;
   /* Місце під олівець, щоб довга назва не залазила під нього. */
-  padding-right: 42px;
+  padding-right: 46px;
 }
 
 .iconWrap {
@@ -153,14 +173,14 @@
   font-size: 11px;
   font-weight: 700;
   padding: 3px 8px;
-  border-radius: 999px;
-  background: rgba(234, 179, 8, 0.18);
-  color: #facc15;
+  border-radius: var(--radius-full);
+  background: rgba(247, 227, 77, 0.18);
+  color: var(--accent-yellow);
 }
 
 .badgeDone {
-  background: rgba(34, 197, 94, 0.2);
-  color: #4ade80;
+  background: var(--accent-green-soft);
+  color: var(--accent-green);
 }
 
 .meta {
@@ -217,206 +237,75 @@
   transform: scale(0.94);
 }
 
-.overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.55);
-  z-index: 20;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding: 16px;
-  padding-bottom: calc(var(--bottom-nav-height) + 16px + var(--safe-area-inset-bottom));
-  overflow-y: auto;
-  overflow-x: hidden;
-  -webkit-overflow-scrolling: touch;
-}
+/* ---------- Скелетон списку ----------
+   Три картки-заготовки замість рядка «Завантаження»: висота картки цілі відома
+   заздалегідь, тож список не стрибає, коли приходять справжні дані. */
 
-.sheet {
-  width: min(100%, 480px);
-  max-height: calc(100dvh - var(--bottom-nav-height) - 24px - var(--safe-area-inset-top) - var(--safe-area-inset-bottom));
-  overflow-y: auto;
-  overflow-x: hidden;
+.skeletonCard {
   background: var(--bg-card);
-  border-radius: 20px 20px 16px 16px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 18px 16px 20px;
-  margin-top: auto;
-}
-
-.sheetTitle {
-  margin: 0 0 14px;
-  font-size: 18px;
-  font-weight: 700;
-}
-
-.field {
-  margin-bottom: 12px;
-  min-width: 0;
-}
-
-.label {
-  display: block;
-  font-size: 12px;
-  color: var(--text-tertiary);
-  margin-bottom: 6px;
-}
-
-.input {
-  width: 100%;
-  height: 46px;
-  box-sizing: border-box;
-  min-width: 0;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: var(--bg-card-light);
-  color: var(--text-primary);
-  border-radius: 12px;
-  padding: 10px 12px;
-  font-size: 16px;
-}
-
-.dateInput {
-  display: block;
-  -webkit-appearance: none;
-  appearance: none;
-  height: 46px;
-  width: 100%;
-  min-width: 0;
-  padding-top: 10px;
-  padding-bottom: 10px;
-  padding-right: 30px;
-  font-size: 14px;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.dateInput::-webkit-calendar-picker-indicator {
-  opacity: 0.92;
-  cursor: pointer;
-}
-
-.dateInput::-webkit-date-and-time-value {
-  text-align: left;
-}
-
-.dateInput::-webkit-datetime-edit {
-  padding: 0;
-  line-height: normal;
-  overflow: hidden;
-  white-space: nowrap;
-}
-
-.dateInput::-webkit-datetime-edit-fields-wrapper {
-  display: block;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.dateInput::-webkit-datetime-edit-year-field,
-.dateInput::-webkit-datetime-edit-month-field,
-.dateInput::-webkit-datetime-edit-day-field,
-.dateInput::-webkit-datetime-edit-text {
-  font-size: 14px;
-  padding: 0;
-}
-
-
-.row2 {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  border: 1px solid var(--border-light);
+  border-radius: 16px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
   gap: 10px;
 }
 
-.row2 > * {
-  min-width: 0;
+.skeletonTop {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
-@media (max-width: 520px) {
-  .sheet .row2 {
-    grid-template-columns: 1fr;
+.skeletonIcon,
+.skeletonTitle,
+.skeletonLine,
+.skeletonBar {
+  background: rgba(255, 255, 255, 0.06);
+  animation: skeletonPulse 1.4s ease-in-out infinite;
+}
+
+.skeletonIcon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  flex-shrink: 0;
+}
+
+.skeletonTitle {
+  height: 16px;
+  width: 55%;
+  border-radius: 6px;
+}
+
+.skeletonLine {
+  height: 14px;
+  width: 72%;
+  border-radius: 6px;
+}
+
+.skeletonBar {
+  height: 8px;
+  border-radius: var(--radius-full);
+}
+
+@keyframes skeletonPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
   }
 }
 
-.swatches {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.swatch {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  border: 2px solid transparent;
-  cursor: pointer;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.swatchActive {
-  border-color: #fff;
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.2);
-}
-
-.sheetActions {
-  display: flex;
-  gap: 10px;
-  margin-top: 18px;
-}
-
-.btnPrimary {
-  flex: 1;
-  border: none;
-  border-radius: 12px;
-  padding: 12px;
-  font-weight: 700;
-  font-size: 15px;
-  cursor: pointer;
-  background: var(--accent-primary-strong);
-  color: #fff;
-}
-
-.btnGhost {
-  flex: 1;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 12px;
-  padding: 12px;
-  font-weight: 600;
-  font-size: 15px;
-  cursor: pointer;
-  background: transparent;
-  color: var(--text-primary);
-}
-
-.detailHero {
-  background: var(--bg-card);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 18px;
-  padding: 18px 16px;
-  margin-bottom: 16px;
-}
-
-.detailTitle {
-  margin: 0 0 12px;
-  font-size: 20px;
-  font-weight: 700;
-}
-
-.detailProgress {
-  margin-bottom: 12px;
-}
-
-.pctRow {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-  font-size: 14px;
+@media (prefers-reduced-motion: reduce) {
+  .skeletonIcon,
+  .skeletonTitle,
+  .skeletonLine,
+  .skeletonBar {
+    animation: none;
+  }
 }
 
 .sectionTitle {
@@ -424,16 +313,6 @@
   font-size: 13px;
   font-weight: 700;
   color: var(--text-secondary);
-}
-
-.formCard {
-  background: var(--bg-card);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 16px;
-  padding: 14px 16px;
-  margin-bottom: 16px;
-  max-width: 100%;
-  overflow-x: hidden;
 }
 
 .contribList {
@@ -474,6 +353,21 @@
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
+}
+
+.sectionHint {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  line-height: 1.4;
+}
+
+.amountIn {
+  color: var(--accent-green);
+}
+
+.amountOut {
+  color: var(--accent-red);
 }
 
 .iconBtn {
@@ -551,44 +445,6 @@
   background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-primary-strong) 100%);
   color: #fff;
   box-shadow: 0 8px 22px rgba(124, 92, 255, 0.3);
-}
-
-.actionIcon {
-  flex: 0 0 50px;
-  width: 50px;
-  padding: 0;
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--text-primary);
-}
-
-.toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 16px;
-}
-
-.toolbarBtn {
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--text-primary);
-  border-radius: 10px;
-  padding: 8px 12px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.toolbarBtnDanger {
-  border-color: rgba(248, 113, 113, 0.4);
-  color: #f87171;
-}
-
-.goalPayHint {
-  margin: 0 0 10px;
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--text-secondary);
 }
 
 .goalPayChips {

@@ -1,4 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Plus } from 'lucide-react';
 import Header from '../components/ui/Header';
 import AccountsSnapshot from '../components/ui/AccountsSnapshot';
@@ -22,8 +23,10 @@ import { formatCurrency } from '../utils/formatters';
 import { isMoneyHidden } from '../utils/moneyPrivacy';
 import styles from './Accounts.module.css';
 
-type PortfolioSection = 'bank' | 'cash' | 'crypto' | 'stocks' | 'debt';
-type IconTone = 'bank' | 'cash' | 'crypto' | 'stocks' | 'debt' | 'neutral';
+type PortfolioSection = 'bank' | 'cash' | 'crypto' | 'stocks' | 'debt' | 'goal';
+type IconTone = 'bank' | 'cash' | 'crypto' | 'stocks' | 'debt' | 'goal' | 'neutral';
+/** Секції, які користувач створює й редагує сам. Рахунок цілі веде сама ціль. */
+type EditableSection = Exclude<PortfolioSection, 'goal'>;
 type DebtDirection = 'owed_to_me' | 'owed_by_me';
 
 type PortfolioAccountRow = {
@@ -43,7 +46,8 @@ type PortfolioAccountRow = {
   debtCreatedAt: string | null;
 };
 
-const isPortfolioSection = (v: string): v is PortfolioSection => ['bank', 'cash', 'crypto', 'stocks', 'debt'].includes(v);
+const isPortfolioSection = (v: string): v is PortfolioSection =>
+  ['bank', 'cash', 'crypto', 'stocks', 'debt', 'goal'].includes(v);
 
 const parsePortfolioRow = (raw: unknown): PortfolioAccountRow | null => {
   if (!raw || typeof raw !== 'object') return null;
@@ -68,7 +72,7 @@ const parsePortfolioRow = (raw: unknown): PortfolioAccountRow | null => {
   const debtCreatedAt = section === 'debt' && typeof r.debtCreatedAt === 'string' ? r.debtCreatedAt : null;
   const iconKey = typeof r.iconKey === 'string' && r.iconKey.trim() ? r.iconKey.trim() : null;
   const iconRaw = typeof r.iconTone === 'string' ? r.iconTone.trim() : 'neutral';
-  const iconTone: IconTone = ['bank', 'cash', 'crypto', 'stocks', 'debt', 'neutral'].includes(iconRaw)
+  const iconTone: IconTone = ['bank', 'cash', 'crypto', 'stocks', 'debt', 'goal', 'neutral'].includes(iconRaw)
     ? (iconRaw as IconTone)
     : 'neutral';
   return {
@@ -88,7 +92,13 @@ const parsePortfolioRow = (raw: unknown): PortfolioAccountRow | null => {
   };
 };
 
-const mapPortfolioToEditable = (r: PortfolioAccountRow): EditableAccount => ({
+/**
+ * Рахунок цілі редагується через саму ціль, тож у форму рахунку він не потрапляє:
+ * сервер такі правки все одно відхиляє (`GOAL_ACCOUNT_READONLY`).
+ */
+const mapPortfolioToEditable = (r: PortfolioAccountRow): EditableAccount | null => {
+  if (r.section === 'goal') return null;
+  return {
   accountKey: r.accountKey,
   section: r.section,
   sortIndex: r.sortIndex,
@@ -96,13 +106,14 @@ const mapPortfolioToEditable = (r: PortfolioAccountRow): EditableAccount => ({
   primaryAmount: r.primaryAmount,
   primaryCurrency: r.primaryCurrency,
   subText: r.subText ?? '',
-  iconTone: r.iconTone,
+  iconTone: r.iconTone === 'goal' ? 'neutral' : r.iconTone,
   badge: r.badge ?? '',
   iconKey: r.iconKey ?? '',
   debtDirection: r.debtDirection ?? 'owed_to_me',
-});
+  };
+};
 
-const createEmptyAccount = (section: PortfolioSection, existing: readonly PortfolioAccountRow[]): EditableAccount => {
+const createEmptyAccount = (section: EditableSection, existing: readonly PortfolioAccountRow[]): EditableAccount => {
   const maxSort = existing
     .filter((r) => r.section === section)
     .reduce((max, r) => Math.max(max, r.sortIndex), 0);
@@ -129,6 +140,7 @@ const SECTION_COLORS: Record<string, string> = {
   stocks: '#34C759',
   'debt-owed-to-me': '#E84848',
   'debt-owed-by-me': '#8E8E93',
+  goal: '#F7E34D',
 };
 
 /**
@@ -144,6 +156,7 @@ const formatGroupAmount = (amount: number, currency: string, locale: string) => 
 };
 
 const Accounts: React.FC = () => {
+  const navigate = useNavigate();
   const { t, locale, displayCurrency } = useTranslation();
   const { convert } = useDenominationRates();
   const { accounts, accountsLoaded, refreshAccounts } = usePortfolio();
@@ -169,7 +182,7 @@ const Accounts: React.FC = () => {
       amount: string;
       badge: string;
       subAmount?: string;
-      iconTone: 'bank' | 'cash' | 'crypto' | 'stocks' | 'debt' | 'neutral';
+      iconTone: 'bank' | 'cash' | 'crypto' | 'stocks' | 'debt' | 'goal' | 'neutral';
       section: PortfolioSection;
       iconKey: string | null;
       cryptoSymbol: string | null;
@@ -263,6 +276,15 @@ const Accounts: React.FC = () => {
         rows: rowsFor('stocks'),
       },
       {
+        id: 'goal',
+        title: t('balance', 'sectionGoals'),
+        total: sumSectionFiat('goal'),
+        variant: 'strip' as const,
+        collapsible: true,
+        defaultOpen: true,
+        rows: rowsFor('goal'),
+      },
+      {
         id: 'debt-owed-to-me',
         title: t('balance', 'sectionDebtOwedToMe'),
         total: sumSectionFiat('debt', 'owed_to_me'),
@@ -332,13 +354,19 @@ const Accounts: React.FC = () => {
     (id: string) => {
       const row = portfolio.find((r) => r.accountKey === id);
       if (!row) return;
+      // Рахунок цілі не редагується як рахунок — ним керує сама ціль, тож тап
+      // веде туди, а не в форму, яку сервер усе одно відхилив би.
+      if (row.section === 'goal') {
+        navigate('/goals');
+        return;
+      }
       if (row.section === 'debt') {
         setDebtDetail(row);
       } else {
         setEditing(mapPortfolioToEditable(row));
       }
     },
-    [portfolio],
+    [portfolio, navigate],
   );
 
   const handleDebtPayment = useCallback(

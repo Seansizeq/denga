@@ -223,6 +223,8 @@ export type Goal = {
   id: string;
   name: string;
   type: GoalType;
+  /** Рахунок цілі в гаманці: його баланс і є прогресом. */
+  accountKey: string | null;
   targetAmount: number;
   /** Стартовий прогрес: гроші, вже зароблені/відкладені до створення цілі. Не транзакція. */
   baselineAmount: number;

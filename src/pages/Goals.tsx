@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Target, Car, Plane, Shield, Home, Briefcase, Wallet, Heart, Gift, Pencil } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
+import { Plus, Pencil } from 'lucide-react';
 import {
   createGoal,
   deleteGoal,
@@ -14,61 +13,17 @@ import {
 import { showAppConfirm } from '../utils/notify';
 import { formatCurrency } from '../utils/formatters';
 import type { DisplayCurrency } from '../utils/formatters';
+import { localIsoDate } from '../utils/dateRanges';
+import { deadlineDeltaDays, fillColorForPct, progressPct } from '../utils/goals';
 import { useTranslation } from '../i18n/LanguageContext';
 import { useGoBack } from '../hooks/useGoBack';
 import FormSheet from '../components/ui/FormSheet';
+import GoalIcon, { ICON_KEYS, toGoalIconKey, type GoalIconKey } from '../components/goals/GoalIcon';
 import sheet from '../components/ui/FormSheet.module.css';
 import styles from './Goals.module.css';
 
 const SWATCHES = ['#7C5CFF', '#22c55e', '#06b6d4', '#eab308', '#f97316', '#ec4899'] as const;
 const GOAL_COLOR_RE = /^#[0-9A-Fa-f]{6}$/;
-
-const ICON_KEYS = ['target', 'car', 'plane', 'shield', 'home', 'briefcase', 'wallet', 'heart', 'gift'] as const;
-const ICON_MAP: Record<(typeof ICON_KEYS)[number], LucideIcon> = {
-  target: Target,
-  car: Car,
-  plane: Plane,
-  shield: Shield,
-  home: Home,
-  briefcase: Briefcase,
-  wallet: Wallet,
-  heart: Heart,
-  gift: Gift,
-};
-
-const GoalIcon: React.FC<{ name: string; color: string; size?: number }> = ({ name, color, size = 22 }) => {
-  const key = ICON_KEYS.includes(name as (typeof ICON_KEYS)[number]) ? (name as (typeof ICON_KEYS)[number]) : 'target';
-  const Icon = ICON_MAP[key];
-  return <Icon size={size} strokeWidth={2} color={color} />;
-};
-
-const deadlineDeltaDays = (deadline: string | null): number | null => {
-  if (!deadline || !/^\d{4}-\d{2}-\d{2}$/.test(deadline)) return null;
-  const [y, m, d] = deadline.split('-').map(Number);
-  const end = new Date(y, m - 1, d);
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  end.setHours(0, 0, 0, 0);
-  return Math.round((end.getTime() - start.getTime()) / 86400000);
-};
-
-/** Локальна «сьогодні» — щоб дата-пікер не відсікав поточний день у чужому часовому поясі. */
-const todayIso = (): string => {
-  const d = new Date();
-  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-  return d.toISOString().slice(0, 10);
-};
-
-const progressPct = (saved: number, target: number): number => {
-  if (!target || target <= 0) return 0;
-  return Math.min(100, (saved / target) * 100);
-};
-
-const fillColorForPct = (pct: number, goalColor: string): string => {
-  if (pct >= 100) return '#eab308';
-  if (pct >= 50) return '#22c55e';
-  return goalColor || '#7C5CFF';
-};
 
 const Goals: React.FC = () => {
   const navigate = useNavigate();
@@ -88,7 +43,7 @@ const Goals: React.FC = () => {
   const [currency, setCurrency] = useState<GoalCurrency>(displayCurrency as GoalCurrency);
   const [deadline, setDeadline] = useState('');
   const [color, setColor] = useState<string>(SWATCHES[0]);
-  const [iconKey, setIconKey] = useState<(typeof ICON_KEYS)[number]>('target');
+  const [iconKey, setIconKey] = useState<GoalIconKey>('target');
   const [saveError, setSaveError] = useState('');
 
   const load = useCallback(async () => {
@@ -142,13 +97,13 @@ const Goals: React.FC = () => {
     setCurrency(g.currency);
     setDeadline(g.deadline ?? '');
     setColor(GOAL_COLOR_RE.test(g.color) ? g.color : SWATCHES[0]);
-    setIconKey(ICON_KEYS.includes(g.icon as (typeof ICON_KEYS)[number]) ? (g.icon as (typeof ICON_KEYS)[number]) : 'target');
+    setIconKey(toGoalIconKey(g.icon));
     setSheetOpen(true);
   };
 
   // Нова ціль не може стартувати в минулому; наявна лишає свій дедлайн, і
   // межа для неї — день створення, інакше забіг вийшов би від'ємної довжини.
-  const deadlineFloor = editing ? String(editing.createdAt).slice(0, 10) : todayIso();
+  const deadlineFloor = editing ? String(editing.createdAt).slice(0, 10) : localIsoDate();
   const deadlineMissing = goalType === 'income' && !deadline.trim();
   const deadlineTooEarly = Boolean(deadline.trim()) && deadline < deadlineFloor;
 
@@ -240,7 +195,14 @@ const Goals: React.FC = () => {
           </span>
           <span className={styles.meta}>{Math.round(pct)}%</span>
         </div>
-        <div className={styles.progressTrack}>
+        <div
+          className={styles.progressTrack}
+          role="progressbar"
+          aria-valuenow={Math.round(pct)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={g.name}
+        >
           <div className={styles.progressFill} style={{ width: `${pct}%`, background: fill }} />
         </div>
           {deadlineLabel && g.deadline ? (
@@ -269,7 +231,18 @@ const Goals: React.FC = () => {
         </p>
       ) : null}
       {loading ? (
-        <p className={styles.emptyText}>{t('common', 'loading')}</p>
+        <div className={styles.list} aria-busy="true" aria-label={t('common', 'loading')}>
+          {[0, 1, 2].map((i) => (
+            <div key={i} className={styles.skeletonCard} aria-hidden="true">
+              <div className={styles.skeletonTop}>
+                <div className={styles.skeletonIcon} />
+                <div className={styles.skeletonTitle} />
+              </div>
+              <div className={styles.skeletonLine} />
+              <div className={styles.skeletonBar} />
+            </div>
+          ))}
+        </div>
       ) : goals.length === 0 ? (
         <p className={styles.emptyText}>{t('goals', 'empty')}</p>
       ) : (
@@ -300,7 +273,7 @@ const Goals: React.FC = () => {
           }
           error={saveError || undefined}
         >
-          <div className={sheet.heroCard} style={{ background: color }}>
+          <div className={sheet.heroCard} style={{ backgroundColor: color }}>
             <span className={styles.heroGlyph}>
               <GoalIcon name={iconKey} color="#fff" size={24} />
             </span>

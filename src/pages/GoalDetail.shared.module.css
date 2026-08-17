@@ -1,38 +1,7 @@
-/* ---------- Road-to-$X: iOS-style income goal detail (design preview) ---------- */
-
-.container {
-  min-height: 100vh;
-  width: 100%;
-  max-width: 100%;
-  padding: 20px 18px calc(var(--bottom-nav-height) + 40px);
-  padding-top: calc(20px + var(--safe-area-inset-top));
-  background-color: var(--bg-primary);
-  color: var(--text-primary);
-  overflow-x: hidden;
-}
-
-.header {
-  display: flex;
-  align-items: center;
-  margin-bottom: 14px;
-}
-
-.back {
-  background: none;
-  border: none;
-  color: var(--accent-primary-strong);
-  font-size: 15px;
-  font-weight: 600;
-  cursor: pointer;
-  padding: 4px 0;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.back:active {
-  opacity: 0.6;
-}
+/* ---------- Спільна шапка сторінки цілі ----------
+   Обидва типи цілі — накопичення і заробіток — живуть на цих класах. Раніше
+   заробіток мав цей екран, а накопичення лишалося плоским списком рядків; тепер
+   різниця лише в акценті шапки та в наборі плиток. */
 
 /* ---------- Hero ---------- */
 
@@ -45,8 +14,14 @@
   background:
     radial-gradient(120% 140% at 100% 0%, rgba(155, 124, 255, 0.35) 0%, rgba(155, 124, 255, 0) 55%),
     linear-gradient(165deg, #241f36 0%, #17141f 65%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-light);
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+}
+
+/* Ціль-накопичення має власний колір, тож фіолетовий відблиск шапки прибираємо —
+   інакше він сперечався б із кольором, який вибрав користувач. */
+.heroSavings {
+  background: linear-gradient(165deg, #221f2b 0%, #17141f 65%);
 }
 
 .heroTop {
@@ -54,6 +29,14 @@
   align-items: center;
   gap: 12px;
   margin-bottom: 18px;
+}
+
+.heroHeadings {
+  min-width: 0;
+}
+
+.heroBadges {
+  margin-bottom: 10px;
 }
 
 .heroIconWrap {
@@ -82,6 +65,7 @@
   font-size: 22px;
   font-weight: 800;
   letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
 }
 
 .amountRow {
@@ -156,11 +140,6 @@
   border-color: rgba(76, 217, 123, 0.3);
 }
 
-.trajectoryBehind {
-  background: var(--accent-red-soft);
-  border-color: rgba(255, 90, 99, 0.28);
-}
-
 /* Дедлайн минув — забіг закінчено, тож не червоний докір, а спокійний підсумок. */
 .trajectoryNeutral {
   background: rgba(255, 255, 255, 0.05);
@@ -183,11 +162,6 @@
   color: var(--accent-green);
 }
 
-.trajectoryBehind .trajectoryIcon {
-  background: rgba(255, 90, 99, 0.22);
-  color: var(--accent-red);
-}
-
 .trajectoryNeutral .trajectoryIcon {
   background: rgba(255, 255, 255, 0.09);
   color: var(--text-secondary);
@@ -206,10 +180,6 @@
 
 .trajectoryAhead .trajectoryTitle {
   color: var(--accent-green);
-}
-
-.trajectoryBehind .trajectoryTitle {
-  color: #ff8a90;
 }
 
 .trajectoryNeutral .trajectoryTitle {
@@ -298,57 +268,27 @@
   color: var(--text-tertiary);
 }
 
-/* ---------- iOS grouped inset list (stat rows) ---------- */
+/* ---------- Архівна ціль ----------
+   Забіг закінчено, тож замість головної дії — спокійне пояснення, чому кнопки
+   «Внести» тут немає. */
 
-.group {
+.archivedNote {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 22px;
+  padding: 12px 14px;
   border-radius: var(--radius-md);
   background: rgba(255, 255, 255, 0.05);
-  overflow: hidden;
-  margin-bottom: 22px;
+  border: 1px solid var(--border-light);
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.4;
 }
 
-.row {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 54px;
-  padding: 0 14px;
-}
-
-.row + .row::before {
-  content: '';
-  position: absolute;
-  left: 50px;
-  right: 0;
-  top: 0;
-  height: 1px;
-  background: rgba(255, 255, 255, 0.07);
-}
-
-.rowIcon {
-  width: 30px;
-  height: 30px;
-  border-radius: 9px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.archivedNote > svg {
   flex-shrink: 0;
-  color: #fff;
-}
-
-.rowLabel {
-  flex: 1;
-  min-width: 0;
-  font-size: 15px;
-  color: var(--text-primary);
-}
-
-.rowValue {
-  flex-shrink: 0;
-  font-size: 15px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
 }
 
 /* ---------- Income sources ---------- */
@@ -420,14 +360,102 @@
   transition: width 0.4s ease;
 }
 
-.noteBadge {
-  display: inline-flex;
+/* ---------- Скелетон ----------
+   Повторює каркас шапки, банера і плиток, щоб сторінка не стрибала, коли
+   приходять дані. */
+
+.skeletonHero {
+  border-radius: var(--radius-xl);
+  padding: 22px 20px 20px;
+  margin-bottom: 12px;
+  background: linear-gradient(165deg, #221f2b 0%, #17141f 65%);
+  border: 1px solid var(--border-light);
+}
+
+.skeletonTop {
+  display: flex;
   align-items: center;
-  gap: 5px;
-  margin-top: 14px;
-  padding: 8px 12px;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.skeletonHeadings {
+  flex: 1;
+  min-width: 0;
+}
+
+.skeletonIcon,
+.skeletonEyebrow,
+.skeletonTitle,
+.skeletonAmount,
+.skeletonBar,
+.skeletonBanner,
+.skeletonTile {
+  background: rgba(255, 255, 255, 0.07);
+  animation: heroSkeletonPulse 1.4s ease-in-out infinite;
+}
+
+.skeletonIcon {
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  flex-shrink: 0;
+}
+
+.skeletonEyebrow {
+  height: 10px;
+  width: 34%;
+  border-radius: 5px;
+  margin-bottom: 7px;
+}
+
+.skeletonTitle {
+  height: 20px;
+  width: 62%;
+  border-radius: 7px;
+}
+
+.skeletonAmount {
+  height: 32px;
+  width: 70%;
+  border-radius: 9px;
+  margin-bottom: 14px;
+}
+
+.skeletonBar {
+  height: 10px;
   border-radius: var(--radius-full);
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--text-tertiary);
-  font-size: 11.5px;
+}
+
+.skeletonBanner {
+  height: 62px;
+  border-radius: var(--radius-lg);
+  margin-bottom: 20px;
+}
+
+.skeletonTile {
+  min-height: 62px;
+  border-radius: 16px;
+}
+
+@keyframes heroSkeletonPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeletonIcon,
+  .skeletonEyebrow,
+  .skeletonTitle,
+  .skeletonAmount,
+  .skeletonBar,
+  .skeletonBanner,
+  .skeletonTile {
+    animation: none;
+  }
 }

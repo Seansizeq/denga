@@ -2,8 +2,8 @@ import React from 'react';
 import { AccountIconGlyph, resolveAccountIconKey } from '../../utils/accountIcons';
 import styles from './AccountsSnapshot.module.css';
 
-export type RowIconTone = 'bank' | 'cash' | 'crypto' | 'stocks' | 'debt' | 'neutral';
-type RowSection = 'bank' | 'cash' | 'crypto' | 'stocks' | 'debt';
+export type RowIconTone = 'bank' | 'cash' | 'crypto' | 'stocks' | 'debt' | 'goal' | 'neutral';
+type RowSection = 'bank' | 'cash' | 'crypto' | 'stocks' | 'debt' | 'goal';
 
 const iconToneClass = (tone: RowIconTone) => {
   if (tone === 'cash') return styles.iconCash;
@@ -11,11 +11,13 @@ const iconToneClass = (tone: RowIconTone) => {
   if (tone === 'stocks') return styles.iconStocks;
   if (tone === 'debt') return styles.iconDebt;
   if (tone === 'bank') return styles.iconBank;
+  if (tone === 'goal') return styles.iconGoal;
   return styles.iconNeutral;
 };
 
 const inferSectionFromTone = (tone: RowIconTone): RowSection => {
-  if (tone === 'bank' || tone === 'cash' || tone === 'crypto' || tone === 'stocks' || tone === 'debt') return tone;
+  if (tone === 'bank' || tone === 'cash' || tone === 'crypto' || tone === 'stocks' || tone === 'debt' || tone === 'goal')
+    return tone;
   return 'bank';
 };
 

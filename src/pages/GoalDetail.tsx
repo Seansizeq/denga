@@ -1,26 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  Target,
-  Car,
-  Plane,
-  Shield,
   Trash2,
-  Home,
-  Briefcase,
-  Wallet,
-  Heart,
-  Gift,
   Rocket,
   TrendingUp,
-  TrendingDown,
   Tag,
   Trophy,
   CalendarX,
   Plus,
   ImageDown,
+  Archive,
 } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
 import {
   addContribution,
   deleteContribution,
@@ -35,16 +25,22 @@ import { normalizeCurrency } from '../utils/currency';
 import { isCryptoDenomination } from '../utils/denomination';
 import { formatCurrency } from '../utils/formatters';
 import type { DisplayCurrency } from '../utils/formatters';
+import { localIsoDate } from '../utils/dateRanges';
+import { computeGoalPace, deadlineDeltaDays, fillColorForPct, progressPct, sumPeriodEarnings } from '../utils/goals';
 import { useTranslation } from '../i18n/LanguageContext';
 import { useGoBack } from '../hooks/useGoBack';
 import { showAppConfirm } from '../utils/notify';
 import { usePortfolio } from '../context/PortfolioContext';
+import { useTransactions } from '../context/TransactionContext';
+import { getTransactionAccountEffects, getTransactionNotePreview } from '../utils/transactionUtils';
+import type { Transaction } from '../types';
 import FormSheet from '../components/ui/FormSheet';
+import GoalIcon from '../components/goals/GoalIcon';
 import GoalResultCardSheet from '../components/goals/GoalResultCardSheet';
 import type { GoalResultScope } from '../components/goals/GoalResultCardSheet';
 import sheet from '../components/ui/FormSheet.module.css';
 import styles from './Goals.module.css';
-import income from './IncomeGoal.module.css';
+import hero from './GoalDetail.shared.module.css';
 
 const CURRENCY_OPTIONS: GoalCurrency[] = ['UAH', 'PLN', 'USD'];
 const SOURCE_PALETTE = [
@@ -54,46 +50,6 @@ const SOURCE_PALETTE = [
   'var(--accent-green)',
   'var(--accent-yellow)',
 ];
-
-const ICON_KEYS = ['target', 'car', 'plane', 'shield', 'home', 'briefcase', 'wallet', 'heart', 'gift'] as const;
-const ICON_MAP: Record<(typeof ICON_KEYS)[number], LucideIcon> = {
-  target: Target,
-  car: Car,
-  plane: Plane,
-  shield: Shield,
-  home: Home,
-  briefcase: Briefcase,
-  wallet: Wallet,
-  heart: Heart,
-  gift: Gift,
-};
-
-const GoalIcon: React.FC<{ name: string; color: string; size?: number }> = ({ name, color, size = 28 }) => {
-  const key = ICON_KEYS.includes(name as (typeof ICON_KEYS)[number]) ? (name as (typeof ICON_KEYS)[number]) : 'target';
-  const Icon = ICON_MAP[key];
-  return <Icon size={size} strokeWidth={2} color={color} />;
-};
-
-const deadlineDeltaDays = (deadline: string | null): number | null => {
-  if (!deadline || !/^\d{4}-\d{2}-\d{2}$/.test(deadline)) return null;
-  const [y, m, d] = deadline.split('-').map(Number);
-  const end = new Date(y, m - 1, d);
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  end.setHours(0, 0, 0, 0);
-  return Math.round((end.getTime() - start.getTime()) / 86400000);
-};
-
-const progressPct = (saved: number, target: number): number => {
-  if (!target || target <= 0) return 0;
-  return Math.min(100, (saved / target) * 100);
-};
-
-const fillColorForPct = (pct: number, goalColor: string): string => {
-  if (pct >= 100) return '#eab308';
-  if (pct >= 50) return '#22c55e';
-  return goalColor || '#7C5CFF';
-};
 
 const GoalDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -114,6 +70,7 @@ const GoalDetail: React.FC = () => {
   const [resultScope, setResultScope] = useState<GoalResultScope | null>(null);
   const [sourceSuggestions, setSourceSuggestions] = useState<string[]>([]);
   const { accounts: rawAccounts } = usePortfolio();
+  const { transactions } = useTransactions();
   const portfolioAccounts = useMemo<Array<{ key: string; name: string; currency: GoalCurrency }>>(
     () => {
       const list: Array<{ key: string; name: string; currency: GoalCurrency }> = [];
@@ -184,118 +141,81 @@ const GoalDetail: React.FC = () => {
     () => (goal ? progressPct(goal.saved, goal.targetAmount) : 0),
     [goal]
   );
-  const fill = goal ? fillColorForPct(pct, goal.color) : '#7C5CFF';
-  const remaining = goal ? Math.max(0, goal.targetAmount - goal.saved) : 0;
+  const fill = goal ? fillColorForPct(pct, goal.color) : 'var(--accent-primary)';
   const days = goal ? deadlineDeltaDays(goal.deadline) : null;
 
-  const incomeStats = useMemo(() => {
-    if (!goal || goal.type !== 'income') return null;
-    const amountOf = (c: GoalContribution) => (Number.isFinite(c.convertedAmount) ? c.convertedAmount : c.amount);
-    const now = new Date();
-    const todayIso = now.toISOString().slice(0, 10);
-    const monthPrefix = todayIso.slice(0, 7);
-    const weekAgo = new Date(now);
-    weekAgo.setDate(weekAgo.getDate() - 6);
-    const weekAgoIso = weekAgo.toISOString().slice(0, 10);
+  /** Темп і траєкторія — однакові для обох типів цілі, різниця лише в подачі. */
+  const pace = useMemo(
+    () =>
+      goal
+        ? computeGoalPace({
+            saved: goal.saved,
+            target: goal.targetAmount,
+            baseline: goal.baselineAmount,
+            createdAt: goal.createdAt,
+            deadline: goal.deadline,
+            contributions,
+          })
+        : null,
+    [goal, contributions]
+  );
 
-    const yesterday = new Date(now);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayIso = yesterday.toISOString().slice(0, 10);
-    const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const prevMonthPrefix = `${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth() + 1).padStart(2, '0')}`;
+  const periods = useMemo(() => sumPeriodEarnings(contributions), [contributions]);
 
-    let todayEarned = 0;
-    let weekEarned = 0;
-    let monthEarned = 0;
-    let yesterdayEarned = 0;
-    let prevMonthEarned = 0;
-    const sourceTotals = new Map<string, number>();
+  /** Розбивка за джерелами — має сенс лише для цілі-заробітку. */
+  const sources = useMemo(() => {
+    if (!goal || goal.type !== 'income') return [];
+    const totals = new Map<string, number>();
     for (const c of contributions) {
-      const amt = amountOf(c);
-      if (c.date === todayIso) todayEarned += amt;
-      if (c.date === yesterdayIso) yesterdayEarned += amt;
-      if (c.date >= weekAgoIso) weekEarned += amt;
-      if (c.date.startsWith(monthPrefix)) monthEarned += amt;
-      if (c.date.startsWith(prevMonthPrefix)) prevMonthEarned += amt;
+      const amt = Number.isFinite(c.convertedAmount) ? c.convertedAmount : c.amount;
       const key = c.source && c.source.trim() ? c.source.trim() : t('goals', 'sourceOther');
-      sourceTotals.set(key, (sourceTotals.get(key) || 0) + amt);
+      totals.set(key, (totals.get(key) || 0) + amt);
     }
     // Стартова сума не має джерела, але без неї відсотки не збігались би з
     // сумою цілі — тож вона стоїть у розбивці окремим рядком.
     if (goal.baselineAmount > 0) {
       const label = t('goals', 'baselineSourceLabel');
-      sourceTotals.set(label, (sourceTotals.get(label) || 0) + goal.baselineAmount);
+      totals.set(label, (totals.get(label) || 0) + goal.baselineAmount);
     }
-    const sources = Array.from(sourceTotals.entries())
+    return Array.from(totals.entries())
       .map(([name, amount]) => ({ name, amount }))
       .sort((a, b) => b.amount - a.amount);
+  }, [goal, contributions, t]);
 
-    const created = new Date(goal.createdAt);
-    created.setHours(0, 0, 0, 0);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const elapsedDays = Math.max(0, Math.round((today.getTime() - created.getTime()) / 86400000));
-    const totalDays = goal.deadline
-      ? Math.max(1, Math.round((new Date(`${goal.deadline}T00:00:00`).getTime() - created.getTime()) / 86400000))
-      : null;
-
-    const rawPct = goal.targetAmount > 0 ? (goal.saved / goal.targetAmount) * 100 : 0;
-    const reached = goal.targetAmount > 0 && goal.saved >= goal.targetAmount;
-    const expired = !reached && days !== null && days < 0;
-    const phase: 'running' | 'done' | 'expired' = reached ? 'done' : expired ? 'expired' : 'running';
-
-    // Скільки днів пішло на ціль: дата внеску, який перетнув планку.
-    let reachedInDays: number | null = null;
-    if (reached) {
-      const ascending = [...contributions].sort((a, b) => a.date.localeCompare(b.date));
-      let running = goal.baselineAmount;
-      for (const c of ascending) {
-        running += amountOf(c);
-        if (running >= goal.targetAmount) {
-          const at = new Date(`${c.date}T00:00:00`);
-          reachedInDays = Math.max(0, Math.round((at.getTime() - created.getTime()) / 86400000));
-          break;
-        }
-      }
+  /**
+   * Рухи на рахунку цілі, які не є внесками: витрати з цілі та перекази з неї.
+   * Без них прогрес просто зменшувався б, і сторінка цього ніяк не пояснювала б.
+   */
+  const otherMovements = useMemo(() => {
+    const account = goal?.accountKey;
+    if (!account) return [];
+    const contributionTxIds = new Set(contributions.map((c) => c.transactionId).filter(Boolean));
+    const rows: Array<{ tx: Transaction; delta: number; currency: string }> = [];
+    for (const tx of transactions) {
+      if (contributionTxIds.has(tx.id)) continue;
+      // Рахунок для доходу й витрати живе в маркері примітки, а не в колонці, тож
+      // шукати його треба тією ж функцією, якою його читає решта застосунку.
+      const effect = getTransactionAccountEffects(tx).find((e) => e.accountKey === account);
+      if (!effect) continue;
+      rows.push({ tx, delta: effect.delta, currency: effect.currency });
     }
+    return rows.sort((a, b) => b.tx.date.localeCompare(a.tx.date));
+  }, [transactions, contributions, goal?.accountKey]);
 
-    const daysLeft = days !== null ? Math.max(0, days) : null;
-    const neededPerDay = daysLeft && daysLeft > 0 ? remaining / daysLeft : remaining;
-    // Після фінішу денна норма вже ні до чого — показуємо реальний темп забігу.
-    // Стартова сума в темп не входить: її не заробляли протягом цих днів.
-    const paceDays = reached
-      ? Math.max(1, reachedInDays ?? elapsedDays)
-      : Math.max(1, totalDays ?? elapsedDays);
-    const actualPerDay = Math.max(0, goal.saved - goal.baselineAmount) / paceDays;
-
-    let trajectory: { ahead: boolean; delta: number; catchUpPerDay: number } | null = null;
-    if (phase === 'running' && totalDays !== null) {
-      const cappedElapsed = Math.min(totalDays, elapsedDays);
-      // План стартує не з нуля, а зі стартової суми.
-      const expectedByNow =
-        goal.baselineAmount + ((goal.targetAmount - goal.baselineAmount) / totalDays) * cappedElapsed;
-      const delta = goal.saved - expectedByNow;
-      const catchUpPerDay = delta < 0 && daysLeft && daysLeft > 0 ? Math.abs(delta) / daysLeft : 0;
-      trajectory = { ahead: delta >= 0, delta, catchUpPerDay };
+  /** Внески, що прийшли переказом з іншого рахунку — лише вони «з рахунку». */
+  const transferBackedContribIds = useMemo(() => {
+    const byId = new Map(transactions.map((tx) => [tx.id, tx]));
+    const ids = new Set<string>();
+    for (const c of contributions) {
+      if (c.transactionId && byId.get(c.transactionId)?.type === 'transfer') ids.add(c.id);
     }
+    return ids;
+  }, [transactions, contributions]);
 
-    return {
-      todayEarned,
-      weekEarned,
-      monthEarned,
-      yesterdayEarned,
-      prevMonthEarned,
-      sources,
-      neededPerDay,
-      actualPerDay,
-      trajectory,
-      phase,
-      rawPct,
-      reachedInDays,
-      totalDays,
-      overachieved: Math.max(0, goal.saved - goal.targetAmount),
-    };
-  }, [goal, contributions, days, remaining, t]);
+  const formatForecast = useCallback(
+    (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString(locale, { day: 'numeric', month: 'short' }),
+    [locale]
+  );
 
   const openContribute = () => {
     if (!goal) return;
@@ -313,11 +233,10 @@ const GoalDetail: React.FC = () => {
     setActionError('');
     const n = parseFloat(String(contribAmount).replace(',', '.'));
     if (!Number.isFinite(n) || n <= 0) return;
-    const todayIso = new Date().toISOString().slice(0, 10);
     try {
       await addContribution(id, {
         amount: n,
-        date: todayIso,
+        date: localIsoDate(),
         note: contribNote.trim(),
         accountKey: contribAccountKey.trim() ? contribAccountKey.trim().toLowerCase() : undefined,
         currency: contribCurrency,
@@ -335,6 +254,8 @@ const GoalDetail: React.FC = () => {
         setActionError(t('goals', 'cryptoAccountUnsupported'));
       } else if (code === 'ACCOUNT_NOT_FOR_INCOME') {
         setActionError(t('goals', 'accountNotForIncome'));
+      } else if (code === 'GOAL_ARCHIVED') {
+        setActionError(t('goals', 'goalArchivedError'));
       } else {
         setActionError(t('goals', 'saveError'));
       }
@@ -358,13 +279,36 @@ const GoalDetail: React.FC = () => {
 
   if (loading) {
     return (
-      <div className={styles.container}>
-        <p className={styles.emptyText}>{t('common', 'loading')}</p>
+      <div className={styles.container} aria-busy="true" aria-label={t('common', 'loading')}>
+        <header className={styles.header}>
+          <button type="button" className={styles.back} onClick={goBack}>
+            ← {t('goals', 'title')}
+          </button>
+        </header>
+        <div className={hero.skeletonHero} aria-hidden="true">
+          <div className={hero.skeletonTop}>
+            <div className={hero.skeletonIcon} />
+            <div className={hero.skeletonHeadings}>
+              <div className={hero.skeletonEyebrow} />
+              <div className={hero.skeletonTitle} />
+            </div>
+          </div>
+          <div className={hero.skeletonAmount} />
+          <div className={hero.skeletonBar} />
+        </div>
+        <div className={hero.skeletonBanner} aria-hidden="true" />
+        <div className={hero.statRow} aria-hidden="true">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className={`${hero.statTile} ${hero.skeletonTile}`} />
+          ))}
+        </div>
       </div>
     );
   }
 
-  if (error || !goal) {
+  // `pace` виводиться з `goal`, тож існує рівно тоді, коли існує ціль — але
+  // типам це неочевидно, тож перевіряємо разом.
+  if (error || !goal || !pace) {
     return (
       <div className={styles.container}>
         <button type="button" className={styles.back} onClick={goBack}>
@@ -378,6 +322,8 @@ const GoalDetail: React.FC = () => {
   }
 
   const cur = goal.currency as DisplayCurrency;
+  const isIncome = goal.type === 'income';
+  const showNeededPerDay = pace.phase === 'running' && pace.daysLeft !== null && pace.daysLeft > 0;
 
   return (
     <div className={styles.container}>
@@ -393,228 +339,116 @@ const GoalDetail: React.FC = () => {
         </p>
       ) : null}
 
-      {goal.type === 'income' && incomeStats ? (
-        <>
-          <div className={income.hero}>
-            <div className={income.heroTop}>
-              <div className={income.heroIconWrap}>
-                <Rocket size={22} strokeWidth={2} />
-              </div>
-              <div>
-                <p className={income.heroEyebrow}>{t('goals', 'roadTo')}</p>
-                <h1 className={income.heroTitle}>{goal.name}</h1>
-              </div>
-            </div>
-            <div className={styles.badgeRow} style={{ marginBottom: 10 }}>
-              {pct >= 100 ? <span className={`${styles.badge} ${styles.badgeDone}`}>{t('goals', 'completed')}</span> : null}
-              {goal.archived ? <span className={styles.badge}>{t('goals', 'archived')}</span> : null}
-            </div>
-            <div className={income.amountRow}>
-              <span className={income.amountCurrent}>{formatCurrency(goal.saved, locale, cur)}</span>
-              <span className={income.amountTarget}>/ {formatCurrency(goal.targetAmount, locale, cur)}</span>
-            </div>
-            <div className={income.progressTrack}>
-              <div className={income.progressFill} style={{ width: `${pct}%` }} />
-            </div>
-            <div className={income.progressMeta}>
-              <span className={income.progressPct}>{incomeStats.rawPct.toFixed(1)}%</span>
-              {incomeStats.phase === 'running' && days !== null ? (
-                <span className={income.progressDays}>
-                  {t('goals', 'daysLeft').replace('{n}', String(Math.max(0, days)))}
-                </span>
-              ) : incomeStats.phase === 'expired' ? (
-                <span className={income.progressDays}>{t('goals', 'overdue')}</span>
-              ) : null}
-            </div>
+      <div className={`${hero.hero} ${isIncome ? '' : hero.heroSavings}`}>
+        <div className={hero.heroTop}>
+          <div
+            className={hero.heroIconWrap}
+            style={isIncome ? undefined : { backgroundColor: `${goal.color}22`, color: goal.color }}
+          >
+            {isIncome ? <Rocket size={22} strokeWidth={2} /> : <GoalIcon name={goal.icon} color="currentColor" size={22} />}
           </div>
-
-          {incomeStats.phase === 'done' ? (
-            <div className={`${income.trajectory} ${income.trajectoryAhead}`}>
-              <div className={income.trajectoryIcon}>
-                <Trophy size={17} strokeWidth={2.4} />
-              </div>
-              <div className={income.trajectoryBody}>
-                <p className={income.trajectoryTitle}>
-                  {incomeStats.reachedInDays !== null
-                    ? t('goals', 'goalReachedInDays').replace('{n}', String(incomeStats.reachedInDays))
-                    : t('goals', 'goalReached')}
-                </p>
-                <p className={income.trajectorySub}>
-                  {incomeStats.overachieved > 0
-                    ? t('goals', 'goalOverachieved').replace(
-                        '{amount}',
-                        formatCurrency(incomeStats.overachieved, locale, cur)
-                      )
-                    : t('goals', 'goalReachedHint')}
-                </p>
-              </div>
-            </div>
-          ) : incomeStats.phase === 'expired' ? (
-            <div className={`${income.trajectory} ${income.trajectoryNeutral}`}>
-              <div className={income.trajectoryIcon}>
-                <CalendarX size={17} strokeWidth={2.4} />
-              </div>
-              <div className={income.trajectoryBody}>
-                <p className={income.trajectoryTitle}>{t('goals', 'deadlinePassed')}</p>
-                <p className={income.trajectorySub}>
-                  {t('goals', 'deadlinePassedHint')
-                    .replace('{amount}', formatCurrency(goal.saved, locale, cur))
-                    .replace('{target}', formatCurrency(goal.targetAmount, locale, cur))
-                    .replace('{pct}', incomeStats.rawPct.toFixed(1))
-                    .replace('{n}', String(incomeStats.totalDays ?? 0))}
-                </p>
-              </div>
-            </div>
-          ) : incomeStats.trajectory ? (
-            <div
-              className={`${income.trajectory} ${incomeStats.trajectory.ahead ? income.trajectoryAhead : income.trajectoryBehind}`}
-            >
-              <div className={income.trajectoryIcon}>
-                {incomeStats.trajectory.ahead ? (
-                  <TrendingUp size={17} strokeWidth={2.4} />
-                ) : (
-                  <TrendingDown size={17} strokeWidth={2.4} />
-                )}
-              </div>
-              <div className={income.trajectoryBody}>
-                <p className={income.trajectoryTitle}>
-                  {(incomeStats.trajectory.ahead ? t('goals', 'aheadOfPlan') : t('goals', 'behindPlan')).replace(
-                    '{amount}',
-                    formatCurrency(Math.abs(incomeStats.trajectory.delta), locale, cur)
-                  )}
-                </p>
-                <p className={income.trajectorySub}>
-                  {incomeStats.trajectory.ahead
-                    ? t('goals', 'aheadOfPlanHint')
-                    : t('goals', 'behindPlanHint').replace(
-                        '{amount}',
-                        formatCurrency(incomeStats.trajectory.catchUpPerDay, locale, cur)
-                      )}
-                </p>
-              </div>
-            </div>
-          ) : null}
-
-          <div className={styles.actions}>
-            <button type="button" className={`${styles.actionBtn} ${styles.actionPrimary}`} onClick={openContribute}>
-              <Plus size={20} strokeWidth={2.4} />
-              {t('goals', 'contribute')}
-            </button>
+          <div className={hero.heroHeadings}>
+            <p className={hero.heroEyebrow}>{isIncome ? t('goals', 'roadTo') : t('goals', 'savingUpFor')}</p>
+            <h1 className={hero.heroTitle}>{goal.name}</h1>
           </div>
-
-          <div className={income.statRow}>
-            <button
-              type="button"
-              className={`${income.statTile} ${income.statTileTappable}`}
-              onClick={() => setResultScope('today')}
-            >
-              <span className={income.statValue}>{formatCurrency(incomeStats.todayEarned, locale, cur)}</span>
-              <span className={income.statLabel}>{t('goals', 'earnedToday')}</span>
-              <ImageDown className={income.statTileGlyph} size={13} aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              className={`${income.statTile} ${income.statTileTappable}`}
-              onClick={() => setResultScope('month')}
-            >
-              <span className={income.statValue}>{formatCurrency(incomeStats.monthEarned, locale, cur)}</span>
-              <span className={income.statLabel}>{t('goals', 'earnedMonth')}</span>
-              <ImageDown className={income.statTileGlyph} size={13} aria-hidden="true" />
-            </button>
-            <div className={income.statTile}>
-              <span className={income.statValue}>
-                {formatCurrency(
-                  incomeStats.phase === 'running' ? incomeStats.neededPerDay : incomeStats.actualPerDay,
-                  locale,
-                  cur
-                )}
-              </span>
-              <span className={income.statLabel}>
-                {incomeStats.phase === 'running' ? t('goals', 'neededPerDay') : t('goals', 'actualPerDay')}
-              </span>
-            </div>
-          </div>
-
-          {incomeStats.sources.length > 0
-            ? (() => {
-                const total = incomeStats.sources.reduce((a, b) => a + b.amount, 0);
-                return (
-                  <>
-                    <h2 className={income.sectionTitle}>{t('goals', 'incomeSources')}</h2>
-                    <div className={income.sourceList}>
-                      {incomeStats.sources.map((s, idx) => {
-                        const share = total > 0 ? (s.amount / total) * 100 : 0;
-                        const color = SOURCE_PALETTE[idx % SOURCE_PALETTE.length];
-                        return (
-                          <div key={s.name} className={income.sourceCard}>
-                            <div className={income.sourceTop}>
-                              <div className={income.sourceIcon} style={{ background: color }}>
-                                <Tag size={14} strokeWidth={2.2} />
-                              </div>
-                              <span className={income.sourceName}>{s.name}</span>
-                              <span className={income.sourceAmount}>{formatCurrency(s.amount, locale, cur)}</span>
-                              <span className={income.sourceSharePct}>{Math.round(share)}%</span>
-                            </div>
-                            <div className={income.sourceBarTrack}>
-                              <div className={income.sourceBarFill} style={{ width: `${share}%`, background: color }} />
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </>
-                );
-              })()
-            : null}
-        </>
-      ) : (
-        <>
-          <div className={styles.detailHero}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-            <div className={styles.iconWrap} style={{ backgroundColor: `${goal.color}22` }}>
-              <GoalIcon name={goal.icon} color={goal.color} />
-            </div>
-            <h1 className={styles.detailTitle} style={{ margin: 0 }}>
-              {goal.name}
-            </h1>
-          </div>
-          <div className={styles.badgeRow}>
+        </div>
+        {pct >= 100 || goal.archived ? (
+          <div className={`${styles.badgeRow} ${hero.heroBadges}`}>
             {pct >= 100 ? <span className={`${styles.badge} ${styles.badgeDone}`}>{t('goals', 'completed')}</span> : null}
             {goal.archived ? <span className={styles.badge}>{t('goals', 'archived')}</span> : null}
           </div>
-          <div className={styles.pctRow}>
-            <span className={styles.amountStrong}>
-              {formatCurrency(goal.saved, locale, cur)} / {formatCurrency(goal.targetAmount, locale, cur)}
+        ) : null}
+        <div className={hero.amountRow}>
+          <span className={hero.amountCurrent}>{formatCurrency(goal.saved, locale, cur)}</span>
+          <span className={hero.amountTarget}>/ {formatCurrency(goal.targetAmount, locale, cur)}</span>
+        </div>
+        <div
+          className={hero.progressTrack}
+          role="progressbar"
+          aria-valuenow={Math.round(pct)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={goal.name}
+        >
+          <div
+            className={hero.progressFill}
+            style={{ width: `${pct}%`, ...(isIncome ? {} : { background: fill }) }}
+          />
+        </div>
+        <div className={hero.progressMeta}>
+          <span className={hero.progressPct}>{pace.rawPct.toFixed(1)}%</span>
+          {pace.phase === 'running' && days !== null ? (
+            <span className={hero.progressDays}>
+              {t('goals', 'daysLeft').replace('{n}', String(Math.max(0, days)))}
             </span>
-            <span>{Math.round(pct)}%</span>
-          </div>
-          <div className={`${styles.progressTrack} ${styles.detailProgress}`}>
-            <div className={styles.progressFill} style={{ width: `${pct}%`, background: fill }} />
-          </div>
-          <p className={styles.meta}>
-            {t('goals', 'remaining')}: {formatCurrency(remaining, locale, cur)}
-          </p>
-          {goal.deadline ? (
-            <p className={styles.meta}>
-              {t('goals', 'deadline')}: {new Date(goal.deadline + 'T12:00:00').toLocaleDateString(locale)}
-              {days !== null ? (
-                <>
-                  {' '}
-                  (
-                  {days < 0 ? t('goals', 'overdue') : t('goals', 'daysLeft').replace('{n}', String(Math.max(0, days)))})
-                </>
-              ) : null}
-            </p>
+          ) : pace.phase === 'expired' ? (
+            <span className={hero.progressDays}>{t('goals', 'overdue')}</span>
+          ) : goal.deadline ? (
+            <span className={hero.progressDays}>
+              {new Date(`${goal.deadline}T12:00:00`).toLocaleDateString(locale)}
+            </span>
           ) : null}
-          </div>
-          <button type="button" className={styles.goalResultImageBtn} onClick={() => setResultScope('total')}>
-            <ImageDown size={18} aria-hidden="true" />
-            {t('goals', 'goalResultImage')}
-          </button>
-        </>
-      )}
+        </div>
+      </div>
 
-      {goal.type === 'income' ? null : (
+      {pace.phase === 'done' ? (
+        <div className={`${hero.trajectory} ${hero.trajectoryAhead}`}>
+          <div className={hero.trajectoryIcon}>
+            <Trophy size={17} strokeWidth={2.4} />
+          </div>
+          <div className={hero.trajectoryBody}>
+            <p className={hero.trajectoryTitle}>
+              {pace.reachedInDays !== null
+                ? t('goals', 'goalReachedInDays').replace('{n}', String(pace.reachedInDays))
+                : t('goals', 'goalReached')}
+            </p>
+            <p className={hero.trajectorySub}>
+              {pace.overachieved > 0
+                ? t('goals', 'goalOverachieved').replace('{amount}', formatCurrency(pace.overachieved, locale, cur))
+                : t('goals', 'goalReachedHint')}
+            </p>
+          </div>
+        </div>
+      ) : pace.phase === 'expired' ? (
+        <div className={`${hero.trajectory} ${hero.trajectoryNeutral}`}>
+          <div className={hero.trajectoryIcon}>
+            <CalendarX size={17} strokeWidth={2.4} />
+          </div>
+          <div className={hero.trajectoryBody}>
+            <p className={hero.trajectoryTitle}>{t('goals', 'deadlinePassed')}</p>
+            <p className={hero.trajectorySub}>
+              {t('goals', 'deadlinePassedHint')
+                .replace('{amount}', formatCurrency(goal.saved, locale, cur))
+                .replace('{target}', formatCurrency(goal.targetAmount, locale, cur))
+                .replace('{pct}', pace.rawPct.toFixed(1))
+                .replace('{n}', String(pace.totalDays ?? 0))}
+            </p>
+          </div>
+        </div>
+      ) : pace.forecastDate ? (
+        // Замість оцінки «попереду/відстаєш» — нейтральний орієнтир, куди веде
+        // поточний темп. Докір за відставання від графіка користі не давав.
+        <div className={`${hero.trajectory} ${hero.trajectoryNeutral}`}>
+          <div className={hero.trajectoryIcon}>
+            <TrendingUp size={17} strokeWidth={2.4} />
+          </div>
+          <div className={hero.trajectoryBody}>
+            <p className={hero.trajectoryTitle}>
+              {t('goals', 'forecastTitle').replace('{date}', formatForecast(pace.forecastDate))}
+            </p>
+            <p className={hero.trajectorySub}>
+              {t('goals', 'forecastHint').replace('{amount}', formatCurrency(pace.actualPerDay, locale, cur))}
+            </p>
+          </div>
+        </div>
+      ) : null}
+
+      {goal.archived ? (
+        <div className={hero.archivedNote}>
+          <Archive size={15} strokeWidth={2.2} aria-hidden="true" />
+          <span>{t('goals', 'archivedNoContribute')}</span>
+        </div>
+      ) : (
         <div className={styles.actions}>
           <button type="button" className={`${styles.actionBtn} ${styles.actionPrimary}`} onClick={openContribute}>
             <Plus size={20} strokeWidth={2.4} />
@@ -622,6 +456,94 @@ const GoalDetail: React.FC = () => {
           </button>
         </div>
       )}
+
+      <div className={hero.statRow}>
+        {isIncome ? (
+          <>
+            <button
+              type="button"
+              className={`${hero.statTile} ${hero.statTileTappable}`}
+              onClick={() => setResultScope('today')}
+            >
+              <span className={hero.statValue}>{formatCurrency(periods.today, locale, cur)}</span>
+              <span className={hero.statLabel}>{t('goals', 'earnedToday')}</span>
+              <ImageDown className={hero.statTileGlyph} size={13} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className={`${hero.statTile} ${hero.statTileTappable}`}
+              onClick={() => setResultScope('month')}
+            >
+              <span className={hero.statValue}>{formatCurrency(periods.month, locale, cur)}</span>
+              <span className={hero.statLabel}>{t('goals', 'earnedMonth')}</span>
+              <ImageDown className={hero.statTileGlyph} size={13} aria-hidden="true" />
+            </button>
+          </>
+        ) : (
+          <>
+            <div className={hero.statTile}>
+              <span className={hero.statValue}>{formatCurrency(pace.remaining, locale, cur)}</span>
+              <span className={hero.statLabel}>{t('goals', 'remaining')}</span>
+            </div>
+            <div className={hero.statTile}>
+              <span className={hero.statValue}>
+                {pace.forecastDate ? formatForecast(pace.forecastDate) : '—'}
+              </span>
+              <span className={hero.statLabel}>{t('goals', 'forecastLabel')}</span>
+            </div>
+          </>
+        )}
+        <div className={hero.statTile}>
+          {/* Денна норма має сенс лише коли є дедлайн, на який її ділити. Без
+              нього вона дорівнює залишку — тобто дублювала б сусідню плитку,
+              тож там доречніший фактичний темп. */}
+          <span className={hero.statValue}>
+            {formatCurrency(showNeededPerDay ? pace.neededPerDay : pace.actualPerDay, locale, cur)}
+          </span>
+          <span className={hero.statLabel}>
+            {showNeededPerDay ? t('goals', 'neededPerDay') : t('goals', 'actualPerDay')}
+          </span>
+        </div>
+      </div>
+
+      {isIncome ? null : (
+        <button type="button" className={styles.goalResultImageBtn} onClick={() => setResultScope('total')}>
+          <ImageDown size={18} aria-hidden="true" />
+          {t('goals', 'goalResultImage')}
+        </button>
+      )}
+
+      {sources.length > 0
+        ? (() => {
+            const total = sources.reduce((a, b) => a + b.amount, 0);
+            return (
+              <>
+                <h2 className={hero.sectionTitle}>{t('goals', 'incomeSources')}</h2>
+                <div className={hero.sourceList}>
+                  {sources.map((s, idx) => {
+                    const share = total > 0 ? (s.amount / total) * 100 : 0;
+                    const color = SOURCE_PALETTE[idx % SOURCE_PALETTE.length];
+                    return (
+                      <div key={s.name} className={hero.sourceCard}>
+                        <div className={hero.sourceTop}>
+                          <div className={hero.sourceIcon} style={{ background: color }}>
+                            <Tag size={14} strokeWidth={2.2} />
+                          </div>
+                          <span className={hero.sourceName}>{s.name}</span>
+                          <span className={hero.sourceAmount}>{formatCurrency(s.amount, locale, cur)}</span>
+                          <span className={hero.sourceSharePct}>{Math.round(share)}%</span>
+                        </div>
+                        <div className={hero.sourceBarTrack}>
+                          <div className={hero.sourceBarFill} style={{ width: `${share}%`, background: color }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            );
+          })()
+        : null}
 
       <h2 className={styles.sectionTitle}>{t('goals', 'contributionsTitle')}</h2>
       {contributions.length === 0 ? (
@@ -640,7 +562,7 @@ const GoalDetail: React.FC = () => {
                   {isForeign ? (
                     <p className={styles.contribNote}>{formatCurrency(c.amount, locale, c.currency as DisplayCurrency)}</p>
                   ) : null}
-                  {c.transactionId ? (
+                  {transferBackedContribIds.has(c.id) ? (
                     <span className={styles.contribAccountBadge}>{t('goals', 'fromAccountShort')}</span>
                   ) : null}
                 </div>
@@ -654,15 +576,38 @@ const GoalDetail: React.FC = () => {
         </div>
       )}
 
+      {otherMovements.length > 0 ? (
+        <>
+          <h2 className={styles.sectionTitle}>{t('goals', 'accountMovements')}</h2>
+          <p className={styles.sectionHint}>{t('goals', 'accountMovementsHint')}</p>
+          <div className={styles.contribList}>
+            {otherMovements.map(({ tx, delta, currency }) => {
+              const preview = getTransactionNotePreview(tx);
+              const incoming = delta >= 0;
+              return (
+                <div key={tx.id} className={styles.contribRow}>
+                  <div className={styles.contribMain}>
+                    <div className={styles.contribDate}>{new Date(tx.date).toLocaleDateString(locale)}</div>
+                    {preview ? <p className={styles.contribNote}>{preview}</p> : null}
+                  </div>
+                  <span className={`${styles.contribAmt} ${incoming ? styles.amountIn : styles.amountOut}`}>
+                    {incoming ? '+' : '−'}
+                    {formatCurrency(Math.abs(delta), locale, currency as DisplayCurrency)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      ) : null}
+
       <GoalResultCardSheet
         open={resultScope !== null}
         onClose={() => setResultScope(null)}
         goal={goal}
         scope={resultScope ?? 'total'}
-        periodEarned={resultScope === 'month' ? incomeStats?.monthEarned ?? 0 : incomeStats?.todayEarned ?? 0}
-        previousEarned={
-          resultScope === 'month' ? incomeStats?.prevMonthEarned ?? 0 : incomeStats?.yesterdayEarned ?? 0
-        }
+        periodEarned={resultScope === 'month' ? periods.month : periods.today}
+        previousEarned={resultScope === 'month' ? periods.prevMonth : periods.yesterday}
       />
 
       {contributeOpen ? (

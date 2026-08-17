@@ -19,6 +19,20 @@ import {
   validateTransferPayload,
 } from './transaction-effects.js';
 import { buildDebtRepaymentTransfer, validateDebtPayment } from './debt.js';
+import {
+  contributionInGoalCurrency as contributionInGoalCurrencyPure,
+  freezeContributionConversion,
+  sumGoalContributions as sumGoalContributionsPure,
+} from './goal-progress.js';
+import {
+  GOAL_SECTION,
+  USER_CREATABLE_SECTIONS,
+  backfillGoalAccount,
+  deleteGoalAccount,
+  ensureGoalAccount,
+  getGoalAccountBalance,
+  syncGoalAccount,
+} from './goal-account.js';
 import { legacyDebtPhraseForDirection } from './debt-direction.js';
 import { selectMonthStartAndLatestPrices } from './crypto-history.js';
 import { getPreviousFullWeekDaySet } from './report-periods.js';
@@ -1321,29 +1335,34 @@ const getGoalNudge = async (dbConn, userId, freeCash) => {
   if (!(Number(freeCash) > 0)) return null;
   // Income goals are deliberately excluded: they track money coming in, so
   // "put your spare cash here" is the wrong advice for them.
+  // Прогрес цілі — це баланс її рахунку, той самий, що показує застосунок. Раніше
+  // тут стояв голий SQL SUM, який складав різні валюти в одне число; тепер джерело
+  // одне, тож бот і екран цілі не можуть розійтися.
   const rows = await dbConn.all(
     `SELECT
        g.id AS id,
        g.name AS name,
        g.target_amount AS targetAmount,
        g.currency AS currency,
-       g.baseline_amount + COALESCE(SUM(c.amount), 0) AS saved
+       COALESCE(a.primary_amount, g.baseline_amount) AS saved
      FROM goals g
-     LEFT JOIN goal_contributions c ON c.goal_id = g.id AND c.user_id = g.user_id
+     LEFT JOIN account_portfolio a ON a.account_key = g.account_key AND a.user_id = g.user_id
      WHERE g.user_id = ? AND g.archived = 0 AND g.type <> 'income'
-     GROUP BY g.id, g.name, g.target_amount, g.baseline_amount, g.currency
      ORDER BY g.updated_at DESC`,
     [userId]
   );
   if (!Array.isArray(rows) || rows.length === 0) return null;
   const active = rows
-    .map((r) => ({
-      id: String(r.id),
-      name: String(r.name || 'Ціль'),
-      targetAmount: Math.max(0, Number(r.targetAmount) || 0),
-      saved: Math.max(0, Number(r.saved) || 0),
-      currency: normalizeCurrency(r.currency),
-    }))
+    .map((r) => {
+      const currency = normalizeCurrency(r.currency);
+      return {
+        id: String(r.id),
+        name: String(r.name || 'Ціль'),
+        targetAmount: Math.max(0, Number(r.targetAmount) || 0),
+        saved: Math.max(0, Number(r.saved) || 0),
+        currency,
+      };
+    })
     .filter((g) => g.targetAmount > g.saved);
   if (active.length === 0) return null;
   active.sort((a, b) => (a.targetAmount - a.saved) - (b.targetAmount - b.saved));
@@ -3125,7 +3144,9 @@ app.delete('/api/expense-templates/:id', async (req, res) => {
 });
 
 const GOAL_COLOR_RE = /^#[0-9A-Fa-f]{6}$/;
-const mapGoalRow = (row, saved, contributionsCount) => ({
+const mapGoalRow = (row, saved, contributionsCount, accountKey = null) => ({
+  /** Рахунок цілі в гаманці: його баланс і є прогресом. */
+  accountKey: accountKey ?? (row.account_key ? String(row.account_key) : null),
   id: row.id,
   name: row.name,
   type: row.type === 'income' ? 'income' : 'savings',
@@ -3149,17 +3170,36 @@ const mapGoalRow = (row, saved, contributionsCount) => ({
  */
 const earliestAllowedDeadline = () => new Date(Date.now() - 86400000).toISOString().slice(0, 10);
 
-// Contributions can be logged in a different currency than the goal (e.g. a
-// UAH income logged against a USD goal), so "saved" is a live FX conversion
-// sum rather than a plain SQL SUM. The baseline is already in the goal's own
-// currency and joins the total untouched.
-const sumGoalContributions = (contribRows, goalCurrency, fx, baseline = 0) => {
-  let saved = Number(baseline) || 0;
-  for (const r of contribRows || []) {
-    const cur = r.currency ? normalizeCurrency(r.currency) : goalCurrency;
-    saved += convertCurrencyServer(Number(r.amount) || 0, cur, goalCurrency, fx);
-  }
-  return saved;
+/**
+ * Конвертер під підпис `goal-progress.js`: там математика прогресу цілі, тут —
+ * прив'язка до серверних курсів.
+ */
+const goalConverter = (fx) => (amount, from, to) =>
+  convertCurrencyServer(amount, normalizeCurrency(from), normalizeCurrency(to), fx);
+
+const contributionInGoalCurrency = (row, goalCurrency, fx) =>
+  contributionInGoalCurrencyPure(row, goalCurrency, goalConverter(fx));
+
+const sumGoalContributions = (contribRows, goalCurrency, fx, baseline = 0) =>
+  sumGoalContributionsPure(contribRows, goalCurrency, goalConverter(fx), baseline);
+
+/**
+ * Прогрес цілі — це баланс її рахунку, а не окремий лічильник. Тож дохід у ціль
+ * піднімає і прогрес, і капітал, а витрата з цілі знімає і те, і те.
+ *
+ * Ціль, яка рахунку ще не має (створена до цієї зміни), отримує його тут же, зі
+ * стартовим балансом, що дорівнює старому `saved` — щоб число на екрані не
+ * стрибнуло після оновлення.
+ */
+const resolveGoalProgress = async (userId, goalRow, contribList, fx) => {
+  const goalCurrency = normalizeCurrency(goalRow.currency);
+  const accountKey = await backfillGoalAccount(
+    db,
+    userId,
+    goalRow,
+    sumGoalContributions(contribList, goalCurrency, fx, goalRow.baseline_amount)
+  );
+  return { accountKey, saved: await getGoalAccountBalance(db, userId, accountKey) };
 };
 
 app.get('/api/goals', async (req, res) => {
@@ -3169,14 +3209,14 @@ app.get('/api/goals', async (req, res) => {
     return;
   }
   const rows = await db.all(
-    `SELECT g.id, g.user_id, g.name, g.type, g.target_amount, g.baseline_amount, g.currency, g.deadline, g.icon, g.color, g.archived, g.created_at, g.updated_at
+    `SELECT g.id, g.user_id, g.name, g.type, g.target_amount, g.baseline_amount, g.currency, g.deadline, g.icon, g.color, g.archived, g.created_at, g.updated_at, g.account_key
      FROM goals g
      WHERE g.user_id = ?
      ORDER BY g.archived ASC, g.updated_at DESC`,
     [userId]
   );
   const contribRows = await db.all(
-    `SELECT gc.goal_id AS goalId, gc.amount, gc.currency
+    `SELECT gc.goal_id AS goalId, gc.amount, gc.currency, gc.converted_amount AS convertedAmount
      FROM goal_contributions gc
      JOIN goals g ON g.id = gc.goal_id
      WHERE g.user_id = ?`,
@@ -3188,14 +3228,13 @@ app.get('/api/goals', async (req, res) => {
     if (!byGoal.has(c.goalId)) byGoal.set(c.goalId, []);
     byGoal.get(c.goalId).push(c);
   }
-  res.json(
-    (rows || []).map((r) => {
-      const goalCurrency = normalizeCurrency(r.currency);
-      const list = byGoal.get(r.id) || [];
-      const saved = sumGoalContributions(list, goalCurrency, fx, r.baseline_amount);
-      return mapGoalRow(r, saved, list.length);
-    })
-  );
+  const out = [];
+  for (const r of rows || []) {
+    const list = byGoal.get(r.id) || [];
+    const { accountKey, saved } = await resolveGoalProgress(userId, r, list, fx);
+    out.push(mapGoalRow(r, saved, list.length, accountKey));
+  }
+  res.json(out);
 });
 
 app.post('/api/goals', async (req, res) => {
@@ -3252,12 +3291,22 @@ app.post('/api/goals', async (req, res) => {
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
     [id, userId, name, type, targetAmount, baselineAmount, currency, deadline, icon, color, now, now]
   );
+  // Ціль одразу отримує свій рахунок у гаманці. Стартова сума — це його
+  // початковий залишок, так само як у рахунку, доданого вручну: транзакції за
+  // нею немає, бо ці гроші вже були до появи цілі.
+  const accountKey = await ensureGoalAccount(db, userId, {
+    id,
+    name,
+    currency,
+    openingBalance: baselineAmount,
+  });
+  await db.run('UPDATE goals SET account_key = ? WHERE id = ? AND user_id = ?', [accountKey, id, userId]);
   const row = await db.get(
-    `SELECT g.id, g.user_id, g.name, g.type, g.target_amount, g.baseline_amount, g.currency, g.deadline, g.icon, g.color, g.archived, g.created_at, g.updated_at
+    `SELECT g.id, g.user_id, g.name, g.type, g.target_amount, g.baseline_amount, g.currency, g.deadline, g.icon, g.color, g.archived, g.created_at, g.updated_at, g.account_key
      FROM goals g WHERE g.id = ? AND g.user_id = ?`,
     [id, userId]
   );
-  res.status(201).json(mapGoalRow(row, baselineAmount, 0));
+  res.status(201).json(mapGoalRow(row, baselineAmount, 0, accountKey));
 });
 
 app.patch('/api/goals/:id', async (req, res) => {
@@ -3333,15 +3382,64 @@ app.patch('/api/goals/:id', async (req, res) => {
     [name, type, targetAmount, baselineAmount, currency, deadline, icon, color, archived ? 1 : 0, now, id, userId]
   );
 
-  const contribRows = await db.all(`SELECT amount, currency FROM goal_contributions WHERE goal_id = ?`, [id]);
   const fx = await fetchFxRates().catch(() => FX_FALLBACK);
-  const saved = sumGoalContributions(contribRows, currency, fx, baselineAmount);
+  // A frozen `converted_amount` is only meaningful against the currency it was
+  // frozen for. Switching the goal's currency re-bases every contribution, so
+  // the stored values are recomputed here — otherwise 8000 frozen as UAH would
+  // be read straight back as 8000 USD.
+  const previousCurrency = normalizeCurrency(current.currency);
+  if (previousCurrency !== currency) {
+    const stale = await db.all(
+      `SELECT id, amount, currency FROM goal_contributions WHERE goal_id = ? AND user_id = ?`,
+      [id, userId]
+    );
+    for (const row of stale || []) {
+      const from = row.currency ? normalizeCurrency(row.currency) : previousCurrency;
+      const { converted, rate } = freezeContributionConversion(
+        Number(row.amount) || 0,
+        from,
+        currency,
+        goalConverter(fx)
+      );
+      await db.run('UPDATE goal_contributions SET converted_amount = ?, fx_rate = ? WHERE id = ? AND user_id = ?', [
+        converted,
+        rate,
+        row.id,
+        userId,
+      ]);
+    }
+  }
+
+  const contribRows = await db.all(
+    `SELECT amount, currency, converted_amount AS convertedAmount
+     FROM goal_contributions WHERE goal_id = ? AND user_id = ?`,
+    [id, userId]
+  );
   const row = await db.get(
-    `SELECT g.id, g.user_id, g.name, g.type, g.target_amount, g.baseline_amount, g.currency, g.deadline, g.icon, g.color, g.archived, g.created_at, g.updated_at
+    `SELECT g.id, g.user_id, g.name, g.type, g.target_amount, g.baseline_amount, g.currency, g.deadline, g.icon, g.color, g.archived, g.created_at, g.updated_at, g.account_key
      FROM goals g WHERE g.id = ? AND g.user_id = ?`,
     [id, userId]
   );
-  res.json(mapGoalRow(row, saved, (contribRows || []).length));
+  const accountKey = await backfillGoalAccount(
+    db,
+    userId,
+    row,
+    sumGoalContributions(contribRows, currency, fx, baselineAmount)
+  );
+  // Назва й валюта рахунку йдуть за ціллю.
+  await syncGoalAccount(db, userId, accountKey, { name, currency });
+  // Стартова сума — початковий залишок рахунку. Якщо її змінили, різницю треба
+  // перенести на баланс: інакше правка стартової суми нічого б не робила.
+  const previousBaseline = Number(current.baseline_amount) || 0;
+  if (previousBaseline !== baselineAmount) {
+    await db.run(
+      `UPDATE account_portfolio SET primary_amount = primary_amount + ?, updatedAt = ?
+       WHERE account_key = ? AND user_id = ?`,
+      [baselineAmount - previousBaseline, new Date().toISOString(), accountKey, userId]
+    );
+  }
+  const saved = await getGoalAccountBalance(db, userId, accountKey);
+  res.json(mapGoalRow(row, saved, (contribRows || []).length, accountKey));
 });
 
 app.delete('/api/goals/:id', async (req, res) => {
@@ -3351,7 +3449,7 @@ app.delete('/api/goals/:id', async (req, res) => {
     res.status(400).json({ error: 'invalid id' });
     return;
   }
-  const cur = await db.get('SELECT id FROM goals WHERE user_id = ? AND id = ?', [userId, id]);
+  const cur = await db.get('SELECT id, account_key FROM goals WHERE user_id = ? AND id = ?', [userId, id]);
   if (!cur) {
     res.status(404).json({ error: 'Goal not found' });
     return;
@@ -3370,6 +3468,9 @@ app.delete('/api/goals/:id', async (req, res) => {
     }
   }
   await db.run('DELETE FROM goal_contributions WHERE goal_id = ? AND user_id = ?', [id, userId]);
+  // Рахунок цілі йде разом із ціллю: тримати його осиротілим у гаманці немає
+  // сенсу, а транзакції, що його наповнювали, вже відкочені вище.
+  await deleteGoalAccount(db, userId, cur.account_key);
   await db.run('DELETE FROM goals WHERE id = ? AND user_id = ?', [id, userId]);
   res.status(204).end();
 });
@@ -3401,7 +3502,7 @@ app.get('/api/goals/:id', async (req, res) => {
     return;
   }
   const row = await db.get(
-    `SELECT g.id, g.user_id, g.name, g.type, g.target_amount, g.baseline_amount, g.currency, g.deadline, g.icon, g.color, g.archived, g.created_at, g.updated_at
+    `SELECT g.id, g.user_id, g.name, g.type, g.target_amount, g.baseline_amount, g.currency, g.deadline, g.icon, g.color, g.archived, g.created_at, g.updated_at, g.account_key
      FROM goals g
      WHERE g.user_id = ? AND g.id = ?`,
     [userId, id]
@@ -3410,11 +3511,14 @@ app.get('/api/goals/:id', async (req, res) => {
     res.status(404).json({ error: 'Goal not found' });
     return;
   }
-  const goalCurrency = normalizeCurrency(row.currency);
-  const contribRows = await db.all(`SELECT amount, currency FROM goal_contributions WHERE goal_id = ?`, [id]);
+  const contribRows = await db.all(
+    `SELECT amount, currency, converted_amount AS convertedAmount
+     FROM goal_contributions WHERE goal_id = ? AND user_id = ?`,
+    [id, userId]
+  );
   const fx = await fetchFxRates().catch(() => FX_FALLBACK);
-  const saved = sumGoalContributions(contribRows, goalCurrency, fx, row.baseline_amount);
-  res.json(mapGoalRow(row, saved, (contribRows || []).length));
+  const { accountKey, saved } = await resolveGoalProgress(userId, row, contribRows, fx);
+  res.json(mapGoalRow(row, saved, (contribRows || []).length, accountKey));
 });
 
 app.get('/api/goals/:id/contributions', async (req, res) => {
@@ -3432,7 +3536,8 @@ app.get('/api/goals/:id/contributions', async (req, res) => {
   const goalCurrency = normalizeCurrency(goal.currency);
   const fx = await fetchFxRates().catch(() => FX_FALLBACK);
   const rows = await db.all(
-    `SELECT id, goal_id AS goalId, amount, currency, source, date, note, created_at AS createdAt, transaction_id AS transactionId
+    `SELECT id, goal_id AS goalId, amount, currency, converted_amount AS convertedAmount, source, date, note,
+            created_at AS createdAt, transaction_id AS transactionId
      FROM goal_contributions
      WHERE goal_id = ? AND user_id = ?
      ORDER BY date DESC, created_at DESC`,
@@ -3447,7 +3552,7 @@ app.get('/api/goals/:id/contributions', async (req, res) => {
         goalId: r.goalId,
         amount,
         currency: cur,
-        convertedAmount: convertCurrencyServer(amount, cur, goalCurrency, fx),
+        convertedAmount: contributionInGoalCurrency(r, goalCurrency, fx),
         source: r.source ?? null,
         date: r.date,
         note: r.note ?? '',
@@ -3466,11 +3571,17 @@ app.post('/api/goals/:id/contributions', async (req, res) => {
     return;
   }
   const goalRow = await db.get(
-    'SELECT id, name, type, currency FROM goals WHERE user_id = ? AND id = ?',
+    'SELECT id, name, type, currency, archived FROM goals WHERE user_id = ? AND id = ?',
     [userId, goalId]
   );
   if (!goalRow) {
     res.status(404).json({ error: 'Goal not found' });
+    return;
+  }
+  // Archiving a goal means the run is over. Nothing should keep landing in it —
+  // least of all a contribution that would silently move an account balance.
+  if (goalRow.archived) {
+    res.status(409).json({ error: 'goal is archived', code: 'GOAL_ARCHIVED' });
     return;
   }
   const amount = Number(req.body?.amount);
@@ -3502,14 +3613,39 @@ app.post('/api/goals/:id/contributions', async (req, res) => {
   }
 
   const goalCurrency = normalizeCurrency(goalRow.currency);
-  // The currency the money actually came in as — may differ from the goal's
-  // own currency (e.g. earned in UAH toward a USD goal); converted for
-  // display/aggregation, never on write.
+  // The currency the money actually came in as - may differ from the goal's
+  // own currency (e.g. earned in UAH toward a USD goal).
   const enteredCurrency = req.body?.currency !== undefined ? normalizeCurrency(req.body.currency) : goalCurrency;
   const goalName = String(goalRow.name || '').trim().slice(0, 80);
   const cid = uuidv4();
   const now = new Date().toISOString();
   const fx = await fetchFxRates().catch(() => FX_FALLBACK);
+
+  // Both the converted amount and the rate behind it are frozen here, at write
+  // time. Converting live on every read let the exchange rate rewrite a
+  // contribution that had already been made.
+  const freezeConversion = (from) =>
+    freezeContributionConversion(amount, from, goalCurrency, goalConverter(fx));
+
+  // The goal's own account is where the money lands. Older goals may not have
+  // one yet, so it is created on the spot with the progress they already showed.
+  const existingContribs = await db.all(
+    `SELECT amount, currency, converted_amount AS convertedAmount
+     FROM goal_contributions WHERE goal_id = ? AND user_id = ?`,
+    [goalId, userId]
+  );
+  const goalAccount = await backfillGoalAccount(
+    db,
+    userId,
+    goalRow,
+    sumGoalContributions(existingContribs, goalCurrency, fx, goalRow.baseline_amount)
+  );
+
+  const userNote = note.slice(0, 80);
+  const goalPrefix = `Ціль: ${goalName}`.slice(0, 80);
+  const baseNote = userNote ? `${goalPrefix}. ${userNote}` : goalPrefix;
+  const txId = uuidv4();
+  const txDate = `${date}T12:00:00.000Z`;
 
   if (accountKey) {
     const acct = await db.get(
@@ -3534,36 +3670,66 @@ app.post('/api/goals/:id/contributions', async (req, res) => {
       });
       return;
     }
-    // The transaction is denominated in the account's own currency — that's
-    // what actually leaves the account — and converted into goalCurrency for
-    // the goal's progress the same way budgets/reports convert transactions.
+    if (acctKey === goalAccount) {
+      res.status(400).json({ error: 'a goal cannot fund itself', code: 'TRANSFER_SAME_ACCOUNT' });
+      return;
+    }
     const acctCur = normalizeCurrency(acctDenom);
-    const userNote = note.slice(0, 80);
-    const goalPrefix = `Ціль: ${goalName}`.slice(0, 80);
-    const baseNote = userNote ? `${goalPrefix}. ${userNote}` : goalPrefix;
+    const acctConversion = freezeConversion(acctCur);
     let txNote = mergeAccountIntoNote(baseNote, acctKey);
     if (txNote.length > 120) txNote = txNote.slice(0, 120);
-    const txId = uuidv4();
-    const txDate = `${date}T12:00:00.000Z`;
+    // Putting money aside is not spending it - the money moved from one of your
+    // accounts into the goal's own account. A two-sided transfer says exactly
+    // that: the source is debited, the goal is credited, and total capital does
+    // not move. Recorded as an expense (as it once was) the money vanished from
+    // net worth, ate the "other" budget and inflated expense stats.
+    const goalTransfer = {
+      amount,
+      currency: acctCur,
+      type: 'transfer',
+      fromAccountKey: acctKey,
+      toAccountKey: goalAccount,
+      transferToAmount: acctConversion.converted,
+      transferToCurrency: goalCurrency,
+      note: txNote,
+    };
 
     await db.run('BEGIN IMMEDIATE');
     try {
       await db.run(
-        `INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, note)
-         VALUES (?, ?, ?, ?, 'other_expense', 'expense', ?, ?)`,
-        [txId, userId, amount, acctCur, txDate, txNote]
+        `INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, note, fromAccountKey, toAccountKey, transferToAmount, transferToCurrency)
+         VALUES (?, ?, ?, ?, 'transfer', 'transfer', ?, ?, ?, ?, ?, ?)`,
+        [
+          txId,
+          userId,
+          amount,
+          acctCur,
+          txDate,
+          txNote,
+          acctKey,
+          goalAccount,
+          acctConversion.converted,
+          goalCurrency,
+        ]
       );
-      await applyTransactionEffects(db, userId, {
-        amount,
-        currency: acctCur,
-        type: 'expense',
-        note: txNote,
-      });
-      await checkBudgetThresholdsAfterExpense(userId, 'other_expense');
+      await applyTransactionEffects(db, userId, goalTransfer);
       await db.run(
-        `INSERT INTO goal_contributions (id, goal_id, user_id, amount, currency, source, date, note, created_at, transaction_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [cid, goalId, userId, amount, acctCur, source || null, date, note || null, now, txId]
+        `INSERT INTO goal_contributions (id, goal_id, user_id, amount, currency, converted_amount, fx_rate, source, date, note, created_at, transaction_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          cid,
+          goalId,
+          userId,
+          amount,
+          acctCur,
+          acctConversion.converted,
+          acctConversion.rate,
+          source || null,
+          date,
+          note || null,
+          now,
+          txId,
+        ]
       );
       await db.run('UPDATE goals SET updated_at = ? WHERE id = ? AND user_id = ?', [now, goalId, userId]);
       await db.run('COMMIT');
@@ -3583,7 +3749,7 @@ app.post('/api/goals/:id/contributions', async (req, res) => {
       goalId,
       amount,
       currency: acctCur,
-      convertedAmount: convertCurrencyServer(amount, acctCur, goalCurrency, fx),
+      convertedAmount: acctConversion.converted,
       source: source || null,
       date,
       note,
@@ -3593,24 +3759,72 @@ app.post('/api/goals/:id/contributions', async (req, res) => {
     return;
   }
 
-  await db.run(
-    `INSERT INTO goal_contributions (id, goal_id, user_id, amount, currency, source, date, note, created_at, transaction_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
-    [cid, goalId, userId, amount, enteredCurrency, source || null, date, note || null, now]
-  );
-  await db.run('UPDATE goals SET updated_at = ? WHERE id = ? AND user_id = ?', [now, goalId, userId]);
+  // No source account: this is money entering the tracked world rather than
+  // moving inside it - earnings for an income goal, or cash you were keeping
+  // outside the app. Recorded as income into the goal's account, so it shows up
+  // both in the goal and in total capital.
+  const manualConversion = freezeConversion(enteredCurrency);
+  let incomeNote = mergeAccountIntoNote(baseNote, goalAccount);
+  if (incomeNote.length > 120) incomeNote = incomeNote.slice(0, 120);
+  const goalIncome = {
+    amount,
+    currency: enteredCurrency,
+    type: 'income',
+    categoryId: 'other_income',
+    fromAccountKey: goalAccount,
+    note: incomeNote,
+  };
+
+  await db.run('BEGIN IMMEDIATE');
+  try {
+    await db.run(
+      `INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, note, fromAccountKey)
+       VALUES (?, ?, ?, ?, 'other_income', 'income', ?, ?, ?)`,
+      [txId, userId, amount, enteredCurrency, txDate, incomeNote, goalAccount]
+    );
+    await applyTransactionEffects(db, userId, goalIncome);
+    await db.run(
+      `INSERT INTO goal_contributions (id, goal_id, user_id, amount, currency, converted_amount, fx_rate, source, date, note, created_at, transaction_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        cid,
+        goalId,
+        userId,
+        amount,
+        enteredCurrency,
+        manualConversion.converted,
+        manualConversion.rate,
+        source || null,
+        date,
+        note || null,
+        now,
+        txId,
+      ]
+    );
+    await db.run('UPDATE goals SET updated_at = ? WHERE id = ? AND user_id = ?', [now, goalId, userId]);
+    await db.run('COMMIT');
+  } catch (e) {
+    try {
+      await db.run('ROLLBACK');
+    } catch {
+      /* ignore */
+    }
+    console.error('[goals] contribution failed', e);
+    res.status(500).json({ error: 'failed to save contribution', code: 'CONTRIBUTION_SAVE_FAILED' });
+    return;
+  }
 
   res.status(201).json({
     id: cid,
     goalId,
     amount,
     currency: enteredCurrency,
-    convertedAmount: convertCurrencyServer(amount, enteredCurrency, goalCurrency, fx),
+    convertedAmount: manualConversion.converted,
     source: source || null,
     date,
     note,
     createdAt: now,
-    transactionId: null,
+    transactionId: txId,
   });
 });
 
@@ -3750,8 +3964,10 @@ app.post('/api/accounts', async (req, res) => {
     res.status(400).json({ error: 'primaryAmount must be a number' });
     return;
   }
-  if (!['bank', 'cash', 'crypto', 'stocks', 'debt'].includes(section)) {
-    res.status(400).json({ error: 'section must be bank, cash, crypto, stocks, or debt' });
+  // `goal` тут навмисно немає: рахунок цілі створює й видаляє сама ціль, руками
+  // його не завести — інакше в гаманці з'явився б рахунок без цілі за ним.
+  if (!USER_CREATABLE_SECTIONS.includes(section)) {
+    res.status(400).json({ error: `section must be one of ${USER_CREATABLE_SECTIONS.join(', ')}` });
     return;
   }
   if (!Number.isFinite(sortIndex)) {
@@ -3859,8 +4075,10 @@ app.put('/api/accounts/:key', async (req, res) => {
     res.status(400).json({ error: 'primaryAmount must be a number' });
     return;
   }
-  if (!['bank', 'cash', 'crypto', 'stocks', 'debt'].includes(section)) {
-    res.status(400).json({ error: 'section must be bank, cash, crypto, stocks, or debt' });
+  // `goal` тут навмисно немає: рахунок цілі створює й видаляє сама ціль, руками
+  // його не завести — інакше в гаманці з'явився б рахунок без цілі за ним.
+  if (!USER_CREATABLE_SECTIONS.includes(section)) {
+    res.status(400).json({ error: `section must be one of ${USER_CREATABLE_SECTIONS.join(', ')}` });
     return;
   }
   if (!Number.isFinite(sortIndex)) {
@@ -3880,6 +4098,15 @@ app.put('/api/accounts/:key', async (req, res) => {
      LIMIT 1`,
     [userId, accountKey]
   );
+  // Назву, валюту й баланс рахунку цілі веде сама ціль. Правка руками
+  // розсинхронізувала б його з ціллю, чий прогрес — це саме цей баланс.
+  if (existing?.section === GOAL_SECTION) {
+    res.status(409).json({
+      error: 'a goal account is edited through its goal',
+      code: 'GOAL_ACCOUNT_READONLY',
+    });
+    return;
+  }
   if (!existing) {
     res.status(404).json({ error: 'Account not found' });
     return;
@@ -4096,9 +4323,18 @@ app.delete('/api/accounts/:key', async (req, res) => {
     return;
   }
 
-  const existing = await db.get('SELECT account_key FROM account_portfolio WHERE user_id = ? AND account_key = ? LIMIT 1', [userId, accountKey]);
+  const existing = await db.get('SELECT account_key, section FROM account_portfolio WHERE user_id = ? AND account_key = ? LIMIT 1', [userId, accountKey]);
   if (!existing) {
     res.status(404).json({ error: 'Account not found' });
+    return;
+  }
+  // Рахунок цілі живе рівно доти, доки живе ціль: видаляти його окремо означало б
+  // лишити ціль без місця, де лежать її гроші.
+  if (existing.section === GOAL_SECTION) {
+    res.status(409).json({
+      error: 'a goal account is removed together with its goal',
+      code: 'GOAL_ACCOUNT_READONLY',
+    });
     return;
   }
 

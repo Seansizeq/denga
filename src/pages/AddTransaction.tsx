@@ -178,11 +178,11 @@ const AddTransaction: React.FC = () => {
       const key = String(r.accountKey ?? '').trim().toLowerCase();
       if (!key) continue;
       const sectionRaw = typeof r.section === 'string' ? r.section.trim() : '';
-      const section = (['bank', 'cash', 'crypto', 'stocks', 'debt'] as const).includes(sectionRaw as AccountSection)
+      const section = (['bank', 'cash', 'crypto', 'stocks', 'debt', 'goal'] as const).includes(sectionRaw as AccountSection)
         ? (sectionRaw as AccountSection)
         : 'bank';
       const toneRaw = typeof r.iconTone === 'string' ? r.iconTone.trim() : '';
-      const iconTone = (['bank', 'cash', 'crypto', 'stocks', 'debt', 'neutral'] as const).includes(toneRaw as RowIconTone)
+      const iconTone = (['bank', 'cash', 'crypto', 'stocks', 'debt', 'goal', 'neutral'] as const).includes(toneRaw as RowIconTone)
         ? (toneRaw as RowIconTone)
         : section;
       const iconKey = typeof r.iconKey === 'string' && r.iconKey.trim() ? r.iconKey.trim() : null;
