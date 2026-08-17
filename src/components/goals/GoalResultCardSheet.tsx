@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import type { Goal } from '../../api/client';
 import { useTranslation } from '../../i18n/LanguageContext';
-import { formatCurrency } from '../../utils/formatters';
+import { formatDeltaCurrency, formatSignedCurrency } from '../../utils/formatters';
 import type { DisplayCurrency } from '../../utils/formatters';
 import { selectGoalResultCardGroup, selectResultCardGroup } from '../../utils/resultCard';
 import ResultImageSheet from '../stats/ResultImageSheet';
@@ -60,8 +60,8 @@ const GoalResultCardSheet: React.FC<GoalResultCardSheetProps> = ({
         group={periodGroup}
         filenameKey={`goal-${goal.name}-${scope}`}
         label={label}
-        amount={`${periodEarned > 0 ? '+' : ''}${formatCurrency(periodEarned, locale, currency)}`}
-        amountColor={periodEarned > 0 ? '#16A34A' : '#050505'}
+        amount={formatDeltaCurrency(periodEarned, locale, currency)}
+        amountColor={periodEarned > 0 ? '#16A34A' : periodEarned < 0 ? '#DC2626' : '#050505'}
       />
     );
   }
@@ -75,8 +75,8 @@ const GoalResultCardSheet: React.FC<GoalResultCardSheetProps> = ({
       group={totalGroup}
       filenameKey={`goal-${goal.name}`}
       label={`${goal.name} — ${progress}% ${t('goals', 'goalCompletedShort')}`}
-      amount={formatCurrency(goal.saved, locale, currency)}
-      amountColor={goal.saved > 0 ? '#16A34A' : '#050505'}
+      amount={formatSignedCurrency(goal.saved, locale, currency)}
+      amountColor={goal.saved > 0 ? '#16A34A' : goal.saved < 0 ? '#DC2626' : '#050505'}
     />
   );
 };

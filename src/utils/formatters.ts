@@ -47,6 +47,24 @@ export const formatSignedCurrency = (
   return sign + formatCurrency(amount, locale, currency);
 };
 
+/**
+ * Рух зі знаком у обидва боки: «+», «−», а для нуля — без знака.
+ *
+ * `formatCurrency` знак не малює взагалі (`amountBody` бере `Math.abs`), тож там,
+ * де важливий напрямок руху, самої суми недостатньо: витрата виглядала точно як
+ * заробіток. Знак, як і в `formatSignedCurrency`, ховається разом із числом у
+ * приватному режимі — інакше «−••••» видало б, що рух був у мінус.
+ */
+export const formatDeltaCurrency = (
+  amount: number,
+  locale = 'uk-UA',
+  currency: DisplayCurrency = 'UAH'
+): string => {
+  const body = formatCurrency(amount, locale, currency);
+  if (isMoneyHidden() || amount === 0) return body;
+  return `${amount > 0 ? '+' : '−'}${body}`;
+};
+
 export const formatDate = (date: string, locale = 'uk-UA'): string => {
   return new Date(date).toLocaleDateString(locale, {
     day: 'numeric',

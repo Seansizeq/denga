@@ -24,7 +24,7 @@ import {
 } from '../api/client';
 import { normalizeCurrency } from '../utils/currency';
 import { isCryptoDenomination } from '../utils/denomination';
-import { formatCurrency, formatSignedCurrency } from '../utils/formatters';
+import { formatCurrency, formatDeltaCurrency, formatSignedCurrency } from '../utils/formatters';
 import type { DisplayCurrency } from '../utils/formatters';
 import { localIsoDate } from '../utils/dateRanges';
 import { computeGoalPace, deadlineDeltaDays, fillColorForPct, progressPct, sumAccountPeriodDeltas } from '../utils/goals';
@@ -495,7 +495,7 @@ const GoalDetail: React.FC = () => {
               className={`${hero.statTile} ${hero.statTileTappable}`}
               onClick={() => setResultScope('today')}
             >
-              <span className={hero.statValue}>{formatSignedCurrency(periods.today, locale, cur)}</span>
+              <span className={hero.statValue}>{formatDeltaCurrency(periods.today, locale, cur)}</span>
               <span className={hero.statLabel}>{t('goals', 'movedToday')}</span>
               <ImageDown className={hero.statTileGlyph} size={13} aria-hidden="true" />
             </button>
@@ -504,7 +504,7 @@ const GoalDetail: React.FC = () => {
               className={`${hero.statTile} ${hero.statTileTappable}`}
               onClick={() => setResultScope('month')}
             >
-              <span className={hero.statValue}>{formatSignedCurrency(periods.month, locale, cur)}</span>
+              <span className={hero.statValue}>{formatDeltaCurrency(periods.month, locale, cur)}</span>
               <span className={hero.statLabel}>{t('goals', 'movedMonth')}</span>
               <ImageDown className={hero.statTileGlyph} size={13} aria-hidden="true" />
             </button>
@@ -621,8 +621,7 @@ const GoalDetail: React.FC = () => {
                     {preview ? <p className={styles.contribNote}>{preview}</p> : null}
                   </div>
                   <span className={`${styles.contribAmt} ${incoming ? styles.amountIn : styles.amountOut}`}>
-                    {incoming ? '+' : '−'}
-                    {formatCurrency(Math.abs(rawDelta), locale, rawCurrency as DisplayCurrency)}
+                    {formatDeltaCurrency(rawDelta, locale, rawCurrency as DisplayCurrency)}
                   </span>
                 </div>
               );
