@@ -11,7 +11,7 @@ import {
   type GoalType,
 } from '../api/client';
 import { showAppConfirm } from '../utils/notify';
-import { formatCurrency } from '../utils/formatters';
+import { formatCurrency, formatSignedCurrency } from '../utils/formatters';
 import type { DisplayCurrency } from '../utils/formatters';
 import { localIsoDate } from '../utils/dateRanges';
 import { deadlineDeltaDays, fillColorForPct, progressPct } from '../utils/goals';
@@ -190,7 +190,7 @@ const Goals: React.FC = () => {
         </div>
         <div className={styles.amounts}>
           <span className={styles.amountStrong}>
-            {formatCurrency(g.saved, locale, g.currency as DisplayCurrency)} /{' '}
+            {formatSignedCurrency(g.saved, locale, g.currency as DisplayCurrency)} /{' '}
             {formatCurrency(g.targetAmount, locale, g.currency as DisplayCurrency)}
           </span>
           <span className={styles.meta}>{Math.round(pct)}%</span>

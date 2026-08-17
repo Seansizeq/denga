@@ -5,7 +5,7 @@ import {
   fillColorForPct,
   progressPct,
   rawProgressPct,
-  sumPeriodEarnings,
+  sumAccountPeriodDeltas,
 } from './goals';
 
 const NOW = new Date(2026, 7, 17, 12, 0, 0); // 17 серпня 2026, локальний полудень
@@ -18,6 +18,13 @@ describe('progressPct', () => {
   it('віддає нуль на нульовій або від\'ємній цілі, а не NaN/Infinity', () => {
     expect(progressPct(50, 0)).toBe(0);
     expect(progressPct(50, -10)).toBe(0);
+  });
+
+  it('не віддає від\'ємний відсоток, коли рахунок цілі в мінусі', () => {
+    // `width: -0.5%` для CSS невалідний, тож смужка брала ширину auto й
+    // розтягувалась на всі 100%: мінус на рахунку виглядав як закрита ціль.
+    expect(progressPct(-161.18, 30000)).toBe(0);
+    expect(progressPct(-5000, 1000)).toBe(0);
   });
 });
 
@@ -264,15 +271,15 @@ describe('computeGoalPace — конвертовані внески', () => {
   });
 });
 
-describe('sumPeriodEarnings', () => {
-  it('розкладає внески по сьогодні / вчора / місяцю / попередньому місяцю', () => {
-    const totals = sumPeriodEarnings(
+describe('sumAccountPeriodDeltas', () => {
+  it('розкладає рух по сьогодні / вчора / місяцю / попередньому місяцю', () => {
+    const totals = sumAccountPeriodDeltas(
       [
-        { date: '2026-08-17', amount: 100 },
-        { date: '2026-08-16', amount: 50 },
-        { date: '2026-08-01', amount: 25 },
-        { date: '2026-07-30', amount: 400 },
-        { date: '2026-06-15', amount: 999 },
+        { date: '2026-08-17', delta: 100 },
+        { date: '2026-08-16', delta: 50 },
+        { date: '2026-08-01', delta: 25 },
+        { date: '2026-07-30', delta: 400 },
+        { date: '2026-06-15', delta: 999 },
       ],
       NOW
     );
@@ -282,8 +289,25 @@ describe('sumPeriodEarnings', () => {
     expect(totals.prevMonth).toBe(400);
   });
 
-  it('використовує конвертовану суму, коли валюта внеску інша', () => {
-    const totals = sumPeriodEarnings([{ date: '2026-08-17', amount: 20, convertedAmount: 830 }], NOW);
-    expect(totals.today).toBe(830);
+  it('віднімає витрати з цілі, а не лише додає внески', () => {
+    // Саме через це плитка «за сьогодні» показувала нуль, коли того ж дня
+    // з цілі витрачали гроші: раніше тут сумувались тільки внески.
+    const totals = sumAccountPeriodDeltas(
+      [
+        { date: '2026-08-17', delta: 500 },
+        { date: '2026-08-17', delta: -161.18 },
+      ],
+      NOW
+    );
+    expect(totals.today).toBeCloseTo(338.82, 5);
+  });
+
+  it('день у день з часом у даті все одно потрапляє в сьогодні', () => {
+    const totals = sumAccountPeriodDeltas([{ date: '2026-08-17T00:00:00.000Z', delta: 70 }], NOW);
+    expect(totals.today).toBe(70);
+  });
+
+  it('порожній список дає нулі', () => {
+    expect(sumAccountPeriodDeltas([], NOW)).toEqual({ today: 0, yesterday: 0, month: 0, prevMonth: 0 });
   });
 });

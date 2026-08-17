@@ -11,10 +11,17 @@ export const deadlineDeltaDays = (deadline: string | null, now: Date = new Date(
   return Math.round((end.getTime() - start.getTime()) / 86400000);
 };
 
-/** Прогрес для смужки — обрізаний сотнею, бо смужка не вміє бути довшою за себе. */
+/**
+ * Прогрес для смужки — обрізаний з обох боків.
+ *
+ * Верхня межа очевидна: смужка не буває довшою за себе. Нижня — не менш
+ * важлива: `width: -0.5%` для CSS невалідний, тож блок брав ширину auto й
+ * розтягувався на всі 100%. Через це рахунок цілі в мінусі виглядав як повністю
+ * закрита ціль — найгірше з можливих прочитань.
+ */
 export const progressPct = (saved: number, target: number): number => {
   if (!target || target <= 0) return 0;
-  return Math.min(100, (saved / target) * 100);
+  return Math.min(100, Math.max(0, (saved / target) * 100));
 };
 
 /** Реальний відсоток, включно з перевищенням цілі. Для чисел, а не для смужки. */
@@ -174,31 +181,40 @@ export const computeGoalPace = ({
   };
 };
 
-/** Заробіток за період і за попередній такий самий відрізок — для плиток і карток. */
-export const sumPeriodEarnings = (
-  contributions: PaceContribution[],
+/** Рух за період і за попередній такий самий відрізок — для плиток і карток. */
+export type PeriodDeltas = { today: number; yesterday: number; month: number; prevMonth: number };
+
+/**
+ * Чистий рух на рахунку цілі за періоди.
+ *
+ * Раніше тут сумувались лише внески, тож плитка «за сьогодні» показувала нуль
+ * навіть тоді, коли з цілі того ж дня витратили гроші. Оскільки прогрес цілі —
+ * це баланс її рахунку, підсумок за день мусить враховувати рух в обидва боки.
+ *
+ * Суми мусять уже бути у валюті цілі: складати різні валюти як голі числа — це
+ * той самий баг, що колись жив у ботовому нуджі.
+ */
+export const sumAccountPeriodDeltas = (
+  movements: ReadonlyArray<{ date: string; delta: number }>,
   now: Date = new Date()
-): { today: number; yesterday: number; month: number; prevMonth: number } => {
+): PeriodDeltas => {
   const todayIso = localIsoDate(now);
   const monthPrefix = todayIso.slice(0, 7);
 
-  const yesterday = new Date(now);
-  yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayIso = localIsoDate(yesterday);
+  const yesterdayDate = new Date(now);
+  yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+  const yesterdayIso = localIsoDate(yesterdayDate);
 
   const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const prevMonthPrefix = localIsoDate(prevMonthDate).slice(0, 7);
 
-  let today = 0;
-  let yesterdayTotal = 0;
-  let month = 0;
-  let prevMonth = 0;
-  for (const c of contributions) {
-    const amt = amountOf(c);
-    if (c.date === todayIso) today += amt;
-    if (c.date === yesterdayIso) yesterdayTotal += amt;
-    if (c.date.startsWith(monthPrefix)) month += amt;
-    if (c.date.startsWith(prevMonthPrefix)) prevMonth += amt;
+  const totals: PeriodDeltas = { today: 0, yesterday: 0, month: 0, prevMonth: 0 };
+  for (const m of movements) {
+    const day = m.date.slice(0, 10);
+    if (day === todayIso) totals.today += m.delta;
+    if (day === yesterdayIso) totals.yesterday += m.delta;
+    if (day.startsWith(monthPrefix)) totals.month += m.delta;
+    if (day.startsWith(prevMonthPrefix)) totals.prevMonth += m.delta;
   }
-  return { today, yesterday: yesterdayTotal, month, prevMonth };
+  return totals;
 };

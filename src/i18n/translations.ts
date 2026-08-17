@@ -421,6 +421,7 @@ type Dict = {
     archived: string;
     archivedNoContribute: string;
     accountMovements: string;
+    goalOverdrawn: string;
     accountMovementsHint: string;
     goalArchivedError: string;
     goalType: string;
@@ -444,8 +445,8 @@ type Dict = {
     forecastLabel: string;
     forecastTitle: string;
     forecastHint: string;
-    earnedToday: string;
-    earnedMonth: string;
+    movedToday: string;
+    movedMonth: string;
     neededPerDay: string;
     actualPerDay: string;
     goalReached: string;
@@ -957,6 +958,7 @@ const uk: Dict = {
     archived: 'Архів',
     archivedNoContribute: 'Ціль в архіві — забіг закінчено, нові внески не приймаються.',
     accountMovements: 'Інші рухи на рахунку цілі',
+    goalOverdrawn: 'З цілі витрачено на {amount} більше, ніж у неї внесено — тому рахунок цілі в мінусі.',
     accountMovementsHint: 'Витрати з цілі та перекази з неї — вони теж змінюють її прогрес.',
     goalArchivedError: 'Ціль в архіві. Поверніть її в активні, щоб додати внесок.',
     goalType: 'Тип цілі',
@@ -980,8 +982,8 @@ const uk: Dict = {
     forecastLabel: 'Закриєш до',
     forecastTitle: 'За поточним темпом — до {date}',
     forecastHint: 'Виходить {amount}/день за поточним темпом.',
-    earnedToday: 'Зароблено сьогодні',
-    earnedMonth: 'За цей місяць',
+    movedToday: 'За сьогодні',
+    movedMonth: 'За цей місяць',
     neededPerDay: 'Треба в середньому',
     actualPerDay: 'Фактичний темп',
     goalReached: 'Ціль досягнуто!',
@@ -1497,6 +1499,7 @@ const ru: Dict = {
     archived: 'Архив',
     archivedNoContribute: 'Цель в архиве — забег закончен, новые взносы не принимаются.',
     accountMovements: 'Другие движения по счёту цели',
+    goalOverdrawn: 'Из цели потрачено на {amount} больше, чем внесено — поэтому счёт цели в минусе.',
     accountMovementsHint: 'Расходы из цели и переводы из неё — они тоже меняют её прогресс.',
     goalArchivedError: 'Цель в архиве. Верните её в активные, чтобы добавить взнос.',
     goalType: 'Тип цели',
@@ -1520,8 +1523,8 @@ const ru: Dict = {
     forecastLabel: 'Закроешь к',
     forecastTitle: 'При текущем темпе — к {date}',
     forecastHint: 'Выходит {amount}/день при текущем темпе.',
-    earnedToday: 'Заработано сегодня',
-    earnedMonth: 'За этот месяц',
+    movedToday: 'За сегодня',
+    movedMonth: 'За этот месяц',
     neededPerDay: 'Нужно в среднем',
     actualPerDay: 'Фактический темп',
     goalReached: 'Цель достигнута!',
@@ -2037,6 +2040,7 @@ const en: Dict = {
     archived: 'Archived',
     archivedNoContribute: 'This goal is archived — the run is over, so new contributions are closed.',
     accountMovements: 'Other movements on the goal account',
+    goalOverdrawn: 'Spending from this goal exceeds contributions by {amount}, so its account is in the red.',
     accountMovementsHint: 'Spending from the goal and transfers out — these change its progress too.',
     goalArchivedError: 'This goal is archived. Make it active again to add a contribution.',
     goalType: 'Goal type',
@@ -2060,8 +2064,8 @@ const en: Dict = {
     forecastLabel: 'On track for',
     forecastTitle: 'At the current pace — by {date}',
     forecastHint: 'That’s {amount}/day at the current pace.',
-    earnedToday: 'Earned today',
-    earnedMonth: 'This month',
+    movedToday: 'Today',
+    movedMonth: 'This month',
     neededPerDay: 'Needed on average',
     actualPerDay: 'Actual pace',
     goalReached: 'Goal reached!',

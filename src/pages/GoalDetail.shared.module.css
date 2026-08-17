@@ -268,6 +268,30 @@
   color: var(--text-tertiary);
 }
 
+/* ---------- Рахунок цілі в мінусі ----------
+   З цілі витратили більше, ніж у неї поклали. Раніше це читалося як прогрес:
+   сума йшла без знака, а смужка від від'ємної ширини розтягувалась на всю
+   довжину. Тепер про це сказано прямо. */
+
+.overdrawn {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  background: var(--accent-red-soft);
+  border: 1px solid rgba(255, 90, 99, 0.3);
+  color: #ff8a90;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.overdrawn > svg {
+  flex-shrink: 0;
+  color: var(--accent-red);
+}
+
 /* ---------- Архівна ціль ----------
    Забіг закінчено, тож замість головної дії — спокійне пояснення, чому кнопки
    «Внести» тут немає. */

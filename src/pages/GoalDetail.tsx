@@ -10,6 +10,7 @@ import {
   Plus,
   ImageDown,
   Archive,
+  TriangleAlert,
 } from 'lucide-react';
 import {
   addContribution,
@@ -23,14 +24,15 @@ import {
 } from '../api/client';
 import { normalizeCurrency } from '../utils/currency';
 import { isCryptoDenomination } from '../utils/denomination';
-import { formatCurrency } from '../utils/formatters';
+import { formatCurrency, formatSignedCurrency } from '../utils/formatters';
 import type { DisplayCurrency } from '../utils/formatters';
 import { localIsoDate } from '../utils/dateRanges';
-import { computeGoalPace, deadlineDeltaDays, fillColorForPct, progressPct, sumPeriodEarnings } from '../utils/goals';
+import { computeGoalPace, deadlineDeltaDays, fillColorForPct, progressPct, sumAccountPeriodDeltas } from '../utils/goals';
 import { useTranslation } from '../i18n/LanguageContext';
 import { useGoBack } from '../hooks/useGoBack';
 import { showAppConfirm } from '../utils/notify';
 import { usePortfolio } from '../context/PortfolioContext';
+import { useDenominationRates } from '../hooks/useDenominationRates';
 import { useTransactions } from '../context/TransactionContext';
 import { getTransactionAccountEffects, getTransactionNotePreview } from '../utils/transactionUtils';
 import type { Transaction } from '../types';
@@ -71,6 +73,7 @@ const GoalDetail: React.FC = () => {
   const [sourceSuggestions, setSourceSuggestions] = useState<string[]>([]);
   const { accounts: rawAccounts } = usePortfolio();
   const { transactions } = useTransactions();
+  const { convert } = useDenominationRates();
   const portfolioAccounts = useMemo<Array<{ key: string; name: string; currency: GoalCurrency }>>(
     () => {
       const list: Array<{ key: string; name: string; currency: GoalCurrency }> = [];
@@ -160,8 +163,6 @@ const GoalDetail: React.FC = () => {
     [goal, contributions]
   );
 
-  const periods = useMemo(() => sumPeriodEarnings(contributions), [contributions]);
-
   /** Розбивка за джерелами — має сенс лише для цілі-заробітку. */
   const sources = useMemo(() => {
     if (!goal || goal.type !== 'income') return [];
@@ -183,24 +184,42 @@ const GoalDetail: React.FC = () => {
   }, [goal, contributions, t]);
 
   /**
-   * Рухи на рахунку цілі, які не є внесками: витрати з цілі та перекази з неї.
-   * Без них прогрес просто зменшувався б, і сторінка цього ніяк не пояснювала б.
+   * Усі рухи на рахунку цілі. `delta` — у валюті цілі (саме нею міряється
+   * прогрес), `rawDelta` — у валюті самої транзакції, як її показувати в рядку.
+   *
+   * Рахунок для доходу й витрати живе в маркері примітки, а не в колонці, тож
+   * шукати його треба тією ж функцією, якою його читає решта застосунку.
    */
-  const otherMovements = useMemo(() => {
+  const accountMovements = useMemo(() => {
     const account = goal?.accountKey;
-    if (!account) return [];
-    const contributionTxIds = new Set(contributions.map((c) => c.transactionId).filter(Boolean));
-    const rows: Array<{ tx: Transaction; delta: number; currency: string }> = [];
+    if (!account || !goal) return [];
+    const rows: Array<{ tx: Transaction; delta: number; rawDelta: number; rawCurrency: string }> = [];
     for (const tx of transactions) {
-      if (contributionTxIds.has(tx.id)) continue;
-      // Рахунок для доходу й витрати живе в маркері примітки, а не в колонці, тож
-      // шукати його треба тією ж функцією, якою його читає решта застосунку.
       const effect = getTransactionAccountEffects(tx).find((e) => e.accountKey === account);
       if (!effect) continue;
-      rows.push({ tx, delta: effect.delta, currency: effect.currency });
+      const converted = convert(Math.abs(effect.delta), effect.currency, goal.currency);
+      // Неконвертований рух краще пропустити, ніж додати як «одиниця = одиниця».
+      if (converted === null) continue;
+      rows.push({
+        tx,
+        delta: effect.delta < 0 ? -converted : converted,
+        rawDelta: effect.delta,
+        rawCurrency: effect.currency,
+      });
     }
     return rows.sort((a, b) => b.tx.date.localeCompare(a.tx.date));
-  }, [transactions, contributions, goal?.accountKey]);
+  }, [transactions, goal, convert]);
+
+  /** Те саме, але без внесків: їх показує окремий список вище. */
+  const otherMovements = useMemo(() => {
+    const contributionTxIds = new Set(contributions.map((c) => c.transactionId).filter(Boolean));
+    return accountMovements.filter((m) => !contributionTxIds.has(m.tx.id));
+  }, [accountMovements, contributions]);
+
+  const periods = useMemo(
+    () => sumAccountPeriodDeltas(accountMovements.map((m) => ({ date: m.tx.date, delta: m.delta }))),
+    [accountMovements]
+  );
 
   /** Внески, що прийшли переказом з іншого рахунку — лише вони «з рахунку». */
   const transferBackedContribIds = useMemo(() => {
@@ -339,6 +358,15 @@ const GoalDetail: React.FC = () => {
         </p>
       ) : null}
 
+      {goal.saved < 0 ? (
+        <div className={hero.overdrawn} role="alert">
+          <TriangleAlert size={16} strokeWidth={2.4} aria-hidden="true" />
+          <span>
+            {t('goals', 'goalOverdrawn').replace('{amount}', formatCurrency(Math.abs(goal.saved), locale, cur))}
+          </span>
+        </div>
+      ) : null}
+
       <div className={`${hero.hero} ${isIncome ? '' : hero.heroSavings}`}>
         <div className={hero.heroTop}>
           <div
@@ -359,7 +387,9 @@ const GoalDetail: React.FC = () => {
           </div>
         ) : null}
         <div className={hero.amountRow}>
-          <span className={hero.amountCurrent}>{formatCurrency(goal.saved, locale, cur)}</span>
+          {/* Саме тут потрібен знак: `formatCurrency` його не малює, і баланс
+              у мінусі читався як зароблена сума. */}
+          <span className={hero.amountCurrent}>{formatSignedCurrency(goal.saved, locale, cur)}</span>
           <span className={hero.amountTarget}>/ {formatCurrency(goal.targetAmount, locale, cur)}</span>
         </div>
         <div
@@ -465,8 +495,8 @@ const GoalDetail: React.FC = () => {
               className={`${hero.statTile} ${hero.statTileTappable}`}
               onClick={() => setResultScope('today')}
             >
-              <span className={hero.statValue}>{formatCurrency(periods.today, locale, cur)}</span>
-              <span className={hero.statLabel}>{t('goals', 'earnedToday')}</span>
+              <span className={hero.statValue}>{formatSignedCurrency(periods.today, locale, cur)}</span>
+              <span className={hero.statLabel}>{t('goals', 'movedToday')}</span>
               <ImageDown className={hero.statTileGlyph} size={13} aria-hidden="true" />
             </button>
             <button
@@ -474,8 +504,8 @@ const GoalDetail: React.FC = () => {
               className={`${hero.statTile} ${hero.statTileTappable}`}
               onClick={() => setResultScope('month')}
             >
-              <span className={hero.statValue}>{formatCurrency(periods.month, locale, cur)}</span>
-              <span className={hero.statLabel}>{t('goals', 'earnedMonth')}</span>
+              <span className={hero.statValue}>{formatSignedCurrency(periods.month, locale, cur)}</span>
+              <span className={hero.statLabel}>{t('goals', 'movedMonth')}</span>
               <ImageDown className={hero.statTileGlyph} size={13} aria-hidden="true" />
             </button>
           </>
@@ -581,9 +611,9 @@ const GoalDetail: React.FC = () => {
           <h2 className={styles.sectionTitle}>{t('goals', 'accountMovements')}</h2>
           <p className={styles.sectionHint}>{t('goals', 'accountMovementsHint')}</p>
           <div className={styles.contribList}>
-            {otherMovements.map(({ tx, delta, currency }) => {
+            {otherMovements.map(({ tx, rawDelta, rawCurrency }) => {
               const preview = getTransactionNotePreview(tx);
-              const incoming = delta >= 0;
+              const incoming = rawDelta >= 0;
               return (
                 <div key={tx.id} className={styles.contribRow}>
                   <div className={styles.contribMain}>
@@ -592,7 +622,7 @@ const GoalDetail: React.FC = () => {
                   </div>
                   <span className={`${styles.contribAmt} ${incoming ? styles.amountIn : styles.amountOut}`}>
                     {incoming ? '+' : '−'}
-                    {formatCurrency(Math.abs(delta), locale, currency as DisplayCurrency)}
+                    {formatCurrency(Math.abs(rawDelta), locale, rawCurrency as DisplayCurrency)}
                   </span>
                 </div>
               );

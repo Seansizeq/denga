@@ -49,7 +49,7 @@ const GoalResultCardSheet: React.FC<GoalResultCardSheetProps> = ({
   );
 
   if (scope !== 'total') {
-    const label = t('goals', scope === 'month' ? 'earnedMonth' : 'earnedToday');
+    const label = t('goals', scope === 'month' ? 'movedMonth' : 'movedToday');
 
     return (
       <ResultImageSheet
