@@ -899,7 +899,7 @@ const uk: Dict = {
     automationAccountsUrl: 'Посилання: список рахунків',
     automationTransactionUrl: 'Посилання: додати витрату',
     automationExpenseHowTo:
-      'iOS, на кожен список: «Отримати вміст URL» з посиланням → «Отримати значення зі словника» → All Keys → «Вибрати зі списку». Далі «Отримати вміст URL» з третім посиланням, метод POST, тіло JSON: amount (число з «Запитати ввід»), categoryId і account — просто обрані рядки зі списків.',
+      'iOS, на кожен список: «Отримати вміст URL» з посиланням → одразу «Вибрати зі списку». Далі «Отримати вміст URL» з третім посиланням, метод POST, тіло JSON: amount (число з «Запитати ввід»), categoryId і account — просто обрані рядки зі списків.',
     automationExpenseHowToWidget:
       'Складіть ярлики в окрему папку Команд і додайте на екран «Додому» віджет «Команди» — витрата записується одним дотиком, без відкриття застосунку.',
     weeklyAutoReport: 'Авто тижневий звіт',
@@ -1450,7 +1450,7 @@ const ru: Dict = {
     automationAccountsUrl: 'Ссылка: список счетов',
     automationTransactionUrl: 'Ссылка: добавить расход',
     automationExpenseHowTo:
-      'iOS, на каждый список: «Получить содержимое URL» со ссылкой → «Получить значение из словаря» → All Keys → «Выбрать из списка». Затем «Получить содержимое URL» с третьей ссылкой, метод POST, тело JSON: amount (число из «Запросить ввод»), categoryId и account — просто выбранные строки из списков.',
+      'iOS, на каждый список: «Получить содержимое URL» со ссылкой → сразу «Выбрать из списка». Затем «Получить содержимое URL» с третьей ссылкой, метод POST, тело JSON: amount (число из «Запросить ввод»), categoryId и account — просто выбранные строки из списков.',
     automationExpenseHowToWidget:
       'Сложите команды в отдельную папку и добавьте на экран «Домой» виджет «Быстрые команды» — расход записывается одним касанием, без открытия приложения.',
     weeklyAutoReport: 'Авто недельный отчёт',
@@ -2001,7 +2001,7 @@ const en: Dict = {
     automationAccountsUrl: 'Link: account list',
     automationTransactionUrl: 'Link: add an expense',
     automationExpenseHowTo:
-      'iOS, for each list: "Get Contents of URL" with the link → "Get Dictionary Value" → All Keys → "Choose from List". Then "Get Contents of URL" with the third link, method POST, JSON body: amount (the number from "Ask for Input"), and categoryId and account — just the rows you chose from the lists.',
+      'iOS, for each list: "Get Contents of URL" with the link → "Choose from List" right after it. Then "Get Contents of URL" with the third link, method POST, JSON body: amount (the number from "Ask for Input"), and categoryId and account — just the rows you chose from the lists.',
     automationExpenseHowToWidget:
       'Put the shortcuts in their own Shortcuts folder and add the Shortcuts widget to your Home Screen — one tap records the expense without opening the app.',
     weeklyAutoReport: 'Weekly auto report',

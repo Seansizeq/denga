@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildOptionMaps,
   buildOptionsPayload,
   buildResultMessage,
   validateAutomationTransaction,
@@ -18,33 +19,49 @@ const accounts = [
   { accountKey: 'usdt', name: 'USDT', section: 'crypto', primaryCurrency: 'USDT' },
 ];
 
+describe('buildOptionMaps', () => {
+  it('maps label -> id so a picked row can be resolved back', () => {
+    const maps = buildOptionMaps({ categories, accounts });
+    expect(maps.categories['🍕 Продукти']).toBe('food');
+    expect(maps.accounts['💳 Santander']).toBe('santander');
+    expect(maps.accounts['💵 Готівка']).toBe('wallet');
+  });
+});
+
 describe('buildOptionsPayload', () => {
-  it('maps label -> id so Shortcuts can pick over the keys', () => {
-    const payload = buildOptionsPayload({ categories, accounts });
-    expect(payload.categories['🍕 Продукти']).toBe('food');
-    expect(payload.accounts['💳 Santander']).toBe('santander');
-    expect(payload.accounts['💵 Готівка']).toBe('wallet');
+  it('hands the picker an ordered array — a dictionary loses its order in Shortcuts', () => {
+    expect(buildOptionsPayload({ categories, accounts, list: 'accounts' })).toEqual([
+      '💳 Santander',
+      '💵 Готівка',
+      '🪙 USDT',
+    ]);
+    expect(buildOptionsPayload({ categories, accounts })).toEqual({
+      categories: ['🍕 Продукти', '🚗 Транспорт', '🏷 Кава'],
+      accounts: ['💳 Santander', '💵 Готівка', '🪙 USDT'],
+    });
   });
 
   it('offers expense categories by default, and the other types on request', () => {
-    expect(Object.values(buildOptionsPayload({ categories, accounts }).categories)).not.toContain('salary');
-    expect(Object.values(buildOptionsPayload({ categories, accounts, type: 'income' }).categories)).toEqual(['salary']);
-    expect(Object.values(buildOptionsPayload({ categories, accounts, type: 'all' }).categories)).toContain('salary');
+    expect(buildOptionsPayload({ categories, accounts }).categories).not.toContain('💼 Зарплата');
+    expect(buildOptionsPayload({ categories, accounts, type: 'income', list: 'categories' })).toEqual([
+      '💼 Зарплата',
+    ]);
+    expect(buildOptionsPayload({ categories, accounts, type: 'all' }).categories).toContain('💼 Зарплата');
   });
 
   it('falls back to a generic emoji for a custom category', () => {
-    expect(buildOptionsPayload({ categories, accounts }).categories['🏷 Кава']).toBe('custom:x');
+    expect(buildOptionMaps({ categories, accounts }).categories['🏷 Кава']).toBe('custom:x');
   });
 
   it('keeps same-named accounts apart — a collapsed label would spend from the wrong one', () => {
-    const payload = buildOptionsPayload({
+    const maps = buildOptionMaps({
       categories: [],
       accounts: [
         { accountKey: 'card_a', name: 'Картка', section: 'bank' },
         { accountKey: 'card_b', name: 'Картка', section: 'bank' },
       ],
     });
-    expect(payload.accounts).toEqual({ '💳 Картка': 'card_a', '💳 Картка (2)': 'card_b' });
+    expect(maps.accounts).toEqual({ '💳 Картка': 'card_a', '💳 Картка (2)': 'card_b' });
   });
 
   it('groups accounts the way the wallet does, not by a per-section index', () => {
@@ -56,7 +73,7 @@ describe('buildOptionsPayload', () => {
       { accountKey: 'cash', name: 'Готівка', section: 'cash', sortIndex: 0 },
       { accountKey: 'katka', name: 'Катка24', section: 'bank', sortIndex: 0 },
     ];
-    expect(Object.values(buildOptionsPayload({ accounts: mixed, list: 'accounts' }))).toEqual([
+    expect(Object.values(buildOptionMaps({ accounts: mixed }).accounts)).toEqual([
       'katka',
       'privat',
       'cash',
@@ -72,26 +89,11 @@ describe('buildOptionsPayload', () => {
       { id: 'other_expense', name: 'Інше', type: 'expense' },
       { id: 'custom:x', name: 'Кава', type: 'expense' },
     ];
-    expect(Object.values(buildOptionsPayload({ categories: withOther, list: 'categories' }))).toEqual([
+    expect(Object.values(buildOptionMaps({ categories: withOther }).categories)).toEqual([
       'food',
       'custom:x',
       'other_expense',
     ]);
-  });
-
-  it('returns one map at the top level when a list is named', () => {
-    expect(buildOptionsPayload({ categories, accounts, list: 'accounts' })).toEqual({
-      '💳 Santander': 'santander',
-      '💵 Готівка': 'wallet',
-      '🪙 USDT': 'usdt',
-    });
-    expect(buildOptionsPayload({ categories, accounts, list: 'categories' })['🍕 Продукти']).toBe('food');
-  });
-
-  it('still filters by type when a single list is asked for', () => {
-    expect(buildOptionsPayload({ categories, accounts, list: 'categories', type: 'income' })).toEqual({
-      '💼 Зарплата': 'salary',
-    });
   });
 
   it('keeps the envelope for an unknown list name', () => {
@@ -103,7 +105,7 @@ describe('buildOptionsPayload', () => {
       categories: [{ id: '  ', name: 'Ніщо', type: 'expense' }],
       accounts: [{ accountKey: '', name: 'Ніщо' }],
     });
-    expect(payload).toEqual({ categories: {}, accounts: {} });
+    expect(payload).toEqual({ categories: [], accounts: [] });
   });
 });
 

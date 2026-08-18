@@ -59,14 +59,11 @@ const putUnique = (target, key, value) => {
 };
 
 /**
+ * `label -> id` for resolving a picked row back to what it stands for.
+ *
  * @param type 'expense' | 'income' | 'all' — which categories the picker offers.
- * @param list 'categories' | 'accounts' — return that one map at the top level.
- *   Shortcuts then reads `All Keys` straight off the response instead of
- *   digging a level in first, which is the step people get wrong: its
- *   `Choose from List` happily swallows the whole envelope and offers the two
- *   inner dictionaries, rendered as raw JSON, as the two things to pick from.
  */
-export const buildOptionsPayload = ({ categories = [], accounts = [], type = 'expense', list } = {}) => {
+export const buildOptionMaps = ({ categories = [], accounts = [], type = 'expense' } = {}) => {
   const wantedType = type === 'income' ? 'income' : type === 'all' ? null : 'expense';
 
   // Both sorts are stable, so anything the caller already ordered — the
@@ -101,9 +98,27 @@ export const buildOptionsPayload = ({ categories = [], accounts = [], type = 'ex
     putUnique(accountOptions, label(emoji, name), key);
   }
 
-  if (list === 'accounts') return accountOptions;
-  if (list === 'categories') return categoryOptions;
   return { categories: categoryOptions, accounts: accountOptions };
+};
+
+/**
+ * What the picker actually receives: an ordered list of labels.
+ *
+ * A JSON object would be the obvious shape — label straight to id — but
+ * Shortcuts parses one into a plain dictionary, which has no order, and its
+ * `All Keys` then hands the picker rows in whatever order the dictionary
+ * happens to hold them. Sorting on this side simply never survives the trip. A
+ * JSON array does, and it also spares the shortcut the `All Keys` step: the
+ * chosen row goes straight into the request, and the label is resolved back to
+ * an id here.
+ *
+ * @param list 'categories' | 'accounts' — that one list at the top level.
+ */
+export const buildOptionsPayload = ({ categories = [], accounts = [], type = 'expense', list } = {}) => {
+  const maps = buildOptionMaps({ categories, accounts, type });
+  if (list === 'accounts') return Object.keys(maps.accounts);
+  if (list === 'categories') return Object.keys(maps.categories);
+  return { categories: Object.keys(maps.categories), accounts: Object.keys(maps.accounts) };
 };
 
 /**
@@ -141,7 +156,7 @@ export const validateAutomationTransaction = (body, { categories = [], accounts 
     return { ok: false, status: 400, code: 'INVALID_AMOUNT', error: 'сума має бути більшою за 0' };
   }
 
-  const options = buildOptionsPayload({ categories, accounts, type: 'all' });
+  const options = buildOptionMaps({ categories, accounts, type: 'all' });
 
   const category = findByIdOrLabel(body?.categoryId, categories, options.categories, matchesCategory);
   if (!category) {
