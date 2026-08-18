@@ -50,6 +50,11 @@ import {
   mapTemplateRow,
   validateTemplatePayload,
 } from './expense-templates.js';
+import {
+  buildOptionsPayload,
+  buildResultMessage,
+  validateAutomationTransaction,
+} from './automation-transaction.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -1250,7 +1255,7 @@ const CATEGORY_EMOJI = {
   health: '💊',
   salary: '💼',
   other_income: '💸',
-  other_expense: '💊',
+  other_expense: '📦',
 };
 const formatDayMonth = (iso) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(iso || ''))) return String(iso || '');
@@ -1933,8 +1938,8 @@ const CATEGORIES = [
   { id: 'entertainment', name: 'Розваги' },
   { id: 'health', name: 'Здоров\'я' },
   { id: 'salary', name: 'Зарплата' },
-  { id: 'other_income', name: 'Корекція балансу' },
-  { id: 'other_expense', name: 'Корекція балансу' },
+  { id: 'other_income', name: 'Інший дохід' },
+  { id: 'other_expense', name: 'Інше' },
 ];
 const BOT_CATEGORY_OPTIONS = CATEGORIES.filter((c) => c.id !== 'other_income' && c.id !== 'other_expense');
 
@@ -1950,11 +1955,19 @@ const BOT_SMART_CATEGORY_TYPES = {
   entertainment: 'expense',
   health: 'expense',
   salary: 'income',
+  other_income: 'income',
+  other_expense: 'expense',
 };
 
-// Build the category list (built-in + user's custom) passed to the smart parser.
-async function getSmartCategoriesForUser(userId) {
-  const categories = BOT_CATEGORY_OPTIONS.map((c) => ({
+/**
+ * Build the category list (built-in + user's custom) passed to the smart parser.
+ *
+ * `includeOther` adds the catch-all pair. The bot's own keyboard leaves them
+ * out — a chat flow can just be told the category — but a picker with no
+ * "Інше" row leaves the user filing a stray purchase under something wrong.
+ */
+async function getSmartCategoriesForUser(userId, { includeOther = false } = {}) {
+  const categories = (includeOther ? CATEGORIES : BOT_CATEGORY_OPTIONS).map((c) => ({
     id: c.id,
     name: c.name,
     type: BOT_SMART_CATEGORY_TYPES[c.id] || 'expense',
@@ -2874,6 +2887,152 @@ app.get('/api/automation/shift/end', async (req, res) => {
     action: 'end',
     workedHours: roundedHours,
     endedAt: nowIso,
+  });
+});
+
+const getAutomationAccounts = async (userId) =>
+  (await db.all(
+    `SELECT account_key AS accountKey, name, section, primary_currency AS primaryCurrency
+     FROM account_portfolio
+     WHERE user_id = ?
+     ORDER BY sort_index ASC, account_key ASC`,
+    [userId]
+  )) ?? [];
+
+const getAutomationCategories = async (userId) =>
+  (await getSmartCategoriesForUser(userId, { includeOther: true })).map((c) => ({
+    ...c,
+    emoji: CATEGORY_EMOJI[c.id],
+  }));
+
+/**
+ * The lists the quick-add pickers are built from, fetched on every run so a
+ * category or account added in the app shows up without anyone editing the
+ * shortcut on the phone.
+ */
+app.get('/api/automation/options', async (req, res) => {
+  const userId = await resolveAutomationUserId(db, req);
+  if (!userId) {
+    res.status(401).json({ error: 'Invalid or missing token', message: '⚠️ Невірний токен' });
+    return;
+  }
+  const type = req.query?.type === 'income' ? 'income' : req.query?.type === 'all' ? 'all' : 'expense';
+  const [categories, accounts] = await Promise.all([
+    getAutomationCategories(userId),
+    getAutomationAccounts(userId),
+  ]);
+  res.json(buildOptionsPayload({ categories, accounts, type }));
+});
+
+/**
+ * One quick-add transaction. Takes either picked fields (`amount` + `categoryId`
+ * + optional `account`) or free `text` for a dictated entry, which goes through
+ * the same parser as the bot.
+ *
+ * Every response carries `message`, including the failures: the automation
+ * prints that one field in its notification, so an error with nothing to print
+ * would look exactly like a success.
+ */
+app.post('/api/automation/transaction', async (req, res) => {
+  const userId = await resolveAutomationUserId(db, req);
+  if (!userId) {
+    res.status(401).json({ error: 'Invalid or missing token', message: '⚠️ Невірний токен' });
+    return;
+  }
+  const [categories, accounts] = await Promise.all([
+    getAutomationCategories(userId),
+    getAutomationAccounts(userId),
+  ]);
+
+  let payload = req.body;
+  const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
+  if (text) {
+    const parsed = await parseSmartTransaction({ text, categories, accounts });
+    if (!parsed?.isTransaction) {
+      res.status(422).json({
+        error: 'could not parse the text',
+        code: 'NOT_RECOGNIZED',
+        message: '🤷 Не зрозумів. Спробуйте: «кава 55 карткою»',
+      });
+      return;
+    }
+    payload = {
+      amount: parsed.amount,
+      currency: parsed.currency,
+      categoryId: parsed.categoryId,
+      account: parsed.accountKey ?? undefined,
+      note: parsed.note,
+    };
+  }
+
+  const validated = validateAutomationTransaction(payload, { categories, accounts });
+  if (!validated.ok) {
+    res.status(validated.status).json({
+      error: validated.error,
+      code: validated.code,
+      message: `⚠️ ${validated.error}`,
+    });
+    return;
+  }
+
+  // The account rides in the note, which is where every other path stores it
+  // and the only place the balance effects look for it.
+  const transaction = {
+    id: uuidv4(),
+    user_id: userId,
+    amount: validated.amount,
+    currency: validated.currency,
+    categoryId: validated.categoryId,
+    type: validated.type,
+    date: new Date().toISOString(),
+    note: validated.account ? mergeAccountIntoNote(validated.note, validated.account) : validated.note,
+  };
+
+  const { mismatches, overdrafts } = await checkTransactionPreconditions(db, userId, [
+    { tx: transaction, multiplier: 1 },
+  ]);
+  if (mismatches.length > 0) {
+    res.status(409).json({
+      error: 'transaction currency does not match the account balance unit',
+      code: 'ACCOUNT_DENOMINATION_MISMATCH',
+      accounts: mismatches,
+      message: `⚠️ ${validated.accountName ?? 'Рахунок'} веде облік в іншій валюті`,
+    });
+    return;
+  }
+  if (overdrafts.length > 0) {
+    res.status(409).json({
+      error: 'this would push a debt balance below zero',
+      code: 'DEBT_BALANCE_NEGATIVE',
+      accounts: overdrafts,
+      message: `⚠️ ${validated.accountName ?? 'Рахунок'} пішов би в мінус`,
+    });
+    return;
+  }
+
+  await db.run(
+    `INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, note)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      transaction.id,
+      transaction.user_id,
+      transaction.amount,
+      transaction.currency,
+      transaction.categoryId,
+      transaction.type,
+      transaction.date,
+      transaction.note,
+    ]
+  );
+  await applyTransactionEffects(db, userId, transaction);
+  if (transaction.type === 'expense') {
+    await checkBudgetThresholdsAfterExpense(userId, transaction.categoryId);
+  }
+
+  res.status(201).json({
+    ok: true,
+    message: buildResultMessage(validated),
+    transaction,
   });
 });
 
