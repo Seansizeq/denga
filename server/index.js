@@ -2904,7 +2904,8 @@ app.get('/api/automation/shift/end', async (req, res) => {
 
 const getAutomationAccounts = async (userId) =>
   (await db.all(
-    `SELECT account_key AS accountKey, name, section, primary_currency AS primaryCurrency
+    `SELECT account_key AS accountKey, name, section, sort_index AS sortIndex,
+            primary_currency AS primaryCurrency
      FROM account_portfolio
      WHERE user_id = ?
      ORDER BY sort_index ASC, account_key ASC`,

@@ -47,6 +47,38 @@ describe('buildOptionsPayload', () => {
     expect(payload.accounts).toEqual({ '💳 Картка': 'card_a', '💳 Картка (2)': 'card_b' });
   });
 
+  it('groups accounts the way the wallet does, not by a per-section index', () => {
+    const mixed = [
+      { accountKey: 'goal_1', name: 'Road to 30k', section: 'goal', sortIndex: 0 },
+      { accountKey: 'usdt', name: 'USDT', section: 'crypto', sortIndex: 0 },
+      { accountKey: 'misha', name: 'Misha', section: 'debt', sortIndex: 0 },
+      { accountKey: 'privat', name: 'Приват24', section: 'bank', sortIndex: 1 },
+      { accountKey: 'cash', name: 'Готівка', section: 'cash', sortIndex: 0 },
+      { accountKey: 'katka', name: 'Катка24', section: 'bank', sortIndex: 0 },
+    ];
+    expect(Object.values(buildOptionsPayload({ accounts: mixed, list: 'accounts' }))).toEqual([
+      'katka',
+      'privat',
+      'cash',
+      'usdt',
+      'misha',
+      'goal_1',
+    ]);
+  });
+
+  it('drops the catch-all category to the bottom, keeping the rest as given', () => {
+    const withOther = [
+      { id: 'food', name: 'Продукти', type: 'expense' },
+      { id: 'other_expense', name: 'Інше', type: 'expense' },
+      { id: 'custom:x', name: 'Кава', type: 'expense' },
+    ];
+    expect(Object.values(buildOptionsPayload({ categories: withOther, list: 'categories' }))).toEqual([
+      'food',
+      'custom:x',
+      'other_expense',
+    ]);
+  });
+
   it('returns one map at the top level when a list is named', () => {
     expect(buildOptionsPayload({ categories, accounts, list: 'accounts' })).toEqual({
       '💳 Santander': 'santander',

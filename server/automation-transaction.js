@@ -28,6 +28,21 @@ const SECTION_EMOJI = {
   goal: '🎯',
 };
 
+/**
+ * Sections in wallet order, because `sort_index` is numbered per section: order
+ * by it alone and cards, crypto, debts and goals interleave into what looks
+ * like no order at all.
+ */
+const SECTION_ORDER = ['bank', 'cash', 'crypto', 'stocks', 'debt', 'goal'];
+
+const sectionRank = (section) => {
+  const index = SECTION_ORDER.indexOf(String(section ?? ''));
+  return index === -1 ? SECTION_ORDER.length : index;
+};
+
+/** "Інше" is what you pick when nothing else fits, so it belongs at the bottom. */
+const CATCH_ALL_CATEGORY_IDS = ['other_expense', 'other_income'];
+
 const label = (emoji, name) => `${emoji} ${name}`.trim();
 
 /**
@@ -54,8 +69,22 @@ const putUnique = (target, key, value) => {
 export const buildOptionsPayload = ({ categories = [], accounts = [], type = 'expense', list } = {}) => {
   const wantedType = type === 'income' ? 'income' : type === 'all' ? null : 'expense';
 
+  // Both sorts are stable, so anything the caller already ordered — the
+  // built-in categories, the wallet's own arrangement within a section — keeps
+  // that order inside its group.
+  const orderedCategories = [...categories].sort(
+    (a, b) =>
+      Number(CATCH_ALL_CATEGORY_IDS.includes(String(a?.id ?? ''))) -
+      Number(CATCH_ALL_CATEGORY_IDS.includes(String(b?.id ?? '')))
+  );
+  const orderedAccounts = [...accounts].sort(
+    (a, b) =>
+      sectionRank(a?.section) - sectionRank(b?.section) ||
+      (Number(a?.sortIndex) || 0) - (Number(b?.sortIndex) || 0)
+  );
+
   const categoryOptions = {};
-  for (const category of categories) {
+  for (const category of orderedCategories) {
     const id = String(category?.id ?? '').trim();
     if (!id) continue;
     if (wantedType && category?.type !== wantedType) continue;
@@ -64,7 +93,7 @@ export const buildOptionsPayload = ({ categories = [], accounts = [], type = 'ex
   }
 
   const accountOptions = {};
-  for (const account of accounts) {
+  for (const account of orderedAccounts) {
     const key = String(account?.accountKey ?? '').trim().toLowerCase();
     if (!key) continue;
     const name = String(account?.name ?? '').trim() || key;
