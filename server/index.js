@@ -2935,6 +2935,10 @@ app.get('/api/automation/options', async (req, res) => {
     getAutomationCategories(userId),
     getAutomationAccounts(userId),
   ]);
+  // The whole point of fetching this on every run is that it is current. iOS
+  // Shortcuts caches a plain GET, and a stale list is invisible: the picker
+  // still looks right, it just quietly lacks the account added this morning.
+  res.set('Cache-Control', 'no-store, max-age=0');
   res.json(buildOptionsPayload({ categories, accounts, type, list }));
 });
 
