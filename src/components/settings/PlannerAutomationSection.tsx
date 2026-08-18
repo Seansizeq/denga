@@ -110,7 +110,12 @@ const PlannerAutomationSection: React.FC = () => {
         label={t('settings', 'automationExpenseTitle')}
         description={t('settings', 'automationExpenseDescription')}
       >
-        <LinkRow label={t('settings', 'automationOptionsUrl')} url={automation.optionsUrl} onCopy={copy} />
+        <LinkRow
+          label={t('settings', 'automationCategoriesUrl')}
+          url={automation.categoriesUrl}
+          onCopy={copy}
+        />
+        <LinkRow label={t('settings', 'automationAccountsUrl')} url={automation.accountsUrl} onCopy={copy} />
         <LinkRow
           label={t('settings', 'automationTransactionUrl')}
           url={automation.transactionUrl}

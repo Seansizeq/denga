@@ -1712,7 +1712,12 @@ const buildAutomationUrls = (req, token) => {
   return {
     startUrl: `${base}/api/automation/shift/start?${q}`,
     endUrl: `${base}/api/automation/shift/end?${q}`,
-    optionsUrl: `${base}/api/automation/options?${q}`,
+    // One list per link: a shortcut picker reads `All Keys` straight off the
+    // response, with no dictionary to dig into first. `list` comes before the
+    // token because the settings screen masks everything after it — the two
+    // links would otherwise be shown as the same string.
+    categoriesUrl: `${base}/api/automation/options?list=categories&${q}`,
+    accountsUrl: `${base}/api/automation/options?list=accounts&${q}`,
     transactionUrl: `${base}/api/automation/transaction?${q}`,
   };
 };
@@ -2924,11 +2929,12 @@ app.get('/api/automation/options', async (req, res) => {
     return;
   }
   const type = req.query?.type === 'income' ? 'income' : req.query?.type === 'all' ? 'all' : 'expense';
+  const list = req.query?.list === 'accounts' || req.query?.list === 'categories' ? req.query.list : undefined;
   const [categories, accounts] = await Promise.all([
     getAutomationCategories(userId),
     getAutomationAccounts(userId),
   ]);
-  res.json(buildOptionsPayload({ categories, accounts, type }));
+  res.json(buildOptionsPayload({ categories, accounts, type, list }));
 });
 
 /**

@@ -351,7 +351,8 @@ type Dict = {
     automationHowToAndroid: string;
     automationExpenseTitle: string;
     automationExpenseDescription: string;
-    automationOptionsUrl: string;
+    automationCategoriesUrl: string;
+    automationAccountsUrl: string;
     automationTransactionUrl: string;
     automationExpenseHowTo: string;
     automationExpenseHowToWidget: string;
@@ -893,11 +894,12 @@ const uk: Dict = {
       'Android: Tasker або MacroDroid → тригер «Геозона / Location» → дія HTTP Request (GET) → вставте посилання.',
     automationExpenseTitle: 'Швидка витрата з телефона',
     automationExpenseDescription:
-      'Ярлик на телефоні бере за першим посиланням ваші категорії та рахунки, а за другим зберігає витрату. Списки тягнуться щоразу, тож нову категорію чи рахунок не треба вписувати в ярлик руками.',
-    automationOptionsUrl: 'Посилання: списки для вибору',
+      'Ярлик на телефоні бере за першими двома посиланнями ваші категорії та рахунки, а за третім зберігає витрату. Списки тягнуться щоразу, тож нову категорію чи рахунок не треба вписувати в ярлик руками.',
+    automationCategoriesUrl: 'Посилання: список категорій',
+    automationAccountsUrl: 'Посилання: список рахунків',
     automationTransactionUrl: 'Посилання: додати витрату',
     automationExpenseHowTo:
-      'iOS: Команди → новий ярлик → «Запитати ввід» (число) → «Отримати вміст URL» з першим посиланням → «Отримати значення зі словника» (All Keys) → «Вибрати зі списку» → «Отримати вміст URL» з другим посиланням, метод POST, тіло JSON: amount, categoryId, account.',
+      'iOS: Команди → новий ярлик → «Запитати ввід» (число) → «Отримати вміст URL» з посиланням категорій → «Отримати значення зі словника» → All Keys → «Вибрати зі списку» → ще раз «Отримати значення зі словника» (Value, ключ = Обраний елемент) → те саме для рахунків → «Отримати вміст URL» з третім посиланням, метод POST, тіло JSON: amount, categoryId, account.',
     automationExpenseHowToWidget:
       'Складіть ярлики в окрему папку Команд і додайте на екран «Додому» віджет «Команди» — витрата записується одним дотиком, без відкриття застосунку.',
     weeklyAutoReport: 'Авто тижневий звіт',
@@ -1443,11 +1445,12 @@ const ru: Dict = {
       'Android: Tasker или MacroDroid → триггер «Геозона / Location» → действие HTTP Request (GET) → вставьте ссылку.',
     automationExpenseTitle: 'Быстрый расход с телефона',
     automationExpenseDescription:
-      'Ярлык на телефоне берёт по первой ссылке ваши категории и счета, а по второй сохраняет расход. Списки подтягиваются каждый раз, так что новую категорию или счёт не нужно вписывать в ярлык руками.',
-    automationOptionsUrl: 'Ссылка: списки для выбора',
+      'Ярлык на телефоне берёт по первым двум ссылкам ваши категории и счета, а по третьей сохраняет расход. Списки подтягиваются каждый раз, так что новую категорию или счёт не нужно вписывать в ярлык руками.',
+    automationCategoriesUrl: 'Ссылка: список категорий',
+    automationAccountsUrl: 'Ссылка: список счетов',
     automationTransactionUrl: 'Ссылка: добавить расход',
     automationExpenseHowTo:
-      'iOS: Быстрые команды → новая команда → «Запросить ввод» (число) → «Получить содержимое URL» с первой ссылкой → «Получить значение из словаря» (All Keys) → «Выбрать из списка» → «Получить содержимое URL» со второй ссылкой, метод POST, тело JSON: amount, categoryId, account.',
+      'iOS: Быстрые команды → новая команда → «Запросить ввод» (число) → «Получить содержимое URL» со ссылкой категорий → «Получить значение из словаря» → All Keys → «Выбрать из списка» → ещё раз «Получить значение из словаря» (Value, ключ = Выбранный элемент) → то же для счетов → «Получить содержимое URL» с третьей ссылкой, метод POST, тело JSON: amount, categoryId, account.',
     automationExpenseHowToWidget:
       'Сложите команды в отдельную папку и добавьте на экран «Домой» виджет «Быстрые команды» — расход записывается одним касанием, без открытия приложения.',
     weeklyAutoReport: 'Авто недельный отчёт',
@@ -1993,11 +1996,12 @@ const en: Dict = {
       'Android: Tasker or MacroDroid → "Geofence / Location" trigger → HTTP Request (GET) action → paste the link.',
     automationExpenseTitle: 'Quick expense from your phone',
     automationExpenseDescription:
-      'A phone shortcut reads your categories and accounts from the first link and saves the expense through the second. The lists are fetched on every run, so a new category or account never has to be typed into the shortcut by hand.',
-    automationOptionsUrl: 'Link: lists to pick from',
+      'A phone shortcut reads your categories and accounts from the first two links and saves the expense through the third. The lists are fetched on every run, so a new category or account never has to be typed into the shortcut by hand.',
+    automationCategoriesUrl: 'Link: category list',
+    automationAccountsUrl: 'Link: account list',
     automationTransactionUrl: 'Link: add an expense',
     automationExpenseHowTo:
-      'iOS: Shortcuts → new shortcut → "Ask for Input" (Number) → "Get Contents of URL" with the first link → "Get Dictionary Value" (All Keys) → "Choose from List" → "Get Contents of URL" with the second link, method POST, JSON body: amount, categoryId, account.',
+      'iOS: Shortcuts → new shortcut → "Ask for Input" (Number) → "Get Contents of URL" with the category link → "Get Dictionary Value" → All Keys → "Choose from List" → "Get Dictionary Value" again (Value, key = Chosen Item) → same for accounts → "Get Contents of URL" with the third link, method POST, JSON body: amount, categoryId, account.',
     automationExpenseHowToWidget:
       'Put the shortcuts in their own Shortcuts folder and add the Shortcuts widget to your Home Screen — one tap records the expense without opening the app.',
     weeklyAutoReport: 'Weekly auto report',

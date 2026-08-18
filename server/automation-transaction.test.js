@@ -47,6 +47,25 @@ describe('buildOptionsPayload', () => {
     expect(payload.accounts).toEqual({ '💳 Картка': 'card_a', '💳 Картка (2)': 'card_b' });
   });
 
+  it('returns one map at the top level when a list is named', () => {
+    expect(buildOptionsPayload({ categories, accounts, list: 'accounts' })).toEqual({
+      '💳 Santander': 'santander',
+      '💵 Готівка': 'wallet',
+      '🪙 USDT': 'usdt',
+    });
+    expect(buildOptionsPayload({ categories, accounts, list: 'categories' })['🍕 Продукти']).toBe('food');
+  });
+
+  it('still filters by type when a single list is asked for', () => {
+    expect(buildOptionsPayload({ categories, accounts, list: 'categories', type: 'income' })).toEqual({
+      '💼 Зарплата': 'salary',
+    });
+  });
+
+  it('keeps the envelope for an unknown list name', () => {
+    expect(buildOptionsPayload({ categories, accounts, list: 'nope' })).toHaveProperty('categories');
+  });
+
   it('skips rows without an id or key', () => {
     const payload = buildOptionsPayload({
       categories: [{ id: '  ', name: 'Ніщо', type: 'expense' }],
