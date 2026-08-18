@@ -349,6 +349,12 @@ type Dict = {
     automationNoTemplate: string;
     automationHowToIos: string;
     automationHowToAndroid: string;
+    automationExpenseTitle: string;
+    automationExpenseDescription: string;
+    automationOptionsUrl: string;
+    automationTransactionUrl: string;
+    automationExpenseHowTo: string;
+    automationExpenseHowToWidget: string;
     weeklyAutoReport: string;
     monthlyAutoReport: string;
     reportSendTime: string;
@@ -885,6 +891,15 @@ const uk: Dict = {
       'iOS: Команди → Автоматизація → Нова → «Прибуття» → адреса роботи → дія «Отримати вміст URL» → вставте посилання початку. Для «Відбуття» — посилання завершення.',
     automationHowToAndroid:
       'Android: Tasker або MacroDroid → тригер «Геозона / Location» → дія HTTP Request (GET) → вставте посилання.',
+    automationExpenseTitle: 'Швидка витрата з телефона',
+    automationExpenseDescription:
+      'Ярлик на телефоні бере за першим посиланням ваші категорії та рахунки, а за другим зберігає витрату. Списки тягнуться щоразу, тож нову категорію чи рахунок не треба вписувати в ярлик руками.',
+    automationOptionsUrl: 'Посилання: списки для вибору',
+    automationTransactionUrl: 'Посилання: додати витрату',
+    automationExpenseHowTo:
+      'iOS: Команди → новий ярлик → «Запитати ввід» (число) → «Отримати вміст URL» з першим посиланням → «Отримати значення зі словника» (All Keys) → «Вибрати зі списку» → «Отримати вміст URL» з другим посиланням, метод POST, тіло JSON: amount, categoryId, account.',
+    automationExpenseHowToWidget:
+      'Складіть ярлики в окрему папку Команд і додайте на екран «Додому» віджет «Команди» — витрата записується одним дотиком, без відкриття застосунку.',
     weeklyAutoReport: 'Авто тижневий звіт',
     monthlyAutoReport: 'Авто місячний звіт',
     reportSendTime: 'Час надсилання звіту',
@@ -1426,6 +1441,15 @@ const ru: Dict = {
       'iOS: Быстрые команды → Автоматизация → Новая → «Прибытие» → адрес работы → действие «Получить содержимое URL» → вставьте ссылку начала. Для «Убытия» — ссылку завершения.',
     automationHowToAndroid:
       'Android: Tasker или MacroDroid → триггер «Геозона / Location» → действие HTTP Request (GET) → вставьте ссылку.',
+    automationExpenseTitle: 'Быстрый расход с телефона',
+    automationExpenseDescription:
+      'Ярлык на телефоне берёт по первой ссылке ваши категории и счета, а по второй сохраняет расход. Списки подтягиваются каждый раз, так что новую категорию или счёт не нужно вписывать в ярлык руками.',
+    automationOptionsUrl: 'Ссылка: списки для выбора',
+    automationTransactionUrl: 'Ссылка: добавить расход',
+    automationExpenseHowTo:
+      'iOS: Быстрые команды → новая команда → «Запросить ввод» (число) → «Получить содержимое URL» с первой ссылкой → «Получить значение из словаря» (All Keys) → «Выбрать из списка» → «Получить содержимое URL» со второй ссылкой, метод POST, тело JSON: amount, categoryId, account.',
+    automationExpenseHowToWidget:
+      'Сложите команды в отдельную папку и добавьте на экран «Домой» виджет «Быстрые команды» — расход записывается одним касанием, без открытия приложения.',
     weeklyAutoReport: 'Авто недельный отчёт',
     monthlyAutoReport: 'Авто месячный отчёт',
     reportSendTime: 'Время отправки отчёта',
@@ -1967,6 +1991,15 @@ const en: Dict = {
       'iOS: Shortcuts → Automation → New → "Arrive" → work address → action "Get Contents of URL" → paste the start link. Use the end link for "Leave".',
     automationHowToAndroid:
       'Android: Tasker or MacroDroid → "Geofence / Location" trigger → HTTP Request (GET) action → paste the link.',
+    automationExpenseTitle: 'Quick expense from your phone',
+    automationExpenseDescription:
+      'A phone shortcut reads your categories and accounts from the first link and saves the expense through the second. The lists are fetched on every run, so a new category or account never has to be typed into the shortcut by hand.',
+    automationOptionsUrl: 'Link: lists to pick from',
+    automationTransactionUrl: 'Link: add an expense',
+    automationExpenseHowTo:
+      'iOS: Shortcuts → new shortcut → "Ask for Input" (Number) → "Get Contents of URL" with the first link → "Get Dictionary Value" (All Keys) → "Choose from List" → "Get Contents of URL" with the second link, method POST, JSON body: amount, categoryId, account.',
+    automationExpenseHowToWidget:
+      'Put the shortcuts in their own Shortcuts folder and add the Shortcuts widget to your Home Screen — one tap records the expense without opening the app.',
     weeklyAutoReport: 'Weekly auto report',
     monthlyAutoReport: 'Monthly auto report',
     reportSendTime: 'Report send time',

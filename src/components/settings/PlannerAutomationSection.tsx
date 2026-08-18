@@ -14,6 +14,20 @@ import styles from './PlannerAutomationSection.module.css';
 
 const maskUrl = (url: string): string => url.replace(/(token=.{6}).+$/, '$1…');
 
+const LinkRow: React.FC<{ label: string; url: string; onCopy: (url: string) => void }> = ({
+  label,
+  url,
+  onCopy,
+}) => (
+  <button type="button" className={styles.linkRow} onClick={() => onCopy(url)}>
+    <span className={styles.linkLabels}>
+      <span className={styles.linkLabel}>{label}</span>
+      <span className={styles.linkValue}>{maskUrl(url)}</span>
+    </span>
+    <Copy size={18} strokeWidth={2} className={styles.copyIcon} aria-hidden="true" />
+  </button>
+);
+
 // Older Android WebViews inside Telegram ship without the async Clipboard API.
 const copyToClipboard = async (text: string): Promise<boolean> => {
   try {
@@ -32,6 +46,11 @@ const copyToClipboard = async (text: string): Promise<boolean> => {
   }
 };
 
+/**
+ * Both automation blocks live here because they share one token: rotating it
+ * from the shift block invalidates the quick-expense links too, and splitting
+ * them into separate components would hide that from whoever taps the button.
+ */
 const PlannerAutomationSection: React.FC = () => {
   const { t } = useTranslation();
   const toast = useToast();
@@ -83,62 +102,73 @@ const PlannerAutomationSection: React.FC = () => {
 
   if (!automation) return null;
 
+  const copy = (url: string) => void handleCopy(url);
+
   return (
-    <SettingsSection
-      label={t('settings', 'automationGeoTitle')}
-      description={t('settings', 'automationGeoDescription')}
-    >
-      {!hasDefaultTemplate ? (
-        <p className={styles.warning}>{t('settings', 'automationNoTemplate')}</p>
-      ) : null}
+    <>
+      <SettingsSection
+        label={t('settings', 'automationExpenseTitle')}
+        description={t('settings', 'automationExpenseDescription')}
+      >
+        <LinkRow label={t('settings', 'automationOptionsUrl')} url={automation.optionsUrl} onCopy={copy} />
+        <LinkRow
+          label={t('settings', 'automationTransactionUrl')}
+          url={automation.transactionUrl}
+          onCopy={copy}
+        />
 
-      {([
-        ['automationStartUrl', automation.startUrl],
-        ['automationEndUrl', automation.endUrl],
-      ] as const).map(([labelKey, url]) => (
-        <button key={labelKey} type="button" className={styles.linkRow} onClick={() => void handleCopy(url)}>
-          <span className={styles.linkLabels}>
-            <span className={styles.linkLabel}>{t('settings', labelKey)}</span>
-            <span className={styles.linkValue}>{maskUrl(url)}</span>
-          </span>
-          <Copy size={18} strokeWidth={2} className={styles.copyIcon} aria-hidden="true" />
-        </button>
-      ))}
-
-      <div className={styles.howTo}>
-        <p className={styles.howToLine}>{t('settings', 'automationHowToIos')}</p>
-        <p className={styles.howToLine}>{t('settings', 'automationHowToAndroid')}</p>
-      </div>
-
-      {!confirming ? (
-        <button type="button" className={styles.rotateRow} onClick={() => setConfirming(true)}>
-          <RefreshCw size={18} strokeWidth={2} aria-hidden="true" />
-          {t('settings', 'automationRotate')}
-        </button>
-      ) : (
-        <div className={styles.confirmBox}>
-          <p className={styles.confirmText}>{t('settings', 'automationRotateWarning')}</p>
-          <div className={styles.actions}>
-            <button
-              type="button"
-              className={styles.cancelBtn}
-              onClick={() => setConfirming(false)}
-              disabled={rotating}
-            >
-              {t('addTx', 'cancel')}
-            </button>
-            <button
-              type="button"
-              className={styles.dangerBtn}
-              onClick={() => void handleRotate()}
-              disabled={rotating}
-            >
-              {t('settings', 'automationRotateConfirm')}
-            </button>
-          </div>
+        <div className={styles.howTo}>
+          <p className={styles.howToLine}>{t('settings', 'automationExpenseHowTo')}</p>
+          <p className={styles.howToLine}>{t('settings', 'automationExpenseHowToWidget')}</p>
         </div>
-      )}
-    </SettingsSection>
+      </SettingsSection>
+
+      <SettingsSection
+        label={t('settings', 'automationGeoTitle')}
+        description={t('settings', 'automationGeoDescription')}
+      >
+        {!hasDefaultTemplate ? (
+          <p className={styles.warning}>{t('settings', 'automationNoTemplate')}</p>
+        ) : null}
+
+        <LinkRow label={t('settings', 'automationStartUrl')} url={automation.startUrl} onCopy={copy} />
+        <LinkRow label={t('settings', 'automationEndUrl')} url={automation.endUrl} onCopy={copy} />
+
+        <div className={styles.howTo}>
+          <p className={styles.howToLine}>{t('settings', 'automationHowToIos')}</p>
+          <p className={styles.howToLine}>{t('settings', 'automationHowToAndroid')}</p>
+        </div>
+
+        {!confirming ? (
+          <button type="button" className={styles.rotateRow} onClick={() => setConfirming(true)}>
+            <RefreshCw size={18} strokeWidth={2} aria-hidden="true" />
+            {t('settings', 'automationRotate')}
+          </button>
+        ) : (
+          <div className={styles.confirmBox}>
+            <p className={styles.confirmText}>{t('settings', 'automationRotateWarning')}</p>
+            <div className={styles.actions}>
+              <button
+                type="button"
+                className={styles.cancelBtn}
+                onClick={() => setConfirming(false)}
+                disabled={rotating}
+              >
+                {t('addTx', 'cancel')}
+              </button>
+              <button
+                type="button"
+                className={styles.dangerBtn}
+                onClick={() => void handleRotate()}
+                disabled={rotating}
+              >
+                {t('settings', 'automationRotateConfirm')}
+              </button>
+            </div>
+          </div>
+        )}
+      </SettingsSection>
+    </>
   );
 };
 

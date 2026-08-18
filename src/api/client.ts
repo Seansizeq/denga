@@ -40,6 +40,10 @@ export type PlannerAutomation = {
   token: string;
   startUrl: string;
   endUrl: string;
+  /** Категорії та рахунки для списків вибору в ярлику на телефоні. */
+  optionsUrl: string;
+  /** Збереження однієї витрати з ярлика. */
+  transactionUrl: string;
 };
 
 export type ReminderKind =

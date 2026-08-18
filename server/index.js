@@ -1699,7 +1699,12 @@ const resolveAutomationUserId = async (dbConn, req) => {
   return row?.user_id ? String(row.user_id) : null;
 };
 
-const buildAutomationShiftUrls = (req, token) => {
+/**
+ * Every automation link the settings screen offers, token included, so the one
+ * copied string is all a phone shortcut needs — no separate auth header to set
+ * up in a mobile UI that makes headers awkward to enter.
+ */
+const buildAutomationUrls = (req, token) => {
   const proto = String(req.get('x-forwarded-proto') ?? req.protocol ?? 'https').split(',')[0].trim();
   const host = String(req.get('x-forwarded-host') ?? req.get('host') ?? '').split(',')[0].trim();
   const base = host ? `${proto}://${host}` : '';
@@ -1707,6 +1712,8 @@ const buildAutomationShiftUrls = (req, token) => {
   return {
     startUrl: `${base}/api/automation/shift/start?${q}`,
     endUrl: `${base}/api/automation/shift/end?${q}`,
+    optionsUrl: `${base}/api/automation/options?${q}`,
+    transactionUrl: `${base}/api/automation/transaction?${q}`,
   };
 };
 
@@ -5562,7 +5569,7 @@ app.get('/api/planner/automation', async (req, res) => {
   const token = String(row?.automation_token ?? '');
   res.json({
     token,
-    ...buildAutomationShiftUrls(req, token),
+    ...buildAutomationUrls(req, token),
   });
 });
 
@@ -5576,7 +5583,7 @@ app.post('/api/planner/automation/rotate-token', async (req, res) => {
   );
   res.json({
     token,
-    ...buildAutomationShiftUrls(req, token),
+    ...buildAutomationUrls(req, token),
   });
 });
 
