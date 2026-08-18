@@ -102,6 +102,33 @@ describe('validateAutomationTransaction', () => {
     expect(validateAutomationTransaction(valid({ account: 'someone_else' }), ctx)).toMatchObject({ code: 'INVALID_ACCOUNT' });
   });
 
+  it('accepts the picker label, so a shortcut can pass the chosen row straight through', () => {
+    expect(
+      validateAutomationTransaction({ amount: 55, categoryId: '🍕 Продукти', account: '💵 Готівка' }, ctx)
+    ).toMatchObject({ ok: true, categoryId: 'food', account: 'wallet', currency: 'UAH' });
+  });
+
+  it('resolves a custom category and a crypto account by label too', () => {
+    expect(
+      validateAutomationTransaction({ amount: 1, categoryId: '🏷 Кава', account: '🪙 USDT' }, ctx)
+    ).toMatchObject({ ok: true, categoryId: 'custom:x', account: 'usdt', currency: 'USDT' });
+  });
+
+  it('still refuses a label that belongs to no row', () => {
+    expect(validateAutomationTransaction(valid({ categoryId: '🍕 Чужа' }), ctx)).toMatchObject({
+      code: 'INVALID_CATEGORY',
+    });
+    expect(validateAutomationTransaction(valid({ account: '💳 Чужий' }), ctx)).toMatchObject({
+      code: 'INVALID_ACCOUNT',
+    });
+  });
+
+  it('does not let an account label pass as a category', () => {
+    expect(validateAutomationTransaction(valid({ categoryId: '💵 Готівка' }), ctx)).toMatchObject({
+      code: 'INVALID_CATEGORY',
+    });
+  });
+
   it('takes the currency from the account when none is given', () => {
     expect(validateAutomationTransaction(valid({ account: 'santander' }), ctx)).toMatchObject({ currency: 'PLN' });
     expect(validateAutomationTransaction(valid({ account: 'usdt' }), ctx)).toMatchObject({ currency: 'USDT' });

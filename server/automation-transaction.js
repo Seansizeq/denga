@@ -78,6 +78,30 @@ export const buildOptionsPayload = ({ categories = [], accounts = [], type = 'ex
 };
 
 /**
+ * Both the stable id and the picker's own label are accepted.
+ *
+ * Shortcuts hands the chosen row back as text, so insisting on the id forces
+ * the shortcut to translate the label back through a second dictionary lookup —
+ * two more actions per picker, each with an "in" field that is easy to point at
+ * the wrong action, since every lookup in the list is named identically. The
+ * label round-trips through the same map that produced it, so accepting it
+ * costs nothing here and removes the step people get wrong.
+ */
+const findByIdOrLabel = (raw, items, labels, matches) => {
+  const value = String(raw ?? '').trim();
+  if (!value) return null;
+  const direct = items.find((item) => matches(item, value));
+  if (direct) return direct;
+  const id = labels[value];
+  return id ? items.find((item) => matches(item, id)) ?? null : null;
+};
+
+const matchesCategory = (category, value) => String(category?.id ?? '') === value;
+
+const matchesAccount = (account, value) =>
+  String(account?.accountKey ?? '').trim().toLowerCase() === value.toLowerCase();
+
+/**
  * Validates one quick-add transaction against the user's own categories and
  * accounts. Both lists are the caller's, so an id that belongs to somebody else
  * fails here rather than reaching the database.
@@ -88,16 +112,17 @@ export const validateAutomationTransaction = (body, { categories = [], accounts 
     return { ok: false, status: 400, code: 'INVALID_AMOUNT', error: 'сума має бути більшою за 0' };
   }
 
-  const categoryId = String(body?.categoryId ?? '').trim();
-  const category = categories.find((c) => String(c?.id ?? '') === categoryId);
+  const options = buildOptionsPayload({ categories, accounts, type: 'all' });
+
+  const category = findByIdOrLabel(body?.categoryId, categories, options.categories, matchesCategory);
   if (!category) {
     return { ok: false, status: 400, code: 'INVALID_CATEGORY', error: 'невідома категорія' };
   }
 
-  const rawAccount = String(body?.account ?? body?.accountKey ?? '').trim().toLowerCase();
+  const rawAccount = String(body?.account ?? body?.accountKey ?? '').trim();
   let account = null;
   if (rawAccount) {
-    account = accounts.find((a) => String(a?.accountKey ?? '').trim().toLowerCase() === rawAccount) ?? null;
+    account = findByIdOrLabel(rawAccount, accounts, options.accounts, matchesAccount);
     if (!account) {
       return { ok: false, status: 400, code: 'INVALID_ACCOUNT', error: 'невідомий рахунок' };
     }
