@@ -1,7 +1,8 @@
 .container {
   padding: 16px 20px calc(var(--bottom-nav-height) + 24px);
   min-height: 100vh;
-  background-color: var(--bg-primary);
+  /* Фон навмисно не задано: крізь прозору сторінку видно спільний градієнт
+     (`body::before`), інакше атмосфера обривається саме на цьому екрані. */
   color: var(--text-primary);
   position: relative;
 }
