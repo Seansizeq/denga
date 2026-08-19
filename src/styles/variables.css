@@ -77,6 +77,14 @@ body {
   padding: 0;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /**
+   * Табличні цифри. У пропорційному накресленні «1» вужча за «8», тож сума
+   * смикається по ширині щоразу, коли змінюється, а колонки сум у списках не
+   * збігаються по розрядах. Для трекера грошей цифри — головний вміст, тому
+   * правило глобальне, а не по класах: інакше кожна нова сума знову його
+   * загубить.
+   */
+  font-variant-numeric: tabular-nums;
   user-select: none;
   overflow-x: hidden;
   /* Сам фон — прозорий; градієнт малює закріплений шар нижче. */
@@ -119,6 +127,15 @@ select,
 option,
 [contenteditable='true'] {
   user-select: text;
+}
+
+button,
+input,
+textarea,
+select {
+  /* Елементи форм не успадковують налаштування цифр: UA-стилі скидають їх
+     разом зі шрифтом. Без цього рядка сума в полі вводу знову «пливе». */
+  font-variant-numeric: tabular-nums;
 }
 
 ::-webkit-scrollbar {
