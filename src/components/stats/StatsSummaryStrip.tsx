@@ -1,4 +1,5 @@
 import React from 'react';
+import { ImageDown } from 'lucide-react';
 import { useTranslation } from '../../i18n/LanguageContext';
 import { formatCurrency } from '../../utils/formatters';
 import styles from '../../pages/Stats.module.css';
@@ -7,9 +8,11 @@ interface StatsSummaryStripProps {
   income: number;
   expense: number;
   net: number;
+  /** Якщо передано — у кутку картки результату з'явиться іконка збереження. */
+  onSaveImage?: () => void;
 }
 
-const StatsSummaryStrip: React.FC<StatsSummaryStripProps> = ({ income, expense, net }) => {
+const StatsSummaryStrip: React.FC<StatsSummaryStripProps> = ({ income, expense, net, onSaveImage }) => {
   const { t, locale, displayCurrency, moneyHidden } = useTranslation();
 
 
@@ -38,6 +41,17 @@ const StatsSummaryStrip: React.FC<StatsSummaryStripProps> = ({ income, expense, 
             {formatCurrency(net, locale, displayCurrency)}
           </span>
         </div>
+        {onSaveImage ? (
+          <button
+            type="button"
+            className={styles.netImageBtn}
+            onClick={onSaveImage}
+            aria-label={t('stats', 'resultImage')}
+            title={t('stats', 'resultImage')}
+          >
+            <ImageDown size={17} strokeWidth={2.2} aria-hidden="true" />
+          </button>
+        ) : null}
       </div>
     </>
   );

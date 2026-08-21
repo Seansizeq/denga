@@ -170,26 +170,35 @@
   color: var(--accent-red);
 }
 
-.resultImageBtn {
-  width: 100%;
-  min-height: 46px;
-  margin: -8px 0 22px;
-  border: 1px solid rgba(124, 92, 255, 0.32);
-  border-radius: 14px;
-  background: rgba(124, 92, 255, 0.1);
-  color: var(--text-primary);
+/* Збереження картинкою — дія другого плану, тож вона живе іконкою в кутку
+   картки результату, а не смугою на всю ширину під нею. */
+.netImageBtn {
+  position: relative;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 10px;
+  background: rgba(124, 92, 255, 0.12);
+  color: var(--accent-primary-strong);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 9px;
-  font-size: 14px;
-  font-weight: 700;
   cursor: pointer;
+  transition: background-color 0.15s ease, transform 0.12s ease;
 }
 
-.resultImageBtn:active {
-  background: rgba(124, 92, 255, 0.18);
-  transform: scale(0.99);
+/* Дотик ловиться на повних 44px, хоч сама плашка лишається дрібною:
+   псевдоелемент розширює зону, не чіпаючи розкладку картки. */
+.netImageBtn::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+}
+
+.netImageBtn:active {
+  background: rgba(124, 92, 255, 0.22);
+  transform: scale(0.92);
 }
 
 /* Sections */

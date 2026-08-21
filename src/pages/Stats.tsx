@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ImageDown, PieChart } from 'lucide-react';
+import { PieChart } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useTransactions } from '../context/TransactionContext';
 import { useTranslation } from '../i18n/LanguageContext';
@@ -98,12 +98,8 @@ const Stats: React.FC = () => {
         income={aggregates.income}
         expense={aggregates.expense}
         net={aggregates.net}
+        onSaveImage={() => setResultCardOpen(true)}
       />
-
-      <button type="button" className={styles.resultImageBtn} onClick={() => setResultCardOpen(true)}>
-        <ImageDown size={19} aria-hidden="true" />
-        {t('stats', 'resultImage')}
-      </button>
 
       <section className={styles.section}>
         <div className={styles.sectionHeaderWithToggle}>
