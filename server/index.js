@@ -34,6 +34,10 @@ import {
   syncGoalAccount,
 } from './goal-account.js';
 import { legacyDebtPhraseForDirection } from './debt-direction.js';
+import {
+  DEFAULT_INIT_DATA_MAX_AGE_SEC,
+  verifyTelegramInitData,
+} from './telegram-auth.js';
 import { selectMonthStartAndLatestPrices } from './crypto-history.js';
 import { getPreviousFullWeekDaySet } from './report-periods.js';
 import { deliverReportToTelegram } from './report-delivery.js';
@@ -66,36 +70,56 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 3001;
 const botToken = process.env.TELEGRAM_BOT_TOKEN;
+
+/**
+ * Середовище вважається бойовим, доки явно не сказано протилежне.
+ *
+ * Перевірка навмисно не `NODE_ENV !== 'production'`: на сервері ця змінна не
+ * виставляється взагалі — pm2 запускає `npm run start` як є. Звична форма
+ * мовчки дозволяла б обхід авторизації саме там, де він найнебезпечніший.
+ * Забути щось виставити має вести до суворішої поведінки, а не до м'якшої.
+ */
+const IS_PRODUCTION = process.env.NODE_ENV !== 'development';
+
+/**
+ * Обхід авторизації існує лише для локальної розробки без Telegram. У бойовому
+ * середовищі прапорець ігнорується: одна зайва змінна оточення інакше
+ * перетворює кожен запит на «dev-user» без жодної перевірки.
+ *
+ * Саме ігнорується, а не валить процес: вимкнений обхід уже безпечний, а
+ * зупинка зробила б із друкарської помилки в .env падіння продакшену.
+ */
+const DEV_AUTH_BYPASS = process.env.ALLOW_DEV_AUTH_BYPASS === '1' && !IS_PRODUCTION;
+if (process.env.ALLOW_DEV_AUTH_BYPASS === '1' && IS_PRODUCTION) {
+  console.error(
+    '[auth] ALLOW_DEV_AUTH_BYPASS=1 проігноровано: обхід дозволений лише за NODE_ENV=development.'
+  );
+}
+
+/**
+ * Без токена підпис initData перевіряти нічим, а «пропустити» в такому стані
+ * означає віддати чужі гроші тому, хто попросить. Мовчазна робота небезпечніша
+ * за недоступний сервіс, тож процес не піднімається взагалі. Перевірка стоїть
+ * до створення бота, щоб не встигло початися опитування Telegram.
+ */
+if (!botToken && !DEV_AUTH_BYPASS) {
+  console.error(
+    '[auth] TELEGRAM_BOT_TOKEN не задано — підпис initData перевіряти нічим. Старт скасовано.'
+  );
+  process.exit(1);
+}
+
 const bot = botToken ? new TelegramBot(botToken, { polling: true }) : null;
-const DEV_AUTH_BYPASS = process.env.ALLOW_DEV_AUTH_BYPASS === '1';
 const AUTH_HEADER_NAME = 'x-telegram-init-data';
 
-const parseTelegramInitData = (initDataRaw) => {
-  if (typeof initDataRaw !== 'string' || !initDataRaw.trim()) return null;
-  const initData = initDataRaw.trim();
-  const params = new URLSearchParams(initData);
-  const hash = params.get('hash');
-  if (!hash) return null;
-  const dataCheckString = [...params.entries()]
-    .filter(([k]) => k !== 'hash')
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([k, v]) => `${k}=${v}`)
-    .join('\n');
-  const secret = crypto.createHmac('sha256', 'WebAppData').update(botToken ?? '').digest();
-  const computedHash = crypto.createHmac('sha256', secret).update(dataCheckString).digest('hex');
-  if (computedHash !== hash) return null;
-  const userRaw = params.get('user');
-  if (!userRaw) return null;
-  let user;
-  try {
-    user = JSON.parse(userRaw);
-  } catch {
-    return null;
-  }
-  const userId = user && user.id ? String(user.id).trim() : '';
-  if (!userId) return null;
-  return { userId };
-};
+/**
+ * Скільки живе initData. Telegram видає рядок один раз на запуск міні-застосунку
+ * і більше не оновлює його, тож надто короткий строк рвав би довгі сесії. Без
+ * строку ж перехоплений рядок лишається ключем від акаунта назавжди — відкликати
+ * його нічим, він не змінюється й не має лічильника.
+ */
+const INIT_DATA_MAX_AGE_SEC =
+  Number(process.env.TELEGRAM_INIT_DATA_MAX_AGE_SEC) || DEFAULT_INIT_DATA_MAX_AGE_SEC;
 
 const authMiddleware = (req, res, next) => {
   if (DEV_AUTH_BYPASS) {
@@ -103,10 +127,14 @@ const authMiddleware = (req, res, next) => {
     next();
     return;
   }
-  const initData = req.get(AUTH_HEADER_NAME);
-  const parsed = parseTelegramInitData(initData);
-  if (!parsed) {
-    res.status(401).json({ error: 'Unauthorized', code: 'AUTH_INVALID_TELEGRAM_INIT_DATA' });
+  const parsed = verifyTelegramInitData(req.get(AUTH_HEADER_NAME), {
+    botToken,
+    maxAgeSec: INIT_DATA_MAX_AGE_SEC,
+  });
+  if (!parsed.ok) {
+    // Протухлий рядок відрізняється від підробленого: перший лікується
+    // перевідкриттям міні-застосунку, і клієнт має шанс це підказати.
+    res.status(401).json({ error: 'Unauthorized', code: parsed.code });
     return;
   }
   req.authUserId = parsed.userId;
