@@ -397,29 +397,6 @@
   margin-bottom: 22px;
 }
 
-.goalResultImageBtn {
-  width: 100%;
-  min-height: 46px;
-  margin: 0 0 16px;
-  border: 1px solid rgba(124, 92, 255, 0.32);
-  border-radius: 14px;
-  background: rgba(124, 92, 255, 0.1);
-  color: var(--text-primary);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 9px;
-  font-family: inherit;
-  font-size: 14px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.goalResultImageBtn:active {
-  background: rgba(124, 92, 255, 0.18);
-  transform: scale(0.99);
-}
-
 .actionBtn {
   min-height: 50px;
   display: inline-flex;

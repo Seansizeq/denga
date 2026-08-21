@@ -391,6 +391,17 @@ const GoalDetail: React.FC = () => {
               у мінусі читався як зароблена сума. */}
           <span className={hero.amountCurrent}>{formatSignedCurrency(goal.saved, locale, cur)}</span>
           <span className={hero.amountTarget}>/ {formatCurrency(goal.targetAmount, locale, cur)}</span>
+          {isIncome ? null : (
+            <button
+              type="button"
+              className={hero.heroImageBtn}
+              onClick={() => setResultScope('total')}
+              aria-label={t('goals', 'goalResultImage')}
+              title={t('goals', 'goalResultImage')}
+            >
+              <ImageDown size={17} strokeWidth={2.2} aria-hidden="true" />
+            </button>
+          )}
         </div>
         <div
           className={hero.progressTrack}
@@ -535,13 +546,6 @@ const GoalDetail: React.FC = () => {
           </span>
         </div>
       </div>
-
-      {isIncome ? null : (
-        <button type="button" className={styles.goalResultImageBtn} onClick={() => setResultScope('total')}>
-          <ImageDown size={18} aria-hidden="true" />
-          {t('goals', 'goalResultImage')}
-        </button>
-      )}
 
       {sources.length > 0
         ? (() => {

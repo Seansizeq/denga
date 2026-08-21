@@ -90,6 +90,40 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Збереження картинкою — дія другого плану, тож вона стоїть іконкою в кінці
+   рядка з сумою, а не смугою на всю ширину під шапкою. Те саме рішення, що і в
+   картці результату на статистиці. */
+.heroImageBtn {
+  position: relative;
+  flex-shrink: 0;
+  margin-left: auto;
+  align-self: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.09);
+  color: var(--accent-primary-strong);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.15s ease, transform 0.12s ease;
+}
+
+/* Дотик ловиться на повних 44px, хоч плашка лишається дрібною: псевдоелемент
+   розширює зону, не чіпаючи розкладку шапки. */
+.heroImageBtn::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+}
+
+.heroImageBtn:active {
+  background: rgba(255, 255, 255, 0.16);
+  transform: scale(0.92);
+}
+
 .progressTrack {
   height: 10px;
   border-radius: 999px;
