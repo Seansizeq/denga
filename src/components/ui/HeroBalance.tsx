@@ -56,6 +56,8 @@ const HeroBalance: React.FC<HeroBalanceProps> = ({
     toggleMoneyHidden();
   }, onOpenDetails);
 
+  const amountText = `${sign}${formatCurrency(Math.abs(net), lc, mainFormat)}`;
+
   const otherFormat: DisplayCurrency = wealthOther?.currency === 'PLN' ? 'PLN' : 'UAH';
 
   const formatWealthMonthPct = (pct: number) => {
@@ -77,9 +79,12 @@ const HeroBalance: React.FC<HeroBalanceProps> = ({
           aria-label={t('settings', moneyHidden ? 'showMoney' : 'hideMoney')}
           {...longPress}
         >
-          <h1 className={styles.amount}>
-            {sign}
-            {formatCurrency(Math.abs(net), lc, mainFormat)}
+          <h1
+            className={styles.amount}
+            /* Довжина рядка керує кеглем — див. `.amount` у стилях. */
+            style={{ ['--amount-len' as string]: amountText.length }}
+          >
+            {amountText}
             {moneyHidden ? (
               <EyeOff className={styles.hiddenMark} size={20} strokeWidth={2} aria-hidden="true" />
             ) : null}

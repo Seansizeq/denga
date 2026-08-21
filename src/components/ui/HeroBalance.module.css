@@ -36,7 +36,11 @@
 
 .amount {
   margin: 0;
-  font-size: 56px;
+  /* Символ валюти більше не переїжджає на другий рядок: перенесення
+     заборонене, а кегль підбирається під довжину суми — вузький екран і
+     шестизначний баланс інакше не вміщалися разом. */
+  white-space: nowrap;
+  font-size: min(56px, calc((100vw - 80px) / var(--amount-len, 10) * 1.7));
   line-height: 1;
   font-weight: 700;
   letter-spacing: -1px;
