@@ -46,6 +46,11 @@ import { deliverReportToTelegram } from './report-delivery.js';
 import { renderFinancialReportCardPng } from './report-card.js';
 import { parseSmartTransaction, isSmartTransactionEnabled } from './smart-transaction.js';
 import {
+  buildSmartConfirmationMessage,
+  buildSmartSavedMessage,
+  buildSmartTransactionKeyboard,
+} from './smart-transaction-message.js';
+import {
   DENOMINATIONS,
   convertDenomination,
   isCryptoDenomination,
@@ -2068,8 +2073,8 @@ async function getSmartCategoriesForUser(userId, { includeOther = false } = {}) 
   return categories;
 }
 
-// Attempt AI parsing of a free-text message and, on success, send a
-// confirmation with Save / Cancel buttons. Returns true if a transaction was
+// Attempt AI parsing of a free-text message and, on success, send a compact
+// confirmation card. Returns true if a transaction was
 // recognized (and a confirmation shown), false to let the caller fall through.
 async function trySmartTransaction(msg, text) {
   const userId = String(msg.from.id);
@@ -2083,52 +2088,57 @@ async function trySmartTransaction(msg, text) {
   } catch {
     accounts = [];
   }
-  const [categories, reportSettings] = await Promise.all([
+  const [categories, reportSettings, userTimeZone] = await Promise.all([
     getSmartCategoriesForUser(userId, { includeOther: true }),
     getReportSettings(db, userId),
+    getUserTimeZone(db, userId),
   ]);
+  const today = formatDatePartsForZone(new Date().toISOString(), userTimeZone)?.day
+    ?? new Date().toISOString().slice(0, 10);
   const parsed = await parseSmartTransaction({
     text,
     categories,
     accounts: Array.isArray(accounts) ? accounts : [],
     defaultCurrency: reportSettings.reportCurrency,
+    today,
   });
   if (!parsed || !parsed.isTransaction) return false;
 
-  pendingSmartTransactions.set(chatId, {
+  const pending = {
     userId,
     amount: parsed.amount,
     currency: parsed.currency,
     date: parsed.date,
     categoryId: parsed.categoryId,
+    categoryName: parsed.categoryName,
     type: parsed.type,
     accountKey: parsed.accountKey,
+    accountName: parsed.accountName,
     note: parsed.note,
     createdAt: Date.now(),
+    today,
+  };
+  const sent = await bot.sendMessage(chatId, buildSmartConfirmationMessage(pending, { today }), {
+    reply_markup: buildSmartTransactionKeyboard(),
   });
-
-  const sign = parsed.type === 'income' ? '➕ Дохід' : '➖ Витрата';
-  const lines = [
-    '🤖 Розпізнав транзакцію:',
-    '',
-    `${sign}: ${parsed.amount} ${parsed.currency}`,
-    `🏷 ${parsed.categoryName}`,
-  ];
-  if (parsed.accountName) lines.push(`💳 ${parsed.accountName}`);
-  if (parsed.date) lines.push(`📅 ${parsed.date}`);
-  if (parsed.note) lines.push(`📝 ${parsed.note}`);
-  lines.push('', 'Зберегти?');
-
-  await bot.sendMessage(chatId, lines.join('\n'), {
-    reply_markup: {
-      inline_keyboard: [[
-        { text: '✅ Зберегти', callback_data: 'smart_save' },
-        { text: '❌ Скасувати', callback_data: 'smart_cancel' },
-      ]],
-    },
-  });
+  pendingSmartTransactions.set(chatId, { ...pending, messageId: sent.message_id });
   return true;
 }
+
+const replaceSmartTransactionMessage = async (chatId, messageId, text) => {
+  if (!Number.isFinite(Number(messageId))) return;
+  try {
+    await bot.editMessageText(text, {
+      chat_id: chatId,
+      message_id: Number(messageId),
+      reply_markup: { inline_keyboard: [] },
+    });
+  } catch (err) {
+    // Saving has already succeeded at this point; a deleted/old Telegram
+    // message must not turn a committed transaction into an apparent failure.
+    console.warn('[smart-transaction] could not replace confirmation message:', err?.message || err);
+  }
+};
 const CUSTOM_CATEGORY_PREFIX = 'custom:';
 const CUSTOM_CATEGORY_SEPARATOR = '|';
 
@@ -2615,21 +2625,45 @@ if (bot) {
       return;
     }
 
-    if (callbackQuery.data === 'smart_save' || callbackQuery.data === 'smart_cancel') {
+    if (
+      callbackQuery.data === 'smart_save'
+      || callbackQuery.data === 'smart_edit'
+      || callbackQuery.data === 'smart_cancel'
+    ) {
       const pendingSmart = pendingSmartTransactions.get(chatId);
+      const callbackMessageId = Number(callbackQuery.message?.message_id);
+      const matchesPendingMessage =
+        pendingSmart
+        && pendingSmart.userId === cbUserId
+        && Number(pendingSmart.messageId) === callbackMessageId;
       if (
-        !pendingSmart ||
-        pendingSmart.userId !== cbUserId ||
+        !matchesPendingMessage ||
         Date.now() - Number(pendingSmart.createdAt ?? 0) > 10 * 60 * 1000
       ) {
-        pendingSmartTransactions.delete(chatId);
+        // Clicking an older card must not invalidate a newer pending one in
+        // the same chat. Delete only the card this callback actually belongs to.
+        if (matchesPendingMessage) pendingSmartTransactions.delete(chatId);
         await bot.answerCallbackQuery(callbackQuery.id, { text: 'Запит застарів. Надішліть ще раз.' });
+        await replaceSmartTransactionMessage(
+          chatId,
+          callbackMessageId,
+          '⌛ Підтвердження застаріло. Надішліть транзакцію ще раз.',
+        );
         return;
       }
       pendingSmartTransactions.delete(chatId);
       if (callbackQuery.data === 'smart_cancel') {
         await bot.answerCallbackQuery(callbackQuery.id, { text: 'Скасовано' });
-        await bot.sendMessage(chatId, '❌ Транзакцію скасовано.');
+        await replaceSmartTransactionMessage(chatId, callbackMessageId, 'Транзакцію скасовано');
+        return;
+      }
+      if (callbackQuery.data === 'smart_edit') {
+        await bot.answerCallbackQuery(callbackQuery.id, { text: 'Надішліть виправлений текст' });
+        await replaceSmartTransactionMessage(
+          chatId,
+          callbackMessageId,
+          '✏️ Надішліть виправлену транзакцію одним повідомленням.',
+        );
         return;
       }
       const accountKey = pendingSmart.accountKey
@@ -2655,12 +2689,20 @@ if (bot) {
       ]);
       if (mismatches.length > 0) {
         await bot.answerCallbackQuery(callbackQuery.id, { text: 'Валюта не збігається з рахунком' });
-        await bot.sendMessage(chatId, '⚠️ Не збережено: валюта операції не сумісна з вибраним рахунком.');
+        await replaceSmartTransactionMessage(
+          chatId,
+          callbackMessageId,
+          '⚠️ Не збережено: валюта операції не сумісна з вибраним рахунком.',
+        );
         return;
       }
       if (overdrafts.length > 0) {
         await bot.answerCallbackQuery(callbackQuery.id, { text: 'Недостатньо коштів' });
-        await bot.sendMessage(chatId, '⚠️ Не збережено: операція перевищує доступний залишок боргового рахунку.');
+        await replaceSmartTransactionMessage(
+          chatId,
+          callbackMessageId,
+          '⚠️ Не збережено: операція перевищує доступний залишок боргового рахунку.',
+        );
         return;
       }
 
@@ -2680,16 +2722,21 @@ if (bot) {
         }
         console.error('[smart-transaction] could not save confirmed transaction:', err);
         await bot.answerCallbackQuery(callbackQuery.id, { text: 'Не вдалося зберегти' });
-        await bot.sendMessage(chatId, '⚠️ Транзакцію не збережено. Спробуйте ще раз.');
+        await replaceSmartTransactionMessage(
+          chatId,
+          callbackMessageId,
+          '⚠️ Транзакцію не збережено. Спробуйте ще раз.',
+        );
         return;
       }
       if (transaction.type === 'expense') {
         await checkBudgetThresholdsAfterExpense(transaction.user_id, transaction.categoryId);
       }
       await bot.answerCallbackQuery(callbackQuery.id, { text: 'Збережено ✅' });
-      await bot.sendMessage(
+      await replaceSmartTransactionMessage(
         chatId,
-        `✅ Збережено: ${transaction.amount} ${transaction.currency} (${pendingSmart.note}).`
+        callbackMessageId,
+        buildSmartSavedMessage(pendingSmart),
       );
       return;
     }
