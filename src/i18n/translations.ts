@@ -23,6 +23,13 @@ type Dict = {
     addTransaction: string;
     searchPlaceholder: string;
     noResults: string;
+    aiTitle: string;
+    aiPlaceholder: string;
+    aiHint: string;
+    aiSubmit: string;
+    aiLoading: string;
+    aiNotRecognized: string;
+    aiUnavailable: string;
   };
   quickActions: {
     add: string;
@@ -561,6 +568,13 @@ const uk: Dict = {
     addTransaction: 'Додати операцію',
     searchPlaceholder: 'Шукати за категорією чи приміткою',
     noResults: 'Нічого не знайдено',
+    aiTitle: 'Швидке додавання з AI',
+    aiPlaceholder: 'Наприклад: кава 25 зл з Revolut',
+    aiHint: 'AI заповнить форму — ви перевірите її перед збереженням.',
+    aiSubmit: 'Розпізнати',
+    aiLoading: 'Розпізнаю…',
+    aiNotRecognized: 'Не вдалося розпізнати операцію. Додайте суму й опис.',
+    aiUnavailable: 'AI зараз недоступний. Перевірте локальну модель і налаштування сервера.',
   },
   quickActions: {
     add: 'Додати',
@@ -1112,6 +1126,13 @@ const ru: Dict = {
     addTransaction: 'Добавить операцию',
     searchPlaceholder: 'Искать по категории или заметке',
     noResults: 'Ничего не найдено',
+    aiTitle: 'Быстрое добавление с AI',
+    aiPlaceholder: 'Например: кофе 25 зл с Revolut',
+    aiHint: 'AI заполнит форму — вы проверите её перед сохранением.',
+    aiSubmit: 'Распознать',
+    aiLoading: 'Распознаю…',
+    aiNotRecognized: 'Не удалось распознать операцию. Добавьте сумму и описание.',
+    aiUnavailable: 'AI сейчас недоступен. Проверьте локальную модель и настройки сервера.',
   },
   quickActions: {
     add: 'Добавить',
@@ -1663,6 +1684,13 @@ const en: Dict = {
     addTransaction: 'Add transaction',
     searchPlaceholder: 'Search by category or note',
     noResults: 'Nothing found',
+    aiTitle: 'Quick add with AI',
+    aiPlaceholder: 'For example: coffee 25 PLN from Revolut',
+    aiHint: 'AI fills the form; you review it before saving.',
+    aiSubmit: 'Recognize',
+    aiLoading: 'Recognizing…',
+    aiNotRecognized: 'Could not recognize a transaction. Add an amount and description.',
+    aiUnavailable: 'AI is unavailable. Check the local model and server settings.',
   },
   quickActions: {
     add: 'Add',

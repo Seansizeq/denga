@@ -1,0 +1,122 @@
+.card {
+  margin: 2px 0 22px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 8% 0%, rgba(124, 92, 255, 0.18), transparent 44%),
+    rgba(255, 255, 255, 0.035);
+}
+
+.heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  margin-bottom: 14px;
+}
+
+.icon {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  color: #c8baff;
+  background: rgba(124, 92, 255, 0.18);
+  border: 1px solid rgba(174, 151, 255, 0.18);
+}
+
+.title {
+  margin: 1px 0 3px;
+  font-size: 15px;
+  line-height: 1.25;
+  font-weight: 650;
+  color: var(--text-primary);
+}
+
+.hint {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 5px 5px 13px;
+  border-radius: 16px;
+  background: rgba(7, 7, 9, 0.48);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: border-color var(--motion-fast) var(--ease-out);
+}
+
+.form:focus-within {
+  border-color: rgba(174, 151, 255, 0.5);
+}
+
+.input {
+  min-width: 0;
+  flex: 1;
+  padding: 8px 0;
+  border: 0;
+  outline: 0;
+  color: var(--text-primary);
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+}
+
+.input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.submit {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 13px;
+  color: #111014;
+  background: #c8baff;
+  cursor: pointer;
+  transition:
+    transform var(--motion-fast) var(--ease-spring),
+    opacity var(--motion-fast) var(--ease-out);
+}
+
+.submit:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.submit:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+.spinner {
+  animation: spin 0.85s linear infinite;
+}
+
+.error {
+  margin: 10px 2px 0;
+  color: #ff8d8d;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
+}

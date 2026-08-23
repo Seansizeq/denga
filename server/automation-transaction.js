@@ -186,6 +186,10 @@ export const validateAutomationTransaction = (body, { categories = [], accounts 
     : normalizeDenomination(account?.primaryCurrency);
 
   const note = String(body?.note ?? '').trim().slice(0, AUTOMATION_NOTE_MAX);
+  const rawDate = String(body?.date ?? '').trim();
+  if (rawDate && (!/^\d{4}-\d{2}-\d{2}$/.test(rawDate) || Number.isNaN(Date.parse(`${rawDate}T00:00:00Z`)))) {
+    return { ok: false, status: 400, code: 'INVALID_DATE', error: 'дата має бути у форматі YYYY-MM-DD' };
+  }
   // The category's own type is authoritative: a picker cannot make "Зарплата"
   // an expense.
   const type = category.type === 'income' ? 'income' : 'expense';
@@ -197,6 +201,7 @@ export const validateAutomationTransaction = (body, { categories = [], accounts 
     categoryId: String(category.id),
     categoryName: String(category.name ?? category.id),
     type,
+    date: rawDate || new Date().toISOString().slice(0, 10),
     account: account ? String(account.accountKey) : null,
     accountName: account ? String(account.name ?? account.accountKey) : null,
     note: note || String(category.name ?? category.id),

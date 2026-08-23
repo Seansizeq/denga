@@ -8,6 +8,7 @@ import { usePortfolio } from '../context/PortfolioContext';
 import Header from '../components/ui/Header';
 import HeroBalance from '../components/ui/HeroBalance';
 import QuickActions from '../components/ui/QuickActions';
+import AiQuickAdd from '../components/AiQuickAdd';
 import RecentTransactions from '../components/ui/RecentTransactions';
 import type { RangeFilter } from '../components/ui/RecentTransactions';
 import { isWithinLastDays } from '../utils/dateRanges';
@@ -206,6 +207,8 @@ const Dashboard: React.FC = () => {
           wealthMonthChangePct={wealthMode ? wealthMonthChangePct : null}
           showTapHint={false}
         />
+
+        <AiQuickAdd />
 
         <QuickActions />
 

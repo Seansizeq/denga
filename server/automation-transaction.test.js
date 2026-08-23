@@ -174,6 +174,16 @@ describe('validateAutomationTransaction', () => {
     expect(validateAutomationTransaction(valid({ currency: 'pln' }), ctx)).toMatchObject({ ok: true, currency: 'PLN' });
   });
 
+  it('accepts an ISO operation date and rejects a malformed one', () => {
+    expect(validateAutomationTransaction(valid({ date: '2026-08-22' }), ctx)).toMatchObject({
+      ok: true,
+      date: '2026-08-22',
+    });
+    expect(validateAutomationTransaction(valid({ date: '22.08.2026' }), ctx)).toMatchObject({
+      code: 'INVALID_DATE',
+    });
+  });
+
   it('lets the category decide the type', () => {
     expect(validateAutomationTransaction(valid({ categoryId: 'salary', type: 'expense' }), ctx)).toMatchObject({
       type: 'income',

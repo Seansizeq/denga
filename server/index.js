@@ -2083,11 +2083,15 @@ async function trySmartTransaction(msg, text) {
   } catch {
     accounts = [];
   }
-  const categories = await getSmartCategoriesForUser(userId);
+  const [categories, reportSettings] = await Promise.all([
+    getSmartCategoriesForUser(userId, { includeOther: true }),
+    getReportSettings(db, userId),
+  ]);
   const parsed = await parseSmartTransaction({
     text,
     categories,
     accounts: Array.isArray(accounts) ? accounts : [],
+    defaultCurrency: reportSettings.reportCurrency,
   });
   if (!parsed || !parsed.isTransaction) return false;
 
@@ -2095,6 +2099,7 @@ async function trySmartTransaction(msg, text) {
     userId,
     amount: parsed.amount,
     currency: parsed.currency,
+    date: parsed.date,
     categoryId: parsed.categoryId,
     type: parsed.type,
     accountKey: parsed.accountKey,
@@ -2110,6 +2115,7 @@ async function trySmartTransaction(msg, text) {
     `🏷 ${parsed.categoryName}`,
   ];
   if (parsed.accountName) lines.push(`💳 ${parsed.accountName}`);
+  if (parsed.date) lines.push(`📅 ${parsed.date}`);
   if (parsed.note) lines.push(`📝 ${parsed.note}`);
   lines.push('', 'Зберегти?');
 
@@ -2638,15 +2644,48 @@ if (bot) {
         currency: normalizeCurrency(pendingSmart.currency) || 'UAH',
         categoryId: pendingSmart.categoryId,
         type: pendingSmart.type,
-        date: new Date().toISOString(),
+        date: /^\d{4}-\d{2}-\d{2}$/.test(String(pendingSmart.date ?? ''))
+          ? `${pendingSmart.date}T12:00:00.000Z`
+          : new Date().toISOString(),
         note,
         telegram_user_id: callbackQuery.from.id,
       };
-      await db.run(
-        'INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, note, telegram_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [transaction.id, transaction.user_id, transaction.amount, transaction.currency, transaction.categoryId, transaction.type, transaction.date, transaction.note, transaction.telegram_user_id]
-      );
-      await applyTransactionEffects(db, transaction.user_id, transaction);
+      const { mismatches, overdrafts } = await checkTransactionPreconditions(db, transaction.user_id, [
+        { tx: transaction, multiplier: 1 },
+      ]);
+      if (mismatches.length > 0) {
+        await bot.answerCallbackQuery(callbackQuery.id, { text: 'Валюта не збігається з рахунком' });
+        await bot.sendMessage(chatId, '⚠️ Не збережено: валюта операції не сумісна з вибраним рахунком.');
+        return;
+      }
+      if (overdrafts.length > 0) {
+        await bot.answerCallbackQuery(callbackQuery.id, { text: 'Недостатньо коштів' });
+        await bot.sendMessage(chatId, '⚠️ Не збережено: операція перевищує доступний залишок боргового рахунку.');
+        return;
+      }
+
+      await db.run('BEGIN IMMEDIATE');
+      try {
+        await db.run(
+          'INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, note, telegram_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [transaction.id, transaction.user_id, transaction.amount, transaction.currency, transaction.categoryId, transaction.type, transaction.date, transaction.note, transaction.telegram_user_id]
+        );
+        await applyTransactionEffects(db, transaction.user_id, transaction);
+        await db.run('COMMIT');
+      } catch (err) {
+        try {
+          await db.run('ROLLBACK');
+        } catch {
+          // Keep the original failure — it explains what actually broke.
+        }
+        console.error('[smart-transaction] could not save confirmed transaction:', err);
+        await bot.answerCallbackQuery(callbackQuery.id, { text: 'Не вдалося зберегти' });
+        await bot.sendMessage(chatId, '⚠️ Транзакцію не збережено. Спробуйте ще раз.');
+        return;
+      }
+      if (transaction.type === 'expense') {
+        await checkBudgetThresholdsAfterExpense(transaction.user_id, transaction.categoryId);
+      }
       await bot.answerCallbackQuery(callbackQuery.id, { text: 'Збережено ✅' });
       await bot.sendMessage(
         chatId,
@@ -3049,15 +3088,21 @@ app.post('/api/automation/transaction', async (req, res) => {
     res.status(401).json({ error: 'Invalid or missing token', message: '⚠️ Невірний токен' });
     return;
   }
-  const [categories, accounts] = await Promise.all([
+  const [categories, accounts, reportSettings] = await Promise.all([
     getAutomationCategories(userId),
     getAutomationAccounts(userId),
+    getReportSettings(db, userId),
   ]);
 
   let payload = req.body;
   const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
   if (text) {
-    const parsed = await parseSmartTransaction({ text, categories, accounts });
+    const parsed = await parseSmartTransaction({
+      text,
+      categories,
+      accounts,
+      defaultCurrency: reportSettings.reportCurrency,
+    });
     if (!parsed?.isTransaction) {
       res.status(422).json({
         error: 'could not parse the text',
@@ -3072,6 +3117,7 @@ app.post('/api/automation/transaction', async (req, res) => {
       categoryId: parsed.categoryId,
       account: parsed.accountKey ?? undefined,
       note: parsed.note,
+      date: parsed.date,
     };
   }
 
@@ -3094,7 +3140,7 @@ app.post('/api/automation/transaction', async (req, res) => {
     currency: validated.currency,
     categoryId: validated.categoryId,
     type: validated.type,
-    date: new Date().toISOString(),
+    date: `${validated.date}T12:00:00.000Z`,
     note: validated.account ? mergeAccountIntoNote(validated.note, validated.account) : validated.note,
   };
 
@@ -3162,6 +3208,47 @@ app.use(
     max: USER_RATE_LIMIT_PER_MIN,
     keyFn: (req) => (req.authUserId ? `u:${req.authUserId}` : null),
   })
+);
+
+const AI_RATE_LIMIT_PER_MIN = Number(process.env.AI_RATE_LIMIT_PER_MIN) || 20;
+app.post(
+  '/api/ai/parse-transaction',
+  rateLimitMiddleware({
+    windowMs: 60_000,
+    max: AI_RATE_LIMIT_PER_MIN,
+    keyFn: (req) => (req.authUserId ? `ai:${req.authUserId}` : null),
+  }),
+  async (req, res) => {
+    const userId = String(req.authUserId ?? '').trim();
+    const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized', code: 'AUTH_REQUIRED' });
+      return;
+    }
+    if (!text || text.length > 500) {
+      res.status(400).json({ error: 'text must be between 1 and 500 characters', code: 'INVALID_TEXT' });
+      return;
+    }
+    if (!isSmartTransactionEnabled()) {
+      res.status(503).json({ error: 'AI transaction parser is not configured', code: 'AI_NOT_CONFIGURED' });
+      return;
+    }
+
+    const [categories, accounts] = await Promise.all([
+      getSmartCategoriesForUser(userId, { includeOther: true }),
+      getAutomationAccounts(userId),
+    ]);
+    const defaultCurrency = normalizeCurrency(req.body?.defaultCurrency);
+    const parsed = await parseSmartTransaction({ text, categories, accounts, defaultCurrency });
+    if (!parsed?.isTransaction) {
+      res.status(422).json({ error: 'could not parse the transaction', code: 'NOT_RECOGNIZED' });
+      return;
+    }
+
+    // Preview only. The client opens the normal Add transaction form, and the
+    // existing POST /api/transactions validation remains the only write path.
+    res.json({ transaction: parsed });
+  },
 );
 
 app.get('/api/reports/settings', async (req, res) => {
