@@ -13,6 +13,7 @@
 
 import { isGeminiEnabled, parseWithGemini } from './smart-transaction-gemini.js';
 import { isLocalModelEnabled, parseWithLocalModel } from './smart-transaction-local.js';
+import { preferExplicitCategory } from './smart-transaction-shared.js';
 
 const PROVIDERS = {
   gemini: { isEnabled: isGeminiEnabled, parse: parseWithGemini },
@@ -82,5 +83,6 @@ export async function parseSmartTransaction({
   const provider = currentProvider();
   if (!provider || !provider.isEnabled()) return null;
 
-  return provider.parse({ text, categories, accounts, defaultCurrency, today });
+  const parsed = await provider.parse({ text, categories, accounts, defaultCurrency, today });
+  return preferExplicitCategory(parsed, { text, categories });
 }

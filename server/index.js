@@ -2033,6 +2033,7 @@ const CATEGORIES = [
   { id: 'home', name: 'Житло' },
   { id: 'entertainment', name: 'Розваги' },
   { id: 'health', name: 'Здоров\'я' },
+  { id: 'clothing', name: 'Одяг', aliases: ['одяг', 'одежда', 'одежду', 'одежды', 'clothing', 'clothes', 'wear'] },
   { id: 'salary', name: 'Зарплата' },
   { id: 'other_income', name: 'Інший дохід' },
   { id: 'other_expense', name: 'Інше' },
@@ -2052,6 +2053,7 @@ const BOT_SMART_CATEGORY_TYPES = {
   home: 'expense',
   entertainment: 'expense',
   health: 'expense',
+  clothing: 'expense',
   salary: 'income',
   other_income: 'income',
   other_expense: 'expense',
@@ -2069,6 +2071,7 @@ async function getSmartCategoriesForUser(userId, { includeOther = false } = {}) 
     id: c.id,
     name: c.name,
     type: BOT_SMART_CATEGORY_TYPES[c.id] || 'expense',
+    aliases: Array.isArray(c.aliases) ? c.aliases : [],
   }));
   try {
     const custom = await db.all(

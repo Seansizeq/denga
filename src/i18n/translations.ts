@@ -478,6 +478,7 @@ type Dict = {
     home: string;
     entertainment: string;
     health: string;
+    clothing: string;
     salary: string;
     transfer: string;
     other_income: string;
@@ -1025,6 +1026,7 @@ const uk: Dict = {
     home: 'Житло',
     entertainment: 'Розваги',
     health: "Здоров'я",
+    clothing: 'Одяг',
     salary: 'Зарплата',
     transfer: 'Переказ',
     other_income: 'Інший дохід',
@@ -1576,6 +1578,7 @@ const ru: Dict = {
     home: 'Жильё',
     entertainment: 'Развлечения',
     health: 'Здоровье',
+    clothing: 'Одежда',
     salary: 'Зарплата',
     transfer: 'Перевод',
     other_income: 'Другой доход',
@@ -2127,6 +2130,7 @@ const en: Dict = {
     home: 'Housing',
     entertainment: 'Entertainment',
     health: 'Health',
+    clothing: 'Clothing',
     salary: 'Salary',
     transfer: 'Transfer',
     other_income: 'Other income',

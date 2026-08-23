@@ -12,7 +12,12 @@ export const ALLOWED_CURRENCIES = ['UAH', 'PLN', 'USD'];
 
 export const buildSystemPrompt = ({ categories, accounts = [], defaultCurrency = 'UAH', today }) => {
   const categoryLines = categories
-    .map((c) => `- id="${c.id}" | "${c.name}" | ${c.type}`)
+    .map((c) => {
+      const aliases = Array.isArray(c.aliases) && c.aliases.length > 0
+        ? ` | синоніми: ${c.aliases.join(', ')}`
+        : '';
+      return `- id="${c.id}" | "${c.name}" | ${c.type}${aliases}`;
+    })
     .join('\n');
   const accountLines = accounts.length
     ? accounts.map((a) => `- key="${a.accountKey}" | "${a.name}"`).join('\n')
@@ -41,6 +46,47 @@ export const buildSystemPrompt = ({ categories, accounts = [], defaultCurrency =
     '- Для OCR банківського скріншота бери головну суму операції, а не баланс після, власні кошти, курс чи номер картки.',
     '- Якщо скріншот показує суму списання у валюті рахунку та початкову суму в іншій валюті, записуй суму списання у валюті рахунку.',
   ].join('\n');
+};
+
+const normalizeCategoryTerms = (value) => String(value ?? '')
+  .toLocaleLowerCase('uk-UA')
+  .replace(/[^\p{L}\p{N}]+/gu, ' ')
+  .trim();
+
+/**
+ * Models occasionally understand the note but still choose a catch-all
+ * category. When the user explicitly typed an available category name or one
+ * of its aliases, that direct signal is safer than the generic model choice.
+ */
+export const preferExplicitCategory = (result, { text, categories = [] } = {}) => {
+  if (!result?.isTransaction) return result;
+  if (result.categoryId !== 'other_expense' && result.categoryId !== 'other_income') return result;
+
+  const haystack = ` ${normalizeCategoryTerms(text)} `;
+  if (haystack.trim().length === 0) return result;
+  const resultType = result.type === 'income' ? 'income' : 'expense';
+  const matches = [];
+  for (const category of categories) {
+    if (!category?.id || category.id === 'other_expense' || category.id === 'other_income') continue;
+    if (category.type === 'income' || category.type === 'expense') {
+      if (category.type !== resultType) continue;
+    }
+    const terms = [category.name, ...(Array.isArray(category.aliases) ? category.aliases : [])]
+      .map(normalizeCategoryTerms)
+      .filter((term) => term.length >= 3);
+    for (const term of terms) {
+      if (haystack.includes(` ${term} `)) matches.push({ category, term });
+    }
+  }
+  matches.sort((a, b) => b.term.length - a.term.length);
+  const picked = matches[0]?.category;
+  if (!picked) return result;
+  return {
+    ...result,
+    categoryId: picked.id,
+    categoryName: picked.name,
+    type: picked.type === 'income' ? 'income' : picked.type === 'expense' ? 'expense' : result.type,
+  };
 };
 
 /**

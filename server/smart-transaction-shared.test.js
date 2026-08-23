@@ -3,6 +3,7 @@ import {
   buildResponseSchema,
   buildSystemPrompt,
   normalizeResult,
+  preferExplicitCategory,
   toGeminiSchema,
 } from './smart-transaction-shared.js';
 
@@ -123,6 +124,16 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain(today);
   });
 
+  it('includes category aliases when they are available', () => {
+    const prompt = buildSystemPrompt({
+      categories: [{ id: 'clothing', name: 'Одяг', type: 'expense', aliases: ['одежда', 'clothes'] }],
+      accounts: [],
+      defaultCurrency: 'UAH',
+      today,
+    });
+    expect(prompt).toContain('синоніми: одежда, clothes');
+  });
+
   it('says so plainly when there are no accounts', () => {
     const prompt = buildSystemPrompt({ categories, accounts: [], defaultCurrency: 'UAH', today });
     expect(prompt).toContain('(рахунків немає)');
@@ -136,6 +147,33 @@ describe('buildSystemPrompt', () => {
     const prompt = buildSystemPrompt({ categories, accounts, defaultCurrency: 'UAH', today });
     expect(prompt).toContain('а не баланс після');
     expect(prompt).toContain('суму списання у валюті рахунку');
+  });
+});
+
+describe('preferExplicitCategory', () => {
+  const available = [
+    { id: 'clothing', name: 'Одяг', type: 'expense', aliases: ['одежда', 'одежду', 'clothes'] },
+    { id: 'other_expense', name: 'Інше', type: 'expense' },
+  ];
+
+  it('replaces a catch-all with an explicitly named category alias', () => {
+    expect(preferExplicitCategory({
+      isTransaction: true,
+      categoryId: 'other_expense',
+      categoryName: 'Інше',
+      type: 'expense',
+    }, { text: '2070 одежда пумб', categories: available })).toMatchObject({
+      categoryId: 'clothing',
+      categoryName: 'Одяг',
+      type: 'expense',
+    });
+  });
+
+  it('does not override a specific model category or match inside another word', () => {
+    const specific = { isTransaction: true, categoryId: 'food', categoryName: 'Продукти', type: 'expense' };
+    expect(preferExplicitCategory(specific, { text: 'одежда', categories: available })).toBe(specific);
+    const generic = { isTransaction: true, categoryId: 'other_expense', categoryName: 'Інше', type: 'expense' };
+    expect(preferExplicitCategory(generic, { text: 'суперодеждамагазин', categories: available })).toBe(generic);
   });
 });
 
