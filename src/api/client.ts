@@ -24,47 +24,6 @@ export const apiFetch = (path: string, init?: RequestInit): Promise<Response> =>
     headers: buildHeaders(init?.headers),
   });
 
-export type AiTransactionPreview = {
-  isTransaction: true;
-  amount: number;
-  currency: 'UAH' | 'PLN' | 'USD';
-  date: string;
-  categoryId: string;
-  categoryName: string;
-  type: 'income' | 'expense';
-  accountKey: string | null;
-  accountName: string | null;
-  note: string;
-};
-
-export type AiPreviewError = Error & { code?: string; status?: number };
-
-export const parseAiTransaction = async (
-  text: string,
-  defaultCurrency: 'UAH' | 'PLN' | 'USD',
-): Promise<AiTransactionPreview> => {
-  const res = await apiFetch('/api/ai/parse-transaction', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, defaultCurrency }),
-  });
-  if (!res.ok) {
-    const err = new Error('failed to parse transaction') as AiPreviewError;
-    err.status = res.status;
-    try {
-      const body = (await res.json()) as { code?: string; error?: string };
-      if (typeof body.code === 'string') err.code = body.code;
-      if (typeof body.error === 'string') err.message = body.error;
-    } catch {
-      /* ignore malformed error bodies */
-    }
-    throw err;
-  }
-  const body = (await res.json()) as { transaction?: AiTransactionPreview };
-  if (!body.transaction) throw new Error('AI response did not contain a transaction');
-  return body.transaction;
-};
-
 export type ReportSettings = {
   autoWeekly: boolean;
   autoMonthly: boolean;

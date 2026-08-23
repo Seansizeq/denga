@@ -3210,47 +3210,6 @@ app.use(
   })
 );
 
-const AI_RATE_LIMIT_PER_MIN = Number(process.env.AI_RATE_LIMIT_PER_MIN) || 20;
-app.post(
-  '/api/ai/parse-transaction',
-  rateLimitMiddleware({
-    windowMs: 60_000,
-    max: AI_RATE_LIMIT_PER_MIN,
-    keyFn: (req) => (req.authUserId ? `ai:${req.authUserId}` : null),
-  }),
-  async (req, res) => {
-    const userId = String(req.authUserId ?? '').trim();
-    const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
-    if (!userId) {
-      res.status(401).json({ error: 'Unauthorized', code: 'AUTH_REQUIRED' });
-      return;
-    }
-    if (!text || text.length > 500) {
-      res.status(400).json({ error: 'text must be between 1 and 500 characters', code: 'INVALID_TEXT' });
-      return;
-    }
-    if (!isSmartTransactionEnabled()) {
-      res.status(503).json({ error: 'AI transaction parser is not configured', code: 'AI_NOT_CONFIGURED' });
-      return;
-    }
-
-    const [categories, accounts] = await Promise.all([
-      getSmartCategoriesForUser(userId, { includeOther: true }),
-      getAutomationAccounts(userId),
-    ]);
-    const defaultCurrency = normalizeCurrency(req.body?.defaultCurrency);
-    const parsed = await parseSmartTransaction({ text, categories, accounts, defaultCurrency });
-    if (!parsed?.isTransaction) {
-      res.status(422).json({ error: 'could not parse the transaction', code: 'NOT_RECOGNIZED' });
-      return;
-    }
-
-    // Preview only. The client opens the normal Add transaction form, and the
-    // existing POST /api/transactions validation remains the only write path.
-    res.json({ transaction: parsed });
-  },
-);
-
 app.get('/api/reports/settings', async (req, res) => {
   const userId = String(req.authUserId ?? '');
   if (!userId) {
