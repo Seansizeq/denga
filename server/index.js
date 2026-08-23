@@ -46,6 +46,10 @@ import { deliverReportToTelegram } from './report-delivery.js';
 import { renderFinancialReportCardPng } from './report-card.js';
 import { parseSmartTransaction, isSmartTransactionEnabled } from './smart-transaction.js';
 import {
+  getTelegramTransactionImage,
+  parseTelegramTransactionImage,
+} from './telegram-transaction-image.js';
+import {
   buildSmartConfirmationPayload,
   buildSmartSavedPayload,
   buildSmartTransactionKeyboard,
@@ -2038,6 +2042,8 @@ const BOT_CATEGORY_OPTIONS = CATEGORIES.filter((c) => c.id !== 'other_income' &&
 const pendingTransactions = new Map();
 const pendingShiftStarts = new Map();
 const pendingSmartTransactions = new Map();
+const lastTransactionImageByUser = new Map();
+const TRANSACTION_IMAGE_RATE_LIMIT_MS = 3000;
 
 // Built-in bot categories paired with their transaction type, for smart parsing.
 const BOT_SMART_CATEGORY_TYPES = {
@@ -2083,12 +2089,7 @@ async function getSmartCategoriesForUser(userId, { includeOther = false } = {}) 
   return categories;
 }
 
-// Attempt AI parsing of a free-text message and, on success, send a compact
-// confirmation card. Returns true if a transaction was
-// recognized (and a confirmation shown), false to let the caller fall through.
-async function trySmartTransaction(msg, text) {
-  const userId = String(msg.from.id);
-  const chatId = msg.chat.id;
+async function getSmartTransactionContext(userId) {
   let accounts = [];
   try {
     accounts = await db.all(
@@ -2105,14 +2106,18 @@ async function trySmartTransaction(msg, text) {
   ]);
   const today = formatDatePartsForZone(new Date().toISOString(), userTimeZone)?.day
     ?? new Date().toISOString().slice(0, 10);
-  const parsed = await parseSmartTransaction({
-    text,
-    categories,
+  return {
     accounts: Array.isArray(accounts) ? accounts : [],
+    categories,
     defaultCurrency: reportSettings.reportCurrency,
     today,
-  });
-  if (!parsed || !parsed.isTransaction) return false;
+  };
+}
+
+async function sendSmartTransactionConfirmation(msg, parsed, today) {
+  const userId = String(msg.from.id);
+  const chatId = msg.chat.id;
+  if (!parsed?.isTransaction) return false;
 
   const pending = {
     userId,
@@ -2147,6 +2152,53 @@ async function trySmartTransaction(msg, text) {
   }
   pendingSmartTransactions.set(chatId, { ...pending, messageId: sent.message_id });
   return true;
+}
+
+// Attempt AI parsing of a free-text message and, on success, send a compact
+// confirmation card. Returns true if a transaction was recognized.
+async function trySmartTransaction(msg, text) {
+  const context = await getSmartTransactionContext(String(msg.from.id));
+  const parsed = await parseSmartTransaction({
+    text,
+    ...context,
+  });
+  return sendSmartTransactionConfirmation(msg, parsed, context.today);
+}
+
+async function trySmartTransactionImage(msg, image) {
+  const chatId = msg.chat.id;
+  const userId = String(msg.from.id);
+  if (!isSmartTransactionEnabled()) {
+    await bot.sendMessage(chatId, 'Розпізнавання транзакцій зі скріншотів ще не налаштоване.');
+    return false;
+  }
+  const now = Date.now();
+  const lastScan = lastTransactionImageByUser.get(userId) ?? 0;
+  if (now - lastScan < TRANSACTION_IMAGE_RATE_LIMIT_MS) {
+    await bot.sendMessage(chatId, 'Зачекайте кілька секунд перед наступним скріншотом.');
+    return false;
+  }
+  lastTransactionImageByUser.set(userId, now);
+  try {
+    await bot.sendChatAction(chatId, 'typing');
+  } catch {
+    // Chat actions are cosmetic; recognition should continue if Telegram rejects one.
+  }
+  const context = await getSmartTransactionContext(userId);
+  const result = await parseTelegramTransactionImage({ bot, image, ...context });
+  if (result.status === 'ok') {
+    return sendSmartTransactionConfirmation(msg, result.transaction, context.today);
+  }
+  const messages = {
+    too_large: 'Зображення завелике. Надішліть скрін як звичайне фото або файл до 1 МБ.',
+    not_configured: 'OCR для скріншотів ще не налаштований на сервері.',
+    rate_limited: 'Сервіс розпізнавання зараз перевантажений. Спробуйте трохи пізніше.',
+    not_recognized: 'Не вдалося впевнено розпізнати транзакцію. Надішліть чіткіший скрін, де видно суму, продавця й дату.',
+    download_error: 'Не вдалося завантажити зображення з Telegram. Спробуйте надіслати його ще раз.',
+    provider_error: 'Не вдалося обробити зображення. Спробуйте ще раз пізніше.',
+  };
+  await bot.sendMessage(chatId, messages[result.status] || messages.provider_error);
+  return false;
 }
 
 const replaceSmartTransactionMessage = async (chatId, messageId, content) => {
@@ -2217,6 +2269,7 @@ const reportSettingsInlineKeyboard = (settings) => ({
 });
 const BOT_COMMAND_LIST = [
   'Команди:',
+  'Надішліть скріншот операції — я розпізнаю транзакцію',
   '/report_week — тижневий звіт',
   '/report_month — місячний звіт',
   '/advice — рекомендації по витратах',
@@ -2261,7 +2314,7 @@ if (bot) {
     await ensureReportSettings(db, String(msg.from.id));
     await bot.sendMessage(
       msg.chat.id,
-      '👋 Привіт!\n\nDenga — особистий фінансовий трекер.\nРахунки, витрати, звіти — все в одному місці.\n\nВідкрий застосунок щоб почати 👇',
+      '👋 Привіт!\n\nDenga — особистий фінансовий трекер.\nРахунки, витрати, звіти — все в одному місці.\n\nНадішли скріншот операції — я розпізнаю її та попрошу підтвердити.\nАбо відкрий застосунок 👇',
       {
         reply_markup: {
           inline_keyboard: [[
@@ -2489,6 +2542,11 @@ if (bot) {
   bot.on('message', async (msg) => {
     if (!msg.from?.id || !msg.chat?.id) return;
     await upsertBotUser(db, msg.from.id, msg.chat.id);
+    const transactionImage = getTelegramTransactionImage(msg);
+    if (transactionImage) {
+      await trySmartTransactionImage(msg, transactionImage);
+      return;
+    }
     if (!msg.text || msg.text.startsWith('/')) return;
     const text = msg.text.trim();
     const normalizedText = text

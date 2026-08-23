@@ -131,6 +131,12 @@ describe('buildSystemPrompt', () => {
   it('names the fallback currency it was given', () => {
     expect(buildSystemPrompt({ categories, accounts, defaultCurrency: 'PLN', today })).toContain('"PLN"');
   });
+
+  it('keeps balances and exchange-rate metadata out of screenshot transactions', () => {
+    const prompt = buildSystemPrompt({ categories, accounts, defaultCurrency: 'UAH', today });
+    expect(prompt).toContain('а не баланс після');
+    expect(prompt).toContain('суму списання у валюті рахунку');
+  });
 });
 
 describe('buildResponseSchema / toGeminiSchema', () => {
