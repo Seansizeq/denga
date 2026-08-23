@@ -38,6 +38,8 @@ import {
   DEFAULT_INIT_DATA_MAX_AGE_SEC,
   verifyTelegramInitData,
 } from './telegram-auth.js';
+import { automationKey, clientIpKey, rateLimitMiddleware } from './rate-limit.js';
+import { isOriginAllowed, parseAllowedOrigins } from './cors-policy.js';
 import { selectMonthStartAndLatestPrices } from './crypto-history.js';
 import { getPreviousFullWeekDaySet } from './report-periods.js';
 import { deliverReportToTelegram } from './report-delivery.js';
@@ -1908,28 +1910,63 @@ const startActiveShiftForUser = async (dbConn, userId, options = {}) => {
   };
 };
 
-const allowedOrigins = (process.env.CORS_ORIGINS ?? '')
-  .split(',')
-  .map((x) => x.trim())
-  .filter(Boolean);
+/**
+ * За скільки проксі стоїть застосунок. Від цього залежить, чи вірити
+ * `X-Forwarded-For`, тобто чи буде `req.ip` реальною адресою клієнта.
+ *
+ * Типово нуль — не вірити. Довіра до заголовка, якого проксі не переписує,
+ * гірша за її відсутність: тоді адресу диктує сам клієнт і обмеження частоти
+ * обходиться одним рядком у запиті. Вмикати варто рівно тоді, коли nginx
+ * справді шле `X-Forwarded-For` (див. `setup_domain.js`).
+ */
+const TRUST_PROXY_HOPS = Number(process.env.TRUST_PROXY ?? 0);
+app.set('trust proxy', Number.isFinite(TRUST_PROXY_HOPS) && TRUST_PROXY_HOPS > 0 ? TRUST_PROXY_HOPS : false);
+
+const allowedOrigins = parseAllowedOrigins(process.env.CORS_ORIGINS);
 app.use(
-  cors({
-    origin(origin, callback) {
-      if (!origin) {
-        callback(null, true);
-        return;
-      }
-      if (allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
-        callback(null, true);
-        return;
-      }
-      callback(new Error('CORS origin denied'));
-    },
-    methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', AUTH_HEADER_NAME],
+  cors((req, callback) => {
+    const origin = req.headers?.origin;
+    if (!isOriginAllowed({ origin, requestHost: req.headers?.host, allowedOrigins, isProduction: IS_PRODUCTION })) {
+      const err = new Error('CORS origin denied');
+      err.publicResponse = { status: 403, code: 'CORS_DENIED', error: 'CORS origin denied' };
+      callback(err);
+      return;
+    }
+    callback(null, {
+      origin: true,
+      methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization', AUTH_HEADER_NAME],
+    });
   })
 );
-app.use(express.json({ limit: '15mb' }));
+
+/**
+ * Тіло запиту читається до будь-якої авторизації, тож спільний ліміт — це
+ * стеля того, скільки байтів довільна людина з інтернету змусить сервер
+ * прийняти. П'ятнадцять мегабайтів тут були заради одного маршруту зі скану
+ * чека; решті вистачає мегабайта, а чек отримує свій ліміт окремо.
+ */
+const RECEIPT_SCAN_PATH = '/api/receipts/scan';
+const parseJsonBody = express.json({ limit: '1mb' });
+const parseReceiptJsonBody = express.json({ limit: '12mb' });
+app.use((req, res, next) =>
+  (req.path === RECEIPT_SCAN_PATH ? parseReceiptJsonBody : parseJsonBody)(req, res, next)
+);
+
+/**
+ * Груба стеля на потік до API — остання лінія, до будь-якої авторизації.
+ *
+ * Рахується адресою, і за nginx без `X-Forwarded-For` вона в усіх однакова:
+ * тоді це спільна стеля на весь застосунок, а не на клієнта. Так і задумано —
+ * від флуду вона рятує в обох випадках, а ліміти, які мають розділяти
+ * користувачів, стоять нижче й рахуються не адресою. З `TRUST_PROXY=1` стає
+ * персональною. Значення підняти через `API_RATE_LIMIT_PER_MIN`.
+ */
+const API_RATE_LIMIT_PER_MIN = Number(process.env.API_RATE_LIMIT_PER_MIN) || 600;
+app.use(
+  '/api',
+  rateLimitMiddleware({ windowMs: 60_000, max: API_RATE_LIMIT_PER_MIN, keyFn: clientIpKey })
+);
 // Prevent caching of index.html so updates are visible immediately
 app.use((req, res, next) => {
   if (req.path === '/' || req.path === '/index.html') {
@@ -2820,6 +2857,33 @@ setInterval(() => {
 }, 60 * 60 * 1000);
 
 // --- Shortcuts / automation (personal token, no Telegram initData) ---
+
+/**
+ * Єдині маршрути, що працюють без `initData`, — значить, єдині, куди можна
+ * стукати без нічого. Тут два лічильники, і кожен закриває те, чого не бачить
+ * інший.
+ *
+ * По адресі — бо ключ лише за токеном обходиться тривіально: кожен новий
+ * вигаданий токен відкривав би нове порожнє відро, і потік підробок не
+ * рахувався б узагалі. Саме адреса ловить того, хто добирає.
+ *
+ * По токену — бо ключ лише за адресою за nginx спільний для всіх, і один ярлик
+ * з'їдав би ліміт решти.
+ *
+ * Сам токен — 24 випадкові байти, вгадати його неможливо; обидва ліміти тут
+ * проти потоку запитів, а не проти перебору.
+ */
+const AUTOMATION_RATE_LIMIT_PER_MIN = Number(process.env.AUTOMATION_RATE_LIMIT_PER_MIN) || 60;
+app.use(
+  '/api/automation',
+  rateLimitMiddleware({
+    windowMs: 60_000,
+    max: AUTOMATION_RATE_LIMIT_PER_MIN * 2,
+    keyFn: (req) => `automation-ip:${clientIpKey(req)}`,
+  }),
+  rateLimitMiddleware({ windowMs: 60_000, max: AUTOMATION_RATE_LIMIT_PER_MIN, keyFn: automationKey })
+);
+
 app.get('/api/automation/shift/start', async (req, res) => {
   const userId = await resolveAutomationUserId(db, req);
   if (!userId) {
@@ -3084,6 +3148,21 @@ app.post('/api/automation/transaction', async (req, res) => {
 
 // --- API Logic ---
 app.use('/api', authMiddleware);
+
+/**
+ * Персональний ліміт після авторизації. Рахується id користувача, а не адресою:
+ * тут особу вже перевірено підписом, тож ключ точний і не залежить від того,
+ * що донесе проксі.
+ */
+const USER_RATE_LIMIT_PER_MIN = Number(process.env.USER_RATE_LIMIT_PER_MIN) || 300;
+app.use(
+  '/api',
+  rateLimitMiddleware({
+    windowMs: 60_000,
+    max: USER_RATE_LIMIT_PER_MIN,
+    keyFn: (req) => (req.authUserId ? `u:${req.authUserId}` : null),
+  })
+);
 
 app.get('/api/reports/settings', async (req, res) => {
   const userId = String(req.authUserId ?? '');
@@ -4885,7 +4964,8 @@ app.delete('/api/transactions/:id', async (req, res) => {
 });
 
 // --- Receipt OCR scan ---
-app.post('/api/receipts/scan', express.json({ limit: '12mb' }), createReceiptScanHandler());
+// Тіло вже розібране спільним парсером із власним лімітом для цього шляху.
+app.post(RECEIPT_SCAN_PATH, createReceiptScanHandler());
 
 app.get('/api/custom-categories', async (req, res) => {
   const userId = req.authUserId;
@@ -5935,14 +6015,45 @@ app.delete('/api/me', authMiddleware, async (req, res) => {
   res.status(204).end();
 });
 
-app.use((err, _req, res, next) => {
+/**
+ * Останній обробник помилок.
+ *
+ * Назовні йде тільки те, що хтось свідомо вирішив показати: `err.publicResponse`
+ * для своїх відмов і кілька відомих помилок розбору тіла. Усе інше — рівно
+ * `INTERNAL_ERROR`. Раніше сюди їхав `err.message`, а це текст, який пише не
+ * застосунок, а SQLite і файлова система: імена таблиць, шляхи, іноді уривок
+ * запиту. Для клієнта в цьому немає жодної користі — виправити він однаково
+ * нічого не може, — а для чужого це безкоштовна карта нутрощів.
+ *
+ * Справжня помилка при цьому не зникає: вона йде в лог сервера цілком.
+ */
+app.use((err, req, res, next) => {
   if (res.headersSent) {
     next(err);
     return;
   }
-  const message = err?.message || 'Internal server error';
-  const status = message.includes('CORS') ? 403 : 500;
-  res.status(status).json({ error: message, code: status === 403 ? 'CORS_DENIED' : 'INTERNAL_ERROR' });
+
+  // Навмисно не `err.expose`: цим іменем користується http-errors, і будь-яка
+  // 4xx з body-parser потрапляла б сюди з порожніми значеннями за замовчуванням.
+  if (err?.publicResponse) {
+    const { status = 400, code = 'BAD_REQUEST', error = 'Bad request' } = err.publicResponse;
+    res.status(status).json({ error, code });
+    return;
+  }
+
+  // Тіло не пройшло розбір: у цих випадках причина в самому запиті, і сказати
+  // її корисно — інакше «занадто великий файл» виглядає як падіння сервера.
+  if (err?.type === 'entity.too.large') {
+    res.status(413).json({ error: 'Request body too large', code: 'PAYLOAD_TOO_LARGE' });
+    return;
+  }
+  if (err?.type === 'entity.parse.failed' || err?.type === 'entity.verify.failed') {
+    res.status(400).json({ error: 'Malformed JSON body', code: 'INVALID_JSON' });
+    return;
+  }
+
+  console.error('[api] unhandled error', req?.method, req?.path, err);
+  res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_ERROR' });
 });
 
 // Serve index.html for any other requests (SPA fallback)
