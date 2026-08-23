@@ -46,6 +46,10 @@ import { deliverReportToTelegram } from './report-delivery.js';
 import { renderFinancialReportCardPng } from './report-card.js';
 import { parseSmartTransaction, isSmartTransactionEnabled } from './smart-transaction.js';
 import {
+  BOT_TRANSACTION_CATEGORIES,
+  buildSmartTransactionCategories,
+} from './smart-transaction-categories.js';
+import {
   getTelegramTransactionImage,
   parseTelegramTransactionImage,
 } from './telegram-transaction-image.js';
@@ -2027,17 +2031,7 @@ startScheduledDatabaseBackups(db, getDatabasePath(), {
 
 // --- Bot Logic ---
 
-const CATEGORIES = [
-  { id: 'food', name: 'Продукти' },
-  { id: 'transport', name: 'Транспорт' },
-  { id: 'home', name: 'Житло' },
-  { id: 'entertainment', name: 'Розваги' },
-  { id: 'health', name: 'Здоров\'я' },
-  { id: 'clothing', name: 'Одяг', aliases: ['одяг', 'одежда', 'одежду', 'одежды', 'clothing', 'clothes', 'wear'] },
-  { id: 'salary', name: 'Зарплата' },
-  { id: 'other_income', name: 'Інший дохід' },
-  { id: 'other_expense', name: 'Інше' },
-];
+const CATEGORIES = BOT_TRANSACTION_CATEGORIES;
 const BOT_CATEGORY_OPTIONS = CATEGORIES.filter((c) => c.id !== 'other_income' && c.id !== 'other_expense');
 
 const pendingTransactions = new Map();
@@ -2045,19 +2039,6 @@ const pendingShiftStarts = new Map();
 const pendingSmartTransactions = new Map();
 const lastTransactionImageByUser = new Map();
 const TRANSACTION_IMAGE_RATE_LIMIT_MS = 3000;
-
-// Built-in bot categories paired with their transaction type, for smart parsing.
-const BOT_SMART_CATEGORY_TYPES = {
-  food: 'expense',
-  transport: 'expense',
-  home: 'expense',
-  entertainment: 'expense',
-  health: 'expense',
-  clothing: 'expense',
-  salary: 'income',
-  other_income: 'income',
-  other_expense: 'expense',
-};
 
 /**
  * Build the category list (built-in + user's custom) passed to the smart parser.
@@ -2067,29 +2048,32 @@ const BOT_SMART_CATEGORY_TYPES = {
  * "Інше" row leaves the user filing a stray purchase under something wrong.
  */
 async function getSmartCategoriesForUser(userId, { includeOther = false } = {}) {
-  const categories = (includeOther ? CATEGORIES : BOT_CATEGORY_OPTIONS).map((c) => ({
-    id: c.id,
-    name: c.name,
-    type: BOT_SMART_CATEGORY_TYPES[c.id] || 'expense',
-    aliases: Array.isArray(c.aliases) ? c.aliases : [],
-  }));
+  let storedCategories = [];
+  let legacyCategories = [];
   try {
-    const custom = await db.all(
+    storedCategories = await db.all(
       'SELECT id, name, type FROM custom_categories WHERE user_id = ? ORDER BY updatedAt DESC',
       [userId]
     );
-    for (const c of custom) {
-      if (!c?.id) continue;
-      categories.push({
-        id: String(c.id),
-        name: String(c.name ?? c.id),
-        type: c.type === 'income' ? 'income' : 'expense',
-      });
-    }
   } catch {
-    // ignore — built-in categories are enough to proceed
+    storedCategories = [];
   }
-  return categories;
+  try {
+    legacyCategories = await db.all(
+      `SELECT categoryId AS id, type
+       FROM transactions
+       WHERE user_id = ? AND categoryId LIKE ?
+       GROUP BY categoryId, type`,
+      [userId, 'custom:%']
+    );
+  } catch {
+    legacyCategories = [];
+  }
+  return buildSmartTransactionCategories({
+    includeOther,
+    storedCategories,
+    legacyCategories,
+  });
 }
 
 async function getSmartTransactionContext(userId) {

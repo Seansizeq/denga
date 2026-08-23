@@ -14,7 +14,6 @@ export const CATEGORIES: CategoryDef[] = [
   { id: 'home', icon: 'Home', color: '#5E5CE6', type: 'expense', aliases: ['home', 'housing', 'дом', 'жилье', 'житло'] },
   { id: 'entertainment', icon: 'Gamepad2', color: '#AF52DE', type: 'expense', aliases: ['entertainment', 'розваги', 'развлечения'] },
   { id: 'health', icon: 'Pill', color: '#FF2D55', type: 'expense', aliases: ['health', 'healthcare', 'здоровье', 'здоров\'я'] },
-  { id: 'clothing', icon: 'Shirt', color: '#FFD53B', type: 'expense', aliases: ['clothing', 'clothes', 'wear', 'одяг', 'одежда', 'одежду', 'одежды'] },
   { id: 'other_expense', icon: 'Receipt', color: '#8E8E93', type: 'expense', aliases: ['other', 'other expense', 'others', 'misc', 'miscellaneous', 'другое', 'прочее', 'інше', 'uncategorised', 'uncategorised expense', 'uncategorized', 'uncategorized expense'] },
   { id: 'transfer', icon: 'ArrowRightLeft', color: '#5AC8FA', type: 'transfer' },
 
