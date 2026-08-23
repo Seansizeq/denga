@@ -76,17 +76,63 @@ export const buildSmartConfirmationMessage = (transaction, { today } = {}) => {
   return lines.join('\n');
 };
 
+const withPremiumEmoji = (text, customEmojiId, fallbackEmoji) => {
+  const id = String(customEmojiId ?? '').trim();
+  if (!/^\d+$/.test(id)) return { text, entities: [] };
+  return {
+    text: `${fallbackEmoji} ${text}`,
+    entities: [{
+      type: 'custom_emoji',
+      offset: 0,
+      length: fallbackEmoji.length,
+      custom_emoji_id: id,
+    }],
+  };
+};
+
+export const buildSmartConfirmationPayload = (transaction, { today, emojiIds = {} } = {}) => {
+  const type = transaction.type === 'income' ? 'income' : 'expense';
+  const fallbackEmoji = type === 'income' ? '💰' : '💸';
+  return withPremiumEmoji(
+    buildSmartConfirmationMessage(transaction, { today }),
+    emojiIds[type],
+    fallbackEmoji,
+  );
+};
+
 export const buildSmartSavedMessage = (transaction) => {
   const category = String(transaction.categoryName ?? transaction.categoryId ?? '').trim();
   return `✅ ${formatSmartAmount(transaction.amount, transaction.currency)} · ${category} — збережено`;
 };
 
-export const buildSmartTransactionKeyboard = () => ({
+export const buildSmartSavedPayload = (transaction, { emojiIds = {} } = {}) => {
+  const text = buildSmartSavedMessage(transaction);
+  const id = String(emojiIds.save ?? '').trim();
+  if (!/^\d+$/.test(id)) return { text, entities: [] };
+  return {
+    text,
+    entities: [{
+      type: 'custom_emoji',
+      offset: 0,
+      length: '✅'.length,
+      custom_emoji_id: id,
+    }],
+  };
+};
+
+const premiumButton = (label, fallbackEmoji, customEmojiId, callbackData) => {
+  const id = String(customEmojiId ?? '').trim();
+  return /^\d+$/.test(id)
+    ? { text: label, icon_custom_emoji_id: id, callback_data: callbackData }
+    : { text: `${fallbackEmoji}${fallbackEmoji ? ' ' : ''}${label}`, callback_data: callbackData };
+};
+
+export const buildSmartTransactionKeyboard = (emojiIds = {}) => ({
   inline_keyboard: [
     [
-      { text: '✅ Зберегти', callback_data: 'smart_save' },
-      { text: '✏️ Змінити', callback_data: 'smart_edit' },
+      premiumButton('Зберегти', '✅', emojiIds.save, 'smart_save'),
+      premiumButton('Змінити', '✏️', emojiIds.edit, 'smart_edit'),
     ],
-    [{ text: 'Скасувати', callback_data: 'smart_cancel' }],
+    [premiumButton('Скасувати', '', emojiIds.cancel, 'smart_cancel')],
   ],
 });

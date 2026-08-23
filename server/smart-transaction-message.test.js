@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildSmartConfirmationMessage,
+  buildSmartConfirmationPayload,
   buildSmartSavedMessage,
+  buildSmartSavedPayload,
   buildSmartTransactionKeyboard,
   formatSmartAmount,
   formatSmartDate,
@@ -59,6 +61,45 @@ describe('smart Telegram transaction card', () => {
           { text: '✏️ Змінити', callback_data: 'smart_edit' },
         ],
         [{ text: 'Скасувати', callback_data: 'smart_cancel' }],
+      ],
+    });
+  });
+
+  it('adds native custom emoji entities without changing the compact layout', () => {
+    expect(buildSmartConfirmationPayload(transaction, {
+      today: '2026-08-23',
+      emojiIds: { expense: '5368324170671202286' },
+    })).toEqual({
+      text: '💸 400 ₴ · Витрата\nТехніка · Готівка\nГеймпад\nСьогодні',
+      entities: [{
+        type: 'custom_emoji',
+        offset: 0,
+        length: 2,
+        custom_emoji_id: '5368324170671202286',
+      }],
+    });
+    expect(buildSmartSavedPayload(transaction, {
+      emojiIds: { save: '5370740712479445942' },
+    }).entities).toEqual([{
+      type: 'custom_emoji',
+      offset: 0,
+      length: 1,
+      custom_emoji_id: '5370740712479445942',
+    }]);
+  });
+
+  it('uses premium icons on configured inline buttons', () => {
+    expect(buildSmartTransactionKeyboard({
+      save: '101',
+      edit: '102',
+      cancel: '103',
+    })).toEqual({
+      inline_keyboard: [
+        [
+          { text: 'Зберегти', icon_custom_emoji_id: '101', callback_data: 'smart_save' },
+          { text: 'Змінити', icon_custom_emoji_id: '102', callback_data: 'smart_edit' },
+        ],
+        [{ text: 'Скасувати', icon_custom_emoji_id: '103', callback_data: 'smart_cancel' }],
       ],
     });
   });

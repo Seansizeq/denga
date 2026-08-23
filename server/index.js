@@ -46,10 +46,15 @@ import { deliverReportToTelegram } from './report-delivery.js';
 import { renderFinancialReportCardPng } from './report-card.js';
 import { parseSmartTransaction, isSmartTransactionEnabled } from './smart-transaction.js';
 import {
-  buildSmartConfirmationMessage,
-  buildSmartSavedMessage,
+  buildSmartConfirmationPayload,
+  buildSmartSavedPayload,
   buildSmartTransactionKeyboard,
 } from './smart-transaction-message.js';
+import {
+  extractCustomEmojiReferences,
+  formatSmartTransactionEmojiSetup,
+  readSmartTransactionEmojiIds,
+} from './telegram-premium-emoji.js';
 import {
   DENOMINATIONS,
   convertDenomination,
@@ -77,6 +82,11 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 3001;
 const botToken = process.env.TELEGRAM_BOT_TOKEN;
+const smartTransactionEmojiIds = readSmartTransactionEmojiIds();
+const hasSmartTransactionPremiumEmoji = Object.keys(smartTransactionEmojiIds).length > 0;
+
+const isTelegramBadRequest = (error) =>
+  Number(error?.response?.body?.error_code ?? error?.response?.statusCode) === 400;
 
 /**
  * Середовище вважається бойовим, доки явно не сказано протилежне.
@@ -2118,22 +2128,52 @@ async function trySmartTransaction(msg, text) {
     createdAt: Date.now(),
     today,
   };
-  const sent = await bot.sendMessage(chatId, buildSmartConfirmationMessage(pending, { today }), {
-    reply_markup: buildSmartTransactionKeyboard(),
+  const confirmation = buildSmartConfirmationPayload(pending, {
+    today,
+    emojiIds: smartTransactionEmojiIds,
   });
+  let sent;
+  try {
+    sent = await bot.sendMessage(chatId, confirmation.text, {
+      ...(confirmation.entities.length > 0 ? { entities: confirmation.entities } : {}),
+      reply_markup: buildSmartTransactionKeyboard(smartTransactionEmojiIds),
+    });
+  } catch (error) {
+    if (!hasSmartTransactionPremiumEmoji || !isTelegramBadRequest(error)) throw error;
+    console.warn('[smart-transaction] premium emoji rejected; using regular emoji:', error?.message || error);
+    sent = await bot.sendMessage(chatId, buildSmartConfirmationPayload(pending, { today }).text, {
+      reply_markup: buildSmartTransactionKeyboard(),
+    });
+  }
   pendingSmartTransactions.set(chatId, { ...pending, messageId: sent.message_id });
   return true;
 }
 
-const replaceSmartTransactionMessage = async (chatId, messageId, text) => {
+const replaceSmartTransactionMessage = async (chatId, messageId, content) => {
   if (!Number.isFinite(Number(messageId))) return;
+  const payload = typeof content === 'string'
+    ? { text: content, entities: [] }
+    : { text: String(content?.text ?? ''), entities: content?.entities ?? [] };
   try {
-    await bot.editMessageText(text, {
+    await bot.editMessageText(payload.text, {
       chat_id: chatId,
       message_id: Number(messageId),
+      ...(payload.entities.length > 0 ? { entities: payload.entities } : {}),
       reply_markup: { inline_keyboard: [] },
     });
   } catch (err) {
+    if (payload.entities.length > 0 && isTelegramBadRequest(err)) {
+      try {
+        await bot.editMessageText(payload.text, {
+          chat_id: chatId,
+          message_id: Number(messageId),
+          reply_markup: { inline_keyboard: [] },
+        });
+        return;
+      } catch {
+        // Fall through to the warning below with the original, useful error.
+      }
+    }
     // Saving has already succeeded at this point; a deleted/old Telegram
     // message must not turn a committed transaction into an apparent failure.
     console.warn('[smart-transaction] could not replace confirmation message:', err?.message || err);
@@ -2182,6 +2222,7 @@ const BOT_COMMAND_LIST = [
   '/advice — рекомендації по витратах',
   '/shift_start — почати зміну',
   '/shift_end — завершити зміну',
+  '/emoji_ids — отримати ID преміум-емодзі',
   '«налаштування звітів» — авто-звіти й час надсилання',
 ].join('\n');
 
@@ -2233,6 +2274,11 @@ if (bot) {
   bot.onText(/\/menu/i, async (msg) => {
     if (!msg.chat?.id) return;
     await sendBotCommandList(msg.chat.id);
+  });
+  bot.onText(/\/emoji_ids(?:@\w+)?/i, async (msg) => {
+    if (!msg.chat?.id) return;
+    const references = extractCustomEmojiReferences(msg);
+    await bot.sendMessage(msg.chat.id, formatSmartTransactionEmojiSetup(references));
   });
   bot.onText(/\/report_week/i, async (msg) => {
     if (!msg.from?.id || !msg.chat?.id) return;
@@ -2736,7 +2782,7 @@ if (bot) {
       await replaceSmartTransactionMessage(
         chatId,
         callbackMessageId,
-        buildSmartSavedMessage(pendingSmart),
+        buildSmartSavedPayload(pendingSmart, { emojiIds: smartTransactionEmojiIds }),
       );
       return;
     }
