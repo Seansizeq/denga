@@ -6,6 +6,7 @@ import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { getDatabasePath, initDb } from './db.js';
 import { startScheduledDatabaseBackups } from './backup.js';
+import { installGracefulShutdown, DEFAULT_SHUTDOWN_BUDGET_MS } from './shutdown.js';
 import { createReceiptScanHandler } from './receipt-scan.js';
 import {
   collectDebtOverdrafts,
@@ -135,6 +136,19 @@ if (!botToken && !DEV_AUTH_BYPASS) {
 }
 
 const bot = botToken ? new TelegramBot(botToken, { polling: true }) : null;
+
+/**
+ * Скільки часу дається на коректне завершення. Стеля не наша: pm2 чекає
+ * `kill_timeout` (за замовчуванням 1600 мс) і шле SIGKILL. Тримаємося нижче,
+ * інакше нас уб'ють посеред закриття бази — рівно те, чого ми уникаємо.
+ * Піднімати є сенс лише разом із `kill_timeout` на сервері.
+ */
+const shutdownBudgetMs = (() => {
+  const raw = Number(String(process.env.SHUTDOWN_BUDGET_MS ?? '').trim());
+  if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_SHUTDOWN_BUDGET_MS;
+  return Math.min(30000, Math.max(200, Math.round(raw)));
+})();
+
 const AUTH_HEADER_NAME = 'x-telegram-init-data';
 
 /**
@@ -6245,9 +6259,13 @@ app.use((req, res) => {
   res.sendFile(path.join(__dirname, '../dist/index.html'));
 });
 
-app.listen(port, '0.0.0.0', () => {
+const httpServer = app.listen(port, '0.0.0.0', () => {
   console.log(`Server running at http://0.0.0.0:${port}`);
   // Прогріваємо ціни одразу: інакше перший після деплою відкритий гаманець
   // застає порожній кеш і показує крипту без гривневого еквівалента.
   void fetchCryptoUsdPrices();
 });
+
+// pm2 restart = SIGTERM, а далі SIGKILL через kill_timeout. Без цього база
+// закривалася разом із процесом і -wal ріс від деплою до деплою.
+installGracefulShutdown({ server: httpServer, db, bot, budgetMs: shutdownBudgetMs });
