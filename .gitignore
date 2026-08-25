@@ -41,3 +41,6 @@ denga.zip
 _*.js
 _*.mjs
 _*.ps1
+
+# Ad-hoc code deep-dives (local notes)
+deep-dive/
