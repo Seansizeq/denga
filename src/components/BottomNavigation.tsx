@@ -2,11 +2,13 @@ import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { Home, CalendarDays, WalletCards, Settings as SettingsIcon, PieChart } from 'lucide-react';
 import { useTranslation } from '../i18n/LanguageContext';
+import { useDraggableNav } from '../hooks/useDraggableNav';
 import styles from './BottomNavigation.module.css';
 
 const BottomNavigation: React.FC = () => {
   const location = useLocation();
   const { t } = useTranslation();
+  const { ref: barRef, handlers: dragHandlers } = useDraggableNav<HTMLDivElement>();
   const pathname = location.pathname;
 
   const indicatorColumn =
@@ -24,7 +26,7 @@ const BottomNavigation: React.FC = () => {
 
   return (
     <nav className={styles.nav}>
-      <div className={styles.bar}>
+      <div className={styles.bar} ref={barRef} {...dragHandlers}>
         {indicatorColumn ? (
           <span
             className={styles.activeIndicator}

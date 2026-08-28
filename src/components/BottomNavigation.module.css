@@ -29,7 +29,17 @@
   --bar-side-padding: 8px;
   position: relative;
   height: calc(var(--bottom-nav-height) - 18px);
-  margin: 0 12px 10px;
+  /* Піднята над краєм: панель плаває, а не лежить на дні. Верхом вона при цьому
+     виходить за межі `.nav` — та прозора й нічого не обрізає. */
+  margin: 0 12px 22px;
+  /* Жест наш: без цього браузер відбирає рух пальця на прокрутку сторінки. */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  /* Зсув приходить інлайном із `useDraggableNav`, тому тут анімуємо лише
+     підйом — transform має слухатися пальця без затримки. */
+  transition: box-shadow var(--motion-base) var(--ease-out);
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   align-items: center;
@@ -58,6 +68,31 @@
   box-shadow:
     0 10px 30px rgba(0, 0, 0, 0.4),
     0 2px 8px rgba(0, 0, 0, 0.24);
+}
+
+/**
+ * Піднята панель під пальцем: тінь глибшає, кромка яскравішає — рівно те, що
+ * робить елемент «відірваним» від поверхні. Масштаб додається до inline-зсуву
+ * в хуку, бо transform тут один на двох.
+ *
+ * `will-change` вмикається лише на час жесту: постійний натяк тримав би шар із
+ * розмиттям у пам'яті весь час, а він тут найдорожчий.
+ */
+.bar[data-dragging='true'] {
+  will-change: transform;
+  box-shadow:
+    0 22px 48px rgba(0, 0, 0, 0.5),
+    0 6px 16px rgba(0, 0, 0, 0.3);
+}
+
+.bar[data-dragging='true']::before {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.75) 0%,
+    rgba(255, 255, 255, 0.22) 30%,
+    rgba(255, 255, 255, 0.07) 62%,
+    rgba(255, 255, 255, 0.26) 100%
+  );
 }
 
 /**
