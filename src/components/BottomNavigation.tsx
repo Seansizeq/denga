@@ -1,95 +1,86 @@
-import React from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import React, { useCallback } from 'react';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Home, CalendarDays, WalletCards, Settings as SettingsIcon, PieChart } from 'lucide-react';
 import { useTranslation } from '../i18n/LanguageContext';
-import { useReorderableNav, type NavKey } from '../hooks/useReorderableNav';
+import { useGlassSlider } from '../hooks/useGlassSlider';
 import styles from './BottomNavigation.module.css';
 
 interface NavItem {
   to: string;
   end?: boolean;
   Icon: typeof Home;
-  /** Кругла кнопка — історична форма саме календаря, їде разом із ним. */
+  /** Кругла кнопка — історична форма календаря. */
   round?: boolean;
   matches: (pathname: string) => boolean;
 }
 
-const ITEMS: Record<NavKey, NavItem> = {
-  home: { to: '/', end: true, Icon: Home, matches: (p) => p === '/' },
-  calendar: {
-    to: '/calendar',
-    Icon: CalendarDays,
-    round: true,
-    matches: (p) => p.startsWith('/calendar'),
-  },
-  accounts: { to: '/accounts', Icon: WalletCards, matches: (p) => p.startsWith('/accounts') },
-  stats: { to: '/stats', Icon: PieChart, matches: (p) => p.startsWith('/stats') },
-  settings: { to: '/settings', Icon: SettingsIcon, matches: (p) => p.startsWith('/settings') },
-};
+const ITEMS: NavItem[] = [
+  { to: '/', end: true, Icon: Home, matches: (p) => p === '/' },
+  { to: '/calendar', Icon: CalendarDays, round: true, matches: (p) => p.startsWith('/calendar') },
+  { to: '/accounts', Icon: WalletCards, matches: (p) => p.startsWith('/accounts') },
+  { to: '/stats', Icon: PieChart, matches: (p) => p.startsWith('/stats') },
+  { to: '/settings', Icon: SettingsIcon, matches: (p) => p.startsWith('/settings') },
+];
 
 const BottomNavigation: React.FC = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const { t } = useTranslation();
-  const {
-    order,
-    barRef,
-    draggingKey,
-    settling,
-    setItemRef,
-    onPointerDown,
-    itemHandlers,
-    onClickCapture,
-    visualIndex,
-    shiftStyle,
-  } = useReorderableNav();
-
   const pathname = location.pathname;
-  const label: Record<NavKey, string> = {
-    home: t('nav', 'home'),
-    calendar: t('nav', 'calendar'),
-    accounts: t('balance', 'moneySources'),
-    stats: t('nav', 'stats'),
-    settings: t('settings', 'title'),
-  };
 
-  const activeKey = order.find((key) => ITEMS[key].matches(pathname)) ?? null;
-  // Підкладка їде за активною вкладкою і під час перестановки — тобто рахуємо
-  // не місце в масиві, а те, де іконка зараз видно.
-  const indicatorColumn = activeKey ? visualIndex(activeKey) + 1 : null;
+  const labels = [
+    t('nav', 'home'),
+    t('nav', 'calendar'),
+    t('balance', 'moneySources'),
+    t('nav', 'stats'),
+    t('settings', 'title'),
+  ];
+
+  const activeIndex = ITEMS.findIndex((item) => item.matches(pathname));
+  const indicatorColumn = activeIndex >= 0 ? activeIndex + 1 : null;
+
+  const handlePick = useCallback(
+    (index: number) => {
+      const target = ITEMS[index];
+      if (target && target.to !== pathname) navigate(target.to);
+    },
+    [navigate, pathname],
+  );
+
+  const { barRef, glassRef, hoverIndex, isSliding, handlers, onClickCapture } = useGlassSlider({
+    count: ITEMS.length,
+    column: indicatorColumn,
+    onPick: handlePick,
+  });
 
   return (
     <nav className={styles.nav}>
-      <div
-        className={styles.bar}
-        ref={barRef}
-        onClickCapture={onClickCapture}
-        data-settling={settling ? 'true' : undefined}
-      >
+      <div className={styles.bar} ref={barRef} onClickCapture={onClickCapture}>
         {indicatorColumn ? (
           <span
             className={styles.activeIndicator}
+            ref={glassRef}
             style={{ ['--indicator-col' as string]: indicatorColumn }}
+            data-sliding={isSliding ? 'true' : undefined}
             aria-hidden="true"
           />
         ) : null}
-        {order.map((key) => {
-          const item = ITEMS[key];
+        {ITEMS.map((item, index) => {
           const { Icon } = item;
-          const isActive = activeKey === key;
+          const isActive = activeIndex === index;
+          // Доки скло їде, підсвіченою має бути іконка під ним, а не та,
+          // з якої почали: інакше не видно, куди саме ти його везеш.
+          const isLit = isSliding ? hoverIndex === index : isActive;
           return (
             <NavLink
-              key={key}
+              key={item.to}
               to={item.to}
               end={item.end}
-              ref={setItemRef(key)}
-              className={`${isActive ? styles.active : styles.link}${
+              className={`${isLit ? styles.active : styles.link}${
                 item.round ? ` ${styles.roundBtn}` : ''
               }`}
-              style={shiftStyle(key)}
-              data-dragging={draggingKey === key ? 'true' : undefined}
-              onPointerDown={onPointerDown(key)}
-              {...itemHandlers}
-              aria-label={label[key]}
+              aria-label={labels[index]}
+              {...(isActive ? handlers : null)}
             >
               <Icon size={24} strokeWidth={2} />
             </NavLink>
