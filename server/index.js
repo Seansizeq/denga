@@ -4839,7 +4839,7 @@ app.delete('/api/accounts/:key', async (req, res) => {
 app.get('/api/transactions', async (req, res) => {
   const userId = req.authUserId;
   await runSubscriptionAutopayForUser(userId);
-  const transactions = await db.all('SELECT * FROM transactions WHERE user_id = ? ORDER BY date DESC, rowid DESC', [userId]);
+  const transactions = await db.all('SELECT * FROM transactions WHERE user_id = ? ORDER BY substr(date, 1, 10) DESC, rowid DESC', [userId]);
   res.json(transactions);
 });
 
