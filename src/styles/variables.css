@@ -16,6 +16,7 @@
   --accent-primary: #7c5cff;
   --accent-primary-strong: #9b7cff;
   --accent-fab: #f7e34d;           /* big yellow action button */
+  --accent-fab-rgb: 247, 227, 77;  /* those same channels, for its glow and focus ring */
   --accent-fab-strong: #fce844;
   --accent-blue: #4ca8ff;
   --accent-red: #ff5a63;

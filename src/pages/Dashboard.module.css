@@ -13,14 +13,14 @@
   height: 64px;
   border-radius: 50%;
   border: none;
-  background: var(--accent-yellow);
+  background: var(--accent-fab);
   color: #1a1200;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   box-shadow:
-    0 8px 22px rgba(255, 213, 59, 0.28),
+    0 8px 22px rgba(var(--accent-fab-rgb), 0.28),
     0 2px 8px rgba(0, 0, 0, 0.22);
   /* Тільки transform: анімація тіні чи фільтра — це перемальовування
      великої розмитої області на кожному кадрі. */
@@ -35,12 +35,12 @@
 }
 
 .fabAdd:focus-visible {
-  outline: 2px solid rgba(255, 213, 59, 0.95);
+  outline: 2px solid rgba(var(--accent-fab-rgb), 0.95);
   outline-offset: 3px;
 }
 
 .content {
-  padding: 0 20px;
+  padding: calc(var(--safe-area-inset-top) + 24px) 20px 0;
   display: flex;
   flex-direction: column;
 }

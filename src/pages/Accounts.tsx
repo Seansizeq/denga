@@ -1,7 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus } from 'lucide-react';
-import Header from '../components/ui/Header';
 import AccountsSnapshot from '../components/ui/AccountsSnapshot';
 import AccountEditSheet, { type EditableAccount } from '../components/ui/AccountEditSheet';
 import DebtDetailSheet from '../components/ui/DebtDetailSheet';
@@ -432,7 +431,6 @@ const Accounts: React.FC = () => {
   return (
     <div className={styles.container}>
       <div className={styles.content}>
-        <Header />
         <button
           type="button"
           className={styles.addButton}

@@ -5,7 +5,6 @@ import { useTransactions } from '../context/TransactionContext';
 import { useTranslation } from '../i18n/LanguageContext';
 import { showAppAlert } from '../utils/notify';
 import { usePortfolio } from '../context/PortfolioContext';
-import Header from '../components/ui/Header';
 import HeroBalance from '../components/ui/HeroBalance';
 import QuickActions from '../components/ui/QuickActions';
 import RecentTransactions from '../components/ui/RecentTransactions';
@@ -191,8 +190,6 @@ const Dashboard: React.FC = () => {
       </button>
 
       <div className={styles.content}>
-        <Header />
-
         <HeroBalance
           net={mainNet}
           income={summary.totalIncome}
@@ -218,7 +215,7 @@ const Dashboard: React.FC = () => {
           onEdit={(id) => navigate(`/add?edit=${id}`)}
           filter={range}
           onFilterChange={setRange}
-          showSeeAll
+          showSeeAll={false}
         />
 
         <div className={styles.spacer} />
