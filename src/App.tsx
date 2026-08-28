@@ -8,7 +8,7 @@ import { ToastProvider } from './components/ui/Toast';
 import DataStatusBanner from './components/ui/DataStatusBanner';
 import TelegramBackButton from './components/TelegramBackButton';
 import RouteTransition from './components/ui/RouteTransition';
-import ParticlesBackground from './components/ui/ParticlesBackground';
+import AmbientBackground from './components/ui/AmbientBackground';
 import Dashboard from './pages/Dashboard';
 
 /**
@@ -128,7 +128,7 @@ const TelegramApp: React.FC<{ onReady: () => void }> = ({ onReady }) => {
         <ToastProvider>
           <Router>
             <div className="app-content">
-              <ParticlesBackground />
+              <AmbientBackground />
               <TelegramBackButton />
               <DataStatusBanner />
               <RouteTransition>

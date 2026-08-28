@@ -29,9 +29,8 @@
   --border-light: rgba(255, 255, 255, 0.08);
   --border-strong: rgba(255, 255, 255, 0.15);
 
-  /* Ambient backdrop gradient — shared so the purple only needs to change in one place */
-  --color-ambient-purple: #4a215d;
-  --gradient-ambient: linear-gradient(180deg, var(--color-ambient-purple) 0%, var(--bg-primary) 40%, var(--bg-primary) 100%);
+  /* Ambient backdrop — solid base; colour comes from AmbientBackground blobs */
+  --gradient-ambient: var(--bg-primary);
 
   /* Radius */
   --radius-sm: 10px;
