@@ -56,7 +56,6 @@ vi.mock('../i18n/LanguageContext', () => ({
     language: 'uk',
     t: (section: string, key: string) => {
       const map: Record<string, string> = {
-        'scan.close': 'Закрити',
         'scan.title': 'Сканер чека',
         'scan.idleHint': 'idle',
         'scan.takePhoto': 'Сфотографувати чек',

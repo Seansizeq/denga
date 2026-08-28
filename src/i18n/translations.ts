@@ -149,6 +149,11 @@ type Dict = {
     back: string;
     filteredTitle: string;
     clearFilter: string;
+    calendar: string;
+    calendarHint: string;
+    clearDay: string;
+    prevMonth: string;
+    nextMonth: string;
   };
   planner: {
     title: string;
@@ -501,7 +506,6 @@ type Dict = {
   };
   scan: {
     title: string;
-    close: string;
     idleHint: string;
     takePhoto: string;
     processing: string;
@@ -569,7 +573,7 @@ const uk: Dict = {
   nav: { home: 'Головна', add: 'Додати', calendar: 'Календар', stats: 'Статистика', subscriptions: 'Підписки', settings: 'Налаштування' },
   dashboard: {
     greeting: 'Привіт',
-    recentTitle: 'Операції',
+    recentTitle: 'Останні',
     seeAll: 'Усі',
     empty: 'Ще немає операцій. Додайте першу ↓',
     addTransaction: 'Додати операцію',
@@ -701,6 +705,11 @@ const uk: Dict = {
     back: 'На головну',
     filteredTitle: 'Відібрані операції',
     clearFilter: 'Показати всі',
+    calendar: 'Календар',
+    calendarHint: 'Крапка — день, у якому були операції. Натисніть, щоб показати лише його.',
+    clearDay: 'Показати всі дні',
+    prevMonth: 'Попередній місяць',
+    nextMonth: 'Наступний місяць',
   },
   planner: {
     title: 'Робочі зміни',
@@ -1062,7 +1071,6 @@ const uk: Dict = {
   },
   scan: {
     title: 'Сканер чека',
-    close: 'Закрити',
     idleHint: 'Сфотографуйте паперовий чек — ми розпізнаємо магазин, суму і автоматично підкажемо категорію.',
     takePhoto: 'Сфотографувати чек',
     processing: 'Розпізнаємо чек…',
@@ -1134,7 +1142,7 @@ const ru: Dict = {
   nav: { home: 'Главная', add: 'Добавить', calendar: 'Календарь', stats: 'Статистика', subscriptions: 'Подписки', settings: 'Настройки' },
   dashboard: {
     greeting: 'Привет',
-    recentTitle: 'Операции',
+    recentTitle: 'Последние',
     seeAll: 'Все',
     empty: 'Пока нет операций. Добавьте первую ↓',
     addTransaction: 'Добавить операцию',
@@ -1266,6 +1274,11 @@ const ru: Dict = {
     back: 'На главную',
     filteredTitle: 'Отобранные операции',
     clearFilter: 'Показать все',
+    calendar: 'Календарь',
+    calendarHint: 'Точка — день, в котором были операции. Нажмите, чтобы показать только его.',
+    clearDay: 'Показать все дни',
+    prevMonth: 'Предыдущий месяц',
+    nextMonth: 'Следующий месяц',
   },
   planner: {
     title: 'Календарь',
@@ -1627,7 +1640,6 @@ const ru: Dict = {
   },
   scan: {
     title: 'Сканер чека',
-    close: 'Закрыть',
     idleHint: 'Сфотографируйте бумажный чек — мы распознаем магазин, сумму и автоматически подскажем категорию.',
     takePhoto: 'Сфотографировать чек',
     processing: 'Распознаём чек…',
@@ -1699,7 +1711,7 @@ const en: Dict = {
   nav: { home: 'Home', add: 'Add', calendar: 'Calendar', stats: 'Stats', subscriptions: 'Subscriptions', settings: 'Settings' },
   dashboard: {
     greeting: 'Hello',
-    recentTitle: 'Transactions',
+    recentTitle: 'Recent',
     seeAll: 'See all',
     empty: 'No transactions yet. Add your first one ↓',
     addTransaction: 'Add transaction',
@@ -1831,6 +1843,11 @@ const en: Dict = {
     back: 'Home',
     filteredTitle: 'Filtered transactions',
     clearFilter: 'Show all',
+    calendar: 'Calendar',
+    calendarHint: 'A dot marks a day with transactions. Tap it to show only that day.',
+    clearDay: 'Show all days',
+    prevMonth: 'Previous month',
+    nextMonth: 'Next month',
   },
   planner: {
     title: 'Calendar',
@@ -2192,7 +2209,6 @@ const en: Dict = {
   },
   scan: {
     title: 'Receipt Scan',
-    close: 'Close',
     idleHint: 'Take a photo of a paper receipt — we will detect the shop, total, and suggest a category.',
     takePhoto: 'Take receipt photo',
     processing: 'Reading receipt…',

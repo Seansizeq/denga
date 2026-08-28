@@ -1,0 +1,213 @@
+/* ---------- Календар в історії ----------
+   Дія на вимогу: згорнутий рядок нічого не важить, а розгорнута сітка дає
+   побачити, у які дні взагалі щось було, і стрибнути в потрібний. */
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 13px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s ease, transform 0.12s ease;
+}
+
+.toggle:active {
+  transform: scale(0.97);
+}
+
+.toggleOpen {
+  background: rgba(124, 92, 255, 0.16);
+  border-color: rgba(124, 92, 255, 0.4);
+}
+
+.chevron {
+  color: var(--text-tertiary);
+  transition: transform 0.2s ease;
+}
+
+.chevronUp {
+  transform: rotate(180deg);
+}
+
+/* Обраний день — окремою пігулкою, щоб було видно фільтр і як його зняти. */
+.selected {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 0 8px 0 13px;
+  border: 1px solid rgba(124, 92, 255, 0.4);
+  border-radius: var(--radius-full);
+  background: rgba(124, 92, 255, 0.16);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.selected:active {
+  transform: scale(0.97);
+}
+
+.selectedClear {
+  display: inline-flex;
+  color: var(--text-tertiary);
+}
+
+.panel {
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  padding: 12px 12px 14px;
+  margin-bottom: 16px;
+}
+
+.monthRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.monthName {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* Велика лише перша літера: `capitalize` зачепив би і скорочення на кшталт «р.». */
+.monthName::first-letter {
+  text-transform: uppercase;
+}
+
+.navBtn {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.15s ease, transform 0.12s ease;
+}
+
+/* Дотик на повних 44px, хоч плашка 32 — сітка від цього не розсувається. */
+.navBtn::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+}
+
+.navBtn:active {
+  transform: scale(0.92);
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.weekdays,
+.grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.weekdays {
+  margin-bottom: 6px;
+}
+
+.weekday {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: capitalize;
+}
+
+.empty {
+  aspect-ratio: 1 / 1;
+}
+
+.day {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  min-height: 34px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+  padding: 0;
+  transition: background-color 0.15s ease, transform 0.12s ease;
+}
+
+/* День, у якому щось було: його видно й у нього можна тицьнути. */
+.dayActive {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+}
+
+.dayActive:active {
+  transform: scale(0.9);
+}
+
+.dayEmpty {
+  opacity: 0.35;
+}
+
+.dayToday {
+  box-shadow: inset 0 0 0 1.5px var(--accent-primary-strong);
+}
+
+.daySelected {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary-strong);
+  color: #fff;
+}
+
+.dot {
+  position: absolute;
+  bottom: 4px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent-primary-strong);
+}
+
+.daySelected .dot {
+  background: #fff;
+}
+
+.hint {
+  margin: 10px 0 0;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--text-tertiary);
+  text-align: center;
+}

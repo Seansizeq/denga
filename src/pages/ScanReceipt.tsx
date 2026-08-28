@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Camera, ScanLine, X } from 'lucide-react';
+import { Camera, ScanLine } from 'lucide-react';
 import { useTranslation } from '../i18n/LanguageContext';
 import { useTransactions } from '../context/TransactionContext';
 import { usePortfolio } from '../context/PortfolioContext';
@@ -266,17 +266,11 @@ const ScanReceipt: React.FC = () => {
 
   return (
     <div className={styles.container}>
+      {/* Власного хрестика тут немає навмисно: він робив рівно те саме, що
+          системна кнопка «назад» Telegram, яку вмикає TelegramBackButton, і
+          в повноекранному режимі налазив на плаваючі кнопки самого Telegram. */}
       <header className={styles.header}>
-        <button
-          type="button"
-          onClick={() => navigate(-1)}
-          className={styles.closeBtn}
-          aria-label={t('scan', 'close')}
-        >
-          <X size={20} strokeWidth={2.5} />
-        </button>
         <h2 className={styles.title}>{t('scan', 'title')}</h2>
-        <span className={styles.headerSpacer} aria-hidden="true" />
       </header>
 
       <input

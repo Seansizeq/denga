@@ -216,6 +216,7 @@ const Dashboard: React.FC = () => {
           filter={range}
           onFilterChange={setRange}
           showSeeAll={false}
+          onTitleClick={() => navigate('/history')}
         />
 
         <div className={styles.spacer} />

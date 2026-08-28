@@ -24,35 +24,6 @@
   text-align: center;
 }
 
-.closeBtn {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.07);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: var(--text-primary);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  cursor: pointer;
-  padding: 1px;
-  box-sizing: border-box;
-  overflow: visible;
-  line-height: 0;
-  transition: background-color 0.15s ease, transform 0.15s ease;
-}
-
-.closeBtn:active {
-  transform: scale(0.94);
-  background: rgba(255, 255, 255, 0.12);
-}
-
-.headerSpacer {
-  width: 36px;
-  height: 36px;
-  display: inline-block;
-}
 
 /* Idle */
 .idle {

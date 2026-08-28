@@ -19,6 +19,24 @@
   letter-spacing: -0.2px;
 }
 
+.titleBtn {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.2px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.titleBtn:active {
+  opacity: 0.6;
+}
+
 .headerRight {
   display: inline-flex;
   align-items: center;

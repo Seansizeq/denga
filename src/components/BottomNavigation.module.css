@@ -28,7 +28,7 @@
 .bar {
   --bar-side-padding: 8px;
   position: relative;
-  height: calc(var(--bottom-nav-height) - 18px);
+  height: calc(var(--bottom-nav-height) - 10px);
   /* Піднята над краєм: панель плаває, а не лежить на дні. Верхом вона при цьому
      виходить за межі `.nav` — та прозора й нічого не обрізає. */
   margin: 0 12px 22px;
@@ -129,7 +129,7 @@
  * рівно одному кроку), а видима пігулка малюється по центру псевдоелементом.
  */
 .activeIndicator {
-  --indicator-size: 44px;
+  --indicator-size: 52px;
   position: absolute;
   left: var(--bar-side-padding);
   top: 50%;
@@ -149,7 +149,7 @@
   margin-left: calc(var(--indicator-size) / -2);
   width: var(--indicator-size);
   height: var(--indicator-size);
-  border-radius: 14px;
+  border-radius: 20px;
   /* Друге скло поверх першого: світліше й із власним бліком, щоб активна
      вкладка читалася як лінза на панелі, а не як залита плашка. */
   background: linear-gradient(

@@ -18,6 +18,7 @@ interface Props {
   onFilterChange?: (f: RangeFilter) => void;
   title?: string;
   showSeeAll?: boolean;
+  onTitleClick?: () => void;
 }
 
 const RecentTransactions: React.FC<Props> = ({
@@ -30,6 +31,7 @@ const RecentTransactions: React.FC<Props> = ({
   onFilterChange,
   title,
   showSeeAll = true,
+  onTitleClick,
 }) => {
   const { t } = useTranslation();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -53,9 +55,15 @@ const RecentTransactions: React.FC<Props> = ({
   return (
     <section className={styles.section}>
       <div className={styles.header}>
-        <h3 className={styles.title}>
-          {title ?? t('dashboard', 'recentTitle')}
-        </h3>
+        {onTitleClick ? (
+          <button type="button" className={styles.titleBtn} onClick={onTitleClick}>
+            {title ?? t('dashboard', 'recentTitle')}
+          </button>
+        ) : (
+          <h3 className={styles.title}>
+            {title ?? t('dashboard', 'recentTitle')}
+          </h3>
+        )}
 
         <div className={styles.headerRight}>
           {showSeeAll && transactions.length > 0 && (

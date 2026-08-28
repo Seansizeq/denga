@@ -3,8 +3,10 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTransactions } from '../context/TransactionContext';
 import TransactionItem from '../components/ui/TransactionItem';
 import RowSkeleton from '../components/ui/RowSkeleton';
+import HistoryCalendar from '../components/ui/HistoryCalendar';
 import { useTranslation } from '../i18n/LanguageContext';
 import { showAppAlert } from '../utils/notify';
+import { localIsoDate } from '../utils/dateRanges';
 import styles from './History.module.css';
 
 const History: React.FC = () => {
@@ -18,6 +20,38 @@ const History: React.FC = () => {
   const fromParam = searchParams.get('from');
   const toParam = searchParams.get('to');
   const hasFilter = Boolean(categoryId || typeParam || fromParam || toParam);
+
+  /** Дні, у яких є операції — календар підсвічує саме їх. */
+  const activeDays = useMemo(() => {
+    const set = new Set<string>();
+    for (const tx of transactions) set.add(localIsoDate(new Date(tx.date)));
+    return set;
+  }, [transactions]);
+
+  /**
+   * Календар працює тим самим фільтром `from`/`to`, що й перехід зі статистики,
+   * тож обраний день — це діапазон рівно в одну добу (`to` виключне).
+   */
+  const selectedDay = useMemo(() => {
+    if (!fromParam || !toParam) return null;
+    const next = new Date(`${fromParam}T00:00:00`);
+    next.setDate(next.getDate() + 1);
+    return localIsoDate(next) === toParam ? fromParam : null;
+  }, [fromParam, toParam]);
+
+  const handleSelectDay = (day: string | null) => {
+    const next = new URLSearchParams(searchParams);
+    if (!day) {
+      next.delete('from');
+      next.delete('to');
+    } else {
+      const end = new Date(`${day}T00:00:00`);
+      end.setDate(end.getDate() + 1);
+      next.set('from', day);
+      next.set('to', localIsoDate(end));
+    }
+    setSearchParams(next);
+  };
 
   const handleDelete = async (id: string) => {
     const ok = await deleteTransaction(id);
@@ -67,6 +101,8 @@ const History: React.FC = () => {
           </button>
         )}
       </header>
+
+      <HistoryCalendar activeDays={activeDays} selectedDay={selectedDay} onSelectDay={handleSelectDay} />
 
       {visible.length === 0 ? (
         isBootstrapping ? (

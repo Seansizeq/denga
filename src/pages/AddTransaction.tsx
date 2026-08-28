@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { X, ChevronRight } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import { useTransactions } from '../context/TransactionContext';
 import { usePortfolio } from '../context/PortfolioContext';
 import CategoryGrid from '../components/ui/CategoryGrid';
@@ -349,8 +349,6 @@ const AddTransaction: React.FC = () => {
     transferToDenomination,
   ]);
 
-  const handleClose = goBack;
-
   const handleTypeChange = useCallback(
     (newType: TransactionType) => {
       setType(newType);
@@ -512,17 +510,11 @@ const AddTransaction: React.FC = () => {
 
   return (
     <div className={styles.container}>
+      {/* Власного хрестика тут немає навмисно: він робив рівно те саме, що
+          системна кнопка «назад» Telegram, яку вмикає TelegramBackButton, і
+          в повноекранному режимі налазив на плаваючі кнопки самого Telegram. */}
       <header className={styles.header}>
-        <button
-          type="button"
-          onClick={handleClose}
-          className={styles.closeBtn}
-          aria-label={t('addTx', 'cancel')}
-        >
-          <X size={20} strokeWidth={2.5} />
-        </button>
         <h2 className={styles.title}>{isEditing ? t('addTx', 'editTitle') : t('addTx', 'title')}</h2>
-        <span className={styles.headerSpacer} aria-hidden="true" />
       </header>
 
       {editNotFound ? (
