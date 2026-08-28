@@ -29,6 +29,12 @@ vi.mock('react-router-dom', async () => {
 
 vi.mock('../api/client', () => ({
   apiFetch: mocks.apiFetch,
+  getCustomCategories: vi.fn(async () => []),
+  getCategoryPrefs: vi.fn(async () => []),
+  saveCategoryPrefs: vi.fn(async () => []),
+  createCustomCategory: vi.fn(),
+  updateCustomCategory: vi.fn(),
+  deleteCustomCategory: vi.fn(),
 }));
 
 vi.mock('../context/TransactionContext', () => ({

@@ -1,0 +1,306 @@
+.container {
+  min-height: 100vh;
+  padding: 20px 18px calc(var(--bottom-nav-height) + 40px);
+  padding-top: calc(20px + var(--safe-area-inset-top));
+  /* Фон навмисно не задано — крізь сторінку видно спільний градієнт body::before. */
+  position: relative;
+  color: var(--text-primary);
+}
+
+.header {
+  margin-bottom: 16px;
+}
+
+.back {
+  background: none;
+  border: none;
+  color: var(--accent-primary-strong);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0 0 8px;
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.title {
+  font-size: 26px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.addBtn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--border-light);
+  background: var(--bg-card-light);
+  color: var(--accent-primary-strong);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: transform var(--motion-fast) var(--ease-out);
+}
+
+.addBtn:active {
+  transform: scale(0.94);
+}
+
+.subtitle {
+  font-size: 13px;
+  color: var(--text-tertiary);
+  margin: 8px 0 0;
+  line-height: 1.45;
+}
+
+/* Перемикач витрати/доходи — та сама пігулка, що й у решті застосунку. */
+.tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  margin: 16px 0 14px;
+  background: var(--bg-pill);
+  border-radius: var(--radius-full);
+}
+
+.tab {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 600;
+  padding: 9px 12px;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out);
+}
+
+.tabActive {
+  background: var(--bg-card-light);
+  color: var(--text-primary);
+}
+
+.card {
+  background-color: var(--bg-card);
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  overflow: hidden;
+}
+
+.row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 58px;
+  background: var(--bg-card);
+}
+
+.row + .row::before {
+  content: '';
+  position: absolute;
+  left: 60px;
+  right: 0;
+  top: 0;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* Рядок, який тягнуть, їде за пальцем і лишається над сусідами. */
+.rowDragging {
+  z-index: 2;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+}
+
+.rowDragging::before,
+.rowDragging + .row::before {
+  opacity: 0;
+}
+
+.rowMain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 4px 10px 16px;
+  background: none;
+  border: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.rowIcon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.name {
+  font-size: 16px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* touch-action: none — інакше палець на ручці гортає сторінку замість
+   перетягування рядка. */
+.handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  align-self: stretch;
+  color: var(--text-tertiary);
+  cursor: grab;
+  touch-action: none;
+}
+
+.handle:active {
+  cursor: grabbing;
+  color: var(--text-secondary);
+}
+
+.skeletonIcon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  margin-left: 16px;
+}
+
+.skeletonName {
+  height: 14px;
+  width: 40%;
+  border-radius: 7px;
+  margin-left: 12px;
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin: 12px 4px 0;
+  line-height: 1.45;
+}
+
+.editor {
+  padding: 4px 0 8px;
+}
+
+.input {
+  width: 100%;
+  padding: 13px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-light);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 16px;
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--accent-primary-strong);
+}
+
+.pickerLabel {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin: 16px 0 8px;
+}
+
+.iconGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+  gap: 8px;
+}
+
+.iconBtn {
+  height: 44px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-light);
+  background: var(--bg-card-light);
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.iconBtnSelected {
+  border-color: var(--accent-primary-strong);
+  color: var(--text-primary);
+  background: rgba(124, 92, 255, 0.16);
+}
+
+.colorGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.colorBtn {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+}
+
+.colorBtnSelected {
+  border-color: #fff;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.25);
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.saveBtn {
+  flex: 1;
+  padding: 14px;
+  border-radius: var(--radius-md);
+  border: none;
+  background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-primary-strong) 100%);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.saveBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.deleteBtn {
+  padding: 14px 18px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-light);
+  background: var(--accent-red-soft);
+  color: var(--accent-red);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.editorHint {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin: 12px 0 0;
+  line-height: 1.45;
+}

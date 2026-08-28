@@ -387,3 +387,84 @@ export const deleteContribution = async (goalId: string, contribId: string): Pro
   );
   if (!res.ok) throw new Error('failed to delete contribution');
 };
+
+export type CategoryType = 'income' | 'expense';
+
+export type CustomCategoryDto = {
+  id: string;
+  type: CategoryType;
+  name: string;
+  icon: string;
+  color: string;
+  updatedAt?: string;
+};
+
+/**
+ * What the user changed on top of a category: where it sits in the list, and —
+ * for built-in ones, which have no row of their own — its name, icon and color.
+ */
+export type CategoryPref = {
+  id: string;
+  sortOrder: number;
+  name: string | null;
+  icon: string | null;
+  color: string | null;
+};
+
+export const getCustomCategories = async (type: CategoryType): Promise<CustomCategoryDto[]> => {
+  const res = await apiFetch(`/api/custom-categories?type=${type}`);
+  if (!res.ok) throw new Error('failed to load custom categories');
+  return res.json();
+};
+
+export const createCustomCategory = async (body: {
+  type: CategoryType;
+  name: string;
+  icon: string;
+  color: string;
+}): Promise<CustomCategoryDto> => {
+  const res = await apiFetch('/api/custom-categories', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error('failed to create custom category');
+  return res.json();
+};
+
+export const updateCustomCategory = async (
+  id: string,
+  body: { name: string; icon: string; color: string }
+): Promise<CustomCategoryDto> => {
+  const res = await apiFetch(`/api/custom-categories/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error('failed to update custom category');
+  return res.json();
+};
+
+export const deleteCustomCategory = async (id: string): Promise<void> => {
+  const res = await apiFetch(`/api/custom-categories/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('failed to delete custom category');
+};
+
+export const getCategoryPrefs = async (type: CategoryType): Promise<CategoryPref[]> => {
+  const res = await apiFetch(`/api/category-prefs?type=${type}`);
+  if (!res.ok) throw new Error('failed to load category prefs');
+  return res.json();
+};
+
+export const saveCategoryPrefs = async (
+  type: CategoryType,
+  items: Array<{ id: string; name?: string | null; icon?: string | null; color?: string | null }>
+): Promise<CategoryPref[]> => {
+  const res = await apiFetch('/api/category-prefs', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type, items }),
+  });
+  if (!res.ok) throw new Error('failed to save category prefs');
+  return res.json();
+};

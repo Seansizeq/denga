@@ -7,17 +7,7 @@ import CategoryGrid from '../components/ui/CategoryGrid';
 import BottomSheet from '../components/ui/BottomSheet';
 import OptionPickerSheet from '../components/ui/OptionPickerSheet';
 import { AccountRowAvatar, type RowIconTone } from '../components/ui/AccountRowAvatar';
-import {
-  createCustomCategoryId,
-  CUSTOM_CATEGORY_COLORS,
-  CUSTOM_CATEGORY_ICONS,
-  inferCustomCategoryColor,
-  inferCustomCategoryIcon,
-  getCustomCategoryData,
-  CATEGORIES,
-  type CustomCategoryIcon,
-} from '../constants/categories';
-import { getCategoryIcon } from '../constants/categoryIcons';
+import { getCustomCategoryData, CATEGORIES } from '../constants/categories';
 import { useTranslation } from '../i18n/LanguageContext';
 import type { CategoryKey } from '../i18n/translations';
 import type { TransactionType } from '../types';
@@ -34,10 +24,10 @@ import {
   type Denomination,
 } from '../utils/denomination';
 import { useDenominationRates } from '../hooks/useDenominationRates';
-import { apiFetch } from '../api/client';
+import { useCategoryCatalog } from '../hooks/useCategoryCatalog';
 import { useExpenseTemplates, type ExpenseTemplate } from '../hooks/useExpenseTemplates';
 import { usePaymentAccountOptions } from '../hooks/usePaymentAccountOptions';
-import { hapticResult, showAppConfirm } from '../utils/notify';
+import { hapticResult } from '../utils/notify';
 import { useGoBack } from '../hooks/useGoBack';
 import {
   hasPrefillParams,
@@ -119,10 +109,6 @@ const AddTransaction: React.FC = () => {
     if (initialType === 'transfer') return 'transfer';
     return 'food';
   });
-  const [isCreatingCustom, setIsCreatingCustom] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState('');
-  const [newCategoryIcon, setNewCategoryIcon] = useState<CustomCategoryIcon>('Tag');
-  const [newCategoryColor, setNewCategoryColor] = useState('#8E8E93');
   const [note, setNote] = useState(() => {
     if (editingTransaction) return stripAccountFromNote(editingTransaction.note ?? '');
     if (prefillNoteRaw) return stripAccountFromNote(prefillNoteRaw);
@@ -134,15 +120,11 @@ const AddTransaction: React.FC = () => {
   const [transferAccountSheet, setTransferAccountSheet] = useState<'from' | 'to' | null>(null);
   const [saveError, setSaveError] = useState('');
   const hydratedEditRef = useRef<string>('');
-  const [customCategories, setCustomCategories] = useState<
-    Array<{ id: string; name: string; icon: string; color: string }>
-  >([]);
-  const [creatingCategory, setCreatingCategory] = useState(false);
-  const [categoryOverrides, setCategoryOverrides] = useState<Record<string, { name?: string; icon?: string; color?: string }>>({});
-  const [managingCustom, setManagingCustom] = useState<
-    { id: string; name: string; icon: string; color: string; isCustom: boolean } | null
-  >(null);
-  const [editingCustomId, setEditingCustomId] = useState<string | null>(null);
+  // Names, icons, colors and order all come from Settings → Categories; this
+  // screen only picks one.
+  const { categories: categoryOptions, customs: customCategories } = useCategoryCatalog(
+    type === 'income' ? 'income' : 'expense',
+  );
   const { accounts: rawAccounts } = usePortfolio();
   const { rateBetween } = useDenominationRates();
   const portfolioAccounts = useMemo<Array<{ key: string; name: string; currency: Denomination }>>(
@@ -286,51 +268,6 @@ const AddTransaction: React.FC = () => {
   );
 
   useEffect(() => {
-    let cancelled = false;
-    const loadCustomCategories = async () => {
-      if (type === 'transfer') {
-        setCustomCategories([]);
-        return;
-      }
-      try {
-        const response = await apiFetch(`/api/custom-categories?type=${type}`);
-        if (!response.ok) return;
-        const data = await response.json();
-        if (!cancelled && Array.isArray(data)) {
-          setCustomCategories(
-            data.map((category) => ({
-              ...category,
-              icon: inferCustomCategoryIcon(String(category.name ?? ''), String(category.icon ?? '')),
-              color: inferCustomCategoryColor(String(category.name ?? ''), String(category.color ?? '')),
-            }))
-          );
-        }
-      } catch (error) {
-        console.error('Error fetching custom categories:', error);
-      }
-    };
-    loadCustomCategories();
-    return () => {
-      cancelled = true;
-    };
-  }, [type]);
-
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem('category_overrides_v1');
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === 'object') setCategoryOverrides(parsed);
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem('category_overrides_v1', JSON.stringify(categoryOverrides));
-  }, [categoryOverrides]);
-
-  useEffect(() => {
     if (!editId) {
       hydratedEditRef.current = '';
       return;
@@ -412,16 +349,11 @@ const AddTransaction: React.FC = () => {
     transferToDenomination,
   ]);
 
-
-  const canCreateCustomCategory = newCategoryName.trim().length > 0;
-
   const handleClose = goBack;
 
   const handleTypeChange = useCallback(
     (newType: TransactionType) => {
       setType(newType);
-      setIsCreatingCustom(false);
-      setManagingCustom(null);
       setCategorySheetOpen(false);
       setCategoryId((current) =>
         resolveCategoryForTypeChange(current, newType, customCategoryIds),
@@ -433,17 +365,16 @@ const AddTransaction: React.FC = () => {
   const getCategoryDisplayName = useCallback(
     (id: string): string => {
       if (!id) return '';
-      const custom = customCategories.find((c) => c.id === id);
-      if (custom) return custom.name;
+      const fromCatalog = categoryOptions.find((c) => c.id === id);
+      if (fromCatalog) return fromCatalog.name;
+      // A transfer, or a category of the other type: not in this catalog.
       const customData = getCustomCategoryData(id);
       if (customData) return customData.name;
-      const override = categoryOverrides[id];
-      if (override?.name?.trim()) return override.name.trim();
       const builtIn = CATEGORIES.find((c) => c.id === id);
       if (builtIn) return t('categories', id as CategoryKey);
       return id;
     },
-    [customCategories, categoryOverrides, t],
+    [categoryOptions, t],
   );
 
   const accountDisplayLabel = useMemo(() => {
@@ -897,233 +828,17 @@ const AddTransaction: React.FC = () => {
       <BottomSheet
         open={categorySheetOpen}
         title={t('addTx', 'category')}
-        onClose={() => {
-          setCategorySheetOpen(false);
-          setIsCreatingCustom(false);
-          setManagingCustom(null);
-        }}
+        onClose={() => setCategorySheetOpen(false)}
         closeLabel={t('addTx', 'cancel')}
       >
         <CategoryGrid
-          type={type === 'income' ? 'income' : 'expense'}
+          categories={categoryOptions}
           selectedId={categoryId}
-          customCategories={customCategories}
-          categoryOverrides={categoryOverrides}
-          onAddCustom={() => {
-            setIsCreatingCustom(true);
-            setEditingCustomId(null);
-            setManagingCustom(null);
-            setNewCategoryName('');
-            setNewCategoryIcon('Tag');
-            setNewCategoryColor('#8E8E93');
-          }}
           onSelect={(id) => {
             setCategoryId(id);
-            setIsCreatingCustom(false);
-            setManagingCustom(null);
             setCategorySheetOpen(false);
           }}
-          onManageCategory={(category) => {
-            setManagingCustom(category);
-            setIsCreatingCustom(false);
-          }}
         />
-
-        {managingCustom && !isCreatingCustom ? (
-          <div className={styles.customCategoryCard}>
-            <h4 className={styles.customCategoryTitle}>{managingCustom.name}</h4>
-            <div className={styles.customCategoryActions}>
-              <button
-                type="button"
-                className={styles.customCategoryCancelBtn}
-                onClick={() => {
-                  setCategoryId(managingCustom.id);
-                  setManagingCustom(null);
-                  setCategorySheetOpen(false);
-                }}
-              >
-                {t('addTx', 'categoryTabSelect')}
-              </button>
-              <button
-                type="button"
-                className={styles.customCategoryCancelBtn}
-                onClick={() => {
-                  setIsCreatingCustom(true);
-                  setEditingCustomId(managingCustom.isCustom ? managingCustom.id : null);
-                  setNewCategoryName(managingCustom.name);
-                  setNewCategoryIcon(inferCustomCategoryIcon(managingCustom.name, managingCustom.icon));
-                  setNewCategoryColor(managingCustom.color || '#8E8E93');
-                }}
-              >
-                {t('history', 'edit')}
-              </button>
-              {managingCustom.isCustom ? (
-                <button
-                  type="button"
-                  className={styles.customCategoryCreateBtn}
-                  onClick={async () => {
-                    if (!(await showAppConfirm(t('addTx', 'deleteConfirm')))) return;
-                    try {
-                      const response = await apiFetch(`/api/custom-categories/${encodeURIComponent(managingCustom.id)}`, {
-                        method: 'DELETE',
-                      });
-                      if (response.ok) {
-                        setCustomCategories((prev) => prev.filter((c) => c.id !== managingCustom.id));
-                        if (categoryId === managingCustom.id) {
-                          setCategoryId(type === 'income' ? 'salary' : 'food');
-                        }
-                        setManagingCustom(null);
-                      }
-                    } catch (error) {
-                      console.error('Error deleting custom category:', error);
-                    }
-                  }}
-                >
-                  {t('history', 'delete')}
-                </button>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
-
-        {isCreatingCustom ? (
-          <div className={styles.customCategoryCard}>
-            <h4 className={styles.customCategoryTitle}>
-              {editingCustomId ? t('addTx', 'saveChanges') : t('addTx', 'createCategory')}
-            </h4>
-            <input
-              type="text"
-              value={newCategoryName}
-              onChange={(e) => setNewCategoryName(e.target.value)}
-              placeholder={t('addTx', 'customCategoryPlaceholder')}
-              className={styles.customCategoryInput}
-              maxLength={40}
-            />
-            <p className={styles.iconPickerLabel}>{t('addTx', 'chooseIcon')}</p>
-            <div className={styles.iconPickerGrid}>
-              {CUSTOM_CATEGORY_ICONS.map((iconName) => {
-                const IconComponent = getCategoryIcon(iconName, 'Tag');
-                const selected = newCategoryIcon === iconName;
-                return (
-                  <button
-                    key={iconName}
-                    type="button"
-                    className={`${styles.iconPickBtn} ${selected ? styles.iconPickBtnSelected : ''}`}
-                    onClick={() => setNewCategoryIcon(iconName)}
-                  >
-                    <IconComponent size={20} strokeWidth={1.8} />
-                  </button>
-                );
-              })}
-            </div>
-            <p className={styles.iconPickerLabel}>{t('addTx', 'chooseColor')}</p>
-            <div className={styles.colorPickerGrid}>
-              {CUSTOM_CATEGORY_COLORS.map((color) => (
-                <button
-                  key={color}
-                  type="button"
-                  className={`${styles.colorPickBtn} ${newCategoryColor === color ? styles.colorPickBtnSelected : ''}`}
-                  style={{ backgroundColor: color }}
-                  onClick={() => setNewCategoryColor(color)}
-                />
-              ))}
-            </div>
-            <div className={styles.customCategoryActions}>
-              <button
-                type="button"
-                className={styles.customCategoryCancelBtn}
-                onClick={() => {
-                  setIsCreatingCustom(false);
-                  setEditingCustomId(null);
-                }}
-              >
-                {t('addTx', 'cancel')}
-              </button>
-              <button
-                type="button"
-                className={styles.customCategoryCreateBtn}
-                disabled={!canCreateCustomCategory || creatingCategory}
-                onClick={async () => {
-                  if (!canCreateCustomCategory || creatingCategory) return;
-                  setCreatingCategory(true);
-                  const cleanName = newCategoryName.trim().replace(/\s+/g, ' ');
-                  const fallbackId = createCustomCategoryId(
-                    cleanName,
-                    newCategoryIcon,
-                    newCategoryColor
-                  );
-                  try {
-                    const isEdit = Boolean(editingCustomId);
-                    const isBuiltInEdit = Boolean(managingCustom && !managingCustom.isCustom);
-                    const endpoint = isEdit
-                      ? `/api/custom-categories/${encodeURIComponent(editingCustomId as string)}`
-                      : '/api/custom-categories';
-                    const response = await apiFetch(endpoint, {
-                      method: isEdit ? 'PATCH' : 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        name: cleanName,
-                        icon: newCategoryIcon,
-                        color: newCategoryColor,
-                        type,
-                      }),
-                    });
-                    const saved = response.ok ? await response.json() : null;
-                    if (isBuiltInEdit && managingCustom) {
-                      setCategoryOverrides((prev) => ({
-                        ...prev,
-                        [managingCustom.id]: {
-                          name: cleanName,
-                          icon: newCategoryIcon,
-                          color: newCategoryColor,
-                        },
-                      }));
-                      setCategoryId(managingCustom.id);
-                    } else {
-                      const nextId = saved?.id ?? fallbackId;
-                      setCategoryId(nextId);
-                      setCustomCategories((prev) => {
-                        const withoutOld = editingCustomId ? prev.filter((c) => c.id !== editingCustomId) : prev;
-                        const exists = withoutOld.some((c) => c.id === nextId);
-                        if (exists) {
-                          return withoutOld.map((c) =>
-                            c.id === nextId
-                              ? {
-                                  ...c,
-                                  name: saved?.name ?? cleanName,
-                                  icon: saved?.icon ?? newCategoryIcon,
-                                  color: saved?.color ?? newCategoryColor,
-                                }
-                              : c
-                          );
-                        }
-                        return [{
-                          id: nextId,
-                          name: saved?.name ?? cleanName,
-                          icon: saved?.icon ?? newCategoryIcon,
-                          color: saved?.color ?? newCategoryColor,
-                        }, ...withoutOld];
-                      });
-                    }
-                  } catch (error) {
-                    console.error('Error creating custom category:', error);
-                    setCategoryId(fallbackId);
-                  }
-                  setNewCategoryName('');
-                  setNewCategoryIcon('Tag');
-                  setNewCategoryColor('#8E8E93');
-                  setIsCreatingCustom(false);
-                  setManagingCustom(null);
-                  setEditingCustomId(null);
-                  setCreatingCategory(false);
-                  setCategorySheetOpen(false);
-                }}
-              >
-                {editingCustomId ? t('addTx', 'saveChanges') : t('addTx', 'create')}
-              </button>
-            </div>
-          </div>
-        ) : null}
       </BottomSheet>
     </div>
   );

@@ -3,6 +3,7 @@ import { ChevronRight, Pencil, Plus, Repeat } from 'lucide-react';
 import { formatCurrency, type PlannerCurrency } from '../utils/formatters';
 import { useTranslation } from '../i18n/LanguageContext';
 import { useGoBack } from '../hooks/useGoBack';
+import { useCategoryCatalog } from '../hooks/useCategoryCatalog';
 import { hapticLight, showAppConfirm } from '../utils/notify';
 import { apiFetch } from '../api/client';
 import { usePersistedState } from '../hooks/usePersistedState';
@@ -12,7 +13,6 @@ import {
   CUSTOM_CATEGORY_ICONS,
   findCategory,
   getCustomCategoryData,
-  inferCustomCategoryColor,
   inferCustomCategoryIcon,
 } from '../constants/categories';
 import { getCategoryIcon } from '../constants/categoryIcons';
@@ -105,9 +105,8 @@ const Subscriptions: React.FC = () => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [listError, setListError] = useState('');
   const [actionError, setActionError] = useState('');
-  const [customCategories, setCustomCategories] = useState<
-    Array<{ id: string; name: string; icon: string; color: string }>
-  >([]);
+  // Names, icons and order of categories are managed in Settings → Categories.
+  const { categories: categoryOptions } = useCategoryCatalog('expense');
   const [categorySheetOpen, setCategorySheetOpen] = useState(false);
   const [customIcon, setCustomIcon] = useState<string | null>(null);
   const [customColor, setCustomColor] = useState<string | null>(null);
@@ -141,21 +140,6 @@ const Subscriptions: React.FC = () => {
 
   useEffect(() => {
     void load();
-    apiFetch('/api/custom-categories?type=expense')
-      .then((r) => r.ok ? r.json() : [])
-      .then((data: unknown) => {
-        if (Array.isArray(data)) {
-          setCustomCategories(
-            data.map((c: { id: string; name: string; icon?: string; color?: string }) => ({
-              id: c.id,
-              name: c.name,
-              icon: inferCustomCategoryIcon(c.name, c.icon),
-              color: inferCustomCategoryColor(c.name, c.color),
-            })),
-          );
-        }
-      })
-      .catch(() => {});
   }, [load]);
 
   const activeItems = useMemo(() => items.filter((s) => s.active), [items]);
@@ -240,8 +224,8 @@ const Subscriptions: React.FC = () => {
 
   const categoryDisplayName = useCallback(
     (id: string): string => {
-      const fromLoaded = customCategories.find((c) => c.id === id);
-      if (fromLoaded) return fromLoaded.name;
+      const fromCatalog = categoryOptions.find((c) => c.id === id);
+      if (fromCatalog) return fromCatalog.name;
       const fromLegacy = getCustomCategoryData(id)?.name;
       if (fromLegacy) return fromLegacy;
       if (BUILTIN_EXPENSE_CATEGORIES.some((c) => c.id === id)) {
@@ -249,7 +233,7 @@ const Subscriptions: React.FC = () => {
       }
       return t('categories', DEFAULT_CATEGORY_ID);
     },
-    [t, customCategories],
+    [t, categoryOptions],
   );
 
   const canSave = useMemo(() => {
@@ -684,9 +668,8 @@ const Subscriptions: React.FC = () => {
             </header>
             <div className={styles.categorySheetBody}>
               <CategoryGrid
-                type="expense"
+                categories={categoryOptions}
                 selectedId={categoryId}
-                customCategories={customCategories}
                 onSelect={(id) => {
                   setCategoryId(id);
                   setCategorySheetOpen(false);

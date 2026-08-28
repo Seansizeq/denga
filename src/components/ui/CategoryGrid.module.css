@@ -41,12 +41,6 @@
   transition: transform 0.12s ease, background-color 0.12s ease;
 }
 
-.addIconBox {
-  border-style: dashed;
-  border-color: rgba(255, 213, 59, 0.4);
-  background: rgba(255, 213, 59, 0.08);
-}
-
 .selected .iconBox {
   transform: scale(1.05);
   background: rgba(255, 255, 255, 0.08);

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useTranslation } from '../../i18n/LanguageContext';
 import { LANGUAGES, LANGUAGE_LABELS, LANGUAGE_FLAGS } from '../../i18n/translations';
 import type { Language } from '../../i18n/translations';
@@ -26,6 +27,7 @@ const GeneralSettingsSection: React.FC = () => {
     setMoneyHidden,
   } = useTranslation();
   const { isSupported: fsSupported, isFullscreen, toggle: toggleFullscreen } = useTelegramFullscreen();
+  const navigate = useNavigate();
 
   const [langSheetOpen, setLangSheetOpen] = useState(false);
   const [currencySheetOpen, setCurrencySheetOpen] = useState(false);
@@ -45,6 +47,12 @@ const GeneralSettingsSection: React.FC = () => {
           value={t('settings', currencyLabelKey(displayCurrency))}
           chevron
           onClick={() => setCurrencySheetOpen(true)}
+        />
+        <SettingsRow
+          label={t('categoriesManager', 'settingsRow')}
+          sublabel={t('categoriesManager', 'settingsRowDescription')}
+          chevron
+          onClick={() => navigate('/settings/categories')}
         />
         <SettingsRow
           label={t('settings', 'hideMoney')}

@@ -244,6 +244,23 @@ export async function initDb() {
     ON custom_categories(user_id, type, normalized_name)
   `);
 
+  // Порядок категорій і перейменування вбудованих. Вбудовані категорії живуть у
+  // коді, тому власного рядка не мають — ця таблиця тримає те, що користувач
+  // змінив поверх них, і спільний порядок для вбудованих та власних.
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS category_prefs (
+      user_id TEXT NOT NULL DEFAULT '',
+      category_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      name TEXT,
+      icon TEXT,
+      color TEXT,
+      updatedAt TEXT NOT NULL,
+      PRIMARY KEY (user_id, type, category_id)
+    )
+  `);
+
   await db.exec(`
     CREATE TABLE IF NOT EXISTS subscriptions (
       id TEXT PRIMARY KEY,

@@ -5165,6 +5165,85 @@ app.delete('/api/transactions/:id', async (req, res) => {
 // Тіло вже розібране спільним парсером із власним лімітом для цього шляху.
 app.post(RECEIPT_SCAN_PATH, createReceiptScanHandler());
 
+// --- Порядок категорій і правки вбудованих ---
+// Вбудовані категорії задані в коді (src/constants/categories.ts), тому свого
+// рядка в БД не мають. Тут зберігається лише те, що користувач змінив поверх
+// них, плюс спільний порядок для вбудованих та власних категорій.
+const CATEGORY_PREF_COLOR_RE = /^#([0-9A-Fa-f]{6})$/;
+
+const readCategoryType = (value) => (value === 'income' || value === 'expense' ? value : null);
+
+app.get('/api/category-prefs', async (req, res) => {
+  const userId = req.authUserId;
+  const type = readCategoryType(String(req.query.type ?? ''));
+  if (!type) {
+    res.status(400).json({ error: 'type query must be income or expense' });
+    return;
+  }
+
+  const rows = await db.all(
+    `SELECT category_id AS id, sort_order AS sortOrder, name, icon, color
+     FROM category_prefs
+     WHERE user_id = ? AND type = ?
+     ORDER BY sort_order ASC`,
+    [userId, type]
+  );
+  res.json(rows);
+});
+
+app.put('/api/category-prefs', async (req, res) => {
+  const userId = req.authUserId;
+  const type = readCategoryType(req.body?.type);
+  if (!type) {
+    res.status(400).json({ error: 'type must be income or expense' });
+    return;
+  }
+  const items = Array.isArray(req.body?.items) ? req.body.items : null;
+  if (!items) {
+    res.status(400).json({ error: 'items must be an array' });
+    return;
+  }
+  if (items.length > 200) {
+    res.status(400).json({ error: 'too many items' });
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const rows = [];
+  const seen = new Set();
+  for (const item of items) {
+    const id = typeof item?.id === 'string' ? item.id.trim() : '';
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    const rawName = typeof item?.name === 'string' ? item.name.trim().replace(/\s+/g, ' ') : '';
+    const icon = typeof item?.icon === 'string' && item.icon ? item.icon.slice(0, 40) : null;
+    const color = typeof item?.color === 'string' && CATEGORY_PREF_COLOR_RE.test(item.color)
+      ? item.color
+      : null;
+    rows.push([userId, id, type, rows.length, rawName ? rawName.slice(0, 40) : null, icon, color, now]);
+  }
+
+  await db.run('BEGIN');
+  try {
+    await db.run('DELETE FROM category_prefs WHERE user_id = ? AND type = ?', [userId, type]);
+    for (const row of rows) {
+      await db.run(
+        `INSERT INTO category_prefs (user_id, category_id, type, sort_order, name, icon, color, updatedAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        row
+      );
+    }
+    await db.run('COMMIT');
+  } catch (error) {
+    await db.run('ROLLBACK');
+    throw error;
+  }
+
+  res.json(
+    rows.map(([, id, , sortOrder, name, icon, color]) => ({ id, sortOrder, name, icon, color }))
+  );
+});
+
 app.get('/api/custom-categories', async (req, res) => {
   const userId = req.authUserId;
   const type = String(req.query.type ?? '');

@@ -387,6 +387,20 @@ type Dict = {
     saved: string;
     saveFailed: string;
   };
+  categoriesManager: {
+    title: string;
+    subtitle: string;
+    settingsRow: string;
+    settingsRowDescription: string;
+    tabExpense: string;
+    tabIncome: string;
+    add: string;
+    editTitle: string;
+    reorder: string;
+    hint: string;
+    builtInHint: string;
+    deleteConfirm: string;
+  };
   budgets: {
     title: string;
     subtitle: string;
@@ -932,6 +946,20 @@ const uk: Dict = {
     paramFxThreshold: 'Поріг, %',
     saved: 'Збережено',
     saveFailed: 'Не вдалося зберегти. Спробуйте ще раз.',
+  },
+  categoriesManager: {
+    title: 'Категорії',
+    subtitle: 'Назва, іконка, колір і порядок — так, як їх видно у виборі категорії.',
+    settingsRow: 'Категорії',
+    settingsRowDescription: 'Редагування назв, іконок і порядку категорій',
+    tabExpense: 'Категорії витрат',
+    tabIncome: 'Категорії доходів',
+    add: 'Нова категорія',
+    editTitle: 'Редагувати категорію',
+    reorder: 'Перемістити',
+    hint: 'Потягни за ручку праворуч, щоб змінити порядок. Порядок і правки зберігаються на сервері й діють на всіх пристроях.',
+    builtInHint: 'Це вбудована категорія: її можна перейменувати й перефарбувати, але не видалити — на неї можуть посилатися старі операції.',
+    deleteConfirm: 'Видалити категорію? Операції з нею перейдуть в «Інше».',
   },
   budgets: {
     title: 'Бюджети',
@@ -1484,6 +1512,20 @@ const ru: Dict = {
     saved: 'Сохранено',
     saveFailed: 'Не удалось сохранить. Попробуйте ещё раз.',
   },
+  categoriesManager: {
+    title: 'Категории',
+    subtitle: 'Название, иконка, цвет и порядок — те же, что и при выборе категории.',
+    settingsRow: 'Категории',
+    settingsRowDescription: 'Редактирование названий, иконок и порядка категорий',
+    tabExpense: 'Категории расходов',
+    tabIncome: 'Категории доходов',
+    add: 'Новая категория',
+    editTitle: 'Редактировать категорию',
+    reorder: 'Переместить',
+    hint: 'Потяни за ручку справа, чтобы изменить порядок. Порядок и правки хранятся на сервере и действуют на всех устройствах.',
+    builtInHint: 'Это встроенная категория: её можно переименовать и перекрасить, но не удалить — на неё могут ссылаться старые операции.',
+    deleteConfirm: 'Удалить категорию? Операции с ней перейдут в «Другое».',
+  },
   budgets: {
     title: 'Бюджеты',
     subtitle: 'Лимит расходов в месяц по категории (уведомления в Telegram при 80% и 100%)',
@@ -2034,6 +2076,20 @@ const en: Dict = {
     paramFxThreshold: 'Threshold, %',
     saved: 'Saved',
     saveFailed: 'Could not save. Please try again.',
+  },
+  categoriesManager: {
+    title: 'Categories',
+    subtitle: 'Name, icon, color and order — exactly as the category picker shows them.',
+    settingsRow: 'Categories',
+    settingsRowDescription: 'Edit category names, icons and order',
+    tabExpense: 'Expense categories',
+    tabIncome: 'Income categories',
+    add: 'New category',
+    editTitle: 'Edit category',
+    reorder: 'Move',
+    hint: 'Drag the handle on the right to reorder. Order and edits are stored on the server and apply on every device.',
+    builtInHint: 'This is a built-in category: it can be renamed and recolored, but not deleted — older transactions may still point at it.',
+    deleteConfirm: 'Delete this category? Its transactions move to "Other".',
   },
   budgets: {
     title: 'Budgets',
