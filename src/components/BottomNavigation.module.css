@@ -1,3 +1,9 @@
+/**
+ * Смуга лишається того самого зросту, що й раніше: сторінки резервують під неї
+ * `--bottom-nav-height`, і чіпати це в десятку файлів заради вигляду не варто.
+ * Скло малює вже `.bar` усередині — сама `.nav` тепер прозора, тож дотики в
+ * полях обабіч капсули мають діставатися контенту, а не ловитися смугою.
+ */
 .nav {
   position: fixed;
   bottom: 0;
@@ -5,19 +11,84 @@
   right: 0;
   height: calc(var(--bottom-nav-height) + var(--safe-area-inset-bottom));
   z-index: 1000;
-  background: linear-gradient(180deg, #211f2a 0%, #1c1a24 100%);
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
   padding-bottom: var(--safe-area-inset-bottom);
+  pointer-events: none;
 }
 
+/**
+ * Плаваюча скляна капсула. Відрив від країв тут не декоративний: скло видно
+ * лише тоді, коли під ним щось проїжджає, а притиснута до низу смуга на всю
+ * ширину лишає під собою рівний `--bg-primary` і перетворюється на звичайну
+ * трохи світлішу плашку.
+ *
+ * Розмиття перераховується на кожному кадрі прокрутки (через це від нього
+ * відмовилися в DataStatusBanner), тому воно тут рівно одне на застосунок —
+ * на нерухомому елементі. Всередині списків такого бути не повинно.
+ */
 .bar {
   --bar-side-padding: 8px;
-  height: var(--bottom-nav-height);
+  position: relative;
+  height: calc(var(--bottom-nav-height) - 18px);
+  margin: 0 12px 10px;
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   align-items: center;
   padding: 0 var(--bar-side-padding);
-  position: relative;
+  border-radius: 26px;
+  pointer-events: auto;
+  isolation: isolate;
+
+  /**
+   * Два шари в одному властивості: підсвітка згори і темна підкладка під нею.
+   * Підкладка не для краси — без неї яскравий рядок, що проїжджає під склом,
+   * з'їдає контраст неактивних іконок (вони #6a6478). Так робить і сам iOS у
+   * темній темі: скло там затемнене, а не просто прозоре.
+   */
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.12) 0%,
+      rgba(255, 255, 255, 0.05) 42%,
+      rgba(255, 255, 255, 0.07) 100%
+    ),
+    rgba(20, 17, 26, 0.55);
+  /* saturate тягне колір з-під скла — без нього розмиття виходить сірим і мертвим. */
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.4),
+    0 2px 8px rgba(0, 0, 0, 0.24);
+}
+
+/**
+ * Спекулярна кромка — те, що відрізняє скло від напівпрозорого прямокутника.
+ * Градієнт по периметру: яскраво згори, майже нічого посередині, легкий
+ * відбитий підсвіт знизу. Робиться маскою, бо `border-image` не дружить із
+ * `border-radius`, а тінь однакова з усіх боків.
+ */
+.bar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.6) 0%,
+    rgba(255, 255, 255, 0.16) 30%,
+    rgba(255, 255, 255, 0.04) 62%,
+    rgba(255, 255, 255, 0.2) 100%
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 2;
 }
 
 /**
@@ -50,10 +121,17 @@
   width: var(--indicator-size);
   height: var(--indicator-size);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.11);
+  /* Друге скло поверх першого: світліше й із власним бліком, щоб активна
+     вкладка читалася як лінза на панелі, а не як залита плашка. */
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.2) 0%,
+    rgba(255, 255, 255, 0.11) 100%
+  );
   box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.06),
-    0 6px 14px rgba(0, 0, 0, 0.22);
+    inset 0 1px 0 rgba(255, 255, 255, 0.34),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.09),
+    0 4px 12px rgba(0, 0, 0, 0.26);
 }
 
 .link,
@@ -91,3 +169,21 @@
   transform: scale(0.96);
 }
 
+/**
+ * Без підтримки backdrop-filter скло вироджується в напівпрозору плашку, крізь
+ * яку просвічує список — читати неможливо. Тому повертаємо колишній непрозорий
+ * фон. Те саме за системним «менше прозорості»: користувач попросив прямо.
+ */
+@supports not ((backdrop-filter: blur(4px)) or (-webkit-backdrop-filter: blur(4px))) {
+  .bar {
+    background: linear-gradient(180deg, #211f2a 0%, #1c1a24 100%);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .bar {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: linear-gradient(180deg, #211f2a 0%, #1c1a24 100%);
+  }
+}
