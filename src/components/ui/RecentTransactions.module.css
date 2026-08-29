@@ -124,16 +124,84 @@
   gap: 8px;
 }
 
+/**
+ * Скло того самого складу, що й нижня панель: біла заливка згори вниз, темна
+ * підкладка під нею заради контрасту тексту, і спекулярна кромка замість
+ * звичайного бордера. Так картка й навігація читаються як один матеріал.
+ *
+ * `backdrop-filter` дорожчає на прокрутці — фон під елементом зсувається, і
+ * розмиття перераховується щокадру. Тут це безпечно з простої причини: цей
+ * стан показується рівно тоді, коли операцій немає, тобто коли сторінці нема
+ * куди скролитися. Рядкам транзакцій таке саме скло давати вже не можна.
+ */
 .emptyState {
-  background-color: var(--bg-card);
+  position: relative;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.13) 0%,
+      rgba(255, 255, 255, 0.03) 46%,
+      rgba(255, 255, 255, 0.07) 100%
+    ),
+    rgba(28, 23, 42, 0.28);
+  backdrop-filter: blur(26px) saturate(200%);
+  -webkit-backdrop-filter: blur(26px) saturate(200%);
   border-radius: var(--radius-lg);
-  border: 1px solid var(--border-light);
   padding: 36px 20px;
   text-align: center;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
+}
+
+/**
+ * Кромка малюється маскою, а не `border`: градієнт по периметру неможливо
+ * задати бордером, а `border-image` не дружить із `border-radius`.
+ */
+.emptyState::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.8) 0%,
+    rgba(255, 255, 255, 0.14) 34%,
+    rgba(255, 255, 255, 0.05) 64%,
+    rgba(255, 255, 255, 0.32) 100%
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/**
+ * Без підтримки backdrop-filter скло вироджується в ледь помітну плівку —
+ * повертаємо колишню непрозору картку. Те саме за системним «менше
+ * прозорості»: користувач попросив прямо.
+ */
+@supports not ((backdrop-filter: blur(4px)) or (-webkit-backdrop-filter: blur(4px))) {
+  .emptyState {
+    background: var(--bg-card);
+    border: 1px solid var(--border-light);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .emptyState {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: var(--bg-card);
+    border: 1px solid var(--border-light);
+  }
 }
 
 .emptyIcon {
