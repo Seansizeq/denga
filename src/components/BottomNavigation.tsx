@@ -55,7 +55,7 @@ const BottomNavigation: React.FC = () => {
 
   return (
     <nav className={styles.nav}>
-      <div className={styles.bar} ref={barRef} onClickCapture={onClickCapture}>
+      <div className={styles.bar} ref={barRef} onClickCapture={onClickCapture} {...handlers}>
         {indicatorColumn ? (
           <span
             className={styles.activeIndicator}
@@ -80,7 +80,7 @@ const BottomNavigation: React.FC = () => {
                 item.round ? ` ${styles.roundBtn}` : ''
               }`}
               aria-label={labels[index]}
-              {...(isActive ? handlers : null)}
+              draggable={false}
             >
               <Icon size={24} strokeWidth={2} />
             </NavLink>

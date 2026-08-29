@@ -74,7 +74,15 @@ export const useGlassSlider = ({ count, column, onPick }: Options) => {
       if (!bar || !glass) return;
 
       // Ширина комірки — з реальної панелі: вона залежить від ширини екрана.
-      const colWidth = glass.getBoundingClientRect().width;
+      const box = glass.getBoundingClientRect();
+      const colWidth = box.width;
+      if (colWidth <= 0) return;
+
+      // Жест починається тільки зі скла. Підкладка завширшки рівно з комірку і
+      // стоїть під активною іконкою, тож її межі — і є та зона, де палець
+      // фізично лягає на скло; тап по будь-якій іншій вкладці лишається тапом.
+      if (e.clientX < box.left || e.clientX > box.right) return;
+
       origin.current = { px: e.clientX, startCol: column - 1, colWidth };
       liveCol.current = column - 1;
       dragging.current = false;
@@ -83,8 +91,12 @@ export const useGlassSlider = ({ count, column, onPick }: Options) => {
         window.clearTimeout(settleTimer.current);
         settleTimer.current = null;
       }
+      // Захоплення вішається на саму панель, а не на посилання під пальцем.
+      // На `<a>` браузер заводить власне перетягування посилання і вже на
+      // третьому пікселі шле `pointercancel` — скло «відпускалося» саме собою
+      // посеред жесту. Панель — звичайний div: нативного drag у неї немає.
       try {
-        e.currentTarget.setPointerCapture?.(e.pointerId);
+        bar.setPointerCapture?.(e.pointerId);
       } catch {
         /* вказівника вже немає — рух просто піде без захоплення */
       }
@@ -154,6 +166,10 @@ export const useGlassSlider = ({ count, column, onPick }: Options) => {
     }, SETTLE_MS + 20);
   }, [onPick]);
 
+  const preventDrag = useCallback((e: React.DragEvent<HTMLElement>) => {
+    e.preventDefault();
+  }, []);
+
   const onClickCapture = useCallback((e: React.MouseEvent<HTMLElement>) => {
     // Палець, відпущений над чужою вкладкою, інакше відкрив би її ще й кліком —
     // поверх того переходу, який ми вже зробили самі.
@@ -173,6 +189,13 @@ export const useGlassSlider = ({ count, column, onPick }: Options) => {
       onPointerMove,
       onPointerUp: finish,
       onPointerCancel: finish,
+      // Захоплення може забрати сама система — наприклад, коли поверх
+      // застосунку виїжджає системний жест. Тоді рухи більше не приходять, і
+      // без цього скло просто зависло б посеред панелі.
+      onLostPointerCapture: finish,
+      // Остання лінія проти нативного перетягування: іконки всередині — це
+      // посилання, а їх браузер за замовчуванням дозволяє тягати як лінки.
+      onDragStart: preventDrag,
     },
     onClickCapture,
   };
