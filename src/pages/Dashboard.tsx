@@ -215,6 +215,7 @@ const Dashboard: React.FC = () => {
           onEdit={(id) => navigate(`/add?edit=${id}`)}
           filter={range}
           onFilterChange={setRange}
+          showFilter={false}
           showSeeAll={false}
           onTitleClick={() => navigate('/history')}
         />
