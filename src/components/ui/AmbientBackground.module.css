@@ -15,36 +15,54 @@
   animation-direction: alternate;
 }
 
-/* Великий фіолетовий — зверху по центру */
+/**
+ * Розмір беремо як `max(Nvw, Mvh)`, а не в чистих `vw`.
+ *
+ * У `vw` пляма прив'язана до ширини, а екран телефона вузький і високий: плями
+ * стискалися втричі проти десктопних, тоді як відстань до низу навпаки росла,
+ * і нижня третина екрана лишалася без світла. Найпомітніше це було на нижній
+ * панелі — скло розмивало під собою чистий `--bg-primary` і виглядало
+ * непрозорою плашкою, хоча значення прозорості скрізь однакове.
+ *
+ * `vh`-складова тримає вертикальний розмах на вузьких екранах; на широких
+ * виграє `vw` і десктопна картинка лишається тією самою.
+ */
 .blob1 {
-  width: 80vw;
-  height: 80vw;
+  --size: max(80vw, 62vh);
+  width: var(--size);
+  height: var(--size);
   background: radial-gradient(circle, rgba(140, 100, 255, 0.72) 0%, rgba(100, 60, 220, 0.4) 40%, transparent 70%);
   filter: blur(60px);
-  top: -28vw;
-  left: 10%;
+  top: calc(var(--size) * -0.35);
+  /* Центруємо арифметикою, а не `translateX`: transform тут зайнятий анімацією. */
+  left: calc(50% - var(--size) / 2);
   animation: drift1 15s ease-in-out infinite alternate;
 }
 
 /* Синій — зліва посередині */
 .blob2 {
-  width: 65vw;
-  height: 65vw;
+  --size: max(65vw, 50vh);
+  width: var(--size);
+  height: var(--size);
   background: radial-gradient(circle, rgba(60, 130, 255, 0.60) 0%, rgba(40, 90, 210, 0.3) 45%, transparent 70%);
   filter: blur(65px);
   top: 22%;
-  left: -22vw;
+  left: calc(var(--size) * -0.34);
   animation: drift2 19s ease-in-out infinite alternate;
 }
 
-/* Фіолетово-рожевий — знизу справа */
+/**
+ * Нижня пляма світить саме під навігацію: на вузькому екрані її яскравий центр
+ * лягає приблизно на висоту панелі, і склу знову є що заломлювати.
+ */
 .blob3 {
-  width: 60vw;
-  height: 60vw;
+  --size: max(60vw, 48vh);
+  width: var(--size);
+  height: var(--size);
   background: radial-gradient(circle, rgba(110, 50, 200, 0.55) 0%, rgba(80, 30, 160, 0.25) 45%, transparent 70%);
   filter: blur(70px);
-  bottom: -12vw;
-  right: -12vw;
+  bottom: -18vh;
+  right: -15vw;
   animation: drift3 17s ease-in-out infinite alternate;
 }
 
