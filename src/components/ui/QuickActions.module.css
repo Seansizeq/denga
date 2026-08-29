@@ -17,12 +17,33 @@
   cursor: pointer;
 }
 
+/**
+ * Скло того самого складу, що на нижній панелі, порожній картці й пігулці
+ * відсотків. Кромка внутрішніми тінями, а не бордером: на колі градієнтний
+ * бордер довелося б робити маскою, а inset-кільце дає той самий яскравий верх.
+ *
+ * Чотири невеликі скляні поверхні замість чотирьох пласких — це чотири
+ * додаткові області, які композитор перерозмиває. Тут вони по 56px і разом
+ * дають площу менше третини нижньої панелі, тож ціна невелика. Списку
+ * транзакцій, який їде під пальцем, таке саме скло давати все одно не можна.
+ */
 .circle {
   width: 56px;
   height: 56px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.13) 0%,
+      rgba(255, 255, 255, 0.03) 46%,
+      rgba(255, 255, 255, 0.07) 100%
+    ),
+    rgba(28, 23, 42, 0.28);
+  backdrop-filter: blur(20px) saturate(190%);
+  -webkit-backdrop-filter: blur(20px) saturate(190%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.1);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -34,7 +55,14 @@
 
 .item:active .circle {
   transform: scale(0.94);
-  background: rgba(255, 255, 255, 0.08);
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.2) 0%,
+      rgba(255, 255, 255, 0.06) 46%,
+      rgba(255, 255, 255, 0.1) 100%
+    ),
+    rgba(28, 23, 42, 0.3);
 }
 
 .label {
@@ -43,20 +71,28 @@
   font-weight: 500;
 }
 
-.history .circle,
-.subscriptions .circle {
-  color: var(--text-primary);
+/**
+ * Модифікатори на .scan / .goals / .history / .subscriptions прибрані: усі
+ * чотири повторювали рівно те, що вже стоїть у `.circle`. Шкоди від них не
+ * було, доки заливка збігалася, — але за специфічністю вони перебивають базове
+ * правило, тож скло дісталося б лише половині кнопок.
+ */
+
+/* Без розмиття скло вироджується в ледь помітну плівку — повертаємо плаский
+   фон із бордером. Те саме за системним «менше прозорості». */
+@supports not ((backdrop-filter: blur(4px)) or (-webkit-backdrop-filter: blur(4px))) {
+  .circle {
+    background: rgba(255, 255, 255, 0.03);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  }
 }
 
-.scan .circle {
-  color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.03);
-  border-color: rgba(255, 255, 255, 0.08);
-}
-
-.goals .circle {
-  color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.03);
-  border-color: rgba(255, 255, 255, 0.08);
+@media (prefers-reduced-transparency: reduce) {
+  .circle {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: rgba(255, 255, 255, 0.03);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  }
 }
 
