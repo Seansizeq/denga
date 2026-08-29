@@ -55,11 +55,11 @@
   background:
     linear-gradient(
       180deg,
-      rgba(255, 255, 255, 0.12) 0%,
-      rgba(255, 255, 255, 0.05) 42%,
-      rgba(255, 255, 255, 0.07) 100%
+      rgba(255, 255, 255, 0.07) 0%,
+      rgba(255, 255, 255, 0.02) 42%,
+      rgba(255, 255, 255, 0.04) 100%
     ),
-    rgba(20, 17, 26, 0.55);
+    rgba(20, 17, 26, 0.22);
   /* saturate тягне колір з-під скла — без нього розмиття виходить сірим і мертвим. */
   backdrop-filter: blur(28px) saturate(180%);
   -webkit-backdrop-filter: blur(28px) saturate(180%);
@@ -78,15 +78,19 @@
 }
 
 .activeIndicator[data-sliding='true']::before {
+  /* 52px * 1.5 ≈ 78px — панель висотою 74px, тобто скло трохи виходить за її межі */
+  transform: scale(1.5);
+  border-radius: 22px;
   background: linear-gradient(
     180deg,
-    rgba(255, 255, 255, 0.3) 0%,
+    rgba(255, 255, 255, 0.32) 0%,
     rgba(255, 255, 255, 0.18) 100%
   );
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.5),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.14),
-    0 8px 18px rgba(0, 0, 0, 0.34);
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.16),
+    0 12px 28px rgba(0, 0, 0, 0.38),
+    0 0 20px rgba(124, 92, 255, 0.18);
 }
 
 /**
@@ -161,6 +165,10 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.34),
     inset 0 0 0 1px rgba(255, 255, 255, 0.09),
     0 4px 12px rgba(0, 0, 0, 0.26);
+  transition:
+    transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1),
+    background 0.18s ease,
+    box-shadow 0.18s ease;
 }
 
 .link,
