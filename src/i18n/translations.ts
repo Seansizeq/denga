@@ -216,6 +216,8 @@ type Dict = {
     deleteTemplate: string;
     deleteTemplateConfirm: string;
     startShift: string;
+    rangeHintStart: string;
+    rangeHintEnd: string;
     endShift: string;
     endShiftConfirm: string;
     shiftElapsed: string;
@@ -772,6 +774,8 @@ const uk: Dict = {
     deleteTemplate: 'Видалити шаблон',
     deleteTemplateConfirm: 'Видалити цей шаблон зі списку?',
     startShift: 'Почати зміну',
+    rangeHintStart: 'Торкніться дня, щоб почати проміжок',
+    rangeHintEnd: 'Тепер торкніться дня, яким проміжок закінчується',
     endShift: 'Завершити зміну',
     endShiftConfirm: 'Завершити зміну та зберегти години?',
     shiftElapsed: 'Триває',
@@ -1341,6 +1345,8 @@ const ru: Dict = {
     deleteTemplate: 'Удалить шаблон',
     deleteTemplateConfirm: 'Удалить этот шаблон из списка?',
     startShift: 'Начать смену',
+    rangeHintStart: 'Коснитесь дня, чтобы начать промежуток',
+    rangeHintEnd: 'Теперь коснитесь дня, которым промежуток заканчивается',
     endShift: 'Закончить смену',
     endShiftConfirm: 'Закончить смену и сохранить часы?',
     shiftElapsed: 'Длится',
@@ -1910,6 +1916,8 @@ const en: Dict = {
     deleteTemplate: 'Delete template',
     deleteTemplateConfirm: 'Remove this template from the list?',
     startShift: 'Start shift',
+    rangeHintStart: 'Tap a day to begin the range',
+    rangeHintEnd: 'Now tap the day the range ends on',
     endShift: 'End shift',
     endShiftConfirm: 'End shift and save worked hours?',
     shiftElapsed: 'Elapsed',

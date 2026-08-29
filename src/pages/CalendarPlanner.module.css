@@ -89,91 +89,155 @@
   flex-wrap: wrap;
 }
 
-.reportRangeTabs {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 4px;
-  width: 100%;
-  background: rgba(255, 255, 255, 0.025);
-  border: 1px solid rgba(255, 255, 255, 0.13);
-  border-radius: 16px;
-  padding: 4px;
+/**
+ * Перемикач звіту — дві скляні пігулки замість колишніх п'яти вкладок.
+ * День, тиждень і рік не зникли: вони стали способами задати проміжок, а не
+ * окремими режимами, тож у верхньому рівні лишилося рівно два стани.
+ */
+.reportModeSeg {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.09);
 }
 
-.reportRangeTabBtn {
-  grid-column: span 2;
-  min-width: 0;
-  border: 1px solid rgba(255, 255, 255, 0.045);
-  background: rgba(255, 255, 255, 0.018);
+.reportModeBtn {
+  border: none;
+  background: transparent;
   color: var(--text-secondary);
-  border-radius: 11px;
-  padding: 8px 4px;
+  font-family: inherit;
   font-size: 13px;
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-weight: 500;
+  padding: 8px 18px;
+  border-radius: var(--radius-full);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: color var(--motion-fast) var(--ease-out);
 }
 
-.reportRangeTabBtn:nth-child(4),
-.reportRangeTabBtn:nth-child(5) {
-  grid-column: span 3;
+.reportModeBtnActive {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.17), rgba(255, 255, 255, 0.06));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  color: var(--text-primary);
 }
 
-.reportRangeTabBtnActive {
-  border-color: rgba(155, 124, 255, 0.68);
-  background: linear-gradient(180deg, rgba(124, 92, 255, 0.3), rgba(124, 92, 255, 0.18));
-  color: #fff;
+/* За що саме показано звіт: назва місяця або межі проміжку. */
+.reportPeriod {
+  margin: 0 0 18px;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-primary);
+  text-transform: capitalize;
 }
 
-.customRangeRow {
+.rangePicker {
+  margin-bottom: 18px;
+}
+
+.rangePresets {
   display: flex;
   gap: 8px;
-  margin-bottom: 16px;
+  flex-wrap: wrap;
 }
 
-.customRangeField {
-  display: flex;
-  flex: 1 1 0;
-  min-width: 0;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.customRangeLabel {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary);
-}
-
-.customRangeWrap {
-  position: relative;
-  width: 100%;
-}
-
-.customRangeBtn {
-  width: 100%;
-  box-sizing: border-box;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--border-light);
-  border-radius: 12px;
-  padding: 10px 8px;
-  color: var(--text-primary);
+.rangePresetBtn {
+  border: none;
+  border-radius: var(--radius-full);
+  padding: 7px 15px;
   font-family: inherit;
-  font-size: 14px;
-  font-weight: 600;
-  text-align: left;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
   cursor: pointer;
 }
 
-.customRangeInputNative {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  pointer-events: auto;
+.rangeMonthNav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.rangeNavBtn {
+  border: none;
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.09);
+  color: var(--text-secondary);
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
+}
+
+.rangeMonthLabel {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  text-transform: capitalize;
+}
+
+.rangeWeekdays,
+.rangeGrid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.rangeWeekdays {
+  margin-top: 12px;
+}
+
+.rangeWeekday {
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.rangeGrid {
+  margin-top: 6px;
+}
+
+.rangeEmpty {
+  aspect-ratio: 1;
+}
+
+.rangeDay {
+  aspect-ratio: 1;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 12px;
+  border-radius: 9px;
+  cursor: pointer;
+  padding: 0;
+  transition: background var(--motion-fast) var(--ease-out);
+}
+
+.rangeDayIn {
+  background: rgba(142, 116, 255, 0.2);
+  color: var(--text-primary);
+  /* Проміжок читається суцільною смугою, тож у середині кути прямі. */
+  border-radius: 0;
+}
+
+.rangeDayEdge {
+  background: rgba(142, 116, 255, 0.75);
+  color: var(--text-primary);
+  font-weight: 500;
+  border-radius: 9px;
+}
+
+.rangeHint {
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: var(--text-tertiary);
 }
 
 .reportStatsGrid {

@@ -81,13 +81,6 @@ const monthLabel = (value: string, locale: string): string => {
   return new Date(year, month - 1, 1).toLocaleDateString(locale, { month: 'long', year: 'numeric' });
 };
 
-/** Фіксований формат dd.mm.yyyy — не залежить від локалі пристрою/браузера. */
-const shortDateLabel = (iso: string): string => {
-  if (!iso) return '';
-  const [y, m, d] = iso.split('-');
-  return `${d}.${m}.${y}`;
-};
-
 const openNativeDatePicker = (input: (HTMLInputElement & { showPicker?: () => void }) | null): void => {
   if (!input) return;
   if (typeof input.showPicker === 'function') {
@@ -257,6 +250,13 @@ const CalendarPlanner: React.FC = () => {
   const [startShiftChooserOpen, setStartShiftChooserOpen] = useState(false);
   /** Аркуш дій по дню — те, що відкривається утриманням числа в календарі. */
   const [dayActionsOpen, setDayActionsOpen] = useState(false);
+  /** Місяць, показаний у календарі всередині звіту — окремий від головного. */
+  const [panelMonth, setPanelMonth] = useState(() => todayIso().slice(0, 7));
+  /**
+   * Перший торкнутий день діапазону. Поки він заповнений, наступний тап
+   * закриває проміжок; після цього починається новий.
+   */
+  const [rangeAnchor, setRangeAnchor] = useState<string | null>(null);
   const [editorOpened, setEditorOpened] = useState(false);
   const [shiftName, setShiftName] = useState('');
   const [shiftSymbol, setShiftSymbol] = useState('');
@@ -280,8 +280,6 @@ const CalendarPlanner: React.FC = () => {
   const [reportShiftEntries, setReportShiftEntries] = useState<ShiftEntry[]>([]);
   const [reportShiftEntriesLoading, setReportShiftEntriesLoading] = useState(false);
   const monthInputRef = useRef<HTMLInputElement | null>(null);
-  const customFromInputRef = useRef<HTMLInputElement | null>(null);
-  const customToInputRef = useRef<HTMLInputElement | null>(null);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressFiredRef = useRef(false);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -427,6 +425,7 @@ const CalendarPlanner: React.FC = () => {
   }, [modalAnyOpen]);
 
   const calendarCells = useMemo(() => buildCalendarCells(month), [month]);
+  const panelCells = useMemo(() => buildCalendarCells(panelMonth), [panelMonth]);
   const weekdays = useMemo(() => {
     const baseMonday = new Date(2024, 0, 1);
     return Array.from({ length: 7 }, (_, i) =>
@@ -578,9 +577,47 @@ const CalendarPlanner: React.FC = () => {
     void handleStartShift(preset);
   };
 
+  /**
+   * Вибір дня більше не перемикає звіт на цей день. Звітом керує власна
+   * панель — інакше тап по календарю мовчки збивав би вибраний період.
+   */
   const selectDay = (dayIso: string) => {
     setSelectedDay(dayIso);
-    setReportRange('day');
+  };
+
+  /**
+   * Тап по календарю всередині звіту. Перший — ставить обидва кінці на один
+   * день (звіт одразу показує цей день), другий — розтягує проміжок. Порядок
+   * не має значення: якщо другий тап раніший, кінці міняються місцями.
+   */
+  const pickRangeDay = (dayIso: string) => {
+    if (!rangeAnchor) {
+      setRangeAnchor(dayIso);
+      setCustomFrom(dayIso);
+      setCustomTo(dayIso);
+      return;
+    }
+    const [from, to] = dayIso < rangeAnchor ? [dayIso, rangeAnchor] : [rangeAnchor, dayIso];
+    setCustomFrom(from);
+    setCustomTo(to);
+    setRangeAnchor(null);
+  };
+
+  /** Пресети не окремі режими, а лише швидкий спосіб заповнити діапазон. */
+  const applyRangePreset = (preset: 'week' | 'year') => {
+    const today = todayIso();
+    if (preset === 'week') {
+      const from = parseIsoLocal(today);
+      from.setDate(from.getDate() - 6);
+      setCustomFrom(toIsoLocal(from));
+      setCustomTo(today);
+    } else {
+      const year = today.slice(0, 4);
+      setCustomFrom(`${year}-01-01`);
+      setCustomTo(`${year}-12-31`);
+    }
+    setRangeAnchor(null);
+    setPanelMonth(today.slice(0, 7));
   };
 
   /**
@@ -590,7 +627,6 @@ const CalendarPlanner: React.FC = () => {
    */
   const openDayActions = (dayIso: string) => {
     setSelectedDay(dayIso);
-    setReportRange('day');
     setDayActionsOpen(true);
   };
 
@@ -922,6 +958,25 @@ const CalendarPlanner: React.FC = () => {
 
   const todayIsoStr = todayIso();
   const currentMonthLabel = monthLabel(month, locale);
+
+  /**
+   * Підпис того, за що саме показано звіт. Один день — просто дата; проміжок
+   * усередині одного місяця не повторює назву місяця двічі.
+   */
+  const reportPeriodLabel = (() => {
+    if (reportRange !== 'custom') return currentMonthLabel;
+    if (!customFrom || !customTo) return '';
+    const from = parseIsoLocal(customFrom);
+    const to = parseIsoLocal(customTo);
+    if (customFrom === customTo) {
+      return from.toLocaleDateString(locale, { day: 'numeric', month: 'long' });
+    }
+    if (customFrom.slice(0, 7) === customTo.slice(0, 7)) {
+      return `${from.getDate()} – ${to.toLocaleDateString(locale, { day: 'numeric', month: 'long' })}`;
+    }
+    const opts = { day: 'numeric', month: 'short' } as const;
+    return `${from.toLocaleDateString(locale, opts)} – ${to.toLocaleDateString(locale, opts)}`;
+  })();
   const selectedDayLabel = parseIsoLocal(selectedDay).toLocaleDateString(locale, {
     weekday: 'short',
     day: 'numeric',
@@ -1020,25 +1075,21 @@ const CalendarPlanner: React.FC = () => {
 
         <div className={styles.reportCard}>
           <div className={styles.reportHeader}>
-            <h3 className={styles.reportCardTitle}>
-              {reportRange === 'day'
-                ? t('planner', 'dayReportTitle')
-                : reportRange === 'year'
-                  ? t('planner', 'yearReportTitle')
-                  : reportRange === 'custom'
-                    ? t('planner', 'customReportTitle')
-                    : t('planner', 'monthReportTitle')}
-            </h3>
-            <div className={styles.reportRangeTabs} role="tablist" aria-label={t('planner', 'report')}>
-              {(['day', 'week', 'month', 'year', 'custom'] as const).map((opt) => (
+            <h3 className={styles.reportCardTitle}>{t('planner', 'report')}</h3>
+            <div className={styles.reportModeSeg} role="tablist" aria-label={t('planner', 'report')}>
+              {(['month', 'custom'] as const).map((opt) => (
                 <button
                   key={opt}
                   type="button"
                   role="tab"
                   aria-selected={reportRange === opt}
-                  className={`${styles.reportRangeTabBtn} ${reportRange === opt ? styles.reportRangeTabBtnActive : ''}`}
+                  className={`${styles.reportModeBtn} ${reportRange === opt ? styles.reportModeBtnActive : ''}`}
                   onClick={() => {
                     setReportRange(opt);
+                    if (opt === 'custom') {
+                      setRangeAnchor(null);
+                      setPanelMonth(customFrom ? customFrom.slice(0, 7) : month);
+                    }
                   }}
                 >
                   {t('range', opt)}
@@ -1046,60 +1097,77 @@ const CalendarPlanner: React.FC = () => {
               ))}
             </div>
           </div>
+
+          <p className={styles.reportPeriod}>{reportPeriodLabel}</p>
+
           {reportRange === 'custom' ? (
-            <div className={styles.customRangeRow}>
-              <div className={styles.customRangeField}>
-                <span className={styles.customRangeLabel}>{t('planner', 'customRangeFrom')}</span>
-                <div className={styles.customRangeWrap}>
+            <div className={styles.rangePicker}>
+              <div className={styles.rangePresets}>
+                {(['week', 'year'] as const).map((preset) => (
                   <button
+                    key={preset}
                     type="button"
-                    className={styles.customRangeBtn}
-                    onClick={() => openNativeDatePicker(customFromInputRef.current)}
+                    className={styles.rangePresetBtn}
+                    onClick={() => applyRangePreset(preset)}
                   >
-                    {shortDateLabel(customFrom)}
+                    {t('range', preset)}
                   </button>
-                  <input
-                    ref={customFromInputRef}
-                    type="date"
-                    className={styles.customRangeInputNative}
-                    value={customFrom}
-                    max={customTo || undefined}
-                    aria-label={t('planner', 'customRangeFrom')}
-                    onChange={(e) => {
-                      const next = e.target.value;
-                      if (!next) return;
-                      setCustomFrom(next);
-                      if (customTo && next > customTo) setCustomTo(next);
-                    }}
-                  />
-                </div>
+                ))}
               </div>
-              <div className={styles.customRangeField}>
-                <span className={styles.customRangeLabel}>{t('planner', 'customRangeTo')}</span>
-                <div className={styles.customRangeWrap}>
-                  <button
-                    type="button"
-                    className={styles.customRangeBtn}
-                    onClick={() => openNativeDatePicker(customToInputRef.current)}
-                  >
-                    {shortDateLabel(customTo)}
-                  </button>
-                  <input
-                    ref={customToInputRef}
-                    type="date"
-                    className={styles.customRangeInputNative}
-                    value={customTo}
-                    min={customFrom || undefined}
-                    aria-label={t('planner', 'customRangeTo')}
-                    onChange={(e) => {
-                      const next = e.target.value;
-                      if (!next) return;
-                      setCustomTo(next);
-                      if (customFrom && next < customFrom) setCustomFrom(next);
-                    }}
-                  />
-                </div>
+
+              <div className={styles.rangeMonthNav}>
+                <button
+                  type="button"
+                  className={styles.rangeNavBtn}
+                  onClick={() => setPanelMonth((prev) => shiftMonthValue(prev, -1))}
+                  aria-label={t('planner', 'prevMonth')}
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <span className={styles.rangeMonthLabel}>{monthLabel(panelMonth, locale)}</span>
+                <button
+                  type="button"
+                  className={styles.rangeNavBtn}
+                  onClick={() => setPanelMonth((prev) => shiftMonthValue(prev, 1))}
+                  aria-label={t('planner', 'nextMonth')}
+                >
+                  <ChevronRight size={16} />
+                </button>
               </div>
+
+              <div className={styles.rangeWeekdays}>
+                {weekdays.map((dayName) => (
+                  <span key={`rw-${dayName}`} className={styles.rangeWeekday}>{dayName}</span>
+                ))}
+              </div>
+
+              <div className={styles.rangeGrid}>
+                {panelCells.map((dayIso, idx) => {
+                  if (!dayIso) {
+                    return <span key={`re-${idx}`} className={styles.rangeEmpty} aria-hidden="true" />;
+                  }
+                  const inRange = Boolean(
+                    customFrom && customTo && dayIso >= customFrom && dayIso <= customTo,
+                  );
+                  const isEdge = dayIso === customFrom || dayIso === customTo;
+                  return (
+                    <button
+                      key={`rd-${dayIso}`}
+                      type="button"
+                      className={`${styles.rangeDay} ${inRange ? styles.rangeDayIn : ''} ${
+                        isEdge ? styles.rangeDayEdge : ''
+                      }`}
+                      onClick={() => pickRangeDay(dayIso)}
+                    >
+                      {Number(dayIso.slice(-2))}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <p className={styles.rangeHint}>
+                {rangeAnchor ? t('planner', 'rangeHintEnd') : t('planner', 'rangeHintStart')}
+              </p>
             </div>
           ) : null}
           <div className={styles.reportStatsGrid}>
