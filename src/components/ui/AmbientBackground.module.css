@@ -38,14 +38,15 @@
  * проти десктопної. `vh`-складова тримає розмах на вузьких екранах.
  */
 .blob1 {
-  --size: max(100vw, 78vh);
+  --size: max(115vw, 98vh);
   width: var(--size);
   height: var(--size);
   background: radial-gradient(
     circle,
     rgba(142, 116, 255, 0.9) 0%,
     rgba(86, 58, 236, 0.44) 36%,
-    transparent 66%
+    rgba(72, 48, 190, 0.16) 60%,
+    transparent 80%
   );
   filter: blur(80px);
   bottom: calc(var(--size) * -0.42);
