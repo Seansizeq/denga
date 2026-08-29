@@ -1,9 +1,11 @@
 .hero {
   text-align: center;
-  /* Верхній відступ тягнеться разом з екраном: сума має стояти ближче до
-     середини, а не тулитися до статус-бара. Стеля не дає їй з'їхати надто
-     низько на високих екранах, підлога — на низьких і в landscape. */
-  padding: clamp(64px, 16vh, 150px) 0 32px;
+  /* Верхній відступ тягнеться разом з екраном: сума має стояти нижче за
+     статус-бар, але не провалюватися до середини. Стеля тут важливіша за
+     формулу — у Telegram зверху вже лежить `--safe-area-inset-top` (72px у
+     повноекранному режимі) плюс відступ `.content`, тож попередні 150px
+     складалися з ними в чверть екрана порожнечі. */
+  padding: clamp(32px, 9vh, 90px) 0 32px;
 }
 
 .amountRow {
@@ -69,12 +71,62 @@
   gap: 4px;
 }
 
+/**
+ * Скло того самого складу, що на нижній панелі й порожній картці. Кромка тут
+ * не маскою, а внутрішніми тінями: на пігулці 28px заввишки псевдоелемент із
+ * `mask-composite` — зайва складність, а inset-кільце читається так само.
+ *
+ * Колір лишається за `.positivePill` / `.negativePill`, але заливку доводиться
+ * перебивати складеним селектором: ті класи спільні з пігулками в `.deltaRow`,
+ * і скло там не потрібне.
+ */
 .monthChangePill {
   font-size: 14px;
   font-weight: 600;
   padding: 6px 14px;
   border-radius: 999px;
   line-height: 1.2;
+  backdrop-filter: blur(18px) saturate(180%);
+  -webkit-backdrop-filter: blur(18px) saturate(180%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+.monthChangePill.positivePill {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.03) 100%),
+    rgba(76, 217, 123, 0.16);
+}
+
+.monthChangePill.negativePill {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.03) 100%),
+    rgba(255, 90, 99, 0.16);
+}
+
+.monthChangePill.neutralPill {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.03) 100%),
+    rgba(255, 255, 255, 0.05);
+}
+
+/* Без розмиття напівпрозора заливка втрачає щільність — повертаємо суцільну. */
+@supports not ((backdrop-filter: blur(4px)) or (-webkit-backdrop-filter: blur(4px))) {
+  .monthChangePill.positivePill { background: var(--accent-green-soft); }
+  .monthChangePill.negativePill { background: var(--accent-red-soft); }
+  .monthChangePill.neutralPill { background: rgba(255, 255, 255, 0.08); }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .monthChangePill {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+  }
+  .monthChangePill.positivePill { background: var(--accent-green-soft); }
+  .monthChangePill.negativePill { background: var(--accent-red-soft); }
+  .monthChangePill.neutralPill { background: rgba(255, 255, 255, 0.08); }
 }
 
 .monthChangeHint {
