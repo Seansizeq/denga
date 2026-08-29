@@ -255,6 +255,8 @@ const CalendarPlanner: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [chooserOpen, setChooserOpen] = useState(false);
   const [startShiftChooserOpen, setStartShiftChooserOpen] = useState(false);
+  /** Аркуш дій по дню — те, що відкривається утриманням числа в календарі. */
+  const [dayActionsOpen, setDayActionsOpen] = useState(false);
   const [editorOpened, setEditorOpened] = useState(false);
   const [shiftName, setShiftName] = useState('');
   const [shiftSymbol, setShiftSymbol] = useState('');
@@ -285,7 +287,7 @@ const CalendarPlanner: React.FC = () => {
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const [shiftElapsedText, setShiftElapsedText] = useState('0г 0хв');
 
-  const modalAnyOpen = chooserOpen || editorOpened || startShiftChooserOpen;
+  const modalAnyOpen = chooserOpen || editorOpened || startShiftChooserOpen || dayActionsOpen;
 
   const overlayBox = modalAnyOpen ? readVisualOverlayBox() : null;
 
@@ -581,10 +583,15 @@ const CalendarPlanner: React.FC = () => {
     setReportRange('day');
   };
 
-  const openDaySheet = (dayIso: string) => {
+  /**
+   * Утримання числа веде не одразу до шаблонів зміни, а до аркуша з вибором:
+   * почати зміну зараз чи додати її за цей день. Раніше обидві дії стояли
+   * окремими кнопками під календарем.
+   */
+  const openDayActions = (dayIso: string) => {
     setSelectedDay(dayIso);
     setReportRange('day');
-    setChooserOpen(true);
+    setDayActionsOpen(true);
   };
 
   const handleDayTouchStart = (dayIso: string, e: React.TouchEvent) => {
@@ -595,7 +602,7 @@ const CalendarPlanner: React.FC = () => {
     longPressTimerRef.current = setTimeout(() => {
       longPressFiredRef.current = true;
       hapticLight();
-      openDaySheet(dayIso);
+      openDayActions(dayIso);
     }, 500);
   };
 
@@ -996,6 +1003,12 @@ const CalendarPlanner: React.FC = () => {
                 onTouchStart={(e) => handleDayTouchStart(dayIso, e)}
                 onTouchEnd={cancelLongPress}
                 onTouchMove={cancelLongPress}
+                /* Утримання є лише на дотику; правий клік дає ті самі дії там,
+                   де є миша, інакше поза телефоном вони недосяжні зовсім. */
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  openDayActions(dayIso);
+                }}
               >
                 <span className={styles.dayNum}>{dayNum}</span>
                 {daySymbol ? <span className={styles.daySymbol}>{daySymbol}</span> : null}
@@ -1004,43 +1017,6 @@ const CalendarPlanner: React.FC = () => {
             );
           })}
         </div>
-
-        <div className={styles.dayCard}>
-          <div className={styles.dayCardHeader}>
-            <span className={styles.dayCardDate}>{selectedDayLabel}</span>
-            {dayHasShift ? (
-              <span className={styles.dayCardSummary}>
-                {formatDecimalHoursAsHoursMinutes(current.workedHours, {
-                  hours: t('planner', 'hoursShort'),
-                  minutes: t('planner', 'minutesShort'),
-                })}
-                {selectedDayPay > 0
-                  ? ` · ${formatPlannerMoney(selectedDayPay, locale, current.salaryCurrency)}`
-                  : ''}
-              </span>
-            ) : (
-              <span className={styles.dayCardEmpty}>{t('planner', 'dayShiftsEmpty')}</span>
-            )}
-          </div>
-          <button
-            type="button"
-            className={styles.dayCardBtn}
-            onClick={() => setChooserOpen(true)}
-          >
-            {dayHasShift ? t('planner', 'editShift') : t('planner', 'addShift')}
-          </button>
-        </div>
-
-        {!activeShift ? (
-          <button
-            type="button"
-            className={styles.startShiftBtn}
-            disabled={activeShiftLoading}
-            onClick={openStartShiftFlow}
-          >
-            {activeShiftLoading ? '...' : t('planner', 'startShift')}
-          </button>
-        ) : null}
 
         <div className={styles.reportCard}>
           <div className={styles.reportHeader}>
@@ -1235,6 +1211,57 @@ const CalendarPlanner: React.FC = () => {
           >
             {activeShiftLoading ? '...' : t('planner', 'endShift')}
           </button>
+        </div>
+      ) : null}
+
+      {dayActionsOpen && overlayBox ? (
+        <div
+          className={`${styles.modalOverlay} ${overlayBox.keyboardOpen ? styles.modalOverlayKeyboard : ''}`}
+          style={{ top: overlayBox.top, height: overlayBox.height }}
+          onClick={() => setDayActionsOpen(false)}
+        >
+          <div className={styles.modalSheet} onClick={(e) => e.stopPropagation()}>
+            <p className={styles.dayActionsTitle}>{selectedDayLabel}</p>
+            <p className={styles.dayActionsMeta}>
+              {dayHasShift
+                ? `${formatDecimalHoursAsHoursMinutes(current.workedHours, {
+                    hours: t('planner', 'hoursShort'),
+                    minutes: t('planner', 'minutesShort'),
+                  })}${
+                    selectedDayPay > 0
+                      ? ` · ${formatPlannerMoney(selectedDayPay, locale, current.salaryCurrency)}`
+                      : ''
+                  }`
+                : t('planner', 'dayShiftsEmpty')}
+            </p>
+            <div className={styles.dayActions}>
+              <button
+                type="button"
+                className={styles.addShiftBtn}
+                onClick={() => {
+                  setDayActionsOpen(false);
+                  setChooserOpen(true);
+                }}
+              >
+                {dayHasShift ? t('planner', 'editShift') : t('planner', 'addShift')}
+              </button>
+              {/* Почати зміну можна лише коли жодна не йде — інакше кнопки немає,
+                  як і раніше було під календарем. */}
+              {!activeShift ? (
+                <button
+                  type="button"
+                  className={styles.startShiftBtn}
+                  disabled={activeShiftLoading}
+                  onClick={() => {
+                    setDayActionsOpen(false);
+                    openStartShiftFlow();
+                  }}
+                >
+                  {activeShiftLoading ? '...' : t('planner', 'startShift')}
+                </button>
+              ) : null}
+            </div>
+          </div>
         </div>
       ) : null}
 

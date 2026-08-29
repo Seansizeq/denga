@@ -713,7 +713,7 @@ const uk: Dict = {
   },
   planner: {
     title: 'Робочі зміни',
-    subtitle: 'Відмічайте зміни, ставку та зарплату по днях',
+    subtitle: 'Відмічайте зміни, ставку та зарплату по днях. Утримайте день, щоб почати або додати зміну',
     tabCalendar: 'Календар',
     tabSettings: 'Налаштування',
     monthHint: 'Оберіть місяць або гортайте стрілками',
@@ -1282,7 +1282,7 @@ const ru: Dict = {
   },
   planner: {
     title: 'Календарь',
-    subtitle: 'Отмечайте смены, ставку и зарплату по дням',
+    subtitle: 'Отмечайте смены, ставку и зарплату по дням. Удержите день, чтобы начать или добавить смену',
     tabCalendar: 'Календарь',
     tabSettings: 'Настройки',
     monthHint: 'Выберите месяц или листайте стрелками',
@@ -1851,7 +1851,7 @@ const en: Dict = {
   },
   planner: {
     title: 'Calendar',
-    subtitle: 'Track shifts, salary rate and pay by date',
+    subtitle: 'Track shifts, salary rate and pay by date. Hold a day to start or add a shift',
     tabCalendar: 'Calendar',
     tabSettings: 'Settings',
     monthHint: 'Pick month or use arrows to navigate',
