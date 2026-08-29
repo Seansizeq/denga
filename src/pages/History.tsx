@@ -91,9 +91,6 @@ const History: React.FC = () => {
   return (
     <div className={styles.container}>
       <header className={styles.header}>
-        <button type="button" className={styles.back} onClick={() => navigate(-1)}>
-          ← {t('history', 'back')}
-        </button>
         <h1 className={styles.title}>{hasFilter ? t('history', 'filteredTitle') : t('history', 'title')}</h1>
         {hasFilter && (
           <button type="button" className={styles.back} onClick={() => setSearchParams({})}>
