@@ -1060,12 +1060,22 @@
   background: rgba(255, 69, 58, 0.2);
 }
 
+/**
+ * Поверхня береться з системи, зелений лишається контуром і текстом.
+ *
+ * Раніше тут стояла суцільна зелена заливка. Доки фон був майже чорним, вона
+ * читалася ледь помітним тоном; на фіолетовому фоні це стало єдиною зеленою
+ * площиною серед фіолетових карток і вибивалося дужче за все на екрані.
+ * Заодно колір зведено до `--accent-green` — раніше кнопка мала власний
+ * `#30d158`, тобто на одному екрані було два різні зелені.
+ */
 .startShiftBtn {
   width: 100%;
   border: none;
   border-radius: 14px;
-  background: rgba(48, 209, 88, 0.15);
-  color: #30d158;
+  background: var(--bg-card);
+  box-shadow: inset 0 0 0 1px rgba(76, 217, 123, 0.38);
+  color: var(--accent-green);
   font-weight: 600;
   padding: 14px;
   font-size: 16px;
@@ -1077,7 +1087,7 @@
 
 .startShiftBtn:active {
   transform: scale(0.98);
-  background: rgba(48, 209, 88, 0.2);
+  background: var(--bg-card-light);
 }
 
 .loading {
