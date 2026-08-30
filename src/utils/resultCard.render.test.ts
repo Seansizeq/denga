@@ -11,7 +11,7 @@ describe('result card PNG renderer', () => {
 
   it('draws a positive amount green and a negative comparison red', async () => {
     const textCalls: Array<{ text: string; color: string }> = [];
-    let activeColor = '#050505';
+    let activeColor = '#9490a0';
     const context = {
       get fillStyle() {
         return activeColor;
@@ -26,6 +26,9 @@ describe('result card PNG renderer', () => {
       drawImage: vi.fn(),
       fillRect: vi.fn(),
       createRadialGradient: () => ({ addColorStop: vi.fn() }),
+      // Шар світлого чорнила читає й повертає пікселі окремим полотном.
+      getImageData: () => ({ data: new Uint8ClampedArray(16) }),
+      putImageData: vi.fn(),
       measureText: (text: string) => ({ width: text.length * 20 }),
       fillText: (text: string) => textCalls.push({ text, color: activeColor }),
     } as unknown as CanvasRenderingContext2D;
@@ -54,19 +57,19 @@ describe('result card PNG renderer', () => {
       templateUrl: '/result-cards/normal/normal-skeleton.png',
       label: 'Monthly result',
       amount: '+1 000 ₴',
-      amountColor: '#16A34A',
+      amountColor: '#4cd97b',
     });
 
     // Рівно два рядки: підпис і сума, без капсу й без службових написів.
     expect(textCalls).toEqual([
-      { text: 'Monthly result', color: '#050505' },
-      { text: '+1 000 ₴', color: '#16A34A' },
+      { text: 'Monthly result', color: '#9490a0' },
+      { text: '+1 000 ₴', color: '#4cd97b' },
     ]);
   });
 
   it('keeps a negative amount red and never draws branding', async () => {
     const textCalls: Array<{ text: string; color: string }> = [];
-    let activeColor = '#050505';
+    let activeColor = '#9490a0';
     const context = {
       get fillStyle() {
         return activeColor;
@@ -81,6 +84,9 @@ describe('result card PNG renderer', () => {
       drawImage: vi.fn(),
       fillRect: vi.fn(),
       createRadialGradient: () => ({ addColorStop: vi.fn() }),
+      // Шар світлого чорнила читає й повертає пікселі окремим полотном.
+      getImageData: () => ({ data: new Uint8ClampedArray(16) }),
+      putImageData: vi.fn(),
       measureText: (text: string) => ({ width: text.length * 20 }),
       fillText: (text: string) => textCalls.push({ text, color: activeColor }),
     } as unknown as CanvasRenderingContext2D;
@@ -109,10 +115,10 @@ describe('result card PNG renderer', () => {
       templateUrl: '/result-cards/bad/bad-kitten.png',
       label: 'day result:',
       amount: '-10$',
-      amountColor: '#DC2626',
+      amountColor: '#ff5a63',
     });
 
-    expect(textCalls).toContainEqual({ text: '-10$', color: '#DC2626' });
+    expect(textCalls).toContainEqual({ text: '-10$', color: '#ff5a63' });
     expect(textCalls.map((call) => call.text)).not.toContain('DENGA');
   });
 });

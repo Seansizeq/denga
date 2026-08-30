@@ -46,7 +46,7 @@ const ResultCardSheet: React.FC<ResultCardSheetProps> = ({
       filenameKey={`${range}-${periodLabel}`}
       label={title}
       amount={amount}
-      amountColor={moneyHidden ? '#050505' : resultValueColor(currentNet)}
+      amountColor={moneyHidden ? '#ffffff' : resultValueColor(currentNet)}
     />
   );
 };

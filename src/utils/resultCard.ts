@@ -57,10 +57,11 @@ const RESULT_CARD_TEMPLATES: Record<ResultCardGroup, readonly string[]> = {
 
 const nearlyZero = (value: number): boolean => Math.abs(value) < 0.005;
 
+/** Ті самі зелений і червоний, якими застосунок скрізь позначає плюс і мінус. */
 export const resultValueColor = (value: number): string => {
-  if (value > 0) return '#16A34A';
-  if (value < 0) return '#DC2626';
-  return '#050505';
+  if (value > 0) return '#4cd97b';
+  if (value < 0) return '#ff5a63';
+  return '#ffffff';
 };
 
 /**
@@ -170,41 +171,64 @@ const drawFittedText = (
 const CARD_WIDTH = 1080;
 const CARD_HEIGHT = 1350;
 
-/**
- * Картку обрамляє тло застосунку, а шаблон лежить поверх світлою панеллю.
- *
- * Малювати ту панель окремо не треба: у шаблонів уже запечене біле тло й
- * заокруглені кути, тож досить лишити навколо поля — крізь прозорі кути
- * проступає темний фон і панель сама читається як картка з застосунку.
- */
-const PANEL_X = 88;
-const PANEL_Y = 88;
-const PANEL_WIDTH = 904;
-const PANEL_HEIGHT = 1130;
-
-/** Композицію шаблона (де підпис, де малюнок) задано для повного кадру. */
-const PANEL_SCALE = PANEL_WIDTH / CARD_WIDTH;
-
-const inPanel = (value: number): number => PANEL_Y + value * PANEL_SCALE;
-const panelSize = (value: number): number => Math.round(value * PANEL_SCALE);
-
 const drawAppBackdrop = (ctx: CanvasRenderingContext2D): void => {
   ctx.fillStyle = '#0f0c1c';
   ctx.fillRect(0, 0, CARD_WIDTH, CARD_HEIGHT);
 
-  // Те саме свічення, що AmbientBackground піднімає знизу-ліворуч: верх кадру
-  // лишається майже чорним, низ — фіолетовим.
+  // Свічення знизу-ліворуч, як у AmbientBackground: верх лишається майже
+  // чорним, низ теплішає фіолетовим.
   //
-  // Пляма ширша й тьмяніша за екранну, бо тут від фону видно лише поля навколо
-  // панелі. З екранними числами яскраве осердя припадало рівно на нижню смужку
-  // й читалось як стрічка, а не як свічення з-під картки.
-  const glow = ctx.createRadialGradient(500, 1500, 0, 500, 1500, 1150);
-  glow.addColorStop(0, 'rgba(142, 116, 255, 0.55)');
-  glow.addColorStop(0.35, 'rgba(110, 80, 246, 0.3)');
-  glow.addColorStop(0.72, 'rgba(86, 58, 236, 0)');
+  // Осердя навмисно винесене за нижній край і розтягнуте ширше за кадр. З
+  // екранними числами `.blob1` пляма лягала кружком просто за малюнком і
+  // читалася прожектором з помітним обідком: на екрані її розмиває `blur(80px)`
+  // і ховає скло панелей, а тут вона гола. Пологі стопи роблять те саме, що там
+  // робить розмиття.
+  const glow = ctx.createRadialGradient(440, 1480, 0, 440, 1480, 1080);
+  glow.addColorStop(0, 'rgba(142, 116, 255, 0.42)');
+  glow.addColorStop(0.25, 'rgba(124, 92, 255, 0.3)');
+  glow.addColorStop(0.5, 'rgba(100, 70, 242, 0.16)');
+  glow.addColorStop(0.75, 'rgba(86, 58, 236, 0.05)');
   glow.addColorStop(1, 'rgba(86, 58, 236, 0)');
   ctx.fillStyle = glow;
   ctx.fillRect(0, 0, CARD_WIDTH, CARD_HEIGHT);
+};
+
+/** Світле чорнило замість чорного — те саме, що `--text-primary`. */
+const INK_R = 0xff;
+const INK_G = 0xff;
+const INK_B = 0xff;
+
+/**
+ * Шаблони намальовано чорним по білому, а тло тепер темне — на ньому чорний
+ * малюнок просто зник би. Тому яскравість пікселя стає його прозорістю
+ * навпаки: біле тло йде в ніщо, чорні лінії стають щільним світлим чорнилом,
+ * а сірі краї згладжування — напівпрозорими, тож малюнок лишається м'яким.
+ *
+ * Попіксельно, а не через `globalCompositeOperation`: там, де режим накладання
+ * не підтримується, він мовчки відкочується до `source-over` і залив би картку
+ * білим. Півтора мільйона пікселів один раз на картинку того не варті.
+ */
+const toLightInk = (template: HTMLImageElement): HTMLCanvasElement => {
+  const layer = document.createElement('canvas');
+  layer.width = CARD_WIDTH;
+  layer.height = CARD_HEIGHT;
+  const ctx = layer.getContext('2d');
+  if (!ctx) throw new Error('Canvas is unavailable');
+
+  ctx.drawImage(template, 0, 0, CARD_WIDTH, CARD_HEIGHT);
+  const frame = ctx.getImageData(0, 0, CARD_WIDTH, CARD_HEIGHT);
+  const pixels = frame.data;
+  for (let i = 0; i < pixels.length; i += 4) {
+    const luminance = (pixels[i] * 299 + pixels[i + 1] * 587 + pixels[i + 2] * 114) / 1000;
+    // Множимо на власну прозорість, щоб заокруглені кути шаблона лишилися
+    // порожніми, а не залилися чорнилом (там RGB нульові, тобто «чорні»).
+    pixels[i + 3] = ((255 - luminance) * pixels[i + 3]) / 255;
+    pixels[i] = INK_R;
+    pixels[i + 1] = INK_G;
+    pixels[i + 2] = INK_B;
+  }
+  ctx.putImageData(frame, 0, 0);
+  return layer;
 };
 
 export interface RenderResultCardOptions {
@@ -226,20 +250,20 @@ export const renderResultCardPng = async (options: RenderResultCardOptions): Pro
   if (!ctx) throw new Error('Canvas is unavailable');
 
   drawAppBackdrop(ctx);
-  ctx.drawImage(template, PANEL_X, PANEL_Y, PANEL_WIDTH, PANEL_HEIGHT);
+  ctx.drawImage(toLightInk(template), 0, 0);
   ctx.textBaseline = 'top';
 
   // Два рядки по центру над малюнком — підпис і сума. Ні назви, ні шкали,
   // ні порівнянь: усе це лишається в застосунку, а не на картинці.
-  const centerX = PANEL_X + PANEL_WIDTH / 2;
+  const centerX = CARD_WIDTH / 2;
   ctx.textAlign = 'center';
   ctx.letterSpacing = '0px';
 
-  ctx.fillStyle = '#050505';
-  drawFittedText(ctx, options.label, centerX, inPanel(250), panelSize(900), panelSize(46), panelSize(30), 700);
+  ctx.fillStyle = '#9490a0';
+  drawFittedText(ctx, options.label, centerX, 250, 900, 46, 30, 700);
 
-  ctx.fillStyle = options.amountColor ?? '#050505';
-  drawFittedText(ctx, options.amount, centerX, inPanel(340), panelSize(900), panelSize(150), panelSize(80), 800);
+  ctx.fillStyle = options.amountColor ?? '#ffffff';
+  drawFittedText(ctx, options.amount, centerX, 340, 900, 150, 80, 800);
 
   ctx.textAlign = 'left';
 

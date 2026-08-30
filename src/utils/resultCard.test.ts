@@ -39,9 +39,9 @@ describe('result card templates', () => {
   });
 
   it('colors positive values green and negative values red', () => {
-    expect(resultValueColor(1)).toBe('#16A34A');
-    expect(resultValueColor(-1)).toBe('#DC2626');
-    expect(resultValueColor(0)).toBe('#050505');
+    expect(resultValueColor(1)).toBe('#4cd97b');
+    expect(resultValueColor(-1)).toBe('#ff5a63');
+    expect(resultValueColor(0)).toBe('#ffffff');
   });
 
   it('builds a public URL and wraps an out-of-range index', () => {
