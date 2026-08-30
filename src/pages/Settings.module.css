@@ -1,7 +1,7 @@
 .container {
   min-height: 100vh;
-  padding: 24px 20px calc(var(--bottom-nav-height) + 40px);
-  padding-top: calc(24px + var(--safe-area-inset-top));
+  padding: 20px 18px calc(var(--bottom-nav-height) + 40px);
+  padding-top: calc(20px + var(--safe-area-inset-top));
   /* Фон навмисно не задано: крізь прозору сторінку видно спільний градієнт
      (`body::before`), інакше атмосфера обривається саме на цьому екрані.
      `position` тримає вміст над градієнтним шаром рамки на широких екранах. */
@@ -13,5 +13,5 @@
   font-size: 28px;
   font-weight: 700;
   margin: 8px 0 24px;
-  letter-spacing: -0.5px;
+  letter-spacing: -0.6px;
 }

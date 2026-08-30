@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import AddTransaction from './AddTransaction';
 
@@ -167,6 +167,78 @@ describe('AddTransaction', () => {
 
     expect(positions.every((position) => position >= 0)).toBe(true);
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
+  });
+
+  describe('the account decides the unit', () => {
+    const cryptoAndCard = [
+      { accountKey: 'binance', name: 'Binance', primaryCurrency: 'USDT', section: 'crypto' },
+      { accountKey: 'karta', name: 'Karta', primaryCurrency: 'PLN', section: 'bank' },
+    ];
+
+    /** The read-only unit shown next to the amount once an account is picked. */
+    const unitBadge = () => screen.getByRole('button', { name: 'addTx.currencyFromAccount' });
+
+    it('denominates the amount by the account it is paid from', () => {
+      mocks.portfolioAccounts = cryptoAndCard;
+      renderAdd('/add?account=binance');
+
+      // The old picker let you claim UAH for money that leaves a USDT wallet,
+      // which the server could only reject.
+      expect(document.querySelector('select')).toBe(null);
+      expect(unitBadge().textContent).toBe('USDT');
+    });
+
+    it('follows the account the user picks', () => {
+      mocks.portfolioAccounts = cryptoAndCard;
+      renderAdd('/add?account=binance');
+
+      fireEvent.click(screen.getByText('addTx.paymentAccount'));
+      fireEvent.click(screen.getByText('Karta'));
+      expect(unitBadge().textContent).toBe('PLN');
+    });
+
+    it('sends the account unit on save', async () => {
+      mocks.portfolioAccounts = cryptoAndCard;
+      renderAdd('/add?account=binance');
+
+      fireEvent.change(screen.getByPlaceholderText('addTx.amountPlaceholder'), {
+        target: { value: '25' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'addTx.save' }));
+
+      await vi.waitFor(() => expect(mocks.addTransaction).toHaveBeenCalled());
+      expect(mocks.addTransaction.mock.calls[0][0]).toMatchObject({
+        amount: 25,
+        currency: 'USDT',
+        type: 'expense',
+      });
+    });
+
+    it('keeps the picker while no account stands behind the amount', () => {
+      mocks.portfolioAccounts = cryptoAndCard;
+      renderAdd('/add');
+
+      const select = document.querySelector('select');
+      expect(select).not.toBe(null);
+      fireEvent.change(select as HTMLSelectElement, { target: { value: 'PLN' } });
+      expect((select as HTMLSelectElement).value).toBe('PLN');
+    });
+
+    it('keeps the recorded unit when editing until the account is re-picked', () => {
+      // tx-1 is 50 UAH on a Polish card: restating it as 50 zł because the card
+      // is Polish would rewrite what happened, not correct it.
+      mocks.portfolioAccounts = [
+        { accountKey: 'privat24', name: 'Privat24', primaryCurrency: 'PLN', section: 'bank' },
+      ];
+      renderAdd('/add?edit=tx-1');
+
+      const select = document.querySelector('select') as HTMLSelectElement;
+      expect(select.value).toBe('UAH');
+
+      fireEvent.click(screen.getByText('addTx.paymentAccount'));
+      fireEvent.click(within(screen.getByRole('dialog')).getByText('Privat24'));
+      expect(unitBadge().textContent).toBe('PLN');
+    });
   });
 
   describe('cross-denomination transfers', () => {

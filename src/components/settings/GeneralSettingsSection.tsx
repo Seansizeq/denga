@@ -4,7 +4,6 @@ import { useTranslation } from '../../i18n/LanguageContext';
 import { LANGUAGES, LANGUAGE_LABELS, LANGUAGE_FLAGS } from '../../i18n/translations';
 import type { Language } from '../../i18n/translations';
 import type { DisplayCurrency } from '../../utils/formatters';
-import { useTelegramFullscreen } from '../../hooks/useTelegramFullscreen';
 import { hapticLight } from '../../utils/notify';
 import Switch from '../ui/Switch';
 import OptionPickerSheet from '../ui/OptionPickerSheet';
@@ -26,7 +25,6 @@ const GeneralSettingsSection: React.FC = () => {
     moneyHidden,
     setMoneyHidden,
   } = useTranslation();
-  const { isSupported: fsSupported, isFullscreen, toggle: toggleFullscreen } = useTelegramFullscreen();
   const navigate = useNavigate();
 
   const [langSheetOpen, setLangSheetOpen] = useState(false);
@@ -34,7 +32,7 @@ const GeneralSettingsSection: React.FC = () => {
 
   return (
     <>
-      <SettingsSection label={t('settings', 'sectionGeneral')} description={t('settings', 'languageDescription')}>
+      <SettingsSection label={t('settings', 'sectionGeneral')}>
         <SettingsRow
           label={t('settings', 'language')}
           leading={LANGUAGE_FLAGS[language]}
@@ -65,18 +63,6 @@ const GeneralSettingsSection: React.FC = () => {
                 hapticLight();
               }}
               aria-label={t('settings', 'hideMoney')}
-            />
-          }
-        />
-        <SettingsRow
-          label={t('settings', 'fullscreen')}
-          sublabel={fsSupported ? undefined : t('settings', 'fullscreenUnsupported')}
-          trailing={
-            <Switch
-              checked={isFullscreen}
-              onChange={() => toggleFullscreen()}
-              disabled={!fsSupported}
-              aria-label={t('settings', 'fullscreen')}
             />
           }
         />

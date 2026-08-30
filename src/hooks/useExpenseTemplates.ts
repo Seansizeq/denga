@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { TransactionType } from '../types';
-import type { CurrencyCode } from '../utils/currency';
+import { normalizeDenomination, type Denomination } from '../utils/denomination';
 import {
   createExpenseTemplate,
   deleteExpenseTemplate,
@@ -27,7 +27,7 @@ export interface ExpenseTemplate {
   name: string;
   type: TemplateType;
   amount?: number;
-  currency: CurrencyCode;
+  currency: Denomination;
   categoryId: string;
   note?: string;
   account?: string;
@@ -49,7 +49,7 @@ const fromDto = (dto: ExpenseTemplateDto): ExpenseTemplate => ({
   name: dto.name,
   type: dto.type,
   amount: dto.amount,
-  currency: dto.currency as CurrencyCode,
+  currency: normalizeDenomination(dto.currency),
   categoryId: dto.categoryId,
   note: dto.note,
   account: dto.account,

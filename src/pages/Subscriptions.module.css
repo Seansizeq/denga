@@ -1,6 +1,6 @@
 .container {
   min-height: 100vh;
-  padding: 20px 18px calc(var(--bottom-nav-height) + 36px);
+  padding: 20px 18px calc(var(--bottom-nav-height) + 40px);
   padding-top: calc(20px + var(--safe-area-inset-top));
   /* Фон навмисно не задано: крізь прозору сторінку видно спільний градієнт
      (`body::before`), інакше атмосфера обривається саме на цьому екрані.
@@ -31,6 +31,7 @@
   margin: 0;
   font-size: 28px;
   font-weight: 700;
+  letter-spacing: -0.6px;
 }
 
 .subtitle {
@@ -233,7 +234,7 @@
   max-height: 100%;
   display: flex;
   flex-direction: column;
-  background: #1b1825;
+  background: var(--bg-card);
   border: 1px solid rgba(255, 255, 255, 0.07);
   border-bottom: none;
   border-radius: 28px 28px 0 0;
@@ -354,9 +355,9 @@
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: #1b1825;
+  background: var(--bg-card);
   border: 2px solid rgba(255, 255, 255, 0.9);
-  color: #1b1825;
+  color: var(--bg-card);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -568,7 +569,7 @@
 
 .rowSelect option {
   direction: ltr;
-  background: #1b1825;
+  background: var(--bg-card);
 }
 
 .rowValue {
@@ -611,7 +612,7 @@
   max-height: min(75dvh, calc(100dvh - var(--safe-area-inset-top) - 24px));
   display: flex;
   flex-direction: column;
-  background: #1b1825;
+  background: var(--bg-card);
   border: 1px solid rgba(255, 255, 255, 0.07);
   border-bottom: none;
   border-radius: 28px 28px 0 0;
@@ -785,23 +786,36 @@
 }
 
 .amountCurrencySelect option {
-  background: #1b1825;
+  background: var(--bg-card);
 }
 
+/* Та сама кнопка «додати», що й на головній — див. `.fabAdd` у Dashboard. */
 .floatingAddBtn {
   position: fixed;
-  right: 18px;
-  bottom: calc(var(--bottom-nav-height) + var(--safe-area-inset-bottom) + 24px);
-  width: 54px;
-  height: 54px;
-  border-radius: 16px;
-  border: 1px solid rgba(122, 90, 255, 0.6);
-  background: linear-gradient(135deg, #6f5cff 0%, #8f7bff 100%);
-  color: #ffffff;
+  right: max(20px, var(--safe-area-inset-right));
+  bottom: calc(var(--bottom-nav-height) + var(--safe-area-inset-bottom) + 12px);
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: none;
+  background: var(--accent-fab);
+  color: #1a1200;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 10px 22px rgba(111, 92, 255, 0.35);
+  box-shadow:
+    0 8px 22px rgba(var(--accent-fab-rgb), 0.28),
+    0 2px 8px rgba(0, 0, 0, 0.22);
+  transition: transform var(--motion-fast) var(--ease-out);
   z-index: 1200;
   cursor: pointer;
+}
+
+.floatingAddBtn:active {
+  transform: scale(0.95);
+}
+
+.floatingAddBtn:focus-visible {
+  outline: 2px solid rgba(var(--accent-fab-rgb), 0.95);
+  outline-offset: 3px;
 }

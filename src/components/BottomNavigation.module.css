@@ -194,7 +194,7 @@
  */
 @supports not ((backdrop-filter: blur(4px)) or (-webkit-backdrop-filter: blur(4px))) {
   .bar {
-    background: linear-gradient(180deg, #211f2a 0%, #1c1a24 100%);
+    background: linear-gradient(180deg, var(--bg-card-light) 0%, var(--bg-card) 100%);
   }
 }
 
@@ -202,6 +202,6 @@
   .bar {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
-    background: linear-gradient(180deg, #211f2a 0%, #1c1a24 100%);
+    background: linear-gradient(180deg, var(--bg-card-light) 0%, var(--bg-card) 100%);
   }
 }

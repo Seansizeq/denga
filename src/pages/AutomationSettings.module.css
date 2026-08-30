@@ -1,0 +1,29 @@
+.container {
+  min-height: 100vh;
+  padding: 20px 18px calc(var(--bottom-nav-height) + 40px);
+  padding-top: calc(20px + var(--safe-area-inset-top));
+  /* Фон навмисно не задано — крізь сторінку видно спільний градієнт body::before. */
+  position: relative;
+  color: var(--text-primary);
+}
+
+.header {
+  margin-bottom: 24px;
+}
+
+.back {
+  background: none;
+  border: none;
+  color: var(--accent-primary-strong);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0 0 4px;
+}
+
+.title {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.6px;
+  margin: 0;
+}

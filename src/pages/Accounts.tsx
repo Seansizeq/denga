@@ -136,9 +136,9 @@ const SECTION_COLORS: Record<string, string> = {
   bank: '#FF9F0A',
   cash: '#7C5CFF',
   crypto: '#4CA8FF',
-  stocks: '#34C759',
-  'debt-owed-to-me': '#E84848',
-  'debt-owed-by-me': '#8E8E93',
+  stocks: '#4CD97B',
+  'debt-owed-to-me': '#FF5A63',
+  'debt-owed-by-me': '#9490A0',
   goal: '#F7E34D',
 };
 
@@ -431,6 +431,7 @@ const Accounts: React.FC = () => {
   return (
     <div className={styles.container}>
       <div className={styles.content}>
+        <h1 className={styles.title}>{t('balance', 'moneySources')}</h1>
         <button
           type="button"
           className={styles.addButton}

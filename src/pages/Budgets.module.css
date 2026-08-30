@@ -20,18 +20,19 @@
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  padding: 0 0 8px;
+  padding: 0 0 4px;
 }
 
 .title {
-  font-size: 26px;
+  font-size: 28px;
   font-weight: 700;
+  letter-spacing: -0.6px;
   margin: 0 0 8px;
 }
 
 .subtitle {
-  font-size: 13px;
-  color: var(--text-tertiary);
+  font-size: 14px;
+  color: var(--text-secondary);
   margin: 0 0 16px;
   line-height: 1.45;
 }

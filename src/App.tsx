@@ -24,6 +24,7 @@ const CalendarPlanner = lazy(() => import('./pages/CalendarPlanner'));
 const Subscriptions = lazy(() => import('./pages/Subscriptions'));
 const Settings = lazy(() => import('./pages/Settings'));
 const CategorySettings = lazy(() => import('./pages/CategorySettings'));
+const AutomationSettings = lazy(() => import('./pages/AutomationSettings'));
 const Stats = lazy(() => import('./pages/Stats'));
 const ScanReceipt = lazy(() => import('./pages/ScanReceipt'));
 const Budgets = lazy(() => import('./pages/Budgets'));
@@ -144,6 +145,7 @@ const TelegramApp: React.FC<{ onReady: () => void }> = ({ onReady }) => {
                   <Route path="/stats" element={<Stats />} />
                   <Route path="/settings" element={<Settings />} />
                   <Route path="/settings/categories" element={<CategorySettings />} />
+                  <Route path="/settings/automation" element={<AutomationSettings />} />
                   <Route path="/budgets" element={<Budgets />} />
                   <Route path="/goals" element={<Goals />} />
                   <Route path="/goals/:id" element={<GoalDetail />} />

@@ -115,6 +115,7 @@ type Dict = {
     saveFailed: string;
     paymentAccount: string;
     paymentAccountHint: string;
+    currencyFromAccount: string;
     paymentAccountNone: string;
     templates: string;
     saveAsTemplate: string;
@@ -329,7 +330,6 @@ type Dict = {
     deleteAccountFailed: string;
     title: string;
     language: string;
-    languageDescription: string;
     currency: string;
     currencyDescription: string;
     currencyUah: string;
@@ -365,32 +365,18 @@ type Dict = {
     automationExpenseHowToWidget: string;
     weeklyAutoReport: string;
     monthlyAutoReport: string;
-    reportSendTime: string;
     dailyReminder: string;
     subscriptionsReminder: string;
-    reminderInactivity: string;
-    reminderShiftEveningBefore: string;
-    reminderShiftUnclosed: string;
-    reminderFxChange: string;
-    reminderTimeLabel: string;
-    leadDaysLabel: string;
-    fxThresholdLabel: string;
+    reminderTime: string;
     sectionGeneral: string;
-    sectionReports: string;
-    sectionReminders: string;
+    sectionNotifications: string;
+    sectionMore: string;
     sectionPlanner: string;
-    reminderGroupExpenses: string;
-    reminderGroupPlanner: string;
-    reminderGroupFx: string;
     reminderDescDaily: string;
     reminderDescSubscriptions: string;
-    reminderDescInactivity: string;
-    reminderDescShiftEvening: string;
-    reminderDescShiftUnclosed: string;
-    reminderDescFxChange: string;
     paramDaysBefore: string;
-    paramInactivityDays: string;
-    paramFxThreshold: string;
+    automationRow: string;
+    automationRowDescription: string;
     saved: string;
     saveFailed: string;
   };
@@ -529,6 +515,8 @@ type Dict = {
     reviewReasonManualCheck: string;
     ocrTextTitle: string;
     selectPaymentAccount: string;
+    amountFromAccount: string;
+    amountRateUnavailable: string;
     errorAuth: string;
     errorNotConfigured: string;
     errorRateLimited: string;
@@ -673,6 +661,7 @@ const uk: Dict = {
     saveFailed: 'Не вдалося зберегти. Перевір з’єднання і спробуй ще раз.',
     paymentAccount: 'Рахунок',
     paymentAccountHint: 'Обери карту чи готівку — цей рахунок оновиться в «Рахунках»',
+    currencyFromAccount: 'Валюта з рахунку — зміни рахунок, щоб змінити її',
     paymentAccountNone: 'Не вказано',
     templates: 'Шаблони',
     saveAsTemplate: 'Зберегти як шаблон',
@@ -887,7 +876,6 @@ const uk: Dict = {
     deleteAccountFailed: 'Не вдалося видалити. Спробуйте ще раз.',
     title: 'Налаштування',
     language: 'Мова інтерфейсу',
-    languageDescription: 'Оберіть мову, якою відображатиметься застосунок',
     currency: 'Валюта відображення',
     currencyDescription: 'Оберіть валюту, в якій показуються суми в застосунку',
     currencyUah: 'Гривня (₴)',
@@ -929,34 +917,20 @@ const uk: Dict = {
       'iOS, на кожен список: «Отримати вміст URL» з посиланням → одразу «Вибрати зі списку». Далі «Отримати вміст URL» з третім посиланням, метод POST, тіло JSON: amount (число з «Запитати ввід»), categoryId і account — просто обрані рядки зі списків.',
     automationExpenseHowToWidget:
       'Складіть ярлики в окрему папку Команд і додайте на екран «Додому» віджет «Команди» — витрата записується одним дотиком, без відкриття застосунку.',
-    weeklyAutoReport: 'Авто тижневий звіт',
-    monthlyAutoReport: 'Авто місячний звіт',
-    reportSendTime: 'Час надсилання звіту',
+    weeklyAutoReport: 'Тижневий звіт',
+    monthlyAutoReport: 'Місячний звіт',
     dailyReminder: 'Щоденне нагадування',
     subscriptionsReminder: 'Нагадування про підписки',
-    reminderInactivity: 'Немає витрат N днів',
-    reminderShiftEveningBefore: 'Зміна завтра (планер)',
-    reminderShiftUnclosed: 'Відкрита зміна >8 год',
-    reminderFxChange: 'Зміна курсу валют (%)',
-    reminderTimeLabel: 'Час у Telegram',
-    leadDaysLabel: 'Днів / параметр',
-    fxThresholdLabel: 'Поріг, % (для курсу)',
+    reminderTime: 'Час нагадувань',
     sectionGeneral: 'Основне',
-    sectionReports: 'Звіти Telegram',
-    sectionReminders: 'Нагадування',
+    sectionNotifications: 'Сповіщення',
+    sectionMore: 'Ще',
     sectionPlanner: 'Планер',
-    reminderGroupExpenses: 'Витрати',
-    reminderGroupPlanner: 'Планер змін',
-    reminderGroupFx: 'Курс валют',
     reminderDescDaily: 'Нагадає ввечері внести витрати за день.',
     reminderDescSubscriptions: 'Попередить за кілька днів до списання підписки.',
-    reminderDescInactivity: 'Напише, якщо кілька днів поспіль немає записів витрат.',
-    reminderDescShiftEvening: 'Нагадає напередодні про заплановану зміну в планері.',
-    reminderDescShiftUnclosed: 'Попередить, якщо зміна відкрита довше ніж 8 годин.',
-    reminderDescFxChange: 'Повідомить, коли курс зміниться більше за поріг.',
     paramDaysBefore: 'Днів заздалегідь',
-    paramInactivityDays: 'Днів без витрат',
-    paramFxThreshold: 'Поріг, %',
+    automationRow: 'Автоматизація',
+    automationRowDescription: 'Швидкі дії та посилання для ярликів на телефоні',
     saved: 'Збережено',
     saveFailed: 'Не вдалося зберегти. Спробуйте ще раз.',
   },
@@ -1096,6 +1070,8 @@ const uk: Dict = {
     reviewReasonManualCheck: 'У результаті є неочевидні ознаки, які краще перевірити вручну.',
     ocrTextTitle: 'Розпізнаний текст',
     selectPaymentAccount: 'Оберіть рахунок для списання',
+    amountFromAccount: 'На чеку {amount} — суму переведено у валюту рахунку за курсом. Виправте, якщо банк списав інакше.',
+    amountRateUnavailable: 'Курс недоступний — впишіть суму, що списалася з рахунку (на чеку {amount}).',
     errorAuth: 'Сесію авторизації втрачено. Відкрийте застосунок з Telegram ще раз.',
     errorNotConfigured: 'Сканування чеків не налаштоване на сервері. Додайте OCR_SPACE_API_KEY у .env або увімкніть явний fallback.',
     errorRateLimited: 'Занадто часто. Зачекайте кілька секунд і спробуйте ще раз.',
@@ -1244,6 +1220,7 @@ const ru: Dict = {
     saveFailed: 'Не удалось сохранить. Проверь соединение и попробуй снова.',
     paymentAccount: 'Счёт',
     paymentAccountHint: 'Выбери карту или наличные — этот счёт обновится в «Счетах»',
+    currencyFromAccount: 'Валюта со счёта — смени счёт, чтобы её изменить',
     paymentAccountNone: 'Не указано',
     templates: 'Шаблоны',
     saveAsTemplate: 'Сохранить как шаблон',
@@ -1458,7 +1435,6 @@ const ru: Dict = {
     deleteAccountFailed: 'Не удалось удалить. Попробуйте ещё раз.',
     title: 'Настройки',
     language: 'Язык интерфейса',
-    languageDescription: 'Выберите язык, на котором будет отображаться приложение',
     currency: 'Валюта отображения',
     currencyDescription: 'Выберите валюту, в которой отображаются суммы в приложении',
     currencyUah: 'Гривна (₴)',
@@ -1500,34 +1476,20 @@ const ru: Dict = {
       'iOS, на каждый список: «Получить содержимое URL» со ссылкой → сразу «Выбрать из списка». Затем «Получить содержимое URL» с третьей ссылкой, метод POST, тело JSON: amount (число из «Запросить ввод»), categoryId и account — просто выбранные строки из списков.',
     automationExpenseHowToWidget:
       'Сложите команды в отдельную папку и добавьте на экран «Домой» виджет «Быстрые команды» — расход записывается одним касанием, без открытия приложения.',
-    weeklyAutoReport: 'Авто недельный отчёт',
-    monthlyAutoReport: 'Авто месячный отчёт',
-    reportSendTime: 'Время отправки отчёта',
+    weeklyAutoReport: 'Недельный отчёт',
+    monthlyAutoReport: 'Месячный отчёт',
     dailyReminder: 'Ежедневное напоминание',
     subscriptionsReminder: 'Напоминание о подписках',
-    reminderInactivity: 'Нет расходов N дней',
-    reminderShiftEveningBefore: 'Смена завтра (планер)',
-    reminderShiftUnclosed: 'Смена открыта >8 ч',
-    reminderFxChange: 'Изменение курса (%)',
-    reminderTimeLabel: 'Время в Telegram',
-    leadDaysLabel: 'Дней / параметр',
-    fxThresholdLabel: 'Порог, %',
+    reminderTime: 'Время напоминаний',
     sectionGeneral: 'Основное',
-    sectionReports: 'Отчёты Telegram',
-    sectionReminders: 'Напоминания',
+    sectionNotifications: 'Уведомления',
+    sectionMore: 'Ещё',
     sectionPlanner: 'Планер',
-    reminderGroupExpenses: 'Расходы',
-    reminderGroupPlanner: 'Планер смен',
-    reminderGroupFx: 'Курс валют',
     reminderDescDaily: 'Напомнит вечером записать расходы за день.',
     reminderDescSubscriptions: 'Предупредит за несколько дней до списания подписки.',
-    reminderDescInactivity: 'Напишет, если несколько дней подряд нет записей расходов.',
-    reminderDescShiftEvening: 'Напомнит накануне о запланированной смене в планере.',
-    reminderDescShiftUnclosed: 'Предупредит, если смена открыта дольше 8 часов.',
-    reminderDescFxChange: 'Сообщит, когда курс изменится больше порога.',
     paramDaysBefore: 'Дней заранее',
-    paramInactivityDays: 'Дней без расходов',
-    paramFxThreshold: 'Порог, %',
+    automationRow: 'Автоматизация',
+    automationRowDescription: 'Быстрые действия и ссылки для ярлыков на телефоне',
     saved: 'Сохранено',
     saveFailed: 'Не удалось сохранить. Попробуйте ещё раз.',
   },
@@ -1667,6 +1629,8 @@ const ru: Dict = {
     reviewReasonManualCheck: 'В результате есть неочевидные признаки, которые лучше проверить вручную.',
     ocrTextTitle: 'Распознанный текст',
     selectPaymentAccount: 'Выберите счёт для списания',
+    amountFromAccount: 'На чеке {amount} — сумма пересчитана в валюту счёта по курсу. Исправьте, если банк списал иначе.',
+    amountRateUnavailable: 'Курс недоступен — впишите сумму, которая списалась со счёта (на чеке {amount}).',
     errorAuth: 'Сессия авторизации потеряна. Откройте приложение из Telegram ещё раз.',
     errorNotConfigured: 'Сканирование чеков не настроено на сервере. Добавьте OCR_SPACE_API_KEY в .env или включите явный fallback.',
     errorRateLimited: 'Слишком часто. Подождите несколько секунд и попробуйте снова.',
@@ -1815,6 +1779,7 @@ const en: Dict = {
     saveFailed: 'Could not save. Check your connection and try again.',
     paymentAccount: 'Account',
     paymentAccountHint: 'Pick a card or cash — this account will update on Accounts',
+    currencyFromAccount: 'The currency comes from the account — change the account to change it',
     paymentAccountNone: 'Not set',
     templates: 'Templates',
     saveAsTemplate: 'Save as template',
@@ -2029,7 +1994,6 @@ const en: Dict = {
     deleteAccountFailed: 'Could not delete. Please try again.',
     title: 'Settings',
     language: 'Interface language',
-    languageDescription: 'Choose the language the app is displayed in',
     currency: 'Display currency',
     currencyDescription: 'Choose the currency used to display amounts in the app',
     currencyUah: 'Hryvnia (₴)',
@@ -2071,34 +2035,20 @@ const en: Dict = {
       'iOS, for each list: "Get Contents of URL" with the link → "Choose from List" right after it. Then "Get Contents of URL" with the third link, method POST, JSON body: amount (the number from "Ask for Input"), and categoryId and account — just the rows you chose from the lists.',
     automationExpenseHowToWidget:
       'Put the shortcuts in their own Shortcuts folder and add the Shortcuts widget to your Home Screen — one tap records the expense without opening the app.',
-    weeklyAutoReport: 'Weekly auto report',
-    monthlyAutoReport: 'Monthly auto report',
-    reportSendTime: 'Report send time',
+    weeklyAutoReport: 'Weekly report',
+    monthlyAutoReport: 'Monthly report',
     dailyReminder: 'Daily reminder',
     subscriptionsReminder: 'Subscription reminder',
-    reminderInactivity: 'No expenses for N days',
-    reminderShiftEveningBefore: 'Shift tomorrow (planner)',
-    reminderShiftUnclosed: 'Open shift >8h',
-    reminderFxChange: 'FX rate change (%)',
-    reminderTimeLabel: 'Telegram time',
-    leadDaysLabel: 'Days / parameter',
-    fxThresholdLabel: 'Threshold, %',
+    reminderTime: 'Reminder time',
     sectionGeneral: 'General',
-    sectionReports: 'Telegram reports',
-    sectionReminders: 'Reminders',
+    sectionNotifications: 'Notifications',
+    sectionMore: 'More',
     sectionPlanner: 'Planner',
-    reminderGroupExpenses: 'Expenses',
-    reminderGroupPlanner: 'Shift planner',
-    reminderGroupFx: 'FX rate',
     reminderDescDaily: 'Reminds you in the evening to log the day\u2019s expenses.',
     reminderDescSubscriptions: 'Warns you a few days before a subscription is charged.',
-    reminderDescInactivity: 'Pings you if there are no expense entries for several days in a row.',
-    reminderDescShiftEvening: 'Reminds you the day before a shift planned in the planner.',
-    reminderDescShiftUnclosed: 'Warns you if a shift stays open longer than 8 hours.',
-    reminderDescFxChange: 'Notifies you when the rate moves more than the threshold.',
     paramDaysBefore: 'Days ahead',
-    paramInactivityDays: 'Days without expenses',
-    paramFxThreshold: 'Threshold, %',
+    automationRow: 'Automation',
+    automationRowDescription: 'Quick actions and links for phone shortcuts',
     saved: 'Saved',
     saveFailed: 'Could not save. Please try again.',
   },
@@ -2238,6 +2188,8 @@ const en: Dict = {
     reviewReasonManualCheck: 'This result has ambiguous signals and should be checked manually.',
     ocrTextTitle: 'Recognized text',
     selectPaymentAccount: 'Select the account to debit',
+    amountFromAccount: 'The receipt says {amount} — converted into the account currency at the current rate. Correct it if the bank charged differently.',
+    amountRateUnavailable: 'No rate available — enter the amount that actually left the account (the receipt says {amount}).',
     errorAuth: 'Authorization expired. Open the app from Telegram again.',
     errorNotConfigured: 'Receipt OCR is not configured on the server. Add OCR_SPACE_API_KEY in .env or enable an explicit fallback.',
     errorRateLimited: 'Too many attempts. Wait a few seconds and try again.',

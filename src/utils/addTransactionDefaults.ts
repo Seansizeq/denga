@@ -1,11 +1,12 @@
 import type { TransactionType } from '../types';
-import type { CurrencyCode } from './currency';
+import type { Denomination } from './denomination';
 
 const STORAGE_KEY = 'add_tx_defaults_v1';
 
 export interface AddTransactionDefaults {
   type?: TransactionType;
-  currency?: CurrencyCode;
+  /** The unit the amount was counted in — fiat currency or crypto asset. */
+  currency?: Denomination;
   categoryId?: string;
   paymentAccount?: string;
 }

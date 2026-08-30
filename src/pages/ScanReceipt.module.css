@@ -237,6 +237,15 @@
   font-weight: 600;
 }
 
+/* Explains a total that no longer matches the paper: it now speaks the
+   account's unit. */
+.conversionHint {
+  margin: 8px 2px 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
 .categoryChip {
   display: inline-flex;
   align-items: center;

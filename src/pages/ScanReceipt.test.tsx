@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
   compressImage: vi.fn(),
   addTransaction: vi.fn(),
   apiFetch: vi.fn(),
+  portfolioAccounts: [] as Array<Record<string, unknown>>,
+  cryptoPrices: { USDT: 1 } as Record<string, number>,
 }));
 
 vi.mock('react-router-dom', async () => {
@@ -41,8 +43,8 @@ vi.mock('../context/TransactionContext', () => ({
 
 vi.mock('../context/PortfolioContext', () => ({
   usePortfolio: () => ({
-    accounts: [],
-    cryptoPrices: {},
+    accounts: mocks.portfolioAccounts,
+    cryptoPrices: mocks.cryptoPrices,
     cryptoUsdHistory: null,
     refreshAccounts: vi.fn(),
     refreshCryptoPrices: vi.fn(),
@@ -54,6 +56,13 @@ vi.mock('../i18n/LanguageContext', () => ({
   useTranslation: () => ({
     locale: 'uk-UA',
     language: 'uk',
+    displayCurrency: 'UAH',
+    fxRates: {
+      base: 'USD',
+      rates: { USD: 1, PLN: 4, UAH: 40 },
+      updatedAt: '1970-01-01T00:00:00.000Z',
+      source: 'fallback',
+    },
     t: (section: string, key: string) => {
       const map: Record<string, string> = {
         'scan.title': 'Сканер чека',
@@ -99,6 +108,8 @@ describe('ScanReceipt', () => {
     mocks.compressImage.mockReset();
     mocks.addTransaction.mockReset();
     mocks.apiFetch.mockReset();
+    mocks.portfolioAccounts = [];
+    mocks.cryptoPrices = { USDT: 1 };
     mocks.apiFetch.mockResolvedValue(new Response(JSON.stringify([]), { status: 200 }));
     mocks.compressImage.mockResolvedValue({
       base64: 'a'.repeat(200),
@@ -168,6 +179,114 @@ describe('ScanReceipt', () => {
     expect(await screen.findByText('Не вдалося зберегти. Перевір з’єднання і спробуй ще раз.')).toBeTruthy();
     await waitFor(() => {
       expect(screen.getByDisplayValue('АТБ')).toBeTruthy();
+    });
+  });
+  describe('the account decides the unit', () => {
+    const plnReceipt = {
+      ok: true,
+      receipt: {
+        shop: 'Biedronka',
+        total: 100,
+        currency: 'PLN',
+        date: '2026-05-12',
+        categoryId: 'food',
+        items: [],
+        rawText: '',
+        code: 'OK',
+        reviewFlags: [],
+        reviewRequired: false,
+        scanStatus: 'ok',
+      },
+    };
+
+    /** The editable receipt total. */
+    const totalInput = (container: HTMLElement) =>
+      container.querySelector('input[inputmode="decimal"]') as HTMLInputElement;
+
+    const scan = async () => {
+      const user = userEvent.setup();
+      const view = render(<ScanReceipt />);
+      const input = view.container.querySelector('input[type="file"]') as HTMLInputElement;
+      fireEvent.change(input, { target: { files: [new File(['x'], 'r.jpg', { type: 'image/jpeg' })] } });
+      await screen.findByRole('button', { name: 'Зберегти без змін' });
+      return { user, container: view.container };
+    };
+
+    it('re-states the total in the unit of the account that paid', async () => {
+      mocks.portfolioAccounts = [
+        { accountKey: 'karta', name: 'Karta', primaryCurrency: 'PLN', section: 'bank' },
+        { accountKey: 'privat', name: 'Privat', primaryCurrency: 'UAH', section: 'bank' },
+      ];
+      mocks.scanReceipt.mockResolvedValue(plnReceipt);
+      mocks.addTransaction.mockResolvedValue(true);
+
+      const { user, container } = await scan();
+      expect(totalInput(container).value).toBe('100');
+
+      // 100 PLN -> 25 USD -> 1000 UAH: the card is charged hryvnias, and
+      // relabelling the figure would have claimed 100 ₴ was spent.
+      await user.click(screen.getByRole('button', { name: 'Privat' }));
+      expect(totalInput(container).value).toBe('1000');
+      expect(screen.getByText('scan.amountFromAccount')).toBeTruthy();
+
+      await user.click(screen.getByRole('button', { name: 'Зберегти без змін' }));
+      await waitFor(() => expect(mocks.addTransaction).toHaveBeenCalled());
+      expect(mocks.addTransaction.mock.calls[0][0]).toMatchObject({
+        amount: 1000,
+        currency: 'UAH',
+        type: 'expense',
+      });
+    });
+
+    it('leaves the receipt figure alone when the account holds its currency', async () => {
+      mocks.portfolioAccounts = [
+        { accountKey: 'karta', name: 'Karta', primaryCurrency: 'PLN', section: 'bank' },
+      ];
+      mocks.scanReceipt.mockResolvedValue(plnReceipt);
+      mocks.addTransaction.mockResolvedValue(true);
+
+      const { user, container } = await scan();
+      await user.click(screen.getByRole('button', { name: 'Karta' }));
+
+      expect(totalInput(container).value).toBe('100');
+      expect(screen.queryByText('scan.amountFromAccount')).toBe(null);
+
+      await user.click(screen.getByRole('button', { name: 'Зберегти без змін' }));
+      await waitFor(() => expect(mocks.addTransaction).toHaveBeenCalled());
+      expect(mocks.addTransaction.mock.calls[0][0]).toMatchObject({ amount: 100, currency: 'PLN' });
+    });
+
+    it('keeps the correction the user typed', async () => {
+      mocks.portfolioAccounts = [
+        { accountKey: 'privat', name: 'Privat', primaryCurrency: 'UAH', section: 'bank' },
+      ];
+      mocks.scanReceipt.mockResolvedValue(plnReceipt);
+      mocks.addTransaction.mockResolvedValue(true);
+
+      const { user, container } = await scan();
+      await user.click(screen.getByRole('button', { name: 'Privat' }));
+      // The bank charged its own rate, not ours.
+      fireEvent.change(totalInput(container), { target: { value: '1012.40' } });
+
+      await user.click(screen.getByRole('button', { name: 'Зберегти без змін' }));
+      await waitFor(() => expect(mocks.addTransaction).toHaveBeenCalled());
+      expect(mocks.addTransaction.mock.calls[0][0]).toMatchObject({ amount: 1012.4, currency: 'UAH' });
+    });
+
+    it('asks for the figure when the asset cannot be priced', async () => {
+      mocks.portfolioAccounts = [
+        { accountKey: 'ledger', name: 'Ledger', primaryCurrency: 'ETH', section: 'crypto' },
+      ];
+      mocks.cryptoPrices = {};
+      mocks.scanReceipt.mockResolvedValue(plnReceipt);
+
+      const { user, container } = await scan();
+      await user.click(screen.getByRole('button', { name: 'Ledger' }));
+
+      // Guessing how much ETH left the wallet would invent the figure.
+      expect(totalInput(container).value).toBe('');
+      expect(screen.getByText('scan.amountRateUnavailable')).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Зберегти без змін' }).hasAttribute('disabled')).toBe(true);
     });
   });
 });

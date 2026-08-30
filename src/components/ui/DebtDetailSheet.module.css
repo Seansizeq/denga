@@ -21,7 +21,7 @@
   width: 100%;
   max-width: 420px;
   border-radius: 20px;
-  background: #111113;
+  background: var(--bg-card);
   border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.6);
   display: flex;
@@ -43,7 +43,7 @@
   height: 36px;
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  background: #1c1c1e;
+  background: var(--bg-card-light);
   color: #fff;
   display: inline-flex;
   align-items: center;
@@ -64,7 +64,7 @@
   height: 36px;
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  background: #1c1c1e;
+  background: var(--bg-card-light);
   color: rgba(255, 255, 255, 0.6);
   display: inline-flex;
   align-items: center;
@@ -231,7 +231,7 @@
 .input {
   width: 100%;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  background: #1c1c1e;
+  background: var(--bg-card-light);
   color: #fff;
   border-radius: 12px;
   padding: 10px 12px;
@@ -268,7 +268,7 @@
 }
 
 .secondary {
-  background: #1c1c1e;
+  background: var(--bg-card-light);
   color: #fff;
 }
 
@@ -325,7 +325,7 @@
   align-items: center;
   gap: 8px;
   padding: 10px 12px;
-  background: #1c1c1e;
+  background: var(--bg-card-light);
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 12px;
 }

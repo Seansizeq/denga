@@ -41,13 +41,14 @@
   line-height: 1.35;
 }
 
+/* Той самий сегмент, що й у звіті календаря (`.reportModeSeg`) та в статистиці. */
 .typeSelector {
   display: flex;
-  background-color: var(--bg-card);
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.09);
   border-radius: 999px;
   padding: 4px;
   margin-bottom: 28px;
-  border: 1px solid rgba(255, 255, 255, 0.04);
 }
 
 .typeBtn {
@@ -60,12 +61,13 @@
   font-weight: 500;
   cursor: pointer;
   color: var(--text-secondary);
-  transition: background-color 0.15s ease, color 0.15s ease;
+  transition: color var(--motion-fast) var(--ease-out);
 }
 
 .active {
-  background: var(--bg-card-light);
-  color: #fff;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.17), rgba(255, 255, 255, 0.06));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  color: var(--text-primary);
 }
 
 .amountContainer {
@@ -227,6 +229,14 @@
   padding: 8px 10px;
   border-radius: 10px;
   line-height: 1;
+}
+
+/* The unit is read-only here — it comes from the account — but still tappable,
+   since tapping it is how you reach the account that sets it. */
+.currencyFromAccount {
+  appearance: none;
+  font-family: inherit;
+  cursor: pointer;
 }
 
 .amountInput {

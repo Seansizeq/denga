@@ -5,9 +5,22 @@
 }
 
 .content {
-  padding: calc(var(--safe-area-inset-top) + 24px) 20px 0;
+  padding: calc(var(--safe-area-inset-top) + 20px) 18px 0;
   display: flex;
   flex-direction: column;
+}
+
+/**
+ * Заголовок сторінки. Раніше «Звідки гроші» був єдиним із розділів нижньої
+ * навігації, що починався одразу з контенту: у решти (Календар, Статистика,
+ * Налаштування) зверху стоїть назва, і без неї екран читався як чужий.
+ */
+.title {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.6px;
+  color: var(--text-primary);
 }
 
 .addButton {

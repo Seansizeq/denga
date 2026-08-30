@@ -16,8 +16,9 @@ import {
   mergeAccountIntoNoteLimited,
   stripAccountFromNote,
 } from '../utils/transactionAccount';
-import { normalizeCurrency, SUPPORTED_CURRENCIES, type CurrencyCode } from '../utils/currency';
+import { SUPPORTED_CURRENCIES } from '../utils/currency';
 import {
+  isFiatDenomination,
   normalizeDenomination,
   roundForDenomination,
   denominationPrecision,
@@ -90,10 +91,10 @@ const AddTransaction: React.FC = () => {
     }
     return '';
   });
-  const [currency, setCurrency] = useState<CurrencyCode>(() => {
-    if (editingTransaction) return normalizeCurrency(editingTransaction.currency);
-    if (prefillCurrencyRaw) return normalizeCurrency(prefillCurrencyRaw);
-    return normalizeCurrency(undefined);
+  const [currency, setCurrency] = useState<Denomination>(() => {
+    if (editingTransaction) return normalizeDenomination(editingTransaction.currency);
+    if (prefillCurrencyRaw) return normalizeDenomination(prefillCurrencyRaw);
+    return normalizeDenomination(undefined);
   });
   const [type, setType] = useState<TransactionType>(initialType);
   const [date, setDate] = useState(() => {
@@ -149,6 +150,29 @@ const AddTransaction: React.FC = () => {
     },
     [rawAccounts],
   );
+
+  // Money is counted in whatever the account it sits on holds: an expense paid
+  // from a USDT wallet leaves USDT, and one paid from a Polish card leaves PLN.
+  // The server enforces the same rule, so a free-standing currency picker could
+  // only ever produce a save it rejects.
+  const paymentAccountDenomination = useMemo<Denomination | null>(
+    () => portfolioAccounts.find((account) => account.key === paymentAccount)?.currency ?? null,
+    [portfolioAccounts, paymentAccount],
+  );
+  // Editing keeps the unit the operation was recorded in until the user picks an
+  // account themselves: fixing a typo in a note must not silently restate a
+  // stored 500 ₴ expense as 500 zł because the card behind it is Polish.
+  const [currencyFollowsAccount, setCurrencyFollowsAccount] = useState(!isEditing);
+  const accountDenomination = currencyFollowsAccount ? paymentAccountDenomination : null;
+
+  useEffect(() => {
+    if (!accountDenomination) return;
+    setCurrency((current) => (current === accountDenomination ? current : accountDenomination));
+  }, [accountDenomination]);
+
+  // A picker only earns its place when nothing else dictates the unit: no
+  // account behind the amount, and a fiat figure to choose between.
+  const currencyEditable = !accountDenomination && isFiatDenomination(currency);
 
   // Icon tone / section / iconKey per account, so the picker can show avatars
   // matching the rest of the app instead of a bare text list.
@@ -277,7 +301,7 @@ const AddTransaction: React.FC = () => {
     if (!tx) return;
     hydratedEditRef.current = editId;
     setAmount(String(tx.amount));
-    setCurrency(normalizeCurrency(tx.currency));
+    setCurrency(normalizeDenomination(tx.currency));
     setType(tx.type);
     setDate(tx.date.slice(0, 10));
     setCategoryId(tx.categoryId);
@@ -300,7 +324,7 @@ const AddTransaction: React.FC = () => {
     if (isEditing || hasPrefillParams(searchParams, isEditing)) return;
     const defaults = loadAddTransactionDefaults();
     if (!defaults) return;
-    if (defaults.currency) setCurrency(normalizeCurrency(defaults.currency));
+    if (defaults.currency) setCurrency(normalizeDenomination(defaults.currency));
     if (defaults.paymentAccount) setPaymentAccount(defaults.paymentAccount);
     if (defaults.type && defaults.type !== 'transfer') setType(defaults.type);
     if (defaults.categoryId && defaults.type && defaults.type !== 'transfer') {
@@ -441,6 +465,9 @@ const AddTransaction: React.FC = () => {
     setCategoryId(tpl.categoryId);
     if (tpl.note !== undefined) setNote(tpl.note);
     if (tpl.account !== undefined) setPaymentAccount(tpl.account);
+    // The template carries an account, and the account carries the unit — so a
+    // template saved before this rule cannot resurrect a mismatched currency.
+    setCurrencyFollowsAccount(true);
   }, []);
 
   const handleSaveTemplate = useCallback((name: string) => {
@@ -666,18 +693,32 @@ const AddTransaction: React.FC = () => {
               autoFocus
               onKeyDown={amountKeyDown}
             />
-            <select
-              className={styles.currencySelect}
-              value={currency}
-              onChange={(e) => setCurrency(normalizeCurrency(e.target.value))}
-              aria-label={t('settings', 'currency')}
-            >
-              {SUPPORTED_CURRENCIES.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
+            {currencyEditable ? (
+              <select
+                className={styles.currencySelect}
+                value={currency}
+                onChange={(e) => setCurrency(normalizeDenomination(e.target.value))}
+                aria-label={t('settings', 'currency')}
+              >
+                {SUPPORTED_CURRENCIES.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              // Tapping the unit opens the account sheet: the account is the
+              // only place it can be changed from.
+              <button
+                type="button"
+                className={`${styles.currencyBadge} ${styles.currencyFromAccount}`}
+                onClick={() => setAccountSheetOpen(true)}
+                title={t('addTx', 'currencyFromAccount')}
+                aria-label={t('addTx', 'currencyFromAccount')}
+              >
+                {currency}
+              </button>
+            )}
           </div>
 
           <div className={styles.dateInline}>
@@ -780,13 +821,15 @@ const AddTransaction: React.FC = () => {
               id: key,
               label,
               leading: renderAccountAvatar(key),
-              hint: acc && acc.currency !== 'UAH' ? acc.currency : undefined,
+              hint: acc?.currency,
               group: accountGroupLabels[getAccountPickerGroup(section)],
             };
           }),
         ]}
         onSelect={(id) => {
           setPaymentAccount(id);
+          // Picking the account is how the unit gets picked now.
+          setCurrencyFollowsAccount(true);
           setAccountSheetOpen(false);
         }}
       />
