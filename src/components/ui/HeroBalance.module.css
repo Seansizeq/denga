@@ -102,8 +102,21 @@
  */
 .monthChangePill.positivePill {
   background:
-    linear-gradient(180deg, rgba(168, 255, 205, 0.22) 0%, rgba(76, 217, 123, 0.05) 100%),
-    rgba(76, 217, 123, 0.3);
+    linear-gradient(180deg, rgba(178, 255, 214, 0.34) 0%, rgba(27, 190, 96, 0.12) 100%),
+    rgba(31, 199, 104, 0.52);
+  /* На щільнішій заливці зелений текст губиться — беремо майже білий м'ятний. */
+  color: #f0fff7;
+  /**
+   * Тіні перебивають спільні навмисно: до кромки додається падаюча тінь і
+   * зелений підсвіт під нею. Без них щільна заливка читається як наліпка —
+   * скло має лежати над фоном, а не в ньому.
+   */
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.34),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.12),
+    inset 0 -6px 12px -6px rgba(0, 0, 0, 0.22),
+    0 4px 14px rgba(0, 0, 0, 0.3),
+    0 2px 10px rgba(24, 168, 88, 0.3);
 }
 
 .monthChangePill.negativePill {
@@ -120,7 +133,7 @@
 
 /* Без розмиття напівпрозора заливка втрачає щільність — повертаємо суцільну. */
 @supports not ((backdrop-filter: blur(4px)) or (-webkit-backdrop-filter: blur(4px))) {
-  .monthChangePill.positivePill { background: var(--accent-green-soft); }
+  .monthChangePill.positivePill { background: rgba(31, 199, 104, 0.62); }
   .monthChangePill.negativePill { background: var(--accent-red-soft); }
   .monthChangePill.neutralPill { background: rgba(255, 255, 255, 0.08); }
 }
@@ -131,7 +144,8 @@
     -webkit-backdrop-filter: none;
     box-shadow: none;
   }
-  .monthChangePill.positivePill { background: var(--accent-green-soft); }
+  /* Без скла крізь пігулку нічого не просвічує — заливка стає суцільною. */
+  .monthChangePill.positivePill { background: #1cbf68; box-shadow: none; }
   .monthChangePill.negativePill { background: var(--accent-red-soft); }
   .monthChangePill.neutralPill { background: rgba(255, 255, 255, 0.08); }
 }
