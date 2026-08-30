@@ -167,6 +167,46 @@ const drawFittedText = (
   ctx.fillText(text, x, y);
 };
 
+const CARD_WIDTH = 1080;
+const CARD_HEIGHT = 1350;
+
+/**
+ * Картку обрамляє тло застосунку, а шаблон лежить поверх світлою панеллю.
+ *
+ * Малювати ту панель окремо не треба: у шаблонів уже запечене біле тло й
+ * заокруглені кути, тож досить лишити навколо поля — крізь прозорі кути
+ * проступає темний фон і панель сама читається як картка з застосунку.
+ */
+const PANEL_X = 88;
+const PANEL_Y = 88;
+const PANEL_WIDTH = 904;
+const PANEL_HEIGHT = 1130;
+
+/** Композицію шаблона (де підпис, де малюнок) задано для повного кадру. */
+const PANEL_SCALE = PANEL_WIDTH / CARD_WIDTH;
+
+const inPanel = (value: number): number => PANEL_Y + value * PANEL_SCALE;
+const panelSize = (value: number): number => Math.round(value * PANEL_SCALE);
+
+const drawAppBackdrop = (ctx: CanvasRenderingContext2D): void => {
+  ctx.fillStyle = '#0f0c1c';
+  ctx.fillRect(0, 0, CARD_WIDTH, CARD_HEIGHT);
+
+  // Те саме свічення, що AmbientBackground піднімає знизу-ліворуч: верх кадру
+  // лишається майже чорним, низ — фіолетовим.
+  //
+  // Пляма ширша й тьмяніша за екранну, бо тут від фону видно лише поля навколо
+  // панелі. З екранними числами яскраве осердя припадало рівно на нижню смужку
+  // й читалось як стрічка, а не як свічення з-під картки.
+  const glow = ctx.createRadialGradient(500, 1500, 0, 500, 1500, 1150);
+  glow.addColorStop(0, 'rgba(142, 116, 255, 0.55)');
+  glow.addColorStop(0.35, 'rgba(110, 80, 246, 0.3)');
+  glow.addColorStop(0.72, 'rgba(86, 58, 236, 0)');
+  glow.addColorStop(1, 'rgba(86, 58, 236, 0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, CARD_WIDTH, CARD_HEIGHT);
+};
+
 export interface RenderResultCardOptions {
   templateUrl: string;
   /** Дрібний рядок над сумою: «Результат за день», «Зароблено сьогодні». */
@@ -180,25 +220,26 @@ export interface RenderResultCardOptions {
 export const renderResultCardPng = async (options: RenderResultCardOptions): Promise<Blob> => {
   const template = await loadImage(options.templateUrl);
   const canvas = document.createElement('canvas');
-  canvas.width = 1080;
-  canvas.height = 1350;
+  canvas.width = CARD_WIDTH;
+  canvas.height = CARD_HEIGHT;
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Canvas is unavailable');
 
-  ctx.drawImage(template, 0, 0, canvas.width, canvas.height);
+  drawAppBackdrop(ctx);
+  ctx.drawImage(template, PANEL_X, PANEL_Y, PANEL_WIDTH, PANEL_HEIGHT);
   ctx.textBaseline = 'top';
 
   // Два рядки по центру над малюнком — підпис і сума. Ні назви, ні шкали,
   // ні порівнянь: усе це лишається в застосунку, а не на картинці.
-  const centerX = canvas.width / 2;
+  const centerX = PANEL_X + PANEL_WIDTH / 2;
   ctx.textAlign = 'center';
   ctx.letterSpacing = '0px';
 
   ctx.fillStyle = '#050505';
-  drawFittedText(ctx, options.label, centerX, 250, 900, 46, 30, 700);
+  drawFittedText(ctx, options.label, centerX, inPanel(250), panelSize(900), panelSize(46), panelSize(30), 700);
 
   ctx.fillStyle = options.amountColor ?? '#050505';
-  drawFittedText(ctx, options.amount, centerX, 340, 900, 150, 80, 800);
+  drawFittedText(ctx, options.amount, centerX, inPanel(340), panelSize(900), panelSize(150), panelSize(80), 800);
 
   ctx.textAlign = 'left';
 

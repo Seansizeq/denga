@@ -24,6 +24,8 @@ describe('result card PNG renderer', () => {
       letterSpacing: '0px',
       font: '',
       drawImage: vi.fn(),
+      fillRect: vi.fn(),
+      createRadialGradient: () => ({ addColorStop: vi.fn() }),
       measureText: (text: string) => ({ width: text.length * 20 }),
       fillText: (text: string) => textCalls.push({ text, color: activeColor }),
     } as unknown as CanvasRenderingContext2D;
@@ -77,6 +79,8 @@ describe('result card PNG renderer', () => {
       letterSpacing: '0px',
       font: '',
       drawImage: vi.fn(),
+      fillRect: vi.fn(),
+      createRadialGradient: () => ({ addColorStop: vi.fn() }),
       measureText: (text: string) => ({ width: text.length * 20 }),
       fillText: (text: string) => textCalls.push({ text, color: activeColor }),
     } as unknown as CanvasRenderingContext2D;
