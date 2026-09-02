@@ -3195,11 +3195,8 @@ const getAutomationAccounts = async (userId) =>
     [userId]
   )) ?? [];
 
-const getAutomationCategories = async (userId) =>
-  (await getSmartCategoriesForUser(userId, { includeOther: true })).map((c) => ({
-    ...c,
-    emoji: CATEGORY_EMOJI[c.id],
-  }));
+const getAutomationCategories = (userId) =>
+  getSmartCategoriesForUser(userId, { includeOther: true });
 
 /**
  * The lists the quick-add pickers are built from, fetched on every run so a

@@ -17,7 +17,6 @@ import { DENOMINATIONS, denominationPrecision, normalizeDenomination } from './d
  */
 export const AUTOMATION_NOTE_MAX = 60;
 
-const FALLBACK_CATEGORY_EMOJI = '🏷';
 const FALLBACK_ACCOUNT_EMOJI = '💳';
 const SECTION_EMOJI = {
   bank: '💳',
@@ -86,7 +85,10 @@ export const buildOptionMaps = ({ categories = [], accounts = [], type = 'expens
     if (!id) continue;
     if (wantedType && category?.type !== wantedType) continue;
     const name = String(category?.name ?? '').trim() || id;
-    putUnique(categoryOptions, label(category?.emoji || FALLBACK_CATEGORY_EMOJI, name), id);
+    // Names only. Emoji existed for the handful of built-in categories, so a
+    // wallet with its own categories showed a few pictures and then a column of
+    // identical placeholder tags — worse to read than plain names.
+    putUnique(categoryOptions, name, id);
   }
 
   const accountOptions = {};

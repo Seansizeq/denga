@@ -7,9 +7,9 @@ import {
 } from './automation-transaction.js';
 
 const categories = [
-  { id: 'food', name: 'Продукти', type: 'expense', emoji: '🍕' },
-  { id: 'transport', name: 'Транспорт', type: 'expense', emoji: '🚗' },
-  { id: 'salary', name: 'Зарплата', type: 'income', emoji: '💼' },
+  { id: 'food', name: 'Продукти', type: 'expense' },
+  { id: 'transport', name: 'Транспорт', type: 'expense' },
+  { id: 'salary', name: 'Зарплата', type: 'income' },
   { id: 'custom:x', name: 'Кава' , type: 'expense' },
 ];
 
@@ -22,7 +22,7 @@ const accounts = [
 describe('buildOptionMaps', () => {
   it('maps label -> id so a picked row can be resolved back', () => {
     const maps = buildOptionMaps({ categories, accounts });
-    expect(maps.categories['🍕 Продукти']).toBe('food');
+    expect(maps.categories['Продукти']).toBe('food');
     expect(maps.accounts['💳 Santander']).toBe('santander');
     expect(maps.accounts['💵 Готівка']).toBe('wallet');
   });
@@ -36,21 +36,21 @@ describe('buildOptionsPayload', () => {
       '🪙 USDT',
     ]);
     expect(buildOptionsPayload({ categories, accounts })).toEqual({
-      categories: ['🍕 Продукти', '🚗 Транспорт', '🏷 Кава'],
+      categories: ['Продукти', 'Транспорт', 'Кава'],
       accounts: ['💳 Santander', '💵 Готівка', '🪙 USDT'],
     });
   });
 
   it('offers expense categories by default, and the other types on request', () => {
-    expect(buildOptionsPayload({ categories, accounts }).categories).not.toContain('💼 Зарплата');
+    expect(buildOptionsPayload({ categories, accounts }).categories).not.toContain('Зарплата');
     expect(buildOptionsPayload({ categories, accounts, type: 'income', list: 'categories' })).toEqual([
-      '💼 Зарплата',
+      'Зарплата',
     ]);
-    expect(buildOptionsPayload({ categories, accounts, type: 'all' }).categories).toContain('💼 Зарплата');
+    expect(buildOptionsPayload({ categories, accounts, type: 'all' }).categories).toContain('Зарплата');
   });
 
-  it('falls back to a generic emoji for a custom category', () => {
-    expect(buildOptionMaps({ categories, accounts }).categories['🏷 Кава']).toBe('custom:x');
+  it('lists a custom category by its own name, like every other one', () => {
+    expect(buildOptionMaps({ categories, accounts }).categories['Кава']).toBe('custom:x');
   });
 
   it('keeps same-named accounts apart — a collapsed label would spend from the wrong one', () => {
@@ -138,18 +138,18 @@ describe('validateAutomationTransaction', () => {
 
   it('accepts the picker label, so a shortcut can pass the chosen row straight through', () => {
     expect(
-      validateAutomationTransaction({ amount: 55, categoryId: '🍕 Продукти', account: '💵 Готівка' }, ctx)
+      validateAutomationTransaction({ amount: 55, categoryId: 'Продукти', account: '💵 Готівка' }, ctx)
     ).toMatchObject({ ok: true, categoryId: 'food', account: 'wallet', currency: 'UAH' });
   });
 
   it('resolves a custom category and a crypto account by label too', () => {
     expect(
-      validateAutomationTransaction({ amount: 1, categoryId: '🏷 Кава', account: '🪙 USDT' }, ctx)
+      validateAutomationTransaction({ amount: 1, categoryId: 'Кава', account: '🪙 USDT' }, ctx)
     ).toMatchObject({ ok: true, categoryId: 'custom:x', account: 'usdt', currency: 'USDT' });
   });
 
   it('still refuses a label that belongs to no row', () => {
-    expect(validateAutomationTransaction(valid({ categoryId: '🍕 Чужа' }), ctx)).toMatchObject({
+    expect(validateAutomationTransaction(valid({ categoryId: 'Чужа' }), ctx)).toMatchObject({
       code: 'INVALID_CATEGORY',
     });
     expect(validateAutomationTransaction(valid({ account: '💳 Чужий' }), ctx)).toMatchObject({
