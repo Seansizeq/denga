@@ -50,7 +50,7 @@ const AddTransaction: React.FC = () => {
   const navigate = useNavigate();
   const goBack = useGoBack('/');
   const { transactions, addTransaction, updateTransaction, isBootstrapping } = useTransactions();
-  const { t, language } = useTranslation();
+  const { t, language, displayCurrency } = useTranslation();
   const [searchParams] = useSearchParams();
   const {
     templates,
@@ -94,7 +94,9 @@ const AddTransaction: React.FC = () => {
   const [currency, setCurrency] = useState<Denomination>(() => {
     if (editingTransaction) return normalizeDenomination(editingTransaction.currency);
     if (prefillCurrencyRaw) return normalizeDenomination(prefillCurrencyRaw);
-    return normalizeDenomination(undefined);
+    // Nothing dictates the unit yet, so the app's own currency does — the one
+    // every figure on screen is already counted in, not a hardcoded hryvnia.
+    return normalizeDenomination(displayCurrency);
   });
   const [type, setType] = useState<TransactionType>(initialType);
   const [date, setDate] = useState(() => {
@@ -324,7 +326,8 @@ const AddTransaction: React.FC = () => {
     if (isEditing || hasPrefillParams(searchParams, isEditing)) return;
     const defaults = loadAddTransactionDefaults();
     if (!defaults) return;
-    if (defaults.currency) setCurrency(normalizeDenomination(defaults.currency));
+    // The unit is not remembered here any more: it comes from the account, and
+    // failing that from the app's currency. A stored one could only shadow both.
     if (defaults.paymentAccount) setPaymentAccount(defaults.paymentAccount);
     if (defaults.type && defaults.type !== 'transfer') setType(defaults.type);
     if (defaults.categoryId && defaults.type && defaults.type !== 'transfer') {
@@ -447,7 +450,6 @@ const AddTransaction: React.FC = () => {
     if (type !== 'transfer') {
       saveAddTransactionDefaults({
         type,
-        currency,
         categoryId,
         paymentAccount: paymentAccount || undefined,
       });

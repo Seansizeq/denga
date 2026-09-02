@@ -1,12 +1,14 @@
 import type { TransactionType } from '../types';
-import type { Denomination } from './denomination';
 
 const STORAGE_KEY = 'add_tx_defaults_v1';
 
+/**
+ * The unit is deliberately absent: it follows the payment account, and where no
+ * account is chosen it follows the app's own currency. Remembering the last one
+ * here would only shadow both.
+ */
 export interface AddTransactionDefaults {
   type?: TransactionType;
-  /** The unit the amount was counted in — fiat currency or crypto asset. */
-  currency?: Denomination;
   categoryId?: string;
   paymentAccount?: string;
 }

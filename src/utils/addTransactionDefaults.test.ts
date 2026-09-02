@@ -15,13 +15,11 @@ describe('addTransactionDefaults', () => {
   it('round-trips defaults in localStorage', () => {
     saveAddTransactionDefaults({
       type: 'expense',
-      currency: 'UAH',
       categoryId: 'food',
       paymentAccount: 'privat24',
     });
     expect(loadAddTransactionDefaults()).toEqual({
       type: 'expense',
-      currency: 'UAH',
       categoryId: 'food',
       paymentAccount: 'privat24',
     });

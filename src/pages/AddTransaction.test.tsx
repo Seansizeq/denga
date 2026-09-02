@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
     { accountKey: 'privat24', name: 'Privat24', primaryCurrency: 'UAH', section: 'bank' },
   ] as Array<Record<string, unknown>>,
   cryptoPrices: { USDT: 1, BTC: 60_000 } as Record<string, number>,
+  displayCurrency: 'UAH' as string,
 }));
 
 vi.mock('react-router-dom', async () => {
@@ -75,7 +76,7 @@ vi.mock('../i18n/LanguageContext', () => ({
   useTranslation: () => ({
     language: 'uk',
     t: (section: string, key: string) => `${section}.${key}`,
-    displayCurrency: 'UAH',
+    displayCurrency: mocks.displayCurrency,
     fxRates: {
       base: 'USD',
       rates: { USD: 1, PLN: 4, UAH: 40 },
@@ -112,6 +113,7 @@ describe('AddTransaction', () => {
       { accountKey: 'privat24', name: 'Privat24', primaryCurrency: 'UAH', section: 'bank' },
     ];
     mocks.cryptoPrices = { USDT: 1, BTC: 60_000 };
+    mocks.displayCurrency = 'UAH';
   });
 
   it('prefills payment account from note query param', () => {
@@ -167,6 +169,29 @@ describe('AddTransaction', () => {
 
     expect(positions.every((position) => position >= 0)).toBe(true);
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
+  });
+
+  it('starts a new operation in the currency the app is set to', async () => {
+    mocks.displayCurrency = 'PLN';
+    renderAdd('/add');
+
+    // Nothing dictates the unit yet, so the app's own currency does — not the
+    // hryvnia the screen used to assume.
+    expect((document.querySelector('select') as HTMLSelectElement).value).toBe('PLN');
+
+    fireEvent.change(screen.getByPlaceholderText('addTx.amountPlaceholder'), {
+      target: { value: '20' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'addTx.save' }));
+
+    await vi.waitFor(() => expect(mocks.addTransaction).toHaveBeenCalled());
+    expect(mocks.addTransaction.mock.calls[0][0]).toMatchObject({ amount: 20, currency: 'PLN' });
+  });
+
+  it('lets an explicit prefill outrank the app currency', () => {
+    mocks.displayCurrency = 'PLN';
+    renderAdd('/add?currency=USD');
+    expect((document.querySelector('select') as HTMLSelectElement).value).toBe('USD');
   });
 
   describe('the account decides the unit', () => {
