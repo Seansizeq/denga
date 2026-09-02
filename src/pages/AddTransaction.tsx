@@ -18,6 +18,7 @@ import {
 } from '../utils/transactionAccount';
 import { SUPPORTED_CURRENCIES } from '../utils/currency';
 import {
+  isCryptoDenomination,
   isFiatDenomination,
   normalizeDenomination,
   roundForDenomination,
@@ -153,10 +154,14 @@ const AddTransaction: React.FC = () => {
     [rawAccounts],
   );
 
-  // Money is counted in whatever the account it sits on holds: an expense paid
-  // from a USDT wallet leaves USDT, and one paid from a Polish card leaves PLN.
-  // The server enforces the same rule, so a free-standing currency picker could
-  // only ever produce a save it rejects.
+  // A crypto wallet holds a position in a token, and hryvnias cannot be poured
+  // into one: pricing them at today's rate would invent how much of the asset
+  // was actually bought. Such an account still dictates the unit outright.
+  //
+  // Between fiat units the server settles the difference at the current rate,
+  // so a hryvnia card can take an amount typed in zloty. There the account no
+  // longer overrules the picker: the figure stays in whatever the app counts
+  // in, and the card is debited by the converted sum.
   const paymentAccountDenomination = useMemo<Denomination | null>(
     () => portfolioAccounts.find((account) => account.key === paymentAccount)?.currency ?? null,
     [portfolioAccounts, paymentAccount],
@@ -166,15 +171,24 @@ const AddTransaction: React.FC = () => {
   // stored 500 ₴ expense as 500 zł because the card behind it is Polish.
   const [currencyFollowsAccount, setCurrencyFollowsAccount] = useState(!isEditing);
   const accountDenomination = currencyFollowsAccount ? paymentAccountDenomination : null;
+  const forcedDenomination =
+    accountDenomination && isCryptoDenomination(accountDenomination) ? accountDenomination : null;
 
   useEffect(() => {
-    if (!accountDenomination) return;
-    setCurrency((current) => (current === accountDenomination ? current : accountDenomination));
-  }, [accountDenomination]);
+    if (forcedDenomination) {
+      setCurrency((current) => (current === forcedDenomination ? current : forcedDenomination));
+      return;
+    }
+    // Moving off a wallet onto a card: a token amount cannot follow, and the
+    // card's own currency is the closest thing to what was meant.
+    if (accountDenomination) {
+      setCurrency((current) => (isCryptoDenomination(current) ? accountDenomination : current));
+    }
+  }, [forcedDenomination, accountDenomination]);
 
-  // A picker only earns its place when nothing else dictates the unit: no
-  // account behind the amount, and a fiat figure to choose between.
-  const currencyEditable = !accountDenomination && isFiatDenomination(currency);
+  // The picker earns its place wherever the unit is genuinely open — any fiat
+  // amount that no crypto account has claimed.
+  const currencyEditable = !forcedDenomination && isFiatDenomination(currency);
 
   // Icon tone / section / iconKey per account, so the picker can show avatars
   // matching the rest of the app instead of a bare text list.

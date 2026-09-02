@@ -213,13 +213,41 @@ describe('AddTransaction', () => {
       expect(unitBadge().textContent).toBe('USDT');
     });
 
-    it('follows the account the user picks', () => {
+    it('leaves the token unit behind when the money moves to a card', () => {
       mocks.portfolioAccounts = cryptoAndCard;
       renderAdd('/add?account=binance');
 
       fireEvent.click(screen.getByText('addTx.paymentAccount'));
       fireEvent.click(screen.getByText('Karta'));
-      expect(unitBadge().textContent).toBe('PLN');
+      // USDT cannot stay on a Polish card, so the card's own unit takes over —
+      // and being fiat, it is open to the picker again.
+      expect((document.querySelector('select') as HTMLSelectElement).value).toBe('PLN');
+    });
+
+    it('lets a fiat card take an amount typed in another currency', async () => {
+      mocks.displayCurrency = 'PLN';
+      mocks.portfolioAccounts = [
+        { accountKey: 'privat24', name: 'Privat24', primaryCurrency: 'UAH', section: 'bank' },
+      ];
+      // What a remembered default account looks like on a real phone: it is
+      // restored before anything is typed, and it used to drag the unit with it.
+      localStorage.setItem(
+        'add_tx_defaults_v1',
+        JSON.stringify({ type: 'expense', categoryId: 'food', paymentAccount: 'privat24' }),
+      );
+      renderAdd('/add');
+
+      await vi.waitFor(() => expect(screen.getByText('Privat24')).toBeTruthy());
+      expect((document.querySelector('select') as HTMLSelectElement).value).toBe('PLN');
+
+      fireEvent.change(screen.getByPlaceholderText('addTx.amountPlaceholder'), {
+        target: { value: '20' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'addTx.save' }));
+
+      // Sent as typed; the server debits the hryvnia card by the converted sum.
+      await vi.waitFor(() => expect(mocks.addTransaction).toHaveBeenCalled());
+      expect(mocks.addTransaction.mock.calls[0][0]).toMatchObject({ amount: 20, currency: 'PLN' });
     });
 
     it('sends the account unit on save', async () => {
@@ -249,7 +277,7 @@ describe('AddTransaction', () => {
       expect((select as HTMLSelectElement).value).toBe('PLN');
     });
 
-    it('keeps the recorded unit when editing until the account is re-picked', () => {
+    it('keeps the recorded unit when editing, even once the account is re-picked', () => {
       // tx-1 is 50 UAH on a Polish card: restating it as 50 zł because the card
       // is Polish would rewrite what happened, not correct it.
       mocks.portfolioAccounts = [
@@ -262,7 +290,22 @@ describe('AddTransaction', () => {
 
       fireEvent.click(screen.getByText('addTx.paymentAccount'));
       fireEvent.click(within(screen.getByRole('dialog')).getByText('Privat24'));
-      expect(unitBadge().textContent).toBe('PLN');
+      expect((document.querySelector('select') as HTMLSelectElement).value).toBe('UAH');
+    });
+
+    it('still hands a crypto wallet its own unit when editing', () => {
+      mocks.portfolioAccounts = [
+        { accountKey: 'privat24', name: 'Binance', primaryCurrency: 'USDT', section: 'crypto' },
+      ];
+      renderAdd('/add?edit=tx-1');
+
+      // The stored 50 UAH survives until the wallet is picked deliberately;
+      // after that no picker remains, because a token position takes no zloty.
+      expect((document.querySelector('select') as HTMLSelectElement).value).toBe('UAH');
+      fireEvent.click(screen.getByText('addTx.paymentAccount'));
+      fireEvent.click(within(screen.getByRole('dialog')).getByText('Binance'));
+      expect(document.querySelector('select')).toBe(null);
+      expect(unitBadge().textContent).toBe('USDT');
     });
   });
 
