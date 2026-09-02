@@ -112,10 +112,24 @@
   color: var(--accent-green);
 }
 
+/**
+ * Те саме скло, що й у плюсової пігулки, але відблиск ще тонший: під білим
+ * теплий тон рожевіє, і пігулка з нього виходить світлішою за все довкола.
+ * Мінус має проступати кольором тексту, а не яскравою плашкою.
+ */
 .monthChangePill.negativePill {
   background:
-    linear-gradient(180deg, rgba(255, 178, 183, 0.22) 0%, rgba(255, 90, 99, 0.05) 100%),
-    rgba(255, 90, 99, 0.3);
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.08) 0%,
+      rgba(255, 255, 255, 0.02) 46%,
+      rgba(255, 255, 255, 0.05) 100%
+    ),
+    rgba(126, 32, 42, 0.34);
+  /* Кромка теж приглушена — спільна білою ниткою ріже саме на червоному. */
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.07);
 }
 
 .monthChangePill.neutralPill {
@@ -127,7 +141,7 @@
 /* Без розмиття напівпрозора заливка втрачає щільність — повертаємо суцільну. */
 @supports not ((backdrop-filter: blur(4px)) or (-webkit-backdrop-filter: blur(4px))) {
   .monthChangePill.positivePill { background: rgba(22, 112, 68, 0.6); }
-  .monthChangePill.negativePill { background: var(--accent-red-soft); }
+  .monthChangePill.negativePill { background: rgba(126, 32, 42, 0.5); }
   .monthChangePill.neutralPill { background: rgba(255, 255, 255, 0.08); }
 }
 
@@ -139,7 +153,7 @@
   }
   /* Без скла крізь пігулку нічого не просвічує — заливка стає суцільною. */
   .monthChangePill.positivePill { background: #17452f; }
-  .monthChangePill.negativePill { background: var(--accent-red-soft); }
+  .monthChangePill.negativePill { background: #4a1a22; box-shadow: none; }
   .monthChangePill.neutralPill { background: rgba(255, 255, 255, 0.08); }
 }
 
