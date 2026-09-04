@@ -45,6 +45,15 @@ import { selectMonthStartAndLatestPrices } from './crypto-history.js';
 import { getPreviousFullWeekDaySet } from './report-periods.js';
 import { deliverReportToTelegram } from './report-delivery.js';
 import { renderFinancialReportCardPng } from './report-card.js';
+import {
+  buildZoneClocks,
+  clockForZone,
+  collectDueTimes,
+  dueRemindersQuery,
+  dueReportTypes,
+  dueReportsQuery,
+  isReminderDue,
+} from './auto-reports-schedule.js';
 import { parseSmartTransaction, isSmartTransactionEnabled } from './smart-transaction.js';
 import {
   BOT_TRANSACTION_CATEGORIES,
@@ -809,6 +818,7 @@ const upsertBotUser = async (dbConn, telegramId, chatId) => {
        chat_id = excluded.chat_id`,
     [telegramId, chatId]
   );
+  await ensureUserAutomationDefaults(dbConn, String(telegramId));
 };
 const ensureReportSettings = async (dbConn, userId) => {
   const now = new Date().toISOString();
@@ -928,6 +938,56 @@ const listReminders = async (dbConn, userId) => {
     enabled: Boolean(Number(r.enabled)),
     leadDays: Number(r.leadDays) || 0,
   }));
+};
+
+/**
+ * Налаштування звітів і типові нагадування для користувача.
+ *
+ * Раніше ці рядки з'являлися самі собою: хвилинний такт для кожного користувача
+ * кликав `getReportSettings` і `listReminders`, а ті дописували, чого бракує.
+ * Такт більше не перебирає всіх, тож рядки треба створювати там, де користувач
+ * з'являється, — інакше людина, яка жодного разу не відкривала налаштування,
+ * залишиться без нагадувань назавжди.
+ *
+ * Спершу перевірка одним читанням: у сталому стані створювати нічого не треба, а
+ * старий шлях платив за це записом на кожен виклик.
+ */
+const ensureUserAutomationDefaults = async (dbConn, userId) => {
+  const id = String(userId ?? '');
+  if (!id) return;
+  const state = await dbConn.get(
+    `SELECT
+       (SELECT COUNT(*) FROM bot_report_settings WHERE user_id = ?) AS settingsRows,
+       (SELECT COUNT(DISTINCT kind) FROM user_reminders WHERE user_id = ?) AS reminderKinds`,
+    [id, id]
+  );
+  if (!Number(state?.settingsRows)) await ensureReportSettings(dbConn, id);
+  if (Number(state?.reminderKinds ?? 0) < reminderKinds.size) await ensureDefaultReminders(dbConn, id);
+};
+
+/**
+ * Разовий добір для тих, хто вже є в базі: без нього такт мовчав би для всіх,
+ * кому рядки так і не створили, і для всіх, хто застав старіші версії — там
+ * частини теперішніх видів нагадувань ще не існувало.
+ */
+const backfillUserAutomationDefaults = async (dbConn) => {
+  const rows = await dbConn.all(
+    `SELECT u.telegram_id AS telegramId
+     FROM users u
+     WHERE NOT EXISTS (
+             SELECT 1 FROM bot_report_settings s WHERE s.user_id = CAST(u.telegram_id AS TEXT)
+           )
+        OR (
+             SELECT COUNT(DISTINCT r.kind) FROM user_reminders r WHERE r.user_id = CAST(u.telegram_id AS TEXT)
+           ) < ?`,
+    [reminderKinds.size]
+  );
+  if (!Array.isArray(rows) || rows.length === 0) return 0;
+  for (const row of rows) {
+    await ensureUserAutomationDefaults(dbConn, String(row.telegramId ?? ''));
+  }
+  console.log('[bot] automation defaults seeded', { users: rows.length });
+  return rows.length;
 };
 const markReminderDelivery = async (dbConn, userId, reminderId, slotKey) => {
   try {
@@ -2034,6 +2094,7 @@ const backfillLegacyTransactionCurrency = async () => {
   }
 };
 await backfillLegacyTransactionCurrency();
+await backfillUserAutomationDefaults(db);
 const backupChatRaw = process.env.TELEGRAM_BACKUP_CHAT_ID;
 const backupChatId =
   typeof backupChatRaw === 'string' && backupChatRaw.trim() !== '' ? Number(backupChatRaw.trim()) : NaN;
@@ -2312,7 +2373,6 @@ const sendReportSettingsPanel = async (chatId, userId, editMessageId) => {
 if (bot) {
   bot.onText(/\/start/, async (msg) => {
     await upsertBotUser(db, msg.from.id, msg.chat.id);
-    await ensureReportSettings(db, String(msg.from.id));
     await bot.sendMessage(
       msg.chat.id,
       '👋 Привіт!\n\nDenga — особистий фінансовий трекер.\nРахунки, витрати, звіти — все в одному місці.\n\nНадішли скріншот операції — я розпізнаю її та попрошу підтвердити.\nАбо відкрий застосунок 👇',
@@ -2970,40 +3030,100 @@ if (bot) {
   console.warn('Telegram bot is disabled: TELEGRAM_BOT_TOKEN is missing');
 }
 
+/**
+ * Котра зараз година в кожному часовому поясі, що трапляється в базі.
+ *
+ * Поясів одиниці незалежно від кількості людей, тож цей запит і залишається
+ * єдиним, чия ціна не залежить від розміру бази.
+ */
+const readZoneClocks = async (nowIso) => {
+  const rows = await db.all('SELECT DISTINCT timezone FROM users');
+  return buildZoneClocks(
+    (rows || []).map((row) => row.timezone),
+    (rawZone) => {
+      const tz = normalizeTimeZone(rawZone);
+      const parts = formatDatePartsForZone(nowIso, tz);
+      if (!parts) return null;
+      return { ...parts, weekday: formatLocalWeekday(nowIso, tz) };
+    }
+  );
+};
+
+const dispatchDueReports = async (clocks, dueTimes) => {
+  const { sql, params } = dueReportsQuery(dueTimes);
+  const rows = await db.all(sql, params);
+  for (const row of rows || []) {
+    const userId = String(row.telegramId ?? '');
+    const chatId = Number(row.chatId);
+    if (!userId || !Number.isFinite(chatId)) continue;
+    const clock = clockForZone(clocks, row.timezone);
+    const settings = {
+      autoWeekly: Boolean(Number(row.autoWeekly)),
+      autoMonthly: Boolean(Number(row.autoMonthly)),
+      sendTime: String(row.sendTime ?? ''),
+    };
+    for (const reportType of dueReportTypes(clock, settings)) {
+      const slot = `${clock.day}:${settings.sendTime}`;
+      if (!(await shouldSendForSlot(db, userId, reportType, slot))) continue;
+      try {
+        await sendUserReport(db, userId, chatId, reportType, normalizeTimeZone(row.timezone));
+      } catch (e) {
+        // Один непрочитаний чат не має зривати розсилку решті.
+        console.error('[bot] report send failed', { userId, reportType, message: e?.message });
+      }
+    }
+  }
+};
+
+const dispatchDueReminders = async (clocks, dueTimes) => {
+  const { sql, params } = dueRemindersQuery(dueTimes);
+  const rows = await db.all(sql, params);
+  for (const row of rows || []) {
+    const userId = String(row.telegramId ?? '');
+    const chatId = Number(row.chatId);
+    if (!userId || !Number.isFinite(chatId)) continue;
+    const clock = clockForZone(clocks, row.timezone);
+    const reminder = {
+      id: row.id,
+      kind: row.kind,
+      title: row.title,
+      enabled: true,
+      timeHHMM: String(row.timeHHMM ?? ''),
+      leadDays: Number(row.leadDays) || 0,
+    };
+    // Вибірка бере хвилину будь-якого пояса, тож збіг ще треба звірити з поясом власника.
+    if (!isReminderDue(clock, reminder)) continue;
+    const slot = `${clock.day}:${reminder.timeHHMM}`;
+    await dispatchReminder(db, userId, reminder, normalizeTimeZone(row.timezone), chatId, slot);
+  }
+};
+
+/**
+ * Чи не доїхав ще попередній такт.
+ *
+ * Такт стоїть на `setInterval`, і поки він розсилав звіти довше за хвилину,
+ * наступний стартував поверх нього тими самими адресатами. Дедуплікація в базі
+ * рятує від другого листа, але не від другої порції роботи — а саме її бракує
+ * рівно тоді, коли розсилка й так не встигає.
+ */
+let autoReportsTickRunning = false;
+
 async function runAutoReportsTick() {
   if (!bot) return;
-  const users = await db.all('SELECT telegram_id AS telegramId, chat_id AS chatId, timezone FROM users');
-  if (!Array.isArray(users) || users.length === 0) return;
-  const nowIso = new Date().toISOString();
-  for (const u of users) {
-    const userId = String(u.telegramId ?? '');
-    const chatId = Number(u.chatId);
-    if (!userId || !Number.isFinite(chatId)) continue;
-    const tz = normalizeTimeZone(u.timezone);
-    const nowLocal = formatDatePartsForZone(nowIso, tz);
-    if (!nowLocal?.day || !nowLocal?.time) continue;
-    const settings = await getReportSettings(db, userId);
-    if (nowLocal.time === settings.sendTime) {
-      const weekday = formatLocalWeekday(nowIso, tz);
-      if (settings.autoWeekly && weekday === 'mon') {
-        const slot = `${nowLocal.day}:${settings.sendTime}`;
-        if (await shouldSendForSlot(db, userId, 'weekly', slot)) {
-          await sendUserReport(db, userId, chatId, 'weekly', tz);
-        }
-      }
-      if (settings.autoMonthly && nowLocal.day.endsWith('-01')) {
-        const slot = `${nowLocal.day}:${settings.sendTime}`;
-        if (await shouldSendForSlot(db, userId, 'monthly', slot)) {
-          await sendUserReport(db, userId, chatId, 'monthly', tz);
-        }
-      }
-    }
-    const reminders = await listReminders(db, userId);
-    for (const reminder of reminders) {
-      if (!reminder.enabled || nowLocal.time !== reminder.timeHHMM) continue;
-      const slot = `${nowLocal.day}:${reminder.timeHHMM}`;
-      await dispatchReminder(db, userId, reminder, tz, chatId, slot);
-    }
+  if (autoReportsTickRunning) {
+    console.warn('[bot] auto reports tick still running, skipping this minute');
+    return;
+  }
+  autoReportsTickRunning = true;
+  try {
+    const nowIso = new Date().toISOString();
+    const clocks = await readZoneClocks(nowIso);
+    const dueTimes = collectDueTimes(clocks);
+    if (dueTimes.length === 0) return;
+    await dispatchDueReports(clocks, dueTimes);
+    await dispatchDueReminders(clocks, dueTimes);
+  } finally {
+    autoReportsTickRunning = false;
   }
 }
 
@@ -3022,7 +3142,23 @@ if (bot) {
   }, 60 * 1000);
 }
 
+/** Та сама причина, що й у такті розсилки: перекриття дає подвійну роботу, не подвійне списання. */
+let subscriptionsAutopayTickRunning = false;
+
 async function runSubscriptionsAutopayTick() {
+  if (subscriptionsAutopayTickRunning) {
+    console.warn('[subscriptions] autopay tick still running, skipping this hour');
+    return;
+  }
+  subscriptionsAutopayTickRunning = true;
+  try {
+    await dispatchSubscriptionsAutopay();
+  } finally {
+    subscriptionsAutopayTickRunning = false;
+  }
+}
+
+async function dispatchSubscriptionsAutopay() {
   const users = await db.all('SELECT DISTINCT user_id AS userId FROM subscriptions WHERE active = 1');
   if (!Array.isArray(users) || users.length === 0) return;
   for (const u of users) {
@@ -4351,6 +4487,7 @@ app.put('/api/reminders/timezone', async (req, res) => {
       timezone = excluded.timezone`,
     [Number(userId), tz]
   );
+  await ensureUserAutomationDefaults(db, userId);
   res.json({ timezone: tz });
 });
 

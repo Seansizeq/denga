@@ -690,6 +690,23 @@ export async function initDb() {
     CREATE INDEX IF NOT EXISTS idx_accounts_user_sort
     ON account_portfolio(user_id, sort_index)
   `);
+  // Хвилинний такт розсилки шукає рядки на поточну хвилину, а не перебирає
+  // користувачів: без цих двох індексів такий пошук читав би обидві таблиці
+  // цілком щохвилини.
+  await db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_user_reminders_due
+    ON user_reminders(time_hhmm, enabled)
+  `);
+  await db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_bot_report_settings_send_time
+    ON bot_report_settings(send_time)
+  `);
+  // Читання і добір нагадувань конкретної людини — без цього кожен такий запит
+  // сканував нагадування всієї бази.
+  await db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_user_reminders_user
+    ON user_reminders(user_id, kind)
+  `);
 
   return db;
 }
