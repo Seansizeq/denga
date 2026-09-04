@@ -3,6 +3,7 @@ import cors from 'cors';
 import TelegramBot from 'node-telegram-bot-api';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
+import { Worker } from 'node:worker_threads';
 import { v4 as uuidv4 } from 'uuid';
 import { getDatabasePath, initDb } from './db.js';
 import { startScheduledDatabaseBackups } from './backup.js';
@@ -45,6 +46,12 @@ import { selectMonthStartAndLatestPrices } from './crypto-history.js';
 import { getPreviousFullWeekDaySet } from './report-periods.js';
 import { deliverReportToTelegram } from './report-delivery.js';
 import { renderFinancialReportCardPng } from './report-card.js';
+import { createReportRenderPool } from './report-render-pool.js';
+import {
+  TELEGRAM_DEFAULT_RATE_PER_SEC,
+  createTelegramQueue,
+  wrapBotWithQueue,
+} from './telegram-queue.js';
 import {
   buildZoneClocks,
   clockForZone,
@@ -144,7 +151,36 @@ if (!botToken && !DEV_AUTH_BYPASS) {
   process.exit(1);
 }
 
-const bot = botToken ? new TelegramBot(botToken, { polling: true }) : null;
+const rawBot = botToken ? new TelegramBot(botToken, { polling: true }) : null;
+
+/**
+ * Усе вихідне йде через одну чергу з паузою між повідомленнями: стеля Telegram
+ * (~30/с) спільна на бота, і розсилка звітів без черги впирається в неї одразу,
+ * а 429 у відповідь означає просто загублене повідомлення.
+ */
+const TELEGRAM_SEND_RATE_PER_SEC =
+  Number(process.env.TELEGRAM_SEND_RATE_PER_SEC) || TELEGRAM_DEFAULT_RATE_PER_SEC;
+const telegramQueue = createTelegramQueue({ ratePerSec: TELEGRAM_SEND_RATE_PER_SEC });
+const bot = wrapBotWithQueue(rawBot, telegramQueue);
+
+/**
+ * Смуга масової розсилки. Звіти й нагадування йдуть сюди, щоб відповідь людині,
+ * яка щойно написала боту, не стояла в черзі за всією базою.
+ */
+const broadcastBot = bot?.bulk ?? null;
+
+/**
+ * Малювання картки звіту — приблизно півсекунди суцільного рахунку, і в
+ * головному потоці на цей час застосунок не відповідає нікому. Тому рендер
+ * живе в окремому потоці; головний лишається на запитах.
+ */
+const REPORT_RENDER_WORKERS = Math.max(1, Number(process.env.REPORT_RENDER_WORKERS) || 1);
+const reportRenderWorkerUrl = new URL('./report-render-worker.js', import.meta.url);
+const reportRenderPool = createReportRenderPool({
+  spawnWorker: () => new Worker(reportRenderWorkerUrl),
+  size: REPORT_RENDER_WORKERS,
+  fallbackRender: renderFinancialReportCardPng,
+});
 
 /**
  * Скільки часу дається на коректне завершення. Стеля не наша: pm2 чекає
@@ -1104,9 +1140,11 @@ const dispatchReminder = async (dbConn, userId, reminder, timeZone, chatId, slot
   const today = dayFromIsoInZone(nowIso, tz) || nowIso.slice(0, 10);
   const kind = String(reminder.kind || '');
   const recordSlot = async () => recordReminderDeliveryAfterSend(dbConn, userId, reminder.id, slotKey);
+  // Нагадування — це розсилка: вона поступається місцем відповідям у чаті.
+  const out = broadcastBot ?? bot;
 
   const sendTracked = async (text) => {
-    await bot.sendMessage(chatId, text);
+    await out.sendMessage(chatId, text);
     await recordSlot();
   };
 
@@ -1216,7 +1254,7 @@ const dispatchReminder = async (dbConn, userId, reminder, timeZone, chatId, slot
         }
       }
       if (lines.length === 0) return;
-      await bot.sendMessage(
+      await out.sendMessage(
         chatId,
         `💱 ${String(reminder.title || 'Курс')}\n${lines.join('\n')}\nДжерело: ${fx?.source ?? 'n/a'}`
       );
@@ -1659,7 +1697,7 @@ const sendUserReport = async (dbConn, userId, chatId, reportType, timeZone) => {
 
   let pngBuffer = null;
   try {
-    pngBuffer = await renderFinancialReportCardPng({
+    pngBuffer = await reportRenderPool.render({
       reportType,
       periodLabel,
       summary,
@@ -1683,7 +1721,7 @@ const sendUserReport = async (dbConn, userId, chatId, reportType, timeZone) => {
   ].join('\n');
 
   return deliverReportToTelegram({
-    bot,
+    bot: broadcastBot ?? bot,
     chatId,
     pngBuffer,
     fallbackText,
