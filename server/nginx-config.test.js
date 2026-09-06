@@ -18,6 +18,16 @@ describe('buildTuningConf', () => {
     expect(conf).toMatch(/^gzip on;$/m);
   });
 
+  it('не дублює gzip on, коли той уже є в nginx.conf', () => {
+    // Типовий Debian має `gzip on` у nginx.conf і решту директив
+    // закоментованою. Повторне оголошення — помилка «duplicate directive», і
+    // nginx просто не стартує.
+    const without = buildTuningConf({ includeGzipOn: false });
+    expect(without).not.toMatch(/^gzip on;$/m);
+    // Але головний рядок лишається — саме він робить усю роботу.
+    expect(without).toMatch(/^gzip_proxied any;$/m);
+  });
+
   it('ставить Vary, щоб кеші не віддали стиснуте несумісному клієнту', () => {
     expect(conf).toMatch(/^gzip_vary on;$/m);
   });

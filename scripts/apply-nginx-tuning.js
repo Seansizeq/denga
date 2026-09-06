@@ -25,7 +25,7 @@ const envPath = path.join(__dirname, '..', '.deploy.env');
 const TUNING_PATH = '/etc/nginx/conf.d/denga-tuning.conf';
 const dryRun = process.argv.includes('--dry-run');
 
-const conf = buildTuningConf();
+let conf = buildTuningConf();
 
 if (dryRun) {
   console.log(`--- ${TUNING_PATH} ---\n${conf}`);
@@ -61,6 +61,17 @@ try {
 
   // Копія попереднього стану — щоб було куди повернутися, якщо файл уже був.
   await ssh.execCommand(`test -f ${TUNING_PATH} && cp ${TUNING_PATH} ${TUNING_PATH}.bak || true`);
+
+  // `gzip on` часто вже стоїть у nginx.conf (типовий конфіг Debian), і тоді
+  // повторне оголошення — помилка «duplicate directive». Дивимось, що там
+  // насправді, замість того щоб вгадувати.
+  const alreadyOn = await ssh.execCommand(
+    "grep -qE '^[[:space:]]*gzip[[:space:]]+on;' /etc/nginx/nginx.conf && echo yes || echo no",
+  );
+  if (alreadyOn.stdout.trim() === 'yes') {
+    console.log('`gzip on` уже є в nginx.conf — не дублюю');
+    conf = buildTuningConf({ includeGzipOn: false });
+  }
 
   console.log(`Записую ${TUNING_PATH}...`);
   const written = await ssh.execCommand(writeRemoteFile(TUNING_PATH, conf));
