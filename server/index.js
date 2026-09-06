@@ -3413,6 +3413,11 @@ if (bot) {
       bot.sendMessage(chatId, `✅ Транзакцію ${pending.amount} (${category ? category.name : pending.categoryId}) додано!`);
     }
   });
+} else if (!RUNS_BOT) {
+  // Не помилка й не попередження: ця роль ботом і не займається. Доки тут
+  // стояло «TELEGRAM_BOT_TOKEN is missing», кожна копія API писала це в лог
+  // помилок — і при розборі інциденту виглядало так, ніби токен загублено.
+  console.log(`[${DENGA_ROLE}] бот тут не піднімається — цим займається denga-bot`);
 } else {
   console.warn('Telegram bot is disabled: TELEGRAM_BOT_TOKEN is missing');
 }
