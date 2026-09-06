@@ -7082,15 +7082,26 @@ healthHandlers = health;
  * найцікавіше: черга Telegram, пул рендеру, глибина outbox. Маленький сервер
  * лише для цього, **тільки на 127.0.0.1**: назовні його видно бути не має.
  */
-const BOT_HEALTH_PORT = Number(process.env.BOT_HEALTH_PORT) || 3002;
+const BOT_HEALTH_PORT = Number(process.env.BOT_HEALTH_PORT) || 3011;
 const botHealthServer = RUNS_BOT && !RUNS_API
   ? (() => {
       const healthApp = express();
       healthApp.get('/healthz', health.healthz);
       healthApp.get('/metrics', health.metrics);
-      return healthApp.listen(BOT_HEALTH_PORT, '127.0.0.1', () =>
+      const server = healthApp.listen(BOT_HEALTH_PORT, '127.0.0.1', () =>
         console.log(`[bot] стан на http://127.0.0.1:${BOT_HEALTH_PORT}/healthz`),
       );
+      // Порт може виявитися зайнятим: на сервері живуть і інші застосунки.
+      // Це не привід валити бота — сторінка стану корисна, але не критична, а
+      // без цього обробника помилка `listen` лишається неперехопленою й гасить
+      // весь процес разом із опитуванням Telegram.
+      server.on('error', (error) => {
+        console.error(
+          `[bot] сторінка стану не піднялася на ${BOT_HEALTH_PORT}: ${error.message}. ` +
+            'Задайте вільний BOT_HEALTH_PORT. Бот працює далі.',
+        );
+      });
+      return server;
     })()
   : null;
 
