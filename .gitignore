@@ -31,6 +31,11 @@ database.sqlite-wal
 database.sqlite-shm
 database.*.sqlite
 database-*.sqlite
+# Будь-яка база, що лишилася від локального прогону. Без цього рядка тестовий
+# файл з кореня легко поїхав би в коміт разом із чужими даними.
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
 backups/
 pass.txt
 
@@ -44,3 +49,7 @@ _*.ps1
 
 # Ad-hoc code deep-dives (local notes)
 deep-dive/
+
+# Робочі копії репозиторію, які створюють інструменти під окремі гілки.
+# Це повноцінні клони всередині проєкту — у git їм місця немає.
+.claude/worktrees/

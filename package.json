@@ -12,7 +12,11 @@
     "test": "vitest run",
     "preview": "vite preview",
     "deploy": "node deploy.js",
-    "show-deploy-key": "node scripts/show-deploy-key.js"
+    "nginx-tuning": "node scripts/apply-nginx-tuning.js",
+    "show-deploy-key": "node scripts/show-deploy-key.js",
+    "api": "node server/api.js",
+    "bot": "node server/bot.js",
+    "loadtest": "node scripts/loadtest.mjs"
   },
   "dependencies": {
     "@tma.js/sdk": "^3.2.0",

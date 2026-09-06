@@ -1,8 +1,10 @@
 import React, { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import SplashScreen from './components/SplashScreen';
-import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
+import { SyncProvider } from './context/SyncContext';
 import { TransactionProvider } from './context/TransactionContext';
 import { PortfolioProvider } from './context/PortfolioContext';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import BottomNavigation from './components/BottomNavigation';
 import { ToastProvider } from './components/ui/Toast';
 import DataStatusBanner from './components/ui/DataStatusBanner';
@@ -110,6 +112,48 @@ const NotFound: React.FC = () => {
   );
 };
 
+/**
+ * Межа помилок навколо маршрутів.
+ *
+ * Стоїть усередині роутера навмисно: вона скидається при переході, тож зі
+ * зламаного екрана можна просто піти на інший. Нижня навігація лишається поза
+ * межею й працює навіть тоді, коли поточний екран упав.
+ */
+const RouteErrorBoundary: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { t } = useTranslation();
+  const { pathname } = useLocation();
+  return (
+    <ErrorBoundary
+      resetKey={pathname}
+      fallback={(retry) => (
+        <div style={{ padding: '80px 24px', textAlign: 'center' }}>
+          <p style={{ fontSize: 17, fontWeight: 600, marginBottom: 8 }}>{t('common', 'errorTitle')}</p>
+          <p style={{ color: 'var(--text-secondary, #9490a0)', fontSize: 15, marginBottom: 20 }}>
+            {t('common', 'errorHint')}
+          </p>
+          <button
+            type="button"
+            onClick={retry}
+            style={{
+              padding: '12px 24px',
+              borderRadius: 12,
+              border: 'none',
+              background: 'var(--accent-primary, #7C5CFF)',
+              color: '#fff',
+              fontSize: 15,
+              fontWeight: 600,
+            }}
+          >
+            {t('common', 'retry')}
+          </button>
+        </div>
+      )}
+    >
+      {children}
+    </ErrorBoundary>
+  );
+};
+
 const isInsideTelegram = (): boolean => {
   const tgWindow = window as Window & TelegramWindow;
   const tg = tgWindow.Telegram?.WebApp;
@@ -124,8 +168,9 @@ const TelegramApp: React.FC<{ onReady: () => void }> = ({ onReady }) => {
   useTelegramFullscreen();
 
   return (
-    <TransactionProvider onReady={onReady}>
-      <PortfolioProvider>
+    <SyncProvider onReady={onReady}>
+      <TransactionProvider>
+        <PortfolioProvider>
         <ToastProvider>
           <Router>
             <div className="app-content">
@@ -134,6 +179,7 @@ const TelegramApp: React.FC<{ onReady: () => void }> = ({ onReady }) => {
               <DataStatusBanner />
               <RouteTransition>
                 <Suspense fallback={<RouteFallback />}>
+                <RouteErrorBoundary>
                 <Routes>
                   <Route path="/" element={<Dashboard />} />
                   <Route path="/accounts" element={<Accounts />} />
@@ -151,14 +197,16 @@ const TelegramApp: React.FC<{ onReady: () => void }> = ({ onReady }) => {
                   <Route path="/goals/:id" element={<GoalDetail />} />
                   <Route path="*" element={<NotFound />} />
                 </Routes>
+                </RouteErrorBoundary>
                 </Suspense>
               </RouteTransition>
               <BottomNavigation />
             </div>
           </Router>
         </ToastProvider>
-      </PortfolioProvider>
-    </TransactionProvider>
+        </PortfolioProvider>
+      </TransactionProvider>
+    </SyncProvider>
   );
 };
 

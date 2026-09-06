@@ -1,7 +1,29 @@
 import fs from 'fs';
 import path from 'path';
+import { exec } from 'child_process';
 import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
+
+/** Скільки чекаємо на `BACKUP_REMOTE_CMD`, перш ніж вважати її завислою. */
+const REMOTE_CMD_TIMEOUT_MS = 10 * 60 * 1000;
+
+/**
+ * Запуск команди доставки. Через оболонку — бо в змінній оточення оператор
+ * пише готовий рядок (`rclone copy {file} remote:denga`), а не масив аргументів.
+ * Це той самий рівень довіри, що й до самого коду: змінну задає той, хто
+ * керує сервером.
+ */
+const execCommand = (command) =>
+  new Promise((resolve, reject) => {
+    exec(command, { timeout: REMOTE_CMD_TIMEOUT_MS, windowsHide: true }, (error, stdout, stderr) => {
+      if (error) {
+        error.message = `${error.message}${stderr ? `\n${String(stderr).slice(0, 500)}` : ''}`;
+        reject(error);
+        return;
+      }
+      resolve(String(stdout ?? ''));
+    });
+  });
 
 const BACKUP_RETENTION = 20;
 /** Пошкоджені копії тримаємо коротко: вони для розслідування, не для відновлення. */
@@ -187,10 +209,11 @@ const sendAlert = async (bot, chatId, lines) => {
  *
  * @param {import('node-telegram-bot-api')} [options.bot]
  * @param {number | null} [options.telegramChatId]  chat_id, куди шлемо файл і алерти
+ * @param {(command: string) => Promise<string>} [options.runCommand]  підміняється в тестах
  * @returns {Promise<{ ok: boolean, file: string | null, reason?: string }>}
  */
 export async function runDatabaseBackup(db, dbFilePath, options = {}) {
-  const { bot, telegramChatId } = options;
+  const { bot, telegramChatId, runCommand } = options;
   const backupDir = path.join(path.dirname(dbFilePath), 'backups');
   let dest = null;
   let method = null;
@@ -274,24 +297,88 @@ export async function runDatabaseBackup(db, dbFilePath, options = {}) {
     pruned,
   );
 
-  if (bot && telegramChatId != null) {
+  // Копія на диску вже є; далі — спроба відправити її кудись назовні. Невдача
+  // тут не робить бекап невдалим, але й не має пройти непоміченою.
+  const offsite = await deliverBackupOffsite(dest, result.size, { bot, telegramChatId, runCommand });
+
+  return { ok: true, file: dest, offsite };
+}
+
+/**
+ * Скільки важить файл, який Telegram ще приймає від бота.
+ * Ліміт їхній, не наш: більший `sendDocument` просто відкидає.
+ */
+export const TELEGRAM_DOCUMENT_LIMIT_BYTES = 45 * 1024 * 1024;
+
+const formatMb = (bytes) => `${(bytes / 1024 / 1024).toFixed(1)} МБ`;
+
+/**
+ * Віднести копію за межі сервера.
+ *
+ * Досі це був `sendDocument` у Telegram, і рівно один рядок вирішував долю
+ * офсайт-копій: файл більший за 45 МБ мовчки пропускався з `console.warn`. На
+ * базі, що виросла разом із кількістю людей, це означало б, що офсайт-копії
+ * тихо припинилися — а помітили б це вже тоді, коли вони знадобилися.
+ *
+ * Тепер великий файл — це привід не для мовчання, а для алерту. І для нього є
+ * альтернатива: `BACKUP_REMOTE_CMD` виконує довільну команду з `{file}`,
+ * заміненим на шлях копії (rclone, scp, aws s3 cp — що налаштовано).
+ *
+ * @returns {Promise<{ telegram: string, remote: string }>} що саме сталося
+ */
+export async function deliverBackupOffsite(file, size, { bot, telegramChatId, runCommand = execCommand } = {}) {
+  const outcome = { telegram: 'skipped', remote: 'skipped' };
+
+  const remoteTemplate = String(process.env.BACKUP_REMOTE_CMD ?? '').trim();
+  if (remoteTemplate) {
+    const command = remoteTemplate.replaceAll('{file}', file);
     try {
-      const max = 45 * 1024 * 1024;
-      if (result.size > max) {
-        console.warn('[db-backup] file too large for Telegram, skip send', result.size);
-        return { ok: true, file: dest };
-      }
-      const day = new Date().toISOString().slice(0, 10);
-      await bot.sendDocument(telegramChatId, dest, {
-        caption: `Denga · бекап БД · ${day}`,
-      });
-      console.log('[db-backup] sent to Telegram', telegramChatId);
+      await runCommand(command);
+      outcome.remote = 'ok';
+      console.log('[db-backup] офсайт-копія відправлена командою BACKUP_REMOTE_CMD');
     } catch (e) {
-      console.error('[db-backup] telegram send failed', e);
+      outcome.remote = 'failed';
+      console.error('[db-backup] BACKUP_REMOTE_CMD не виконалась:', e?.message || e);
+      await sendAlert(bot, telegramChatId, [
+        '🚨 Denga: офсайт-копія БД не відправлена',
+        `Команда BACKUP_REMOTE_CMD завершилась помилкою: ${String(e?.message || e).slice(0, 300)}`,
+        `Локальна копія на місці: ${path.basename(file)}`,
+      ]);
     }
   }
 
-  return { ok: true, file: dest };
+  if (!bot || telegramChatId == null) return outcome;
+
+  if (size > TELEGRAM_DOCUMENT_LIMIT_BYTES) {
+    outcome.telegram = 'too_large';
+    console.warn('[db-backup] файл більший за ліміт Telegram, надсилаю алерт замість файлу', size);
+    // Якщо працює BACKUP_REMOTE_CMD — копія все одно поїхала, і це не аварія,
+    // а повідомлення про те, що канал доставки змінився.
+    const lines = outcome.remote === 'ok'
+      ? [
+          'ℹ️ Denga: бекап БД більше не влазить у Telegram',
+          `Розмір: ${formatMb(size)} (ліміт ${formatMb(TELEGRAM_DOCUMENT_LIMIT_BYTES)}).`,
+          'Копія відправлена через BACKUP_REMOTE_CMD — файлом сюди більше не приходить.',
+        ]
+      : [
+          '🚨 Denga: офсайт-копії БД припинилися',
+          `Бекап важить ${formatMb(size)} — Telegram приймає до ${formatMb(TELEGRAM_DOCUMENT_LIMIT_BYTES)}.`,
+          'Копія лишається ТІЛЬКИ на сервері. Налаштуйте BACKUP_REMOTE_CMD (rclone/scp/s3).',
+        ];
+    await sendAlert(bot, telegramChatId, lines);
+    return outcome;
+  }
+
+  try {
+    const day = new Date().toISOString().slice(0, 10);
+    await bot.sendDocument(telegramChatId, file, { caption: `Denga · бекап БД · ${day}` });
+    outcome.telegram = 'ok';
+    console.log('[db-backup] sent to Telegram', telegramChatId);
+  } catch (e) {
+    outcome.telegram = 'failed';
+    console.error('[db-backup] telegram send failed', e);
+  }
+  return outcome;
 }
 
 /** Щоденний розклад поверх `runDatabaseBackup`. */

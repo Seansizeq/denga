@@ -3,6 +3,13 @@ import { readFileSync, existsSync } from 'fs';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import {
+  buildLogFormatConf,
+  buildProxyHeadersConf,
+  buildServerConf,
+  buildTuningConf,
+  writeRemoteFile,
+} from './server/nginx-config.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const envPath = path.join(__dirname, '.deploy.env');
@@ -40,57 +47,26 @@ async function setupDomain() {
 
     console.log(`Configuring Nginx for ${DOMAIN}...`);
 
-    /**
-     * Формат логу без рядка запиту.
-     *
-     * Токен автоматизації їздить у `?token=` — інакше ярлик на iPhone не вміє,
-     * там звичайний GET без заголовків. Це постійний ключ на запис, і в
-     * стандартному логу він осідає відкритим текстом назавжди: `access.log`
-     * читає хто завгодно з доступом до сервера, він потрапляє в бекапи й у
-     * будь-який збір логів. `$uri` пише шлях без параметрів — усе, що з логу
-     * справді треба, лишається.
-     *
-     * `log_format` живе тільки в контексті `http`, тому окремим файлом у conf.d,
-     * а не в блоці server.
-     */
-    const nginxLogFormat = `cat << 'EOF' > /etc/nginx/conf.d/denga-log-format.conf
-log_format denga_no_query '$remote_addr - $remote_user [$time_local] '
-                          '"$request_method $uri $server_protocol" '
-                          '$status $body_bytes_sent "$http_referer" "$http_user_agent"';
-EOF`;
-    await ssh.execCommand(nginxLogFormat);
-
-    const nginxConf = `cat << 'EOF' > /etc/nginx/sites-available/default
-server {
-    listen 80;
-    server_name ${DOMAIN};
-
-    access_log /var/log/nginx/access.log denga_no_query;
-
-    # Скан чека шле картинку в base64; сам застосунок ріже її на ~1 МБ.
-    client_max_body_size 12m;
-
-    location / {
-        proxy_pass http://localhost:3001;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        # Без цього застосунок бачить усіх клієнтів як 127.0.0.1, і обмеження
-        # частоти по адресі стає одним спільним відром на всіх.
-        # $proxy_add_x_forwarded_for дописує справжню адресу в кінець списку, а
-        # TRUST_PROXY=1 велить Express брати рівно один крок справа — тобто цей
-        # останній елемент. Заголовок, підроблений клієнтом, лишається лівіше й
-        # ігнорується. Разом із цим на сервері вмикається TRUST_PROXY=1.
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_cache_bypass $http_upgrade;
+    // Конфіг живе в `server/nginx-config.js` — там його перевіряє тест, і там
+    // же він поділений на частину, яку можна застосувати без переписування
+    // блоку server (див. scripts/apply-nginx-tuning.js).
+    for (const [file, contents] of [
+      ['/etc/nginx/conf.d/denga-log-format.conf', buildLogFormatConf()],
+      ['/etc/nginx/conf.d/denga-tuning.conf', buildTuningConf()],
+      ['/etc/nginx/conf.d/denga-proxy-headers.inc', buildProxyHeadersConf()],
+      ['/etc/nginx/sites-available/default', buildServerConf({ domain: DOMAIN })],
+    ]) {
+      const res = await ssh.execCommand(writeRemoteFile(file, contents));
+      if (res.code !== 0) throw new Error(`не вдалося записати ${file}: ${res.stderr || res.stdout}`);
     }
-}
-EOF`;
-    await ssh.execCommand(nginxConf);
     await ssh.execCommand('ln -sf /etc/nginx/sites-available/default /etc/nginx/sites-enabled/');
+
+    // Перевіряємо ДО перезапуску: інакше зламаний конфіг лишає сайт лежати.
+    const nginxTest = await ssh.execCommand('nginx -t');
+    if (nginxTest.code !== 0) {
+      console.error(nginxTest.stderr || nginxTest.stdout);
+      throw new Error('nginx відхилив конфіг — перезапуск скасовано');
+    }
     await ssh.execCommand('systemctl restart nginx');
 
     console.log('Running Certbot to get SSL...');

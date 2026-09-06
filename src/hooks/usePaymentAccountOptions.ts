@@ -45,15 +45,15 @@ export function usePaymentAccountOptions(
       out.push({ key, label: label || key });
     }
 
-    // Базові ключі — лише запасний варіант: коли портфель порожній, або коли
-    // саме такий рахунок уже вибрано. Інакше вони дублювали б рахунки
-    // гаманця під іншими назвами (Privat24 vs Приват24).
+    // З базових ключів лишається рівно один — той, що вже стоїть у транзакції,
+    // яку зараз редагують: інакше вибір загубився б при збереженні. Порожній
+    // гаманець раніше підставляв сюди весь список, і людині, яка щойно зайшла,
+    // пропонували PUMB, Privat24, SOL — рахунки, яких вона не заводила. Вибір
+    // такого нічого не робив: у гаманці його немає, отже й баланс не рухався.
     const selected = String(selectedKey ?? '').trim().toLowerCase();
-    const hasPortfolioAccounts = out.length > 0;
     for (const k of ACCOUNT_NOTE_KEYS) {
       const key = String(k).trim().toLowerCase();
-      if (seen.has(key)) continue;
-      if (hasPortfolioAccounts && key !== selected) continue;
+      if (key !== selected || seen.has(key)) continue;
       seen.add(key);
       out.push({ key, label: ACCOUNT_CHIP_LABELS[k][language] });
     }

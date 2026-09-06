@@ -1,7 +1,7 @@
 import type { Reminder, ReminderKind } from '../api/client';
-import { translations } from '../i18n/translations';
+import type { Dict } from '../i18n/translations';
 
-type SettingsKey = keyof typeof translations['uk']['settings'];
+type SettingsKey = keyof Dict['settings'];
 
 export type ReminderParamMeta = {
   labelKey: SettingsKey;

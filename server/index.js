@@ -3,9 +3,32 @@ import cors from 'cors';
 import TelegramBot from 'node-telegram-bot-api';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
+import os from 'node:os';
 import { Worker } from 'node:worker_threads';
 import { v4 as uuidv4 } from 'uuid';
 import { getDatabasePath, initDb } from './db.js';
+import { withTransaction } from './transaction.js';
+import { deleteUserData } from './user-tables.js';
+import { createExpiringMap } from './expiring-map.js';
+import { OUTBOX_BATCH, drainOutbox, enqueueOutbox, outboxDepth } from './telegram-outbox.js';
+import { createHealthHandlers, createRequestMetrics } from './health.js';
+import { consumeQuota, pruneQuotas, quotaStats, refundQuota } from './feature-quota.js';
+import {
+  REPORT_DRAIN_BATCH,
+  claimDueReports,
+  enqueueReport,
+  failReport,
+  removeReport,
+  reportDueAt,
+  reportQueueStats,
+} from './report-queue.js';
+import {
+  SYNC_TRANSACTION_LIMIT,
+  matchesEtag,
+  parseHistoryPage,
+  readUserDataVersion,
+  syncEtag,
+} from './sync.js';
 import { startScheduledDatabaseBackups } from './backup.js';
 import { installGracefulShutdown, DEFAULT_SHUTDOWN_BUDGET_MS } from './shutdown.js';
 import { createReceiptScanHandler } from './receipt-scan.js';
@@ -43,7 +66,7 @@ import {
 import { automationKey, clientIpKey, rateLimitMiddleware } from './rate-limit.js';
 import { isOriginAllowed, parseAllowedOrigins } from './cors-policy.js';
 import { selectMonthStartAndLatestPrices } from './crypto-history.js';
-import { getPreviousFullWeekDaySet } from './report-periods.js';
+import { daySetQueryBounds, getPreviousFullWeekDaySet, monthQueryBounds } from './report-periods.js';
 import { deliverReportToTelegram } from './report-delivery.js';
 import { renderFinancialReportCardPng } from './report-card.js';
 import { createReportRenderPool } from './report-render-pool.js';
@@ -105,6 +128,20 @@ const __dirname = path.dirname(__filename);
 dotenv.config();
 
 const app = express();
+
+/**
+ * Маршрути стану реєструються найпершими — раніше за статику й за заглушку
+ * SPA, яка інакше перехоплює будь-який невідомий шлях і віддає `index.html`
+ * зі статусом 200. Саме це й сталося при першій спробі: `/healthz` бадьоро
+ * відповідав сторінкою застосунку, тобто перевірка стану завжди «проходила».
+ *
+ * Обробники зʼявляються пізніше — їм потрібна база. Доки їх немає, чесна
+ * відповідь «ще піднімаюся», а не «все гаразд»: саме за цим і стежить nginx.
+ */
+let healthHandlers = null;
+const notReady = (_req, res) => res.status(503).json({ ok: false, reason: 'starting' });
+app.get('/healthz', (req, res) => (healthHandlers ? healthHandlers.healthz(req, res) : notReady(req, res)));
+app.get('/metrics', (req, res) => (healthHandlers ? healthHandlers.metrics(req, res) : notReady(req, res)));
 const port = process.env.PORT || 3001;
 const botToken = process.env.TELEGRAM_BOT_TOKEN;
 const smartTransactionEmojiIds = readSmartTransactionEmojiIds();
@@ -151,7 +188,39 @@ if (!botToken && !DEV_AUTH_BYPASS) {
   process.exit(1);
 }
 
-const rawBot = botToken ? new TelegramBot(botToken, { polling: true }) : null;
+/**
+ * Роль процесу.
+ *
+ * Досі один процес робив усе: віддавав API, тримав опитування Telegram, малював
+ * звіти й крутив планувальники. На одному користувачі це зручно, на масштабі —
+ * ні: малювання картки з'їдає ядро, яке в цей момент мало б відповідати на
+ * запити, а підняти другий інстанс API неможливо, бо разом із ним піднялося б
+ * і друге опитування Telegram. Два поллери на один токен — це апдейти, що
+ * приходять навперемін, тобто половина загублених повідомлень.
+ *
+ *   `api` — лише HTTP. Можна запускати кількома копіями (pm2 cluster).
+ *   `bot` — опитування Telegram, планувальники, рендер звітів, бекапи.
+ *           Рівно один процес.
+ *   `all` — і те, і те в одному процесі. Значення за замовчуванням: так
+ *           поводиться розробка й будь-який досі не переведений сервер.
+ */
+const ROLES = ['all', 'api', 'bot'];
+const DENGA_ROLE = (() => {
+  const raw = String(process.env.DENGA_ROLE ?? 'all').trim().toLowerCase();
+  if (ROLES.includes(raw)) return raw;
+  // Не падаємо, але й не вгадуємо: невідома роль означає «роби все», тобто
+  // найбезпечніший для даних варіант — жодна частина системи не зникне мовчки.
+  console.error(`[role] невідома DENGA_ROLE="${raw}". Доступні: ${ROLES.join(', ')}. Працюю як "all".`);
+  return 'all';
+})();
+const RUNS_BOT = DENGA_ROLE === 'bot' || DENGA_ROLE === 'all';
+const RUNS_API = DENGA_ROLE === 'api' || DENGA_ROLE === 'all';
+
+/**
+ * Опитування Telegram піднімається лише в тій ролі, що за нього відповідає.
+ * Токен при цьому потрібен і процесу API — ним перевіряється підпис `initData`.
+ */
+const rawBot = botToken && RUNS_BOT ? new TelegramBot(botToken, { polling: true }) : null;
 
 /**
  * Усе вихідне йде через одну чергу з паузою між повідомленнями: стеля Telegram
@@ -174,13 +243,32 @@ const broadcastBot = bot?.bulk ?? null;
  * головному потоці на цей час застосунок не відповідає нікому. Тому рендер
  * живе в окремому потоці; головний лишається на запитах.
  */
-const REPORT_RENDER_WORKERS = Math.max(1, Number(process.env.REPORT_RENDER_WORKERS) || 1);
+/**
+ * Скільки потоків малюють картки.
+ *
+ * Один був безпечним значенням, поки бот жив у тому самому процесі, що й API:
+ * кожен зайвий потік відбирав ядро в запитів. Після поділу процесів (Фаза 6)
+ * бот має власний, і тримати його однопотоковим уже нема причин.
+ *
+ * `cpus - 1`, а не всі: одне ядро лишається процесам API, які працюють поруч
+ * на тій самій машині. На одноядерному VPS виходить один потік — як і було.
+ */
+const REPORT_RENDER_WORKERS = Math.max(
+  1,
+  Number(process.env.REPORT_RENDER_WORKERS) || Math.max(1, os.cpus().length - 1),
+);
 const reportRenderWorkerUrl = new URL('./report-render-worker.js', import.meta.url);
-const reportRenderPool = createReportRenderPool({
-  spawnWorker: () => new Worker(reportRenderWorkerUrl),
-  size: REPORT_RENDER_WORKERS,
-  fallbackRender: renderFinancialReportCardPng,
-});
+const reportRenderPool = RUNS_BOT
+  ? createReportRenderPool({
+      spawnWorker: () => new Worker(reportRenderWorkerUrl),
+      size: REPORT_RENDER_WORKERS,
+      // Черга пулу мала стелю в 200 — на тисячі звітів решта просто
+      // відхилялася. Тепер розбирач бере по кілька штук, тож глибока черга
+      // тут потрібна лише як запобіжник, а не як робочий режим.
+      maxQueued: Number(process.env.REPORT_RENDER_QUEUE) || 2000,
+      fallbackRender: renderFinancialReportCardPng,
+    })
+  : null;
 
 /**
  * Скільки часу дається на коректне завершення. Стеля не наша: pm2 чекає
@@ -318,18 +406,79 @@ const buildAccountUnitConverter = async () => {
  * Everything that must hold before a transaction touches balances: no debt is
  * driven below zero, and no amount lands on an account denominated in another
  * unit without a rate to settle it.
+ *
+ * `convert` можна передати готовим. Це не мікрооптимізація: усередині нього
+ * живе `fetchFxRates()`, тобто мережевий виклик, а перевірка тепер виконується
+ * під тим самим `BEGIN IMMEDIATE`, що й запис. Курс має бути отриманий **до**
+ * входу в транзакцію, інакше лок на запис знову чекав би на HTTP.
  */
-const checkTransactionPreconditions = async (dbConn, userId, entries) => {
+const checkTransactionPreconditions = async (dbConn, userId, entries, convert) => {
   const keys = entries.flatMap(({ tx }) => getTransactionAccountEffects(tx).map((e) => e.accountKey));
   const accountsByKey = await getAccountRowsForEffects(dbConn, userId, keys);
-  const convert = await buildAccountUnitConverter();
-  const mismatches = collectDenominationMismatches(entries, accountsByKey, convert);
-  const netDeltas = computeNetDeltas(entries, accountsByKey, convert);
+  const converter = convert ?? (await buildAccountUnitConverter());
+  const mismatches = collectDenominationMismatches(entries, accountsByKey, converter);
+  const netDeltas = computeNetDeltas(entries, accountsByKey, converter);
   return { mismatches, overdrafts: collectDebtOverdrafts(netDeltas, accountsByKey) };
 };
 
-const applyTransactionEffects = async (dbConn, userId, tx, multiplier = 1) => {
-  const convert = await buildAccountUnitConverter();
+/**
+ * Відмова, яку обробник перетворює на 409.
+ *
+ * Кидається зсередини транзакції навмисно: так вона відкочується цілком, а
+ * перевірка й запис лишаються одним неподільним кроком. Доки перевірка стояла
+ * до `BEGIN`, два одночасні запити обидва проходили «борг не піде в мінус» і
+ * обидва писали — борг ставав відʼємним попри перевірку.
+ */
+class TransactionRefused extends Error {
+  constructor(payload) {
+    super(payload.code);
+    this.name = 'TransactionRefused';
+    this.payload = payload;
+  }
+}
+
+const DEBT_OVERDRAFT_ERROR = 'this would push a debt balance below zero';
+
+/** Перевірка передумов під локом; кидає `TransactionRefused`, якщо щось не так. */
+const assertTransactionPreconditions = async (
+  dbConn,
+  userId,
+  entries,
+  convert,
+  { overdraftError = DEBT_OVERDRAFT_ERROR } = {},
+) => {
+  const { mismatches, overdrafts } = await checkTransactionPreconditions(dbConn, userId, entries, convert);
+  if (mismatches.length > 0) {
+    throw new TransactionRefused({
+      status: 409,
+      error: 'transaction currency does not match the account balance unit',
+      code: 'ACCOUNT_DENOMINATION_MISMATCH',
+      accounts: mismatches,
+    });
+  }
+  if (overdrafts.length > 0) {
+    throw new TransactionRefused({
+      status: 409,
+      error: overdraftError,
+      code: 'DEBT_BALANCE_NEGATIVE',
+      accounts: overdrafts,
+    });
+  }
+};
+
+/**
+ * Віддає відмову клієнту, якщо це вона; решту помилок пускає далі до
+ * загального обробника.
+ */
+const sendIfRefused = (res, error) => {
+  if (!(error instanceof TransactionRefused)) return false;
+  const { status, ...body } = error.payload;
+  res.status(status).json(body);
+  return true;
+};
+
+const applyTransactionEffects = async (dbConn, userId, tx, multiplier = 1, providedConvert) => {
+  const convert = providedConvert ?? (await buildAccountUnitConverter());
   for (const effect of getTransactionAccountEffects(tx)) {
     const account = await dbConn.get(
       `SELECT section, debt_direction AS debtDirection, primary_currency AS primaryCurrency
@@ -502,11 +651,32 @@ const convertCurrencyServer = (amount, from, to, fxPayload) => {
   return (amount / fromRate) * toRate;
 };
 
+const FX_CACHE_KEY = 'fx_rates';
+
+/**
+ * Курс валют із трирівневим кешем: памʼять процесу → спільна таблиця → мережа.
+ *
+ * Середній рівень зʼявився заради кластера. Доки кеш жив лише в памʼяті, кожна
+ * копія API ходила до `open.er-api.com` самостійно — на чотирьох воркерах це
+ * учетверо більше звернень до чужого безкоштовного сервісу за тим самим
+ * числом. Тепер той, хто оновив курс першим, ділиться ним через `app_cache`,
+ * і решта бере готове.
+ */
 const fetchFxRates = async () => {
   const now = Date.now();
   if (fxCache && now - fxCacheFetchedAt < FX_CACHE_TTL_MS) {
     return { ...fxCache, source: 'cache' };
   }
+
+  // Інший процес міг оновити курс лічені секунди тому.
+  const shared = await readAppCache(FX_CACHE_KEY);
+  const sharedAt = shared?.updatedAt ? Date.parse(shared.updatedAt) : NaN;
+  if (shared?.rates && Number.isFinite(sharedAt) && now - sharedAt < FX_CACHE_TTL_MS) {
+    fxCache = { ...shared, source: 'cache' };
+    fxCacheFetchedAt = now;
+    return fxCache;
+  }
+
   try {
     const res = await fetch('https://open.er-api.com/v6/latest/USD');
     if (!res.ok) throw new Error(`fx status ${res.status}`);
@@ -526,9 +696,15 @@ const fetchFxRates = async () => {
       source: 'live',
     };
     fxCacheFetchedAt = now;
+    // Ділимося з рештою процесів. Збій запису тут нічого не ламає: у себе курс
+    // уже є, сусіди просто сходять по нього самі.
+    await writeAppCache(FX_CACHE_KEY, fxCache);
     return fxCache;
   } catch {
     if (fxCache) return { ...fxCache, source: 'cache' };
+    // Свого кешу немає, але спільний міг лишитися з минулого разу — навіть
+    // застарілий курс кращий за запасний список, зашитий у код.
+    if (shared?.rates) return { ...shared, source: 'cache' };
     return FX_FALLBACK;
   }
 };
@@ -561,6 +737,18 @@ const fetchCryptoUsdPrices = async () => {
   if (cryptoCache && now - cryptoCacheFetchedAt < CRYPTO_CACHE_TTL_MS) {
     return { ...cryptoCache, source: 'cache' };
   }
+
+  // Спільний кеш перевіряється **до** мережі, а не лише при збої: інакше кожна
+  // копія API ходила б до CoinGecko самостійно, а там безкоштовний ліміт на
+  // адресу — і чотири воркери вичерпали б його вчетверо швидше за одного.
+  const shared = await readAppCache(CRYPTO_PRICES_CACHE_KEY);
+  const sharedAt = shared?.updatedAt ? Date.parse(shared.updatedAt) : NaN;
+  if (shared?.prices && Number.isFinite(sharedAt) && now - sharedAt < CRYPTO_CACHE_TTL_MS) {
+    cryptoCache = { ...shared, source: 'cache' };
+    cryptoCacheFetchedAt = now;
+    return cryptoCache;
+  }
+
   try {
     const ids = ['bitcoin', 'ethereum', 'solana', 'the-open-network', 'tether'];
     const res = await fetch(
@@ -588,11 +776,12 @@ const fetchCryptoUsdPrices = async () => {
     return cryptoCache;
   } catch {
     if (cryptoCache) return { ...cryptoCache, source: 'cache' };
-    const stored = await readAppCache(CRYPTO_PRICES_CACHE_KEY);
-    if (stored?.prices) {
-      cryptoCache = stored;
+    // Спільний кеш уже прочитано вище; тут він міг бути застарілим, але
+    // застаріла ціна все одно краща за жодної.
+    if (shared?.prices) {
+      cryptoCache = shared;
       cryptoCacheFetchedAt = now;
-      return { ...stored, source: 'cache' };
+      return { ...shared, source: 'cache' };
     }
     // Порожньо, а не нулі: ціна 0 для клієнта виглядала б як справжня і
     // оцінювала б позицію в нуль. Невідома ціна має лишатися невідомою —
@@ -640,53 +829,96 @@ const buildSubscriptionChargeNote = (subscription) => {
   if (base.toLowerCase().includes('subscription:')) return base;
   return `${base} • ${suffix}`;
 };
+/**
+ * Автосписання підписок, що дозріли.
+ *
+ * Дві речі тут навмисні й важливі.
+ *
+ * Вибірка `dueSubs` живе **всередині** транзакції. Доки вона стояла до
+ * `BEGIN`, два одночасні виклики (годинний такт і запит із застосунку) читали
+ * той самий рядок як «ще не списаний» і списували підписку двічі. Додатково
+ * `UPDATE` перевіряє, що `nextChargeDate` не змінився з моменту читання: якщо
+ * інший процес устиг раніше, ми нічого не робимо.
+ *
+ * Повідомлення й перевірка бюджету винесені в `afterCommit`. Раніше
+ * `bot.sendMessage()` викликався просто в тілі транзакції — а він чекає слота
+ * в черзі з лімітом 25/с, і весь цей час ексклюзивний лок на запис тримав усю
+ * базу.
+ */
 const runSubscriptionAutopayForUser = async (userId) => {
   const today = new Date();
   const todayIso = toIsoDate(today);
   if (!todayIso) return;
 
-  const dueSubs = await db.all(
-    `SELECT id, name, amount, currency, categoryId, cycle, nextChargeDate, note
-     FROM subscriptions
-     WHERE user_id = ? AND active = 1 AND nextChargeDate <= ?
-     ORDER BY nextChargeDate ASC`,
+  // Дешева перевірка поза транзакцією: у переважній більшості викликів
+  // списувати нема чого, і брати заради цього лок на запис не варто.
+  const pending = await db.get(
+    'SELECT 1 AS due FROM subscriptions WHERE user_id = ? AND active = 1 AND nextChargeDate <= ? LIMIT 1',
     [userId, todayIso]
   );
-  if (!Array.isArray(dueSubs) || dueSubs.length === 0) return;
+  if (!pending) return;
 
-  await db.run('BEGIN IMMEDIATE');
-  try {
+  await withTransaction(db, async (tx, afterCommit) => {
+    const dueSubs = await tx.all(
+      `SELECT id, name, amount, currency, categoryId, cycle, nextChargeDate, note
+       FROM subscriptions
+       WHERE user_id = ? AND active = 1 AND nextChargeDate <= ?
+       ORDER BY nextChargeDate ASC`,
+      [userId, todayIso]
+    );
+    if (!Array.isArray(dueSubs) || dueSubs.length === 0) return;
+
+    const notifications = [];
+    const budgetChecks = new Set();
+
     for (const sub of dueSubs) {
       const amount = Number(sub.amount);
       const cycle = sub.cycle === 'yearly' ? 'yearly' : 'monthly';
       const subCurrency = normalizeCurrency(sub.currency);
-      let due = parseIsoDate(String(sub.nextChargeDate ?? ''));
+      const chargedFrom = String(sub.nextChargeDate ?? '');
+      const due = parseIsoDate(chargedFrom);
       if (!due || !Number.isFinite(amount) || amount <= 0) continue;
 
+      const charges = [];
       let nextDue = due;
       let safetyCounter = 0;
       while (toIsoDate(nextDue) <= todayIso) {
-        const txDate = `${toIsoDate(nextDue)}T12:00:00.000Z`;
-        const note = buildSubscriptionChargeNote(sub);
+        charges.push(toIsoDate(nextDue));
+        nextDue = addSubscriptionCycle(nextDue, cycle);
+        safetyCounter += 1;
+        if (safetyCounter > 120) break;
+      }
+      if (charges.length === 0) continue;
+
+      // Оптимістична охорона: рядок беремо лише якщо його ще ніхто не зрушив.
+      // `changes === 0` означає, що паралельний виклик уже списав цю підписку.
+      const claimed = await tx.run(
+        'UPDATE subscriptions SET nextChargeDate = ?, updatedAt = ? WHERE user_id = ? AND id = ? AND nextChargeDate = ?',
+        [toIsoDate(nextDue), new Date().toISOString(), userId, sub.id, chargedFrom]
+      );
+      if (!claimed?.changes) continue;
+
+      for (const chargeDay of charges) {
         const subCategoryId = typeof sub.categoryId === 'string' && sub.categoryId.trim()
           ? sub.categoryId
           : 'other_expense';
-        const tx = {
+        const note = buildSubscriptionChargeNote(sub);
+        const charge = {
           id: uuidv4(),
           user_id: userId,
           amount,
           currency: subCurrency,
           categoryId: subCategoryId,
           type: 'expense',
-          date: txDate,
+          date: `${chargeDay}T12:00:00.000Z`,
           note: note || undefined,
         };
-        await db.run(
+        await tx.run(
           'INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-          [tx.id, tx.user_id, tx.amount, tx.currency, tx.categoryId, tx.type, tx.date, tx.note ?? null]
+          [charge.id, charge.user_id, charge.amount, charge.currency, charge.categoryId, charge.type, charge.date, charge.note ?? null]
         );
         try {
-          await applyTransactionEffects(db, userId, tx);
+          await applyTransactionEffects(tx, userId, charge);
         } catch (e) {
           // A subscription pinned to an account held in another unit must not
           // corrupt that balance — nor stop the remaining subscriptions. The
@@ -694,36 +926,35 @@ const runSubscriptionAutopayForUser = async (userId) => {
           if (e?.code !== 'ACCOUNT_DENOMINATION_MISMATCH') throw e;
           console.error('[subscriptions] autopay skipped balance update:', e.message);
         }
-        if (bot) {
-          const chatRow = await db.get('SELECT chat_id AS chatId FROM users WHERE telegram_id = ? LIMIT 1', [Number(userId)]);
-          const cid = Number(chatRow?.chatId);
-          if (Number.isFinite(cid) && cid > 0) {
-            try {
-              await bot.sendMessage(
-                cid,
-                `${CATEGORY_EMOJI[subCategoryId] ?? '💳'} ${sub.name} −${Number(amount).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} ${tx.currency} · підписка`
-              );
-            } catch (e) {
-              console.error('[subscriptions] autopay telegram notify failed', e);
-            }
-          }
-        }
-        await checkBudgetThresholdsAfterExpense(userId, tx.categoryId);
-        nextDue = addSubscriptionCycle(nextDue, cycle);
-        safetyCounter += 1;
-        if (safetyCounter > 120) break;
+        notifications.push(
+          `${CATEGORY_EMOJI[subCategoryId] ?? '💳'} ${sub.name} −${Number(amount).toLocaleString('uk-UA', { maximumFractionDigits: 2 })} ${charge.currency} · підписка`
+        );
+        budgetChecks.add(subCategoryId);
       }
-
-      await db.run(
-        'UPDATE subscriptions SET nextChargeDate = ?, updatedAt = ? WHERE user_id = ? AND id = ?',
-        [toIsoDate(nextDue), new Date().toISOString(), userId, sub.id]
-      );
     }
-    await db.run('COMMIT');
-  } catch (error) {
-    await db.run('ROLLBACK');
-    throw error;
-  }
+
+    if (notifications.length === 0 && budgetChecks.size === 0) return;
+
+    // Повідомлення про списання лягають у ту саму транзакцію, що й самі
+    // списання. Тобто «гроші зняті, але людину не попередили» більше не
+    // окремий стан: або є і те, і те, або нічого.
+    if (notifications.length > 0) {
+      const chatRow = await tx.get('SELECT chat_id AS chatId FROM users WHERE telegram_id = ? LIMIT 1', [Number(userId)]);
+      const cid = Number(chatRow?.chatId);
+      if (Number.isFinite(cid) && cid > 0) {
+        for (const text of notifications) {
+          await enqueueOutbox(tx, { chatId: cid, text });
+        }
+      }
+    }
+
+    // Перевірка бюджету читає історію витрат — це не має тримати лок.
+    afterCommit(async () => {
+      for (const categoryId of budgetChecks) {
+        await checkBudgetThresholdsAfterExpense(userId, categoryId);
+      }
+    });
+  });
 };
 const plannerDayKey = (userId, day) => `${userId}:${day}`;
 const plannerDayFromStored = (userId, storedDay) => {
@@ -1269,15 +1500,27 @@ const dispatchReminder = async (dbConn, userId, reminder, timeZone, chatId, slot
   }
 };
 
-const sendTelegramIfLinked = async (tgUserId, text) => {
-  if (!bot) return;
-  const u = await db.get('SELECT chat_id AS chatId FROM users WHERE telegram_id = ? LIMIT 1', [Number(tgUserId)]);
+/**
+ * Повідомлення від шляхів API — через outbox, а не напряму.
+ *
+ * Два наслідки. Повідомлення переживає перезапуск: раніше алерт, що стояв у
+ * черзі під час деплою, просто зникав. І API перестає залежати від живого
+ * бота — після поділу на процеси `polling` лишиться рівно в одному з них, а
+ * запис у таблицю доступний обом.
+ *
+ * @param {string | number} tgUserId
+ * @param {string} text
+ * @param {object} [dbConn] зʼєднання (можна передати транзакційне, щоб
+ *   повідомлення записалося разом із даними, яких воно стосується)
+ */
+const sendTelegramIfLinked = async (tgUserId, text, dbConn = db) => {
+  const u = await dbConn.get('SELECT chat_id AS chatId FROM users WHERE telegram_id = ? LIMIT 1', [Number(tgUserId)]);
   const cid = Number(u?.chatId);
   if (!Number.isFinite(cid) || cid <= 0) return;
   try {
-    await bot.sendMessage(cid, text);
+    await enqueueOutbox(dbConn, { chatId: cid, text });
   } catch (e) {
-    console.error('[telegram] send failed', e);
+    console.error('[telegram] не вдалося поставити повідомлення в чергу', e);
   }
 };
 
@@ -1295,9 +1538,19 @@ const checkBudgetThresholdsAfterExpense = async (userId, categoryId) => {
   const ym = today.slice(0, 7);
   const fx = await fetchFxRates();
   const budgetCur = normalizeCurrency(budget.currency);
+  // Раніше сюди приїжджала вся історія витрат цієї категорії, а місяць
+  // відсіювався вже в JS — тобто ціна перевірки росла з кожною новою витратою,
+  // і платилася вона на кожну нову витрату.
+  //
+  // Тепер SQL віддає лише околиці потрібного місяця (індекс
+  // `idx_transactions_user_cat_date`), а точну належність до місяця й далі
+  // вирішує JS: місяць тут локальний, і по одній лише даті в базі його не
+  // визначити. Межі беруться з запасом, тож жоден рядок не губиться.
+  const { from, to } = monthQueryBounds(ym);
   const txs = await db.all(
-    `SELECT amount, currency, date FROM transactions WHERE user_id = ? AND type = 'expense' AND categoryId = ?`,
-    [userId, categoryId]
+    `SELECT amount, currency, date FROM transactions
+     WHERE user_id = ? AND type = 'expense' AND categoryId = ? AND date >= ? AND date < ?`,
+    [userId, categoryId, from, to]
   );
   let sum = 0;
   for (const tx of txs) {
@@ -1672,13 +1925,26 @@ const sendUserReport = async (dbConn, userId, chatId, reportType, timeZone) => {
   const nowIso = new Date().toISOString();
   const today = dayFromIsoInZone(nowIso, tz) || nowIso.slice(0, 10);
   const rangeSet = reportType === 'weekly' ? getPreviousFullWeekDaySet(today) : getPreviousFullMonthDaySet(today);
-  const txs = await dbConn.all(
-    'SELECT amount, currency, categoryId, type, date FROM transactions WHERE user_id = ? ORDER BY date DESC LIMIT 5000',
-    [userId]
-  );
+  const previousRangeSet = buildPreviousPeriodDaySet(reportType, rangeSet);
+
+  // Раніше сюди приїжджали останні 5000 транзакцій незалежно від періоду —
+  // і потім 99% із них відсіювалися в JS. Тепер запит обмежений проміжком, що
+  // накриває обидва періоди звіту; належність дня до періоду й далі вирішує
+  // JS, бо періоди рахуються в поясі власника, а в базі UTC.
+  //
+  // Заодно зникає тиха межа: у людини з понад 5000 транзакцій `LIMIT` міг
+  // відрізати частину періоду, і звіт виходив неповним, нічого про це не
+  // сказавши.
+  const bounds = daySetQueryBounds(rangeSet, previousRangeSet);
+  const txs = bounds
+    ? await dbConn.all(
+        `SELECT amount, currency, categoryId, type, date FROM transactions
+         WHERE user_id = ? AND date >= ? AND date < ? ORDER BY date DESC`,
+        [userId, bounds.from, bounds.to],
+      )
+    : [];
   const allTransactions = Array.isArray(txs) ? txs : [];
   const scoped = allTransactions.filter((tx) => rangeSet.has(dayFromIsoInZone(tx.date, tz)));
-  const previousRangeSet = buildPreviousPeriodDaySet(reportType, rangeSet);
   const previousScoped = allTransactions.filter((tx) => previousRangeSet.has(dayFromIsoInZone(tx.date, tz)));
   const reportSettings = await getReportSettings(dbConn, userId);
   const fx = await fetchFxRates();
@@ -1737,10 +2003,19 @@ const sendFinancialAdvice = async (dbConn, userId, chatId, periodDaysRaw, timeZo
   const currentSet = new Set();
   for (let i = 0; i < periodDays; i += 1) currentSet.add(shiftIsoDay(today, -i));
   const previousSet = new Set(Array.from(currentSet).map((d) => shiftIsoDay(d, -periodDays)));
-  const txs = await dbConn.all(
-    'SELECT amount, currency, categoryId, type, date FROM transactions WHERE user_id = ? ORDER BY date DESC LIMIT 5000',
-    [userId]
-  );
+
+  // Крім двох періодів порівняння, порадам потрібен ще поточний місяць: за ним
+  // рахуються ризики за бюджетами (`collectBudgetRisks`). За коротким періодом
+  // (мінімум сім днів) початок місяця в набір не потрапляє, тож додаємо його
+  // явно — інакше бюджети рахувалися б від неповних даних.
+  const bounds = daySetQueryBounds(currentSet, previousSet, [`${String(today).slice(0, 7)}-01`, today]);
+  const txs = bounds
+    ? await dbConn.all(
+        `SELECT amount, currency, categoryId, type, date FROM transactions
+         WHERE user_id = ? AND date >= ? AND date < ? ORDER BY date DESC`,
+        [userId, bounds.from, bounds.to],
+      )
+    : [];
   const allTxs = Array.isArray(txs) ? txs : [];
   const currentTxs = allTxs.filter((tx) => currentSet.has(dayFromIsoInZone(tx.date, tz)));
   const previousTxs = allTxs.filter((tx) => previousSet.has(dayFromIsoInZone(tx.date, tz)));
@@ -2057,6 +2332,14 @@ const startActiveShiftForUser = async (dbConn, userId, options = {}) => {
 const TRUST_PROXY_HOPS = Number(process.env.TRUST_PROXY ?? 0);
 app.set('trust proxy', Number.isFinite(TRUST_PROXY_HOPS) && TRUST_PROXY_HOPS > 0 ? TRUST_PROXY_HOPS : false);
 
+/**
+ * Лічильники запитів стоять найпершими — раніше за CORS і за обмеження
+ * частоти. Інакше в метрики не потрапило б найцікавіше: відмови 429 і 403,
+ * тобто саме ті випадки, заради яких на метрики й дивляться.
+ */
+const requestMetrics = createRequestMetrics();
+app.use(requestMetrics.middleware);
+
 const allowedOrigins = parseAllowedOrigins(process.env.CORS_ORIGINS);
 app.use(
   cors((req, callback) => {
@@ -2097,11 +2380,22 @@ app.use((req, res, next) =>
  * користувачів, стоять нижче й рахуються не адресою. З `TRUST_PROXY=1` стає
  * персональною. Значення підняти через `API_RATE_LIMIT_PER_MIN`.
  */
-const API_RATE_LIMIT_PER_MIN = Number(process.env.API_RATE_LIMIT_PER_MIN) || 600;
-app.use(
-  '/api',
-  rateLimitMiddleware({ windowMs: 60_000, max: API_RATE_LIMIT_PER_MIN, keyFn: clientIpKey })
-);
+/**
+ * Скільки копій API працює поруч. Лічильники частоти живуть у памʼяті процесу,
+ * тож при кластері кожна копія рахувала б свою квоту — і спільна стеля
+ * помножилася б на кількість воркерів. Ділення повертає її на місце.
+ *
+ * Поділ приблизний: pm2 роздає зʼєднання по черзі, тож один клієнт бачить
+ * приблизно 1/N своєї квоти на кожному воркері. Точну стелю за адресою тримає
+ * nginx (`limit_req_zone`, див. `server/nginx-config.js`) — там лічильник
+ * справді спільний. Ці ж лишаються другим шаром і рахуються за `user_id`.
+ */
+const API_INSTANCES = Math.max(1, Number(process.env.DENGA_API_INSTANCES) || 1);
+const perInstanceLimit = (total) => Math.max(1, Math.ceil(total / API_INSTANCES));
+
+const API_RATE_LIMIT_PER_MIN = perInstanceLimit(Number(process.env.API_RATE_LIMIT_PER_MIN) || 600);
+const ipRateLimit = rateLimitMiddleware({ windowMs: 60_000, max: API_RATE_LIMIT_PER_MIN, keyFn: clientIpKey });
+app.use('/api', ipRateLimit);
 // Prevent caching of index.html so updates are visible immediately
 app.use((req, res, next) => {
   if (req.path === '/' || req.path === '/index.html') {
@@ -2112,34 +2406,48 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.static(path.join(__dirname, '../dist')));
+/**
+ * Vite складає бандли з хешем у назві (`index-CzPw3AQs.js`), тож вміст за
+ * конкретним іменем не змінюється ніколи: новий білд — нове імʼя. Такі файли
+ * можна кешувати назавжди, і `immutable` каже браузеру навіть не питати про
+ * зміни умовним запитом.
+ *
+ * Досі вони їхали з типовим `max-age=0`, тобто на кожне відкриття застосунку
+ * браузер робив по запиту на файл — хай і з відповіддю 304. Заголовок ставиться
+ * тут, а не в nginx, щоб не було двох різних `Cache-Control` в одній відповіді
+ * і щоб поведінка збігалася в розробці й у бою.
+ *
+ * `index.html` під це не потрапляє: він єдиний, хто знає імена поточних
+ * бандлів, і кешувати його не можна — вище він явно позначений `no-store`.
+ */
+const HASHED_ASSET_RE = /[.-][A-Za-z0-9_-]{8,}\.(js|css|woff2?|ttf|svg|png|jpg|jpeg|webp|avif)$/;
+app.use(
+  express.static(path.join(__dirname, '../dist'), {
+    setHeaders: (res, filePath) => {
+      if (HASHED_ASSET_RE.test(filePath)) {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      }
+    },
+  })
+);
 
 const db = await initDb();
-const backfillLegacyTransactionCurrency = async () => {
-  const rows = await db.all('SELECT id, note, currency FROM transactions');
-  await db.run('BEGIN');
-  try {
-    for (const row of rows) {
-      const current = normalizeCurrency(row.currency);
-      const fromNote = getCurrencyFromNote(row.note);
-      if (!fromNote || fromNote === current) continue;
-      await db.run('UPDATE transactions SET currency = ? WHERE id = ?', [fromNote, row.id]);
-    }
-    await db.run('COMMIT');
-  } catch (e) {
-    await db.run('ROLLBACK');
-    throw e;
-  }
-};
-await backfillLegacyTransactionCurrency();
+// Перенесення валюти з примітки в колонку більше не виконується при кожному
+// старті: воно стало міграцією `002-legacy-transaction-currency-from-note`.
+// Раніше цей крок читав усі транзакції всіх користувачів на кожен запуск
+// сервера — і майже завжди не знаходив чого переносити.
 await backfillUserAutomationDefaults(db);
 const backupChatRaw = process.env.TELEGRAM_BACKUP_CHAT_ID;
 const backupChatId =
   typeof backupChatRaw === 'string' && backupChatRaw.trim() !== '' ? Number(backupChatRaw.trim()) : NaN;
-startScheduledDatabaseBackups(db, getDatabasePath(), {
-  bot,
-  telegramChatId: Number.isFinite(backupChatId) ? backupChatId : null,
-});
+// Бекап робить рівно один процес: N копій, що пишуть знімки одного файлу в
+// один каталог, лише витрачали б диск і плутали ротацію.
+if (RUNS_BOT) {
+  startScheduledDatabaseBackups(db, getDatabasePath(), {
+    bot,
+    telegramChatId: Number.isFinite(backupChatId) ? backupChatId : null,
+  });
+}
 
 
 // --- Bot Logic ---
@@ -2147,10 +2455,23 @@ startScheduledDatabaseBackups(db, getDatabasePath(), {
 const CATEGORIES = BOT_TRANSACTION_CATEGORIES;
 const BOT_CATEGORY_OPTIONS = CATEGORIES.filter((c) => c.id !== 'other_income' && c.id !== 'other_expense');
 
-const pendingTransactions = new Map();
-const pendingShiftStarts = new Map();
-const pendingSmartTransactions = new Map();
-const lastTransactionImageByUser = new Map();
+/**
+ * Незавершені розмови з ботом.
+ *
+ * Кожен запис прибирається, коли людина доводить дію до кінця. Але якщо вона
+ * просто закриває чат, запис лишався назавжди — і на тисячі людей це процес,
+ * що поволі росте й не віддає памʼять до перезапуску.
+ *
+ * Година — свідомо щедрий строк: усі три сценарії й так уміють жити без
+ * запису («Запит застарів. Запустіть /shift_start ще раз»), тож зайва пауза
+ * тут коштує лише повторної команди.
+ */
+const PENDING_CONVERSATION_TTL_MS = 60 * 60 * 1000;
+const pendingTransactions = createExpiringMap({ ttlMs: PENDING_CONVERSATION_TTL_MS });
+const pendingShiftStarts = createExpiringMap({ ttlMs: PENDING_CONVERSATION_TTL_MS });
+const pendingSmartTransactions = createExpiringMap({ ttlMs: PENDING_CONVERSATION_TTL_MS });
+/** Лише позначка часу для тротлінга у три секунди — довше зберігати нема сенсу. */
+const lastTransactionImageByUser = createExpiringMap({ ttlMs: 5 * 60 * 1000 });
 const TRANSACTION_IMAGE_RATE_LIMIT_MS = 3000;
 
 /**
@@ -2256,12 +2577,39 @@ async function sendSmartTransactionConfirmation(msg, parsed, today) {
 
 // Attempt AI parsing of a free-text message and, on success, send a compact
 // confirmation card. Returns true if a transaction was recognized.
+/**
+ * М'яка відмова, коли денна квота вичерпана.
+ *
+ * Саме м'яка: ручне додавання нікуди не зникло, і про це треба сказати. Мовчки
+ * перестати відповідати було б гірше за будь-яку межу — людина вирішила б, що
+ * бот зламався.
+ */
+const QUOTA_EXCEEDED_TEXT = {
+  smart_transaction:
+    '📊 На сьогодні ліміт розпізнавань вичерпано. Завтра він оновиться — а зараз додайте операцію через застосунок.',
+  receipt_scan:
+    '📊 На сьогодні ліміт розпізнавань скріншотів вичерпано. Завтра він оновиться.',
+};
+
+/** @returns true, якщо квоту зайнято й можна продовжувати. */
+async function takeSmartQuota(msg, feature) {
+  const quota = await consumeQuota(db, { userId: String(msg.from.id), feature });
+  if (quota.allowed) return true;
+  await bot.sendMessage(msg.chat.id, QUOTA_EXCEEDED_TEXT[feature]);
+  return false;
+}
+
 async function trySmartTransaction(msg, text) {
+  if (!(await takeSmartQuota(msg, 'smart_transaction'))) return false;
   const context = await getSmartTransactionContext(String(msg.from.id));
   const parsed = await parseSmartTransaction({
     text,
     ...context,
   });
+  // Розпізнавання вимкнене — запиту назовні не було, квоту повертаємо.
+  if (parsed === null && !isSmartTransactionEnabled()) {
+    await refundQuota(db, { userId: String(msg.from.id), feature: 'smart_transaction' });
+  }
   return sendSmartTransactionConfirmation(msg, parsed, context.today);
 }
 
@@ -2279,6 +2627,7 @@ async function trySmartTransactionImage(msg, image) {
     return false;
   }
   lastTransactionImageByUser.set(userId, now);
+  if (!(await takeSmartQuota(msg, 'receipt_scan'))) return false;
   try {
     await bot.sendChatAction(chatId, 'typing');
   } catch {
@@ -2288,6 +2637,11 @@ async function trySmartTransactionImage(msg, image) {
   const result = await parseTelegramTransactionImage({ bot, image, ...context });
   if (result.status === 'ok') {
     return sendSmartTransactionConfirmation(msg, result.transaction, context.today);
+  }
+  // Ці два випадки означають, що до провайдера ми не дійшли: зображення не
+  // підійшло або сервіс не налаштований. Квоту таке не витрачає.
+  if (result.status === 'too_large' || result.status === 'not_configured' || result.status === 'download_error') {
+    await refundQuota(db, { userId, feature: 'receipt_scan' });
   }
   const messages = {
     too_large: 'Зображення завелике. Надішліть скрін як звичайне фото або файл до 1 МБ.',
@@ -2909,20 +3263,15 @@ if (bot) {
         return;
       }
 
-      await db.run('BEGIN IMMEDIATE');
       try {
-        await db.run(
-          'INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, note, telegram_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-          [transaction.id, transaction.user_id, transaction.amount, transaction.currency, transaction.categoryId, transaction.type, transaction.date, transaction.note, transaction.telegram_user_id]
-        );
-        await applyTransactionEffects(db, transaction.user_id, transaction);
-        await db.run('COMMIT');
+        await withTransaction(db, async (tx) => {
+          await tx.run(
+            'INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, note, telegram_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [transaction.id, transaction.user_id, transaction.amount, transaction.currency, transaction.categoryId, transaction.type, transaction.date, transaction.note, transaction.telegram_user_id]
+          );
+          await applyTransactionEffects(tx, transaction.user_id, transaction);
+        });
       } catch (err) {
-        try {
-          await db.run('ROLLBACK');
-        } catch {
-          // Keep the original failure — it explains what actually broke.
-        }
         console.error('[smart-transaction] could not save confirmed transaction:', err);
         await bot.answerCallbackQuery(callbackQuery.id, { text: 'Не вдалося зберегти' });
         await replaceSmartTransactionMessage(
@@ -3104,10 +3453,18 @@ const dispatchDueReports = async (clocks, dueTimes) => {
       const slot = `${clock.day}:${settings.sendTime}`;
       if (!(await shouldSendForSlot(db, userId, reportType, slot))) continue;
       try {
-        await sendUserReport(db, userId, chatId, reportType, normalizeTimeZone(row.timezone));
+        // Такт лише ставить у чергу. Малює й шле розбирач — інакше сам такт
+        // тривав би хвилинами й пропускав наступні.
+        await enqueueReport(db, {
+          userId,
+          chatId,
+          reportType,
+          slotKey: slot,
+          timezone: normalizeTimeZone(row.timezone),
+          dueAt: reportDueAt(Date.now(), userId),
+        });
       } catch (e) {
-        // Один непрочитаний чат не має зривати розсилку решті.
-        console.error('[bot] report send failed', { userId, reportType, message: e?.message });
+        console.error('[bot] report enqueue failed', { userId, reportType, message: e?.message });
       }
     }
   }
@@ -3146,6 +3503,15 @@ const dispatchDueReminders = async (clocks, dueTimes) => {
  */
 let autoReportsTickRunning = false;
 
+/**
+ * Хвилинний такт: лише вирішує, кому що належить, і ставить у чергу.
+ *
+ * Раніше він тут-таки й розсилав, тобто тривав стільки, скільки малюються всі
+ * картки, — а охоронець від перекриття на цей час **пропускав наступні
+ * хвилини**. Людина з часом відправки 21:03 не отримувала звіт узагалі: не
+ * пізніше, а ніколи. Тепер такт коштує кілька мілісекунд і перекритися вже не
+ * встигає; охоронець лишається запобіжником, а не робочим механізмом.
+ */
 async function runAutoReportsTick() {
   if (!bot) return;
   if (autoReportsTickRunning) {
@@ -3210,16 +3576,114 @@ async function dispatchSubscriptionsAutopay() {
   }
 }
 
-setTimeout(() => {
-  runSubscriptionsAutopayTick().catch((e) => {
-    console.error('[subscriptions] autopay initial tick failed', e);
-  });
-}, 8000);
-setInterval(() => {
-  runSubscriptionsAutopayTick().catch((e) => {
-    console.error('[subscriptions] autopay tick failed', e);
-  });
-}, 60 * 60 * 1000);
+// Планувальник — рівно в одному процесі. Оптимістична охорона в
+// `runSubscriptionAutopayForUser` не дала б подвійного списання й за кількох
+// тактів, але робити ту саму роботу N разів однаково нема сенсу.
+if (RUNS_BOT) {
+  setTimeout(() => {
+    runSubscriptionsAutopayTick().catch((e) => {
+      console.error('[subscriptions] autopay initial tick failed', e);
+    });
+  }, 8000);
+  setInterval(() => {
+    runSubscriptionsAutopayTick().catch((e) => {
+      console.error('[subscriptions] autopay tick failed', e);
+    });
+  }, 60 * 60 * 1000);
+}
+
+/**
+ * Розбирач черги звітів.
+ *
+ * Живе окремо від такту навмисно: такт має лишатися дешевим і встигати щохвилини,
+ * а малювання картки — це приблизно півсекунди суцільного рахунку. Пачками по
+ * кілька штук, щоб між ними процес встигав робити й решту роботи.
+ *
+ * Дедуплікація вже є на двох рівнях: первинний ключ черги не дає поставити той
+ * самий слот двічі, а `bot_report_deliveries` не дає надіслати його вдруге
+ * навіть після перезапуску посеред розсилки.
+ */
+const REPORT_DRAIN_TICK_MS = Number(process.env.REPORT_DRAIN_TICK_MS) || 3000;
+let reportDrainRunning = false;
+
+async function runReportDrainTick() {
+  if (!bot || reportDrainRunning) return;
+  reportDrainRunning = true;
+  try {
+    const due = await claimDueReports(db, { limit: REPORT_DRAIN_BATCH });
+    for (const row of due ?? []) {
+      const key = { userId: row.userId, reportType: row.reportType, slotKey: row.slotKey };
+      try {
+        await sendUserReport(db, row.userId, Number(row.chatId), row.reportType, normalizeTimeZone(row.timezone));
+        await removeReport(db, key);
+      } catch (error) {
+        const outcome = await failReport(db, { ...key, attempts: row.attempts, error: error?.message });
+        // Один непрочитаний чат не має зривати розсилку решті.
+        console.error('[bot] звіт не надіслано', {
+          ...key,
+          outcome,
+          message: error?.message,
+        });
+      }
+    }
+  } finally {
+    reportDrainRunning = false;
+  }
+}
+
+if (bot) {
+  setInterval(() => {
+    runReportDrainTick().catch((e) => console.error('[bot] report drain tick failed', e));
+  }, REPORT_DRAIN_TICK_MS);
+}
+
+/**
+ * Прибирання лічильників квот. Без нього таблиця росла б на рядок за день на
+ * кожну людину — не катастрофа, але й тримати торішні лічильники нема сенсу.
+ * Раз на добу й лише в бот-процесі: копіям API робити ту саму роботу нема чого.
+ */
+if (RUNS_BOT) {
+  const pruneTick = () =>
+    pruneQuotas(db)
+      .then((removed) => {
+        if (removed > 0) console.log('[quota] прибрано старих лічильників:', removed);
+      })
+      .catch((e) => console.error('[quota] prune failed', e));
+  setTimeout(pruneTick, 30_000);
+  setInterval(pruneTick, 24 * 60 * 60 * 1000);
+}
+
+/**
+ * Розбір черги вихідних повідомлень.
+ *
+ * Та сама причина, що й у решти тактів: `setInterval` не чекає завершення
+ * попереднього виклику, і без прапорця повільний такт накладався б сам на себе,
+ * подвоюючи роботу саме тоді, коли її й так забагато.
+ *
+ * Такт живе тут тимчасово. Після поділу процесів (Фаза 6) він переїде в
+ * бот-процес — API-процеси тільки пишуть у чергу й читати її не мають.
+ */
+const OUTBOX_TICK_MS = Number(process.env.OUTBOX_TICK_MS) || 5000;
+let outboxTickRunning = false;
+
+async function runOutboxTick() {
+  if (!bot || outboxTickRunning) return;
+  outboxTickRunning = true;
+  try {
+    const stats = await drainOutbox(db, bot, { limit: OUTBOX_BATCH });
+    if (stats.dropped > 0) {
+      console.warn('[outbox] недоставлених повідомлень за такт:', stats.dropped);
+    }
+  } finally {
+    outboxTickRunning = false;
+  }
+}
+
+if (bot) {
+  setInterval(() => {
+    runOutboxTick().catch((e) => console.error('[outbox] tick failed', e));
+  }, OUTBOX_TICK_MS);
+}
 
 // --- Shortcuts / automation (personal token, no Telegram initData) ---
 
@@ -3238,7 +3702,7 @@ setInterval(() => {
  * Сам токен — 24 випадкові байти, вгадати його неможливо; обидва ліміти тут
  * проти потоку запитів, а не проти перебору.
  */
-const AUTOMATION_RATE_LIMIT_PER_MIN = Number(process.env.AUTOMATION_RATE_LIMIT_PER_MIN) || 60;
+const AUTOMATION_RATE_LIMIT_PER_MIN = perInstanceLimit(Number(process.env.AUTOMATION_RATE_LIMIT_PER_MIN) || 60);
 app.use(
   '/api/automation',
   rateLimitMiddleware({
@@ -3523,15 +3987,13 @@ app.use('/api', authMiddleware);
  * тут особу вже перевірено підписом, тож ключ точний і не залежить від того,
  * що донесе проксі.
  */
-const USER_RATE_LIMIT_PER_MIN = Number(process.env.USER_RATE_LIMIT_PER_MIN) || 300;
-app.use(
-  '/api',
-  rateLimitMiddleware({
-    windowMs: 60_000,
-    max: USER_RATE_LIMIT_PER_MIN,
-    keyFn: (req) => (req.authUserId ? `u:${req.authUserId}` : null),
-  })
-);
+const USER_RATE_LIMIT_PER_MIN = perInstanceLimit(Number(process.env.USER_RATE_LIMIT_PER_MIN) || 300);
+const userRateLimit = rateLimitMiddleware({
+  windowMs: 60_000,
+  max: USER_RATE_LIMIT_PER_MIN,
+  keyFn: (req) => (req.authUserId ? `u:${req.authUserId}` : null),
+});
+app.use('/api', userRateLimit);
 
 app.get('/api/reports/settings', async (req, res) => {
   const userId = String(req.authUserId ?? '');
@@ -3875,16 +4337,36 @@ app.get('/api/goals', async (req, res) => {
      WHERE g.user_id = ?`,
     [userId]
   );
-  const fx = await fetchFxRates().catch(() => FX_FALLBACK);
   const byGoal = new Map();
   for (const c of contribRows || []) {
     if (!byGoal.has(c.goalId)) byGoal.set(c.goalId, []);
     byGoal.get(c.goalId).push(c);
   }
+
+  // Баланси всіх цілей одним запитом. Раніше на кожну ціль ішов окремий
+  // `SELECT`, а для цілі без рахунку — ще й запис, тобто читання списку
+  // могло писати в базу.
+  const balanceRows = await db.all(
+    'SELECT account_key AS accountKey, primary_amount AS amount FROM account_portfolio WHERE user_id = ? AND section = ?',
+    [userId, GOAL_SECTION],
+  );
+  const balanceByKey = new Map((balanceRows || []).map((r) => [String(r.accountKey), Number(r.amount) || 0]));
+
+  // Курси потрібні лише щоб завести рахунок давній цілі, яка його ще не має.
+  // Таких лишилися одиниці, тож ходити по них на кожне читання списку не варто.
+  let fx = null;
+  const goalFx = async () => (fx ??= await fetchFxRates().catch(() => FX_FALLBACK));
+
   const out = [];
   for (const r of rows || []) {
     const list = byGoal.get(r.id) || [];
-    const { accountKey, saved } = await resolveGoalProgress(userId, r, list, fx);
+    const existingKey = String(r.account_key ?? '').trim();
+    if (existingKey) {
+      out.push(mapGoalRow(r, balanceByKey.get(existingKey) ?? 0, list.length, existingKey));
+      continue;
+    }
+    // Легасі-ціль без рахунку: заводимо його один раз, далі вона піде швидким шляхом.
+    const { accountKey, saved } = await resolveGoalProgress(userId, r, list, await goalFx());
     out.push(mapGoalRow(r, saved, list.length, accountKey));
   }
   res.json(out);
@@ -4347,51 +4829,46 @@ app.post('/api/goals/:id/contributions', async (req, res) => {
       note: txNote,
     };
 
-    await db.run('BEGIN IMMEDIATE');
     try {
-      await db.run(
-        `INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, note, fromAccountKey, toAccountKey, transferToAmount, transferToCurrency)
-         VALUES (?, ?, ?, ?, 'transfer', 'transfer', ?, ?, ?, ?, ?, ?)`,
-        [
-          txId,
-          userId,
-          amount,
-          acctCur,
-          txDate,
-          txNote,
-          acctKey,
-          goalAccount,
-          acctConversion.converted,
-          goalCurrency,
-        ]
-      );
-      await applyTransactionEffects(db, userId, goalTransfer);
-      await db.run(
-        `INSERT INTO goal_contributions (id, goal_id, user_id, amount, currency, converted_amount, fx_rate, source, date, note, created_at, transaction_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          cid,
-          goalId,
-          userId,
-          amount,
-          acctCur,
-          acctConversion.converted,
-          acctConversion.rate,
-          source || null,
-          date,
-          note || null,
-          now,
-          txId,
-        ]
-      );
-      await db.run('UPDATE goals SET updated_at = ? WHERE id = ? AND user_id = ?', [now, goalId, userId]);
-      await db.run('COMMIT');
+      await withTransaction(db, async (tx) => {
+        await tx.run(
+          `INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, note, fromAccountKey, toAccountKey, transferToAmount, transferToCurrency)
+           VALUES (?, ?, ?, ?, 'transfer', 'transfer', ?, ?, ?, ?, ?, ?)`,
+          [
+            txId,
+            userId,
+            amount,
+            acctCur,
+            txDate,
+            txNote,
+            acctKey,
+            goalAccount,
+            acctConversion.converted,
+            goalCurrency,
+          ]
+        );
+        await applyTransactionEffects(tx, userId, goalTransfer);
+        await tx.run(
+          `INSERT INTO goal_contributions (id, goal_id, user_id, amount, currency, converted_amount, fx_rate, source, date, note, created_at, transaction_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            cid,
+            goalId,
+            userId,
+            amount,
+            acctCur,
+            acctConversion.converted,
+            acctConversion.rate,
+            source || null,
+            date,
+            note || null,
+            now,
+            txId,
+          ]
+        );
+        await tx.run('UPDATE goals SET updated_at = ? WHERE id = ? AND user_id = ?', [now, goalId, userId]);
+      });
     } catch (e) {
-      try {
-        await db.run('ROLLBACK');
-      } catch {
-        /* ignore */
-      }
       console.error('[goals] contribution with account failed', e);
       res.status(500).json({ error: 'failed to save contribution', code: 'CONTRIBUTION_SAVE_FAILED' });
       return;
@@ -4428,40 +4905,35 @@ app.post('/api/goals/:id/contributions', async (req, res) => {
     note: incomeNote,
   };
 
-  await db.run('BEGIN IMMEDIATE');
   try {
-    await db.run(
-      `INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, note, fromAccountKey)
-       VALUES (?, ?, ?, ?, 'other_income', 'income', ?, ?, ?)`,
-      [txId, userId, amount, enteredCurrency, txDate, incomeNote, goalAccount]
-    );
-    await applyTransactionEffects(db, userId, goalIncome);
-    await db.run(
-      `INSERT INTO goal_contributions (id, goal_id, user_id, amount, currency, converted_amount, fx_rate, source, date, note, created_at, transaction_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        cid,
-        goalId,
-        userId,
-        amount,
-        enteredCurrency,
-        manualConversion.converted,
-        manualConversion.rate,
-        source || null,
-        date,
-        note || null,
-        now,
-        txId,
-      ]
-    );
-    await db.run('UPDATE goals SET updated_at = ? WHERE id = ? AND user_id = ?', [now, goalId, userId]);
-    await db.run('COMMIT');
+    await withTransaction(db, async (tx) => {
+      await tx.run(
+        `INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, note, fromAccountKey)
+         VALUES (?, ?, ?, ?, 'other_income', 'income', ?, ?, ?)`,
+        [txId, userId, amount, enteredCurrency, txDate, incomeNote, goalAccount]
+      );
+      await applyTransactionEffects(tx, userId, goalIncome);
+      await tx.run(
+        `INSERT INTO goal_contributions (id, goal_id, user_id, amount, currency, converted_amount, fx_rate, source, date, note, created_at, transaction_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          cid,
+          goalId,
+          userId,
+          amount,
+          enteredCurrency,
+          manualConversion.converted,
+          manualConversion.rate,
+          source || null,
+          date,
+          note || null,
+          now,
+          txId,
+        ]
+      );
+      await tx.run('UPDATE goals SET updated_at = ? WHERE id = ? AND user_id = ?', [now, goalId, userId]);
+    });
   } catch (e) {
-    try {
-      await db.run('ROLLBACK');
-    } catch {
-      /* ignore */
-    }
     console.error('[goals] contribution failed', e);
     res.status(500).json({ error: 'failed to save contribution', code: 'CONTRIBUTION_SAVE_FAILED' });
     return;
@@ -4569,30 +5041,81 @@ const normalizeAccountIconKey = (raw) => {
   return ACCOUNT_ICON_KEYS_ALLOWED.has(k) ? k : null;
 };
 
+/** Одна проєкція рахунків на всіх, щоб `/api/accounts` і знімок не розʼїхалися. */
+const ACCOUNTS_SELECT = `
+  SELECT
+    account_key AS accountKey,
+    section,
+    sort_index AS sortIndex,
+    name,
+    primary_amount AS primaryAmount,
+    primary_currency AS primaryCurrency,
+    sub_text AS subText,
+    icon_tone AS iconTone,
+    badge,
+    icon_key AS iconKey,
+    debt_direction AS debtDirection,
+    debt_initial_amount AS debtInitialAmount,
+    debt_created_at AS debtCreatedAt,
+    updatedAt
+  FROM account_portfolio
+  WHERE user_id = ?
+  ORDER BY sort_index ASC, account_key ASC`;
+
+/** Той самий порядок, що й у `/api/transactions`: за днем, усередині дня — за додаванням. */
+const TRANSACTIONS_ORDER = 'ORDER BY substr(date, 1, 10) DESC, rowid DESC';
+
+const readAccounts = (dbConn, userId) => dbConn.all(ACCOUNTS_SELECT, [userId]);
+
 app.get('/api/accounts', async (req, res) => {
+  res.json(await readAccounts(db, req.authUserId));
+});
+
+/**
+ * Спільний знімок: транзакції й рахунки одним запитом, з ETag.
+ *
+ * Раніше застосунок опитував два маршрути кожні пʼять секунд і щоразу
+ * отримував усе заново — при 300 відкритих екранах близько 12 МБ/с відповідей,
+ * у яких майже ніколи нічого не змінюється.
+ *
+ * Тепер «чи змінилося» — це одне читання `user_data_version` за первинним
+ * ключем. Лічильники ведуть тригери, тож пропустити зміну неможливо. Коли не
+ * змінилося, відповідь — порожній 304.
+ */
+app.get('/api/sync', async (req, res) => {
   const userId = req.authUserId;
-  const rows = await db.all(
-    `SELECT
-       account_key AS accountKey,
-       section,
-       sort_index AS sortIndex,
-       name,
-       primary_amount AS primaryAmount,
-       primary_currency AS primaryCurrency,
-       sub_text AS subText,
-       icon_tone AS iconTone,
-       badge,
-       icon_key AS iconKey,
-       debt_direction AS debtDirection,
-       debt_initial_amount AS debtInitialAmount,
-       debt_created_at AS debtCreatedAt,
-       updatedAt
-     FROM account_portfolio
-     WHERE user_id = ?
-     ORDER BY sort_index ASC, account_key ASC`,
-    [userId]
-  );
-  res.json(rows);
+  const version = await readUserDataVersion(db, userId);
+  const etag = syncEtag(version);
+
+  res.set('ETag', etag);
+  // Приватні гроші: проміжним кешам зберігати їх не можна. Ревалідацію ми й
+  // так робимо самі, надсилаючи `If-None-Match` явно.
+  res.set('Cache-Control', 'no-store');
+
+  if (matchesEtag(req.get('If-None-Match'), etag)) {
+    res.status(304).end();
+    return;
+  }
+
+  const [transactions, accounts] = await Promise.all([
+    db.all(
+      `SELECT * FROM transactions WHERE user_id = ? ${TRANSACTIONS_ORDER} LIMIT ?`,
+      [userId, SYNC_TRANSACTION_LIMIT + 1],
+    ),
+    readAccounts(db, userId),
+  ]);
+
+  // Просимо на один більше, ніж віддамо: так дізнаємось, чи є старіші, не
+  // рахуючи COUNT(*) по всій історії.
+  const hasMore = transactions.length > SYNC_TRANSACTION_LIMIT;
+
+  res.json({
+    serverTime: new Date().toISOString(),
+    version,
+    transactions: hasMore ? transactions.slice(0, SYNC_TRANSACTION_LIMIT) : transactions,
+    hasMoreTransactions: hasMore,
+    accounts,
+  });
 });
 
 app.post('/api/accounts', async (req, res) => {
@@ -4880,93 +5403,103 @@ app.post('/api/accounts/:key/payment', async (req, res) => {
   if (!accountKey) { res.status(400).json({ error: 'invalid key', code: 'INVALID_DEBT_KEY' }); return; }
   if (note.length > 80) { res.status(400).json({ error: 'note must be <= 80 chars', code: 'INVALID_NOTE' }); return; }
 
-  await db.run('BEGIN IMMEDIATE');
+  // Курс — до транзакції: усередині неї мережі бути не має.
+  const convert = await buildAccountUnitConverter();
+
+  let outcome;
   try {
-    const debtAccount = await db.get(
-      `SELECT account_key AS accountKey, section, primary_amount AS primaryAmount,
-              primary_currency AS primaryCurrency, debt_direction AS debtDirection, name
-       FROM account_portfolio
-       WHERE user_id = ? AND account_key = ? AND section = 'debt'
-       LIMIT 1`,
-      [userId, accountKey]
-    );
-    const paymentAccount = paymentAccountKey
-      ? await db.get(
-          `SELECT account_key AS accountKey, section, primary_currency AS primaryCurrency
-           FROM account_portfolio
-           WHERE user_id = ? AND account_key = ?
-           LIMIT 1`,
-          [userId, paymentAccountKey]
-        )
-      : null;
-    const validated = validateDebtPayment({ debtAccount, paymentAccount, amount });
-    if (!validated.ok) {
-      await db.run('ROLLBACK');
-      res.status(validated.status).json({ error: validated.error, code: validated.code });
-      return;
-    }
+    outcome = await withTransaction(db, async (tx) => {
+      const debtAccount = await tx.get(
+        `SELECT account_key AS accountKey, section, primary_amount AS primaryAmount,
+                primary_currency AS primaryCurrency, debt_direction AS debtDirection, name
+         FROM account_portfolio
+         WHERE user_id = ? AND account_key = ? AND section = 'debt'
+         LIMIT 1`,
+        [userId, accountKey]
+      );
+      const paymentAccount = paymentAccountKey
+        ? await tx.get(
+            `SELECT account_key AS accountKey, section, primary_currency AS primaryCurrency
+             FROM account_portfolio
+             WHERE user_id = ? AND account_key = ?
+             LIMIT 1`,
+            [userId, paymentAccountKey]
+          )
+        : null;
+      const validated = validateDebtPayment({ debtAccount, paymentAccount, amount });
+      if (!validated.ok) {
+        // Відмова кидається, а не відповідається на місці: так транзакція
+        // гарантовано відкочується, а відповідь іде вже поза локом.
+        throw new TransactionRefused({
+          status: validated.status,
+          error: validated.error,
+          code: validated.code,
+        });
+      }
 
-    const now = new Date().toISOString();
-    const eventId = uuidv4();
-    const transaction = {
-      id: uuidv4(),
-      user_id: userId,
-      date: now,
-      note: note || `Debt repayment: ${debtAccount.name}`,
-      debtEventId: eventId,
-      ...buildDebtRepaymentTransfer(validated),
-    };
+      const now = new Date().toISOString();
+      const eventId = uuidv4();
+      const transaction = {
+        id: uuidv4(),
+        user_id: userId,
+        date: now,
+        note: note || `Debt repayment: ${debtAccount.name}`,
+        debtEventId: eventId,
+        ...buildDebtRepaymentTransfer(validated),
+      };
 
-    await db.run(
-      `INSERT INTO debt_events
-        (id, user_id, debt_account_key, event_type, amount, currency,
-         payment_account_key, transaction_id, date, note, created_at)
-       VALUES (?, ?, ?, 'repayment', ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        eventId,
-        userId,
-        validated.debtAccountKey,
-        validated.amount,
-        validated.currency,
-        validated.paymentAccountKey,
-        transaction.id,
-        now,
-        transaction.note,
-        now,
-      ]
-    );
-    await db.run(
-      `INSERT INTO transactions
-        (id, user_id, type, amount, currency, transferToAmount, transferToCurrency,
-         categoryId, date, note, fromAccountKey, toAccountKey, debtEventId)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        transaction.id,
-        userId,
-        transaction.type,
-        transaction.amount,
-        transaction.currency,
-        transaction.transferToAmount,
-        transaction.transferToCurrency,
-        transaction.categoryId,
-        transaction.date,
-        transaction.note,
-        transaction.fromAccountKey,
-        transaction.toAccountKey,
-        transaction.debtEventId,
-      ]
-    );
-    await applyTransactionEffects(db, userId, transaction);
-    const updated = await db.get(
-      'SELECT primary_amount AS primaryAmount FROM account_portfolio WHERE user_id = ? AND account_key = ?',
-      [userId, accountKey]
-    );
-    await db.run('COMMIT');
-    res.json({ newAmount: Number(updated?.primaryAmount) || 0, transaction });
-  } catch (e) {
-    await db.run('ROLLBACK');
-    throw e;
+      await tx.run(
+        `INSERT INTO debt_events
+          (id, user_id, debt_account_key, event_type, amount, currency,
+           payment_account_key, transaction_id, date, note, created_at)
+         VALUES (?, ?, ?, 'repayment', ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          eventId,
+          userId,
+          validated.debtAccountKey,
+          validated.amount,
+          validated.currency,
+          validated.paymentAccountKey,
+          transaction.id,
+          now,
+          transaction.note,
+          now,
+        ]
+      );
+      await tx.run(
+        `INSERT INTO transactions
+          (id, user_id, type, amount, currency, transferToAmount, transferToCurrency,
+           categoryId, date, note, fromAccountKey, toAccountKey, debtEventId)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          transaction.id,
+          userId,
+          transaction.type,
+          transaction.amount,
+          transaction.currency,
+          transaction.transferToAmount,
+          transaction.transferToCurrency,
+          transaction.categoryId,
+          transaction.date,
+          transaction.note,
+          transaction.fromAccountKey,
+          transaction.toAccountKey,
+          transaction.debtEventId,
+        ]
+      );
+      await applyTransactionEffects(tx, userId, transaction, 1, convert);
+      const updated = await tx.get(
+        'SELECT primary_amount AS primaryAmount FROM account_portfolio WHERE user_id = ? AND account_key = ?',
+        [userId, accountKey]
+      );
+      return { newAmount: Number(updated?.primaryAmount) || 0, transaction };
+    });
+  } catch (error) {
+    if (sendIfRefused(res, error)) return;
+    throw error;
   }
+
+  res.json(outcome);
 });
 
 app.delete('/api/accounts/:key', async (req, res) => {
@@ -4992,27 +5525,52 @@ app.delete('/api/accounts/:key', async (req, res) => {
     return;
   }
 
-  await db.run('BEGIN IMMEDIATE');
-  try {
-    await db.run(
+  await withTransaction(db, async (tx) => {
+    await tx.run(
       `UPDATE transactions SET debtEventId = NULL
        WHERE user_id = ? AND debtEventId IN (
          SELECT id FROM debt_events WHERE user_id = ? AND debt_account_key = ?
        )`,
       [userId, userId, accountKey]
     );
-    await db.run('DELETE FROM debt_events WHERE user_id = ? AND debt_account_key = ?', [userId, accountKey]);
-    await db.run('DELETE FROM account_portfolio WHERE user_id = ? AND account_key = ?', [userId, accountKey]);
-    await db.run('COMMIT');
-  } catch (e) { await db.run('ROLLBACK'); throw e; }
+    await tx.run('DELETE FROM debt_events WHERE user_id = ? AND debt_account_key = ?', [userId, accountKey]);
+    await tx.run('DELETE FROM account_portfolio WHERE user_id = ? AND account_key = ?', [userId, accountKey]);
+  });
   res.status(204).end();
 });
 
+/**
+ * Читання не запускає списань.
+ *
+ * Раніше тут стояв `runSubscriptionAutopayForUser()`, і застосунок опитує цей
+ * маршрут кожні 5 секунд із кожного відкритого екрана — тобто запис-шлях із
+ * ексклюзивним локом висів на найгарячішому читанні застосунку. Списання
+ * лишилося там, де йому й місце: у годинному такті.
+ */
 app.get('/api/transactions', async (req, res) => {
   const userId = req.authUserId;
-  await runSubscriptionAutopayForUser(userId);
-  const transactions = await db.all('SELECT * FROM transactions WHERE user_id = ? ORDER BY substr(date, 1, 10) DESC, rowid DESC', [userId]);
-  res.json(transactions);
+
+  // Без параметрів маршрут поводиться як раніше й віддає всю історію: на нього
+  // спирається наявний клієнт, і зламати його разом із появою `/api/sync` було
+  // б зайвим ризиком. Сторінку просить той, хто передав `limit` або `offset`.
+  const wantsPage = req.query.limit !== undefined || req.query.offset !== undefined;
+  if (!wantsPage) {
+    res.json(await db.all(`SELECT * FROM transactions WHERE user_id = ? ${TRANSACTIONS_ORDER}`, [userId]));
+    return;
+  }
+
+  const { limit, offset } = parseHistoryPage(req.query);
+  const rows = await db.all(
+    `SELECT * FROM transactions WHERE user_id = ? ${TRANSACTIONS_ORDER} LIMIT ? OFFSET ?`,
+    [userId, limit + 1, offset],
+  );
+  const hasMore = rows.length > limit;
+  res.json({
+    transactions: hasMore ? rows.slice(0, limit) : rows,
+    hasMore,
+    offset,
+    limit,
+  });
 });
 
 app.post('/api/transactions', async (req, res) => {
@@ -5089,48 +5647,41 @@ app.post('/api/transactions', async (req, res) => {
     ...transferFields,
   };
 
-  const { mismatches, overdrafts } = await checkTransactionPreconditions(db, userId, [
-    { tx: transaction, multiplier: 1 },
-  ]);
-  if (mismatches.length > 0) {
-    res.status(409).json({
-      error: 'transaction currency does not match the account balance unit',
-      code: 'ACCOUNT_DENOMINATION_MISMATCH',
-      accounts: mismatches,
-    });
-    return;
-  }
-  if (overdrafts.length > 0) {
-    res.status(409).json({
-      error: 'this would push a debt balance below zero',
-      code: 'DEBT_BALANCE_NEGATIVE',
-      accounts: overdrafts,
-    });
-    return;
-  }
+  // Курс береться до транзакції: усередині неї мережі бути не має.
+  const convert = await buildAccountUnitConverter();
 
-  await db.run(
-    `INSERT INTO transactions
-      (id, user_id, amount, currency, transferToAmount, transferToCurrency, categoryId, type, date, note, fromAccountKey, toAccountKey)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      transaction.id,
-      transaction.user_id,
-      transaction.amount,
-      transaction.currency,
-      transaction.transferToAmount,
-      transaction.transferToCurrency,
-      transaction.categoryId,
-      transaction.type,
-      transaction.date,
-      transaction.note ?? null,
-      transaction.fromAccountKey,
-      transaction.toAccountKey,
-    ]
-  );
-  await applyTransactionEffects(db, userId, transaction);
-  if (type === 'expense') {
-    await checkBudgetThresholdsAfterExpense(userId, categoryId);
+  try {
+    await withTransaction(db, async (tx, afterCommit) => {
+      await assertTransactionPreconditions(tx, userId, [{ tx: transaction, multiplier: 1 }], convert);
+      await tx.run(
+        `INSERT INTO transactions
+          (id, user_id, amount, currency, transferToAmount, transferToCurrency, categoryId, type, date, note, fromAccountKey, toAccountKey)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          transaction.id,
+          transaction.user_id,
+          transaction.amount,
+          transaction.currency,
+          transaction.transferToAmount,
+          transaction.transferToCurrency,
+          transaction.categoryId,
+          transaction.type,
+          transaction.date,
+          transaction.note ?? null,
+          transaction.fromAccountKey,
+          transaction.toAccountKey,
+        ]
+      );
+      await applyTransactionEffects(tx, userId, transaction, 1, convert);
+      // Алерт бюджету читає історію й шле повідомлення — обидва не мають
+      // права затримувати лок на запис.
+      if (type === 'expense') {
+        afterCommit(() => checkBudgetThresholdsAfterExpense(userId, categoryId));
+      }
+    });
+  } catch (error) {
+    if (sendIfRefused(res, error)) return;
+    throw error;
   }
 
   res.status(201).json(transaction);
@@ -5228,58 +5779,57 @@ app.patch('/api/transactions/:id', async (req, res) => {
     ...nextTransferFields,
   };
 
-  const patchChecks = await checkTransactionPreconditions(db, userId, [
-    { tx: current, multiplier: -1 },
-    { tx: nextTransaction, multiplier: 1 },
-  ]);
-  if (patchChecks.mismatches.length > 0) {
-    res.status(409).json({
-      error: 'transaction currency does not match the account balance unit',
-      code: 'ACCOUNT_DENOMINATION_MISMATCH',
-      accounts: patchChecks.mismatches,
-    });
-    return;
-  }
-  const patchOverdrafts = patchChecks.overdrafts;
-  if (patchOverdrafts.length > 0) {
-    res.status(409).json({
-      error: 'this would push a debt balance below zero',
-      code: 'DEBT_BALANCE_NEGATIVE',
-      accounts: patchOverdrafts,
-    });
-    return;
-  }
+  const convert = await buildAccountUnitConverter();
 
-  await db.run(
-    `UPDATE transactions
-     SET amount = ?,
-         currency = ?,
-         transferToAmount = ?,
-         transferToCurrency = ?,
-         categoryId = ?,
-         type = ?,
-         date = ?,
-         note = ?,
-         fromAccountKey = ?,
-         toAccountKey = ?
-     WHERE user_id = ? AND id = ?`,
-    [
-      nextTransaction.amount,
-      nextTransaction.currency,
-      nextTransaction.transferToAmount,
-      nextTransaction.transferToCurrency,
-      nextTransaction.categoryId,
-      nextTransaction.type,
-      nextTransaction.date,
-      nextTransaction.note ?? null,
-      nextTransaction.fromAccountKey,
-      nextTransaction.toAccountKey,
-      userId,
-      id,
-    ]
-  );
-  await applyTransactionEffects(db, userId, current, -1);
-  await applyTransactionEffects(db, userId, nextTransaction, 1);
+  // Скасування старої й застосування нової транзакції — один неподільний крок.
+  // Доки вони йшли двома окремими записами, падіння між ними лишало баланс,
+  // з якого стару транзакцію вже зняли, а нову ще не додали.
+  try {
+    await withTransaction(db, async (tx) => {
+      await assertTransactionPreconditions(
+        tx,
+        userId,
+        [
+          { tx: current, multiplier: -1 },
+          { tx: nextTransaction, multiplier: 1 },
+        ],
+        convert,
+      );
+      await tx.run(
+        `UPDATE transactions
+         SET amount = ?,
+             currency = ?,
+             transferToAmount = ?,
+             transferToCurrency = ?,
+             categoryId = ?,
+             type = ?,
+             date = ?,
+             note = ?,
+             fromAccountKey = ?,
+             toAccountKey = ?
+         WHERE user_id = ? AND id = ?`,
+        [
+          nextTransaction.amount,
+          nextTransaction.currency,
+          nextTransaction.transferToAmount,
+          nextTransaction.transferToCurrency,
+          nextTransaction.categoryId,
+          nextTransaction.type,
+          nextTransaction.date,
+          nextTransaction.note ?? null,
+          nextTransaction.fromAccountKey,
+          nextTransaction.toAccountKey,
+          userId,
+          id,
+        ]
+      );
+      await applyTransactionEffects(tx, userId, current, -1, convert);
+      await applyTransactionEffects(tx, userId, nextTransaction, 1, convert);
+    });
+  } catch (error) {
+    if (sendIfRefused(res, error)) return;
+    throw error;
+  }
 
   res.json(nextTransaction);
 });
@@ -5292,50 +5842,50 @@ app.delete('/api/transactions/:id', async (req, res) => {
     res.status(404).json({ error: 'Transaction not found' });
     return;
   }
-  const deleteChecks = await checkTransactionPreconditions(db, userId, [{ tx: current, multiplier: -1 }]);
-  if (deleteChecks.mismatches.length > 0) {
-    res.status(409).json({
-      error: 'transaction currency does not match the account balance unit',
-      code: 'ACCOUNT_DENOMINATION_MISMATCH',
-      accounts: deleteChecks.mismatches,
+  const convert = await buildAccountUnitConverter();
+
+  // Видалення чіпає чотири таблиці: внески в цілі, самі цілі, транзакцію й
+  // подію боргу. Або все, або нічого — інакше видалений внесок міг лишити
+  // ціль із прогресом, за яким уже немає транзакції.
+  try {
+    await withTransaction(db, async (tx) => {
+      await assertTransactionPreconditions(tx, userId, [{ tx: current, multiplier: -1 }], convert, {
+        overdraftError:
+          'removing this would push a debt balance below zero; delete the later debt entries first',
+      });
+
+      const linkedGoals = await tx.all(
+        'SELECT goal_id AS goalId FROM goal_contributions WHERE user_id = ? AND transaction_id = ?',
+        [userId, id]
+      );
+      const now = new Date().toISOString();
+      if (Array.isArray(linkedGoals) && linkedGoals.length > 0) {
+        await tx.run('DELETE FROM goal_contributions WHERE user_id = ? AND transaction_id = ?', [userId, id]);
+        const seen = new Set();
+        for (const row of linkedGoals) {
+          const gid = row?.goalId ? String(row.goalId) : '';
+          if (!gid || seen.has(gid)) continue;
+          seen.add(gid);
+          await tx.run('UPDATE goals SET updated_at = ? WHERE id = ? AND user_id = ?', [now, gid, userId]);
+        }
+      }
+      await applyTransactionEffects(tx, userId, current, -1, convert);
+      await tx.run('DELETE FROM transactions WHERE user_id = ? AND id = ?', [userId, id]);
+      if (current.debtEventId) {
+        await tx.run('DELETE FROM debt_events WHERE user_id = ? AND id = ?', [userId, current.debtEventId]);
+      }
     });
-    return;
+  } catch (error) {
+    if (sendIfRefused(res, error)) return;
+    throw error;
   }
-  const deleteOverdrafts = deleteChecks.overdrafts;
-  if (deleteOverdrafts.length > 0) {
-    res.status(409).json({
-      error: 'removing this would push a debt balance below zero; delete the later debt entries first',
-      code: 'DEBT_BALANCE_NEGATIVE',
-      accounts: deleteOverdrafts,
-    });
-    return;
-  }
-  const linkedGoals = await db.all(
-    'SELECT goal_id AS goalId FROM goal_contributions WHERE user_id = ? AND transaction_id = ?',
-    [userId, id]
-  );
-  const now = new Date().toISOString();
-  if (Array.isArray(linkedGoals) && linkedGoals.length > 0) {
-    await db.run('DELETE FROM goal_contributions WHERE user_id = ? AND transaction_id = ?', [userId, id]);
-    const seen = new Set();
-    for (const row of linkedGoals) {
-      const gid = row?.goalId ? String(row.goalId) : '';
-      if (!gid || seen.has(gid)) continue;
-      seen.add(gid);
-      await db.run('UPDATE goals SET updated_at = ? WHERE id = ? AND user_id = ?', [now, gid, userId]);
-    }
-  }
-  await applyTransactionEffects(db, userId, current, -1);
-  await db.run('DELETE FROM transactions WHERE user_id = ? AND id = ?', [userId, id]);
-  if (current.debtEventId) {
-    await db.run('DELETE FROM debt_events WHERE user_id = ? AND id = ?', [userId, current.debtEventId]);
-  }
+
   res.status(204).send();
 });
 
 // --- Receipt OCR scan ---
 // Тіло вже розібране спільним парсером із власним лімітом для цього шляху.
-app.post(RECEIPT_SCAN_PATH, createReceiptScanHandler());
+app.post(RECEIPT_SCAN_PATH, createReceiptScanHandler({ db }));
 
 // --- Порядок категорій і правки вбудованих ---
 // Вбудовані категорії задані в коді (src/constants/categories.ts), тому свого
@@ -5395,21 +5945,16 @@ app.put('/api/category-prefs', async (req, res) => {
     rows.push([userId, id, type, rows.length, rawName ? rawName.slice(0, 40) : null, icon, color, now]);
   }
 
-  await db.run('BEGIN');
-  try {
-    await db.run('DELETE FROM category_prefs WHERE user_id = ? AND type = ?', [userId, type]);
+  await withTransaction(db, async (tx) => {
+    await tx.run('DELETE FROM category_prefs WHERE user_id = ? AND type = ?', [userId, type]);
     for (const row of rows) {
-      await db.run(
+      await tx.run(
         `INSERT INTO category_prefs (user_id, category_id, type, sort_order, name, icon, color, updatedAt)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         row
       );
     }
-    await db.run('COMMIT');
-  } catch (error) {
-    await db.run('ROLLBACK');
-    throw error;
-  }
+  });
 
   res.json(
     rows.map(([, id, , sortOrder, name, icon, color]) => ({ id, sortOrder, name, icon, color }))
@@ -5536,23 +6081,21 @@ app.patch('/api/custom-categories/:id', async (req, res) => {
 
   const nextId = createCustomCategoryId(name, icon, color);
   const now = new Date().toISOString();
-  await db.run('BEGIN');
-  try {
-    await db.run(
+  // Перейменування змінює сам id категорії, тож посилання в транзакціях мають
+  // переїхати разом із ним. Половина цієї роботи лишила б транзакції з id,
+  // якого вже немає.
+  await withTransaction(db, async (tx) => {
+    await tx.run(
       `UPDATE custom_categories
        SET id = ?, name = ?, normalized_name = ?, icon = ?, color = ?, updatedAt = ?
        WHERE user_id = ? AND id = ?`,
       [nextId, name, normalizedName, icon, color, now, userId, id]
     );
-    await db.run(
+    await tx.run(
       'UPDATE transactions SET categoryId = ? WHERE user_id = ? AND categoryId = ?',
       [nextId, userId, id]
     );
-    await db.run('COMMIT');
-  } catch (error) {
-    await db.run('ROLLBACK');
-    throw error;
-  }
+  });
 
   res.json({
     id: nextId,
@@ -5589,17 +6132,12 @@ app.delete('/api/custom-categories/:id', async (req, res) => {
 
   const effectiveType = current?.type ?? (txTypeGuess?.type === 'income' ? 'income' : 'expense');
   const fallback = effectiveType === 'income' ? 'other_income' : 'other_expense';
-  await db.run('BEGIN');
-  try {
-    await db.run('UPDATE transactions SET categoryId = ? WHERE user_id = ? AND categoryId = ?', [fallback, userId, id]);
+  await withTransaction(db, async (tx) => {
+    await tx.run('UPDATE transactions SET categoryId = ? WHERE user_id = ? AND categoryId = ?', [fallback, userId, id]);
     if (current) {
-      await db.run('DELETE FROM custom_categories WHERE user_id = ? AND id = ?', [userId, id]);
+      await tx.run('DELETE FROM custom_categories WHERE user_id = ? AND id = ?', [userId, id]);
     }
-    await db.run('COMMIT');
-  } catch (error) {
-    await db.run('ROLLBACK');
-    throw error;
-  }
+  });
 
   res.status(204).end();
 });
@@ -6431,36 +6969,9 @@ app.post('/api/planner/active-shift/end', async (req, res) => {
 
 app.delete('/api/me', authMiddleware, async (req, res) => {
   const userId = req.authUserId;
-  const USER_TABLES = [
-    'transactions',
-    'custom_categories',
-    'subscriptions',
-    'planner_days',
-    'planner_shift_entries',
-    'planner_shift_templates',
-    'planner_user_settings',
-    'account_portfolio',
-    'bot_active_shifts',
-    'bot_report_settings',
-    'bot_report_deliveries',
-    'user_reminders',
-    'reminder_deliveries',
-    'category_budgets',
-    'budget_alerts',
-    'goals',
-    'goal_contributions',
-  ];
-  await db.run('BEGIN IMMEDIATE');
-  try {
-    for (const table of USER_TABLES) {
-      await db.run(`DELETE FROM ${table} WHERE user_id = ?`, [userId]);
-    }
-    await db.run('DELETE FROM users WHERE telegram_id = ?', [Number(userId)]);
-    await db.run('COMMIT');
-  } catch (e) {
-    await db.run('ROLLBACK');
-    throw e;
-  }
+  // Перелік таблиць живе в `user-tables.js`: там його звіряє зі схемою тест,
+  // який падає, щойно зʼявиться таблиця з `user_id`, якої в списку немає.
+  await withTransaction(db, (tx) => deleteUserData(tx, userId));
   res.status(204).end();
 });
 
@@ -6510,13 +7021,96 @@ app.use((req, res) => {
   res.sendFile(path.join(__dirname, '../dist/index.html'));
 });
 
-const httpServer = app.listen(port, '0.0.0.0', () => {
-  console.log(`Server running at http://0.0.0.0:${port}`);
-  // Прогріваємо ціни одразу: інакше перший після деплою відкритий гаманець
-  // застає порожній кеш і показує крипту без гривневого еквівалента.
-  void fetchCryptoUsdPrices();
-});
+/**
+ * Числа, специфічні для ролі. Збираються на момент запиту, а не накопичуються:
+ * усе, що тут є, уже живе в памʼяті процесу або дістається одним запитом.
+ */
+const collectMetrics = async () => {
+  const out = {};
+
+  if (RUNS_API) {
+    // Лічильники запитів має сенс показувати лише там, де є запити: у
+    // бот-процесі вони завжди нульові й лише засмічували б відповідь.
+    out.requests = requestMetrics.snapshot();
+    out.rateLimiter = {
+      ipBuckets: ipRateLimit.limiter.size(),
+      userBuckets: userRateLimit.limiter.size(),
+    };
+  }
+
+  if (RUNS_BOT) {
+    out.telegramQueue = {
+      total: telegramQueue.size(),
+      interactive: telegramQueue.sizeOf('interactive'),
+      bulk: telegramQueue.sizeOf('bulk'),
+    };
+    out.reportRender = reportRenderPool ? reportRenderPool.stats() : null;
+    // Розмови, що не дійшли до кінця. Ці мапи колись росли до перезапуску —
+    // тепер у них є строк життя, і саме тут видно, чи він працює.
+    out.pending = {
+      transactions: pendingTransactions.size(),
+      shiftStarts: pendingShiftStarts.size(),
+      smartTransactions: pendingSmartTransactions.size(),
+    };
+    try {
+      out.reportQueue = await reportQueueStats(db);
+    } catch {
+      out.reportQueue = null;
+    }
+  }
+
+  // Квоти цікаві обом ролям: скан чека витрачається в API, розпізнавання в боті.
+  try {
+    out.quotas = await quotaStats(db);
+  } catch {
+    out.quotas = null;
+  }
+
+  try {
+    out.outboxDepth = await outboxDepth(db);
+  } catch {
+    out.outboxDepth = null;
+  }
+  return out;
+};
+
+const health = createHealthHandlers({ db, role: DENGA_ROLE, collect: collectMetrics });
+healthHandlers = health;
+
+/**
+ * Бот-процес HTTP не піднімає, тож його стан інакше не побачити — а саме там
+ * найцікавіше: черга Telegram, пул рендеру, глибина outbox. Маленький сервер
+ * лише для цього, **тільки на 127.0.0.1**: назовні його видно бути не має.
+ */
+const BOT_HEALTH_PORT = Number(process.env.BOT_HEALTH_PORT) || 3002;
+const botHealthServer = RUNS_BOT && !RUNS_API
+  ? (() => {
+      const healthApp = express();
+      healthApp.get('/healthz', health.healthz);
+      healthApp.get('/metrics', health.metrics);
+      return healthApp.listen(BOT_HEALTH_PORT, '127.0.0.1', () =>
+        console.log(`[bot] стан на http://127.0.0.1:${BOT_HEALTH_PORT}/healthz`),
+      );
+    })()
+  : null;
+
+const httpServer = RUNS_API
+  ? app.listen(port, '0.0.0.0', () => {
+      console.log(`[${DENGA_ROLE}] server running at http://0.0.0.0:${port}`);
+      // Прогріваємо ціни одразу: інакше перший після деплою відкритий гаманець
+      // застає порожній кеш і показує крипту без гривневого еквівалента.
+      void fetchCryptoUsdPrices();
+    })
+  : null;
+
+if (!RUNS_API) console.log(`[${DENGA_ROLE}] процес без HTTP: лише бот і планувальники`);
 
 // pm2 restart = SIGTERM, а далі SIGKILL через kill_timeout. Без цього база
 // закривалася разом із процесом і -wal ріс від деплою до деплою.
-installGracefulShutdown({ server: httpServer, db, bot, budgetMs: shutdownBudgetMs });
+installGracefulShutdown({ server: httpServer ?? botHealthServer, db, bot, budgetMs: shutdownBudgetMs });
+
+/**
+ * Для тестів: маршрути стають досяжними без піднімання бота й планувальників —
+ * досить `DENGA_ROLE=api` і бази в памʼяті.
+ */
+export { app, db, httpServer, DENGA_ROLE };

@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { isCryptoDenomination, parseLegacyCryptoPosition } from './denomination.js';
+import { withTransaction } from './transaction.js';
 
 /**
  * Crypto accounts used to carry two conflicting numbers: `primary_amount` in
@@ -89,10 +90,9 @@ export const runCryptoDenominationMigration = async (db, dbPath) => {
 
   const backupPath = await backupDatabaseFile(db, dbPath, 'crypto-denomination');
 
-  await db.run('BEGIN IMMEDIATE');
-  try {
+  await withTransaction(db, async (tx) => {
     for (const u of updates) {
-      await db.run(
+      await tx.run(
         `UPDATE account_portfolio
          SET primary_amount = ?, primary_currency = ?, sub_text = ?, updatedAt = ?
          WHERE account_key = ?`,
@@ -102,10 +102,6 @@ export const runCryptoDenominationMigration = async (db, dbPath) => {
         `[migration] ${u.accountKey}: ${u.previousAmount} ${u.previousCurrency} -> ${u.primaryAmount} ${u.primaryCurrency}`,
       );
     }
-    await db.run('COMMIT');
-  } catch (error) {
-    await db.run('ROLLBACK');
-    throw error;
-  }
+  });
   return { migrated: updates.length, backupPath };
 };

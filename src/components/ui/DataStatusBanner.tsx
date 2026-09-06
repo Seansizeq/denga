@@ -3,6 +3,7 @@ import { CloudOff, RefreshCw } from 'lucide-react';
 import { useTranslation } from '../../i18n/LanguageContext';
 import { usePortfolio } from '../../context/PortfolioContext';
 import { useTransactions } from '../../context/TransactionContext';
+import { useSync } from '../../context/SyncContext';
 import styles from './DataStatusBanner.module.css';
 
 /**
@@ -14,6 +15,7 @@ const DataStatusBanner: React.FC = () => {
   const { t, fxStatus, refreshFxRates } = useTranslation();
   const { accountsStale, refreshAccounts } = usePortfolio();
   const { transactionsStale, refreshTransactions } = useTransactions();
+  const { sessionExpired } = useSync();
   const [online, setOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine !== false));
   const [retrying, setRetrying] = useState(false);
 
@@ -29,13 +31,15 @@ const DataStatusBanner: React.FC = () => {
   }, []);
 
   const dataStale = accountsStale || transactionsStale;
-  const message = !online
-    ? t('balance', 'dataOffline')
-    : dataStale
-      ? t('balance', 'dataStale')
-      : fxStatus === 'fallback'
-        ? t('balance', 'fxFallback')
-        : null;
+  const message = sessionExpired
+    ? t('common', 'sessionExpiredHint')
+    : !online
+      ? t('balance', 'dataOffline')
+      : dataStale
+        ? t('balance', 'dataStale')
+        : fxStatus === 'fallback'
+          ? t('balance', 'fxFallback')
+          : null;
 
   if (!message) return null;
 
@@ -52,10 +56,14 @@ const DataStatusBanner: React.FC = () => {
     <div className={styles.banner} role="status" aria-live="polite">
       <CloudOff size={14} strokeWidth={2} aria-hidden="true" />
       <span className={styles.text}>{message}</span>
-      <button type="button" className={styles.retry} onClick={() => void handleRetry()} disabled={retrying}>
-        <RefreshCw size={13} strokeWidth={2.2} className={retrying ? styles.spinning : undefined} aria-hidden="true" />
-        {t('common', 'retry')}
-      </button>
+      {/* Прострочену сесію повтором не полагодити: `initData` не оновлюється,
+          поки застосунок не перевідкриють. Кнопка тут лише збивала б з пантелику. */}
+      {sessionExpired ? null : (
+        <button type="button" className={styles.retry} onClick={() => void handleRetry()} disabled={retrying}>
+          <RefreshCw size={13} strokeWidth={2.2} className={retrying ? styles.spinning : undefined} aria-hidden="true" />
+          {t('common', 'retry')}
+        </button>
+      )}
     </div>
   );
 };

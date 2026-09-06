@@ -1,10 +1,18 @@
 import { parseReceipt } from './receipts.js';
 import { scanReceiptTextWithOcrSpace } from './receipt-ocr.js';
+import { createExpiringMap } from './expiring-map.js';
+import { consumeQuota, refundQuota } from './feature-quota.js';
 
 export const RECEIPT_SCAN_RATE_LIMIT_MS = 3000;
 export const RECEIPT_IMAGE_BYTES_LIMIT = 1024 * 1024;
 
-const lastReceiptScanByUser = new Map();
+/**
+ * Позначки часу останнього скану — лише щоб витримати паузу в три секунди.
+ * Звичайна `Map` тримала б рядок на кожного, хто бодай раз сканував чек, до
+ * самого перезапуску; тут запис живе рівно стільки, скільки має значення.
+ * Тести підставляють сюди свою мапу через `rateLimitMap`.
+ */
+const lastReceiptScanByUser = createExpiringMap({ ttlMs: 5 * 60 * 1000 });
 
 export const stripBase64Prefix = (raw) => {
   if (typeof raw !== 'string') return null;
@@ -38,6 +46,8 @@ export const createReceiptScanHandler = ({
   rateLimitMs = RECEIPT_SCAN_RATE_LIMIT_MS,
   imageBytesLimit = RECEIPT_IMAGE_BYTES_LIMIT,
   allowPublicFallback,
+  /** База для денної квоти. Без неї квота не рахується — так працюють старі тести. */
+  db = null,
 } = {}) => async (req, res) => {
   const userId = String(req.authUserId ?? '');
   if (!userId) {
@@ -74,6 +84,30 @@ export const createReceiptScanHandler = ({
   }
   rateLimitMap.set(userId, now);
 
+  /**
+   * Денна квота. Пауза в три секунди вище рятує від випадкового потоку, але не
+   * від людини, яка за день сканує сотні зображень: місячний ліміт OCR.space
+   * спільний на весь застосунок, і вичерпає його одна людина для всіх.
+   */
+  let quota = null;
+  if (db) {
+    quota = await consumeQuota(db, { userId, feature: 'receipt_scan' });
+    if (!quota.allowed) {
+      res.status(429).json({
+        error: 'Ліміт розпізнавань на сьогодні вичерпано. Спробуйте завтра або введіть суму вручну.',
+        code: 'QUOTA_EXCEEDED',
+        limit: quota.limit,
+        resetsIn: 'сьогодні опівночі UTC',
+      });
+      return;
+    }
+  }
+
+  /** Виклик до провайдера не відбувся — квоту не витрачено, повертаємо. */
+  const refundIfUnused = async () => {
+    if (db) await refundQuota(db, { userId, feature: 'receipt_scan' });
+  };
+
   const result = await scanReceiptText({
     base64,
     mime,
@@ -81,6 +115,8 @@ export const createReceiptScanHandler = ({
   });
 
   if (result.status === 'misconfigured') {
+    // Ключа немає — запиту назовні теж не було.
+    await refundIfUnused();
     res.status(503).json({
       error: result.message,
       code: result.code,
@@ -132,5 +168,8 @@ export const createReceiptScanHandler = ({
     scanStatus: parsed.reviewRequired ? 'review_required' : 'ok',
     code: parsed.reviewRequired ? 'REVIEW_REQUIRED' : 'OK',
     ocrMeta: result.meta,
+    // Скільки лишилося сьогодні — щоб застосунок міг попередити заздалегідь,
+    // а не лише в момент відмови.
+    quotaRemaining: quota?.remaining ?? null,
   });
 };

@@ -5,6 +5,9 @@ import { fileURLToPath } from 'url';
 import { resolveDebtDirectionForMigration } from './debt-direction.js';
 import { runCryptoDenominationMigration } from './crypto-denomination-migration.js';
 import { runGoalContributionTransferMigration } from './goal-contribution-migration.js';
+import { withTransaction } from './transaction.js';
+import { runMigrations } from './migrations.js';
+import { MIGRATIONS } from './migrations-list.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -15,12 +18,11 @@ export async function removeRetiredBybitIntegration(db) {
   const assetLinksTable = await db.get(
     "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'bybit_asset_accounts'",
   );
-  await db.run('BEGIN IMMEDIATE');
-  try {
+  await withTransaction(db, async (tx) => {
     if (assetLinksTable) {
       // Only remove accounts explicitly linked by the retired integration.
       // Older user-created Bybit/Card/overall accounts have no link row and remain untouched.
-      await db.run(
+      await tx.run(
         `DELETE FROM account_portfolio
          WHERE EXISTS (
            SELECT 1 FROM bybit_asset_accounts links
@@ -29,16 +31,12 @@ export async function removeRetiredBybitIntegration(db) {
          )`,
       );
     }
-    await db.exec(`
+    await tx.exec(`
       DROP TABLE IF EXISTS bybit_card_imports;
       DROP TABLE IF EXISTS bybit_asset_accounts;
       DROP TABLE IF EXISTS bybit_card_connections;
     `);
-    await db.run('COMMIT');
-  } catch (error) {
-    await db.run('ROLLBACK');
-    throw error;
-  }
+  });
 }
 
 export async function initDb() {
@@ -301,6 +299,63 @@ export async function initDb() {
   // Курси й ціни, які пережили б перезапуск. Раніше вони лежали тільки в
   // пам'яті процесу: після кожного деплою застосунок лишався без цін на крипту
   // доти, доки не відповість CoinGecko.
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS feature_usage (
+      user_id TEXT NOT NULL,
+      feature TEXT NOT NULL,
+      day TEXT NOT NULL,
+      used INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, feature, day)
+    )
+  `);
+  // Прибирання старих днів шукає за днем, а не перебирає таблицю.
+  await db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_feature_usage_day
+    ON feature_usage(day)
+  `);
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS report_queue (
+      user_id TEXT NOT NULL,
+      report_type TEXT NOT NULL,
+      slot_key TEXT NOT NULL,
+      chat_id INTEGER NOT NULL,
+      timezone TEXT,
+      due_at TEXT NOT NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      last_error TEXT,
+      created_at TEXT NOT NULL,
+      -- Ключ і є захистом від дублів: повторний такт тієї ж хвилини нічого не
+      -- додає, і виграти гонку між перевіркою та вставкою неможливо.
+      PRIMARY KEY (user_id, report_type, slot_key)
+    )
+  `);
+  // Розбирач шукає лише те, чий час настав, а не перебирає чергу цілком.
+  await db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_report_queue_due
+    ON report_queue(due_at)
+  `);
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS telegram_outbox (
+      id TEXT PRIMARY KEY,
+      chat_id INTEGER NOT NULL,
+      kind TEXT NOT NULL DEFAULT 'message',
+      payload TEXT NOT NULL,
+      lane TEXT NOT NULL DEFAULT 'bulk',
+      attempts INTEGER NOT NULL DEFAULT 0,
+      next_attempt_at TEXT NOT NULL,
+      last_error TEXT,
+      created_at TEXT NOT NULL
+    )
+  `);
+  // Такт розбору черги шукає рядки, чий час настав, а не перебирає всі.
+  await db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_telegram_outbox_due
+    ON telegram_outbox(next_attempt_at)
+  `);
+
   await db.exec(`
     CREATE TABLE IF NOT EXISTS app_cache (
       key TEXT PRIMARY KEY,
@@ -707,6 +762,17 @@ export async function initDb() {
     CREATE INDEX IF NOT EXISTS idx_user_reminders_user
     ON user_reminders(user_id, kind)
   `);
+  // Перевірка бюджету рахує витрати однієї категорії за поточний місяць. Без
+  // цього індексу вона доходила до кожної витрати користувача за всю історію —
+  // і робила це на кожну нову витрату.
+  await db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_transactions_user_cat_date
+    ON transactions(user_id, categoryId, date)
+  `);
+
+  // Кроки, що переливають дані, а не оголошують схему. Виконуються один раз і
+  // ведуть власний облік — на відміну від усього вище, яке безпечно повторювати.
+  await runMigrations(db, MIGRATIONS);
 
   return db;
 }

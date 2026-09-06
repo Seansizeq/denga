@@ -5,26 +5,31 @@ import React, {
   useEffect,
   useMemo,
   useRef,
-  useState,
 } from 'react';
 import { apiFetch } from '../api/client';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { usePolling } from '../hooks/usePolling';
+import { useSync } from './SyncContext';
+import type { RawAccount } from './SyncContext';
 import type { CryptoUsdHistory } from '../utils/portfolioMonthChange';
 
-const ACCOUNTS_STORAGE_KEY = 'denga_accounts_v1';
+/**
+ * Гаманець: рахунки й ціни на крипту.
+ *
+ * Рахунки приходять зі спільного знімка разом із транзакціями — раніше це був
+ * окремий опитувач із власним тактом на ті самі пʼять секунд. Ціни лишилися
+ * тут: у них свій ритм (дві хвилини й півгодини) і власні маршрути, тож
+ * зводити їх у знімок не було б чим виправдати.
+ */
+
 const CRYPTO_PRICES_STORAGE_KEY = 'denga_crypto_prices_v1';
 const CRYPTO_HISTORY_STORAGE_KEY = 'denga_crypto_history_v2';
 
-const ACCOUNTS_POLL_MS = 5000;
 const CRYPTO_PRICES_POLL_MS = 120_000;
 const CRYPTO_HISTORY_POLL_MS = 30 * 60 * 1000;
 
-export type RawAccount = Record<string, unknown>;
+export type { RawAccount };
 export type CryptoPrices = Record<string, number>;
-
-const isRawAccountArray = (v: unknown): v is RawAccount[] =>
-  Array.isArray(v) && v.every((row) => row && typeof row === 'object');
 
 const isCryptoPrices = (v: unknown): v is CryptoPrices => {
   if (!v || typeof v !== 'object' || Array.isArray(v)) return false;
@@ -58,11 +63,8 @@ interface PortfolioContextValue {
 const PortfolioContext = createContext<PortfolioContextValue | undefined>(undefined);
 
 export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [accounts, setAccounts] = usePersistedState<RawAccount[]>(
-    ACCOUNTS_STORAGE_KEY,
-    [],
-    { validate: isRawAccountArray },
-  );
+  const { accounts, stale: accountsStale, loaded: accountsLoaded, refresh: refreshAccounts } = useSync();
+
   const [cryptoPrices, setCryptoPrices] = usePersistedState<CryptoPrices>(
     CRYPTO_PRICES_STORAGE_KEY,
     {},
@@ -76,9 +78,6 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     },
   );
 
-  const [accountsStale, setAccountsStale] = useState(false);
-  const [accountsLoaded, setAccountsLoaded] = useState(false);
-
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
@@ -86,26 +85,6 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       mountedRef.current = false;
     };
   }, []);
-
-  const refreshAccounts = useCallback(async () => {
-    try {
-      const res = await apiFetch('/api/accounts');
-      if (!res.ok) throw new Error(`accounts ${res.status}`);
-      const data: unknown = await res.json();
-      if (!Array.isArray(data)) throw new Error('accounts: unexpected payload');
-      const next = data.filter((row): row is RawAccount => Boolean(row && typeof row === 'object'));
-      if (mountedRef.current) {
-        setAccounts(next);
-        setAccountsStale(false);
-      }
-    } catch {
-      // Кеш лишається на екрані, але вже позначений як застарілий — інакше
-      // користувач не відрізнить старі суми від свіжих.
-      if (mountedRef.current) setAccountsStale(true);
-    } finally {
-      if (mountedRef.current) setAccountsLoaded(true);
-    }
-  }, [setAccounts]);
 
   const refreshCryptoPrices = useCallback(async () => {
     try {
@@ -144,7 +123,6 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, [setCryptoUsdHistory]);
 
-  usePolling(refreshAccounts, ACCOUNTS_POLL_MS);
   usePolling(refreshCryptoPrices, CRYPTO_PRICES_POLL_MS);
   usePolling(refreshCryptoHistory, CRYPTO_HISTORY_POLL_MS);
 

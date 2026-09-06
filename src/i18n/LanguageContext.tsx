@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState, useCallback } from 'react';
-import { LANGUAGES, translations, LOCALE_MAP } from './translations';
-import type { Language } from './translations';
+import { LANGUAGES, LOCALE_MAP, getLoadedDictionary, loadDictionary } from './translations';
+import type { Dict, Language } from './translations';
 import type { DisplayCurrency } from '../utils/formatters';
 import type { TelegramWindow } from '../types/telegram';
 import type { CurrencyCode, FxRatesPayload } from '../utils/currency';
@@ -29,7 +29,8 @@ const isFxRatesPayload = (v: unknown): v is FxRatesPayload => {
   );
 };
 
-type Dict = typeof translations['uk'];
+/** `loading` — перший запит курсів ще в дорозі; це не збій. */
+export type FxStatus = 'live' | 'cache' | 'fallback' | 'loading';
 
 type TFunction = <K1 extends keyof Dict, K2 extends keyof Dict[K1]>(
   section: K1,
@@ -48,7 +49,7 @@ interface LanguageContextValue {
   t: TFunction;
   locale: string;
   fxRates: FxRatesPayload;
-  fxStatus: 'live' | 'cache' | 'fallback';
+  fxStatus: FxStatus;
   refreshFxRates: () => Promise<void>;
   convertAmount: (amount: number, from: CurrencyCode, to?: CurrencyCode) => number;
 }
@@ -85,6 +86,41 @@ const detectInitialLanguage = (): Language => {
 
 export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [language, setLanguageState] = useState<Language>(() => detectInitialLanguage());
+  /**
+   * Тексти обраної мови. Українська вже тут — вона їде статично; решта
+   * довантажується окремим чанком.
+   *
+   * Поки чанк у дорозі, показуються українські рядки. Це помітно лише при
+   * першому відкритті з іншою мовою й лише на час, який зазвичай ховається за
+   * заставкою: чанк лежить на тому самому хості й важить близько 30 КБ.
+   * Порожній інтерфейс на той самий час був би гіршим.
+   */
+  const [dictionary, setDictionary] = useState<Dict>(
+    () => getLoadedDictionary(detectInitialLanguage()) ?? getLoadedDictionary('uk')!,
+  );
+
+  useEffect(() => {
+    const ready = getLoadedDictionary(language);
+    if (ready) {
+      setDictionary(ready);
+      return;
+    }
+    let cancelled = false;
+    void loadDictionary(language)
+      .then((dict) => {
+        // Поки чанк вантажився, мову могли перемкнути ще раз — тоді цей
+        // результат уже нікому не потрібен.
+        if (!cancelled) setDictionary(dict);
+      })
+      .catch((error) => {
+        // Лишаємося на тому, що вже показано: інтерфейс іншою мовою кращий за
+        // його відсутність.
+        console.error('[i18n] не вдалося завантажити словник', language, error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [language]);
   const [displayCurrency, setDisplayCurrencyState] = useState<DisplayCurrency>(() => {
     try {
       const stored = localStorage.getItem(CURRENCY_STORAGE_KEY);
@@ -106,8 +142,11 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     fallbackRates,
     { validate: isFxRatesPayload },
   );
-  const [fxStatus, setFxStatus] = useState<'live' | 'cache' | 'fallback'>(
-    () => (fxRates.source === 'live' || fxRates.source === 'cache' ? 'cache' : 'fallback'),
+  // Поки перший запит курсів не завершився, статус саме невідомий, а не
+  // «сервер недоступний»: на першому запуску кешу ще немає, і смужка встигала
+  // сказати новій людині, що сервер лежить, поки той спокійно відповідав.
+  const [fxStatus, setFxStatus] = useState<FxStatus>(
+    () => (fxRates.source === 'live' || fxRates.source === 'cache' ? 'cache' : 'loading'),
   );
 
   useEffect(() => {
@@ -195,8 +234,8 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [displayCurrency, fxRates]);
 
   const t = useCallback<TFunction>(
-    (section, key) => translations[language][section][key],
-    [language]
+    (section, key) => dictionary[section][key],
+    [dictionary]
   );
 
   const value = useMemo<LanguageContextValue>(

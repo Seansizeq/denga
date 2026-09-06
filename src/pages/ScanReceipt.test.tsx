@@ -150,6 +150,9 @@ describe('ScanReceipt', () => {
 
   it('keeps the result view visible when save fails', async () => {
     mocks.addTransaction.mockResolvedValue(false);
+    mocks.portfolioAccounts = [
+      { accountKey: 'pumb', name: 'PUMB', primaryCurrency: 'UAH', section: 'bank' },
+    ];
     mocks.scanReceipt.mockResolvedValue({
       ok: true,
       receipt: {

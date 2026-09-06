@@ -4,7 +4,13 @@ import path from 'path';
 import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { pruneOldBackups, runDatabaseBackup, verifyBackupFile } from './backup.js';
+import {
+  TELEGRAM_DOCUMENT_LIMIT_BYTES,
+  deliverBackupOffsite,
+  pruneOldBackups,
+  runDatabaseBackup,
+  verifyBackupFile,
+} from './backup.js';
 
 let workDir;
 /** Застосунок передає своє зʼєднання лише заради чекпоінта WAL. */
@@ -131,5 +137,73 @@ describe('pruneOldBackups', () => {
     expect(left.filter((f) => f.includes('healthy'))).toHaveLength(20);
     expect(left.filter((f) => f.includes('suspect'))).toHaveLength(3);
     expect(left.filter((f) => f.includes('empty'))).toHaveLength(0);
+  });
+});
+
+describe('deliverBackupOffsite', () => {
+  const previousRemoteCmd = process.env.BACKUP_REMOTE_CMD;
+  afterEach(() => {
+    if (previousRemoteCmd === undefined) delete process.env.BACKUP_REMOTE_CMD;
+    else process.env.BACKUP_REMOTE_CMD = previousRemoteCmd;
+  });
+
+  const SMALL = 1024;
+  const HUGE = TELEGRAM_DOCUMENT_LIMIT_BYTES + 1;
+
+  it('шле файл у Telegram, поки він влазить', async () => {
+    delete process.env.BACKUP_REMOTE_CMD;
+    const bot = makeBot();
+    const out = await deliverBackupOffsite('/tmp/db.sqlite', SMALL, { bot, telegramChatId: 7 });
+    expect(out.telegram).toBe('ok');
+    expect(bot.documents).toHaveLength(1);
+    expect(bot.alerts).toHaveLength(0);
+  });
+
+  it('на завеликому файлі не мовчить, а піднімає тривогу', async () => {
+    delete process.env.BACKUP_REMOTE_CMD;
+    const bot = makeBot();
+    const out = await deliverBackupOffsite('/tmp/db.sqlite', HUGE, { bot, telegramChatId: 7 });
+
+    // Саме ця гілка раніше була `console.warn` і `return` — офсайт-копії
+    // припинялися б тихо, і дізналися б про це в найгірший момент.
+    expect(out.telegram).toBe('too_large');
+    expect(bot.documents).toHaveLength(0);
+    expect(bot.alerts).toHaveLength(1);
+    expect(bot.alerts[0].text).toMatch(/офсайт-копії БД припинилися/);
+    expect(bot.alerts[0].text).toMatch(/BACKUP_REMOTE_CMD/);
+  });
+
+  it('з налаштованим BACKUP_REMOTE_CMD великий файл — не аварія', async () => {
+    process.env.BACKUP_REMOTE_CMD = 'rclone copy {file} remote:denga';
+    const bot = makeBot();
+    const calls = [];
+    const out = await deliverBackupOffsite('/tmp/db-2026.sqlite', HUGE, {
+      bot, telegramChatId: 7, runCommand: async (c) => { calls.push(c); return ''; },
+    });
+
+    expect(calls).toEqual(['rclone copy /tmp/db-2026.sqlite remote:denga']);
+    expect(out.remote).toBe('ok');
+    expect(bot.alerts[0].text).toMatch(/більше не влазить у Telegram/);
+    expect(bot.alerts[0].text).not.toMatch(/🚨/);
+  });
+
+  it('повідомляє, коли команда доставки впала', async () => {
+    process.env.BACKUP_REMOTE_CMD = 'false';
+    const bot = makeBot();
+    const out = await deliverBackupOffsite('/tmp/db.sqlite', SMALL, {
+      bot, telegramChatId: 7, runCommand: async () => { throw new Error('rclone: no such remote'); },
+    });
+
+    expect(out.remote).toBe('failed');
+    expect(bot.alerts[0].text).toMatch(/офсайт-копія БД не відправлена/);
+    expect(bot.alerts[0].text).toMatch(/no such remote/);
+    // Telegram-канал при цьому працює як раніше.
+    expect(out.telegram).toBe('ok');
+  });
+
+  it('без бота нічого не робить і не падає', async () => {
+    delete process.env.BACKUP_REMOTE_CMD;
+    const out = await deliverBackupOffsite('/tmp/db.sqlite', SMALL, {});
+    expect(out).toEqual({ telegram: 'skipped', remote: 'skipped' });
   });
 });

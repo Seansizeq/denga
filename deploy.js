@@ -127,8 +127,24 @@ const remoteDeploy = async (expectedSha) => {
     'npm install --no-audit --no-fund',
     'echo "[server] npm run build..."',
     'npm run build',
-    'echo "[server] pm2 restart $PM2_NAME..."',
-    'pm2 restart "$PM2_NAME" --update-env || pm2 start npm --name "$PM2_NAME" -- run start',
+    // Два процеси замість одного: API можна оновлювати без простою
+    // (`reload` піднімає нові копії й гасить старі по черзі), а бот
+    // перезапускається звичайно — він один і опитування має бути єдиним.
+    //
+    // Гілка з `$PM2_NAME` лишається для серверів, які ще не перейшли на
+    // ecosystem: деплой не має ламатися на півдорозі через те, що на тому
+    // боці стара розкладка процесів.
+    'echo "[server] pm2..."',
+    'if pm2 describe denga-api > /dev/null 2>&1; then',
+    '  pm2 reload ecosystem.config.cjs --update-env',
+    'elif pm2 describe "$PM2_NAME" > /dev/null 2>&1; then',
+    '  echo "[server] знайдено старий процес $PM2_NAME — переходжу на ecosystem"',
+    '  pm2 delete "$PM2_NAME" || true',
+    '  pm2 start ecosystem.config.cjs --update-env',
+    'else',
+    '  pm2 start ecosystem.config.cjs --update-env',
+    'fi',
+    'pm2 save || true',
     'echo "[server] Done."',
   ].join('\n');
 
