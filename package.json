@@ -16,7 +16,8 @@
     "show-deploy-key": "node scripts/show-deploy-key.js",
     "api": "node server/api.js",
     "bot": "node server/bot.js",
-    "loadtest": "node scripts/loadtest.mjs"
+    "loadtest": "node scripts/loadtest.mjs",
+    "restore": "node scripts/restore-backup.js"
   },
   "dependencies": {
     "@tma.js/sdk": "^3.2.0",
