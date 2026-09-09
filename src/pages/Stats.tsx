@@ -149,7 +149,6 @@ const Stats: React.FC = () => {
         range={range}
         periodLabel={periodLabel}
         currentNet={aggregates.net}
-        previousNet={aggregates.previousNet}
       />
     </div>
   );

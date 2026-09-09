@@ -1,0 +1,113 @@
+/* Поле на кілька абзаців: скарга на помилку — це розповідь, а не рядок.
+   Решта вигляду береться з FormSheet.module.css, щоб форма не відрізнялася
+   від інших форм застосунку. */
+.area {
+  width: 100%;
+  min-height: 132px;
+  resize: none;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 16px;
+  line-height: 1.45;
+  padding: 14px;
+}
+
+.area:focus {
+  outline: none;
+}
+
+.area::placeholder {
+  color: var(--text-tertiary);
+}
+
+/* З'являється лише на підході до стелі: постійний лічильник підганяв би
+   писати коротше, а нам потрібно навпаки — щоб описали докладно. */
+.counter {
+  margin: -10px 4px 0;
+  font-size: 12px;
+  text-align: right;
+  color: var(--text-tertiary);
+}
+
+.counterNearLimit {
+  color: var(--accent-red);
+}
+
+/* Кнопка прикріплення й сам знімок стоять під полем, а не збоку: на вузькому
+   екрані все, що поруч із текстом, з'їдає ширину самого тексту. */
+.attach {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: transform 0.12s ease, background 0.15s ease;
+}
+
+.attach:active {
+  transform: scale(0.97);
+}
+
+.attach:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.attachSpinner {
+  animation: attachSpin 0.8s linear infinite;
+}
+
+@keyframes attachSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* Мініатюра — щоб було видно, що саме прикріплено: у Telegram легко
+   промахнутися повз потрібний скрін у стрічці галереї. */
+.thumb {
+  position: relative;
+  align-self: flex-start;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  line-height: 0;
+}
+
+.thumbImage {
+  display: block;
+  max-width: 148px;
+  max-height: 148px;
+}
+
+.thumbRemove {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: rgba(6, 5, 10, 0.72);
+  color: #fff;
+  cursor: pointer;
+}
+
+.thumbRemove:active {
+  transform: scale(0.92);
+}
+
+.fileInput {
+  display: none;
+}

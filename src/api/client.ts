@@ -71,6 +71,57 @@ export type CategoryBudget = {
   currency: 'UAH' | 'PLN' | 'USD';
 };
 
+/** Скільки символів приймає сервер; клієнт мусить знати те саме число. */
+export const FEEDBACK_MAX_LENGTH = 2000;
+
+export type FeedbackReport = {
+  text: string;
+  /** Маршрут, з якого писали. */
+  screen?: string;
+  /** Текст помилки, коли лист іде з екрана падіння. */
+  error?: string;
+  /** Знімок екрана, вже стиснутий, у base64 без префікса `data:`. */
+  image?: string;
+};
+
+/**
+ * Причина відмови, а не сам текст: підписи живуть у словнику, і англійського
+ * повідомлення від сервера людині показувати нема за що.
+ */
+export type FeedbackResult =
+  | { ok: true }
+  | { ok: false; reason: 'rate_limited' | 'not_configured' | 'image_rejected' | 'failed' };
+
+/**
+ * Технічний контекст збирається тут, а не на кожному місці виклику: автор
+ * листа його не напише, а без нього «не працює» не полагодити.
+ */
+export const sendFeedback = async (report: FeedbackReport): Promise<FeedbackResult> => {
+  const tg = (window as Window & TelegramWindow).Telegram?.WebApp;
+  const res = await apiFetch('/api/feedback', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      text: report.text,
+      screen: report.screen,
+      error: report.error,
+      image: report.image,
+      appVersion: import.meta.env.VITE_APP_VERSION,
+      platform: tg?.platform,
+      tgVersion: tg?.version,
+    }),
+  }).catch(() => null);
+
+  if (!res) return { ok: false, reason: 'failed' };
+  if (res.ok) return { ok: true };
+  if (res.status === 429) return { ok: false, reason: 'rate_limited' };
+  if (res.status === 503) return { ok: false, reason: 'not_configured' };
+  // Стиснення на клієнті тримає знімок далеко під стелею сервера, тож сюди
+  // потрапляє хіба що зіпсований файл — але мовчки губити його не можна.
+  if (res.status === 400 && report.image) return { ok: false, reason: 'image_rejected' };
+  return { ok: false, reason: 'failed' };
+};
+
 export const getReportSettings = async (): Promise<ReportSettings> => {
   const res = await apiFetch('/api/reports/settings');
   if (!res.ok) throw new Error('failed to load report settings');

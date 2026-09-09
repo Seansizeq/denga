@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { useTranslation } from '../../i18n/LanguageContext';
 import { formatSignedCurrency } from '../../utils/formatters';
 import type { StatsRange } from '../../utils/statsPeriod';
-import { resultValueColor, selectResultCardGroup } from '../../utils/resultCard';
+import { resultValueColor, selectResultCardTier } from '../../utils/resultCard';
 import ResultImageSheet from './ResultImageSheet';
 
 interface ResultCardSheetProps {
@@ -11,7 +11,6 @@ interface ResultCardSheetProps {
   range: StatsRange;
   periodLabel: string;
   currentNet: number;
-  previousNet: number;
 }
 
 const ResultCardSheet: React.FC<ResultCardSheetProps> = ({
@@ -20,12 +19,13 @@ const ResultCardSheet: React.FC<ResultCardSheetProps> = ({
   range,
   periodLabel,
   currentNet,
-  previousNet,
 }) => {
-  const { t, locale, displayCurrency, moneyHidden } = useTranslation();
-  const group = useMemo(
-    () => selectResultCardGroup(range, currentNet, previousNet),
-    [range, currentNet, previousNet],
+  const { t, locale, displayCurrency, moneyHidden, convertAmount } = useTranslation();
+  // За схованих сум малюнка немає навмисно: щабель грошей сам по собі виказав
+  // би, у якій сотні результат, і ховати цифру було б без сенсу.
+  const tier = useMemo(
+    () => (moneyHidden ? null : selectResultCardTier(convertAmount(currentNet, displayCurrency, 'USD'))),
+    [moneyHidden, convertAmount, currentNet, displayCurrency],
   );
   const title = useMemo(() => {
     if (range === 'today') return t('stats', 'resultDay');
@@ -42,7 +42,7 @@ const ResultCardSheet: React.FC<ResultCardSheetProps> = ({
       onClose={onClose}
       sheetTitle={t('stats', 'resultImageTitle')}
       imageAlt={title}
-      group={group}
+      tier={tier}
       filenameKey={`${range}-${periodLabel}`}
       label={title}
       amount={amount}

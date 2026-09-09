@@ -33,7 +33,7 @@ export const hashesMatch = (expected, received) => {
 };
 
 /**
- * @returns {{ ok: true, userId: string } | { ok: false, code: string }}
+ * @returns {{ ok: true, userId: string, username: string | null } | { ok: false, code: string }}
  */
 export const verifyTelegramInitData = (
   initDataRaw,
@@ -84,7 +84,11 @@ export const verifyTelegramInitData = (
   }
   const userId = user && user.id ? String(user.id).trim() : '';
   if (!userId) return invalid;
-  return { ok: true, userId };
+  // Нік іде тим самим підписаним рядком, що й id, тож він так само надійний.
+  // Потрібен там, де людину треба показати людині: сам по собі числовий id
+  // у звіті про помилку не каже нічого.
+  const username = user && user.username ? String(user.username).trim() : '';
+  return { ok: true, userId, username: username || null };
 };
 
 /**

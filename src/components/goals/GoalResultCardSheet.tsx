@@ -3,7 +3,7 @@ import type { Goal } from '../../api/client';
 import { useTranslation } from '../../i18n/LanguageContext';
 import { formatDeltaCurrency, formatSignedCurrency } from '../../utils/formatters';
 import type { DisplayCurrency } from '../../utils/formatters';
-import { selectGoalResultCardGroup, selectResultCardGroup } from '../../utils/resultCard';
+import { selectResultCardTier } from '../../utils/resultCard';
 import ResultImageSheet from '../stats/ResultImageSheet';
 
 /** Що саме показує картинка: увесь забіг чи заробіток за один період. */
@@ -14,9 +14,8 @@ interface GoalResultCardSheetProps {
   onClose: () => void;
   goal: Goal;
   scope?: GoalResultScope;
-  /** Заробіток за період і за попередній такий самий — лише для scope !== 'total'. */
+  /** Заробіток за період — лише для scope !== 'total'. */
   periodEarned?: number;
-  previousEarned?: number;
 }
 
 const GoalResultCardSheet: React.FC<GoalResultCardSheetProps> = ({
@@ -25,27 +24,20 @@ const GoalResultCardSheet: React.FC<GoalResultCardSheetProps> = ({
   goal,
   scope = 'total',
   periodEarned = 0,
-  previousEarned = 0,
 }) => {
-  const { t, locale } = useTranslation();
+  const { t, locale, convertAmount } = useTranslation();
   const currency = goal.currency as DisplayCurrency;
   const rawProgress = goal.targetAmount > 0 ? Math.max(0, (goal.saved / goal.targetAmount) * 100) : 0;
   const progress = Math.round(rawProgress);
-  const totalGroup = useMemo(
-    () => selectGoalResultCardGroup({
-      saved: goal.saved,
-      target: goal.targetAmount,
-      createdAt: goal.createdAt,
-      deadline: goal.deadline,
-    }),
-    [goal.saved, goal.targetAmount, goal.createdAt, goal.deadline],
+  // Обидві картки міряють гроші, а не прогрес: на загальній — скільки вже
+  // зібрано, на періодній — скільки принесено за відрізок.
+  const totalTier = useMemo(
+    () => selectResultCardTier(convertAmount(goal.saved, currency, 'USD')),
+    [convertAmount, goal.saved, currency],
   );
-
-  // Картка періоду міряє сам заробіток проти попереднього такого ж відрізка,
-  // тож бере ту саму оцінку, що й картки статистики, а не прогрес цілі.
-  const periodGroup = useMemo(
-    () => selectResultCardGroup(scope === 'month' ? 'month' : 'today', periodEarned, previousEarned),
-    [scope, periodEarned, previousEarned],
+  const periodTier = useMemo(
+    () => selectResultCardTier(convertAmount(periodEarned, currency, 'USD')),
+    [convertAmount, periodEarned, currency],
   );
 
   if (scope !== 'total') {
@@ -57,7 +49,7 @@ const GoalResultCardSheet: React.FC<GoalResultCardSheetProps> = ({
         onClose={onClose}
         sheetTitle={t('goals', 'goalResultImageTitle')}
         imageAlt={`${label}: ${goal.name}`}
-        group={periodGroup}
+        tier={periodTier}
         filenameKey={`goal-${goal.name}-${scope}`}
         label={label}
         amount={formatDeltaCurrency(periodEarned, locale, currency)}
@@ -72,7 +64,7 @@ const GoalResultCardSheet: React.FC<GoalResultCardSheetProps> = ({
       onClose={onClose}
       sheetTitle={t('goals', 'goalResultImageTitle')}
       imageAlt={`${t('goals', 'goalResultPrefix')}: ${goal.name}`}
-      group={totalGroup}
+      tier={totalTier}
       filenameKey={`goal-${goal.name}`}
       label={`${goal.name} — ${progress}% ${t('goals', 'goalCompletedShort')}`}
       amount={formatSignedCurrency(goal.saved, locale, currency)}

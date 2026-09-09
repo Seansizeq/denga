@@ -25,7 +25,16 @@ const validInitData = (overrides = {}, token = BOT_TOKEN) =>
 describe('verifyTelegramInitData', () => {
   it('accepts a freshly signed string and returns the user id', () => {
     const result = verifyTelegramInitData(validInitData(), { botToken: BOT_TOKEN, nowMs: NOW_MS });
-    expect(result).toEqual({ ok: true, userId: '42' });
+    expect(result).toEqual({ ok: true, userId: '42', username: null });
+  });
+
+  it('returns the signed username when Telegram supplied one', () => {
+    const initData = validInitData({ user: JSON.stringify({ id: 42, first_name: 'Bodya', username: 'bodya' }) });
+    expect(verifyTelegramInitData(initData, { botToken: BOT_TOKEN, nowMs: NOW_MS })).toEqual({
+      ok: true,
+      userId: '42',
+      username: 'bodya',
+    });
   });
 
   /**
@@ -71,6 +80,7 @@ describe('verifyTelegramInitData', () => {
     expect(verifyTelegramInitData(initData, { botToken: BOT_TOKEN, nowMs: NOW_MS })).toEqual({
       ok: true,
       userId: '42',
+      username: null,
     });
   });
 
@@ -90,7 +100,7 @@ describe('verifyTelegramInitData', () => {
     ).toEqual({ ok: false, code: AUTH_CODES.expired });
     expect(
       verifyTelegramInitData(initData, { botToken: BOT_TOKEN, nowMs: NOW_MS, maxAgeSec: 300 })
-    ).toEqual({ ok: true, userId: '42' });
+    ).toEqual({ ok: true, userId: '42', username: null });
   });
 
   it('tolerates a clock a few minutes ahead but not a date from the far future', () => {
@@ -98,6 +108,7 @@ describe('verifyTelegramInitData', () => {
     expect(verifyTelegramInitData(slightlyAhead, { botToken: BOT_TOKEN, nowMs: NOW_MS })).toEqual({
       ok: true,
       userId: '42',
+      username: null,
     });
     const farFuture = validInitData({ auth_date: nowSec + 24 * 60 * 60 });
     expect(verifyTelegramInitData(farFuture, { botToken: BOT_TOKEN, nowMs: NOW_MS })).toEqual({

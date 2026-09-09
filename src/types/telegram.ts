@@ -21,6 +21,8 @@ export interface TelegramWebApp {
   requestFullscreen?: () => void;
   exitFullscreen?: () => void;
   version?: string;
+  /** `android`, `ios`, `tdesktop`, `weba`… — потрібне лише для звітів про помилки. */
+  platform?: string;
   showAlert?: (message: string, callback?: () => void) => Promise<void> | void;
   showConfirm?: (message: string, callback?: (confirmed: boolean) => void) => Promise<boolean> | void;
   isVersionAtLeast?: (version: string) => boolean;

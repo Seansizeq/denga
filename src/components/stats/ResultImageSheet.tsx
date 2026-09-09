@@ -3,12 +3,7 @@ import { LoaderCircle, Share2 } from 'lucide-react';
 import BottomSheet from '../ui/BottomSheet';
 import { useTranslation } from '../../i18n/LanguageContext';
 import { useToast } from '../ui/Toast';
-import {
-  getResultCardTemplates,
-  getResultCardTemplateUrl,
-  renderResultCardPng,
-  type ResultCardGroup,
-} from '../../utils/resultCard';
+import { renderResultCardPng, type ResultCardTier } from '../../utils/resultCard';
 import styles from './ResultCardSheet.module.css';
 
 interface ResultImageSheetProps {
@@ -16,7 +11,8 @@ interface ResultImageSheetProps {
   onClose: () => void;
   sheetTitle: string;
   imageAlt: string;
-  group: ResultCardGroup;
+  /** Щабель грошей на малюнку; `null` — картка без малюнка. */
+  tier: ResultCardTier | null;
   filenameKey: string;
   /** Дрібний рядок над сумою. */
   label: string;
@@ -30,9 +26,6 @@ const safeFilePart = (value: string): string =>
     .normalize('NFKD')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '') || 'result';
-
-/** Шаблон тягнеться наново на кожне відкриття — жодної прив'язки до періоду. */
-const randomTemplateIndex = (count: number): number => (count > 0 ? Math.floor(Math.random() * count) : 0);
 
 const downloadBlob = (blob: Blob, filename: string): void => {
   const url = URL.createObjectURL(blob);
@@ -50,7 +43,7 @@ const ResultImageSheet: React.FC<ResultImageSheetProps> = ({
   onClose,
   sheetTitle,
   imageAlt,
-  group,
+  tier,
   filenameKey,
   label,
   amount,
@@ -58,16 +51,9 @@ const ResultImageSheet: React.FC<ResultImageSheetProps> = ({
 }) => {
   const { t } = useTranslation();
   const toast = useToast();
-  const templateCount = getResultCardTemplates(group).length;
-  const [templateIndex, setTemplateIndex] = useState(() => randomTemplateIndex(templateCount));
   const [blob, setBlob] = useState<Blob | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [error, setError] = useState(false);
-
-  useEffect(() => {
-    if (!open) return;
-    setTemplateIndex(randomTemplateIndex(templateCount));
-  }, [open, group, templateCount]);
 
   useEffect(() => {
     if (!open) return;
@@ -78,7 +64,7 @@ const ResultImageSheet: React.FC<ResultImageSheetProps> = ({
     setError(false);
 
     void renderResultCardPng({
-      templateUrl: getResultCardTemplateUrl(group, templateIndex),
+      tier,
       label,
       amount,
       amountColor,
@@ -97,7 +83,7 @@ const ResultImageSheet: React.FC<ResultImageSheetProps> = ({
       cancelled = true;
       if (nextUrl) URL.revokeObjectURL(nextUrl);
     };
-  }, [open, group, templateIndex, label, amount, amountColor]);
+  }, [open, tier, label, amount, amountColor]);
 
   const shareOrDownload = useCallback(async () => {
     if (!blob) return;

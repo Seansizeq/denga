@@ -31,10 +31,25 @@ export const OUTBOX_BATCH = 50;
  */
 export const outboxBackoffMs = (attempts) => Math.min(30 * 60_000, 10_000 * 2 ** Math.max(0, attempts - 1));
 
+/**
+ * Знімок лежить у черзі рядком base64, а не буфером.
+ *
+ * Payload проходить через `JSON.stringify`, а буфер після нього стає
+ * `{ type: 'Buffer', data: [...] }` — назад він сам не збереться, і Telegram
+ * такого не приймає. Тому байти зберігаються текстом, а буфер збирається за
+ * мить до відправки.
+ */
+const photoSource = (payload) =>
+  typeof payload?.fileBase64 === 'string' ? Buffer.from(payload.fileBase64, 'base64') : payload?.file;
+
 const SENDERS = {
   message: (bot, chatId, payload) => bot.sendMessage(chatId, payload.text, payload.options ?? {}),
-  photo: (bot, chatId, payload) => bot.sendPhoto(chatId, payload.file, payload.options ?? {}),
-  document: (bot, chatId, payload) => bot.sendDocument(chatId, payload.file, payload.options ?? {}),
+  // Четвертий аргумент — ім'я файлу й тип: без них бібліотека не знає, чим є
+  // буфер, і відмовляє замість того, щоб надіслати.
+  photo: (bot, chatId, payload) =>
+    bot.sendPhoto(chatId, photoSource(payload), payload.options ?? {}, payload.fileOptions ?? {}),
+  document: (bot, chatId, payload) =>
+    bot.sendDocument(chatId, photoSource(payload), payload.options ?? {}, payload.fileOptions ?? {}),
 };
 
 export const OUTBOX_KINDS = Object.keys(SENDERS);
@@ -50,8 +65,8 @@ const isoAfter = (nowMs, deltaMs) => new Date(nowMs + deltaMs).toISOString();
  *
  * @param {object} db
  * @param {{ chatId: number, kind?: string, text?: string, file?: unknown,
- *           options?: object, lane?: 'interactive' | 'bulk', id?: string,
- *           nowMs?: number }} message
+ *           fileBase64?: string, fileOptions?: object, options?: object,
+ *           lane?: 'interactive' | 'bulk', id?: string, nowMs?: number }} message
  */
 export const enqueueOutbox = async (db, message) => {
   const chatId = Number(message?.chatId);
@@ -67,6 +82,8 @@ export const enqueueOutbox = async (db, message) => {
   const payload = JSON.stringify({
     text: message?.text,
     file: message?.file,
+    fileBase64: message?.fileBase64,
+    fileOptions: message?.fileOptions,
     options: message?.options,
   });
 

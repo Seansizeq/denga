@@ -11,6 +11,13 @@ import { withTransaction } from './transaction.js';
 import { deleteUserData } from './user-tables.js';
 import { createExpiringMap } from './expiring-map.js';
 import { OUTBOX_BATCH, drainOutbox, enqueueOutbox, outboxDepth } from './telegram-outbox.js';
+import {
+  FEEDBACK_MAX_LENGTH,
+  buildFeedbackPhotoCaption,
+  buildFeedbackReport,
+  normalizeFeedbackImage,
+  normalizeFeedbackText,
+} from './feedback-report.js';
 import { createHealthHandlers, createRequestMetrics } from './health.js';
 import { consumeQuota, pruneQuotas, quotaStats, refundQuota } from './feature-quota.js';
 import {
@@ -84,7 +91,11 @@ import {
   dueReportsQuery,
   isReminderDue,
 } from './auto-reports-schedule.js';
-import { parseSmartTransaction, isSmartTransactionEnabled } from './smart-transaction.js';
+import {
+  attemptSmartTransaction,
+  parseSmartTransaction,
+  isSmartTransactionEnabled,
+} from './smart-transaction.js';
 import {
   BOT_TRANSACTION_CATEGORIES,
   buildSmartTransactionCategories,
@@ -310,6 +321,7 @@ const authMiddleware = (req, res, next) => {
     return;
   }
   req.authUserId = parsed.userId;
+  req.authUsername = parsed.username ?? null;
   next();
 };
 
@@ -2602,15 +2614,20 @@ async function takeSmartQuota(msg, feature) {
 async function trySmartTransaction(msg, text) {
   if (!(await takeSmartQuota(msg, 'smart_transaction'))) return false;
   const context = await getSmartTransactionContext(String(msg.from.id));
-  const parsed = await parseSmartTransaction({
+  const { result, reached } = await attemptSmartTransaction({
     text,
     ...context,
   });
-  // Розпізнавання вимкнене — запиту назовні не було, квоту повертаємо.
-  if (parsed === null && !isSmartTransactionEnabled()) {
+  /*
+   * Слот витрачає запит, що пішов назовні, — не сама спроба. Вимкнене
+   * розпізнавання, приспаний ноутбук із моделлю, закритий порт: у всіх цих
+   * випадках чужої квоти ми не торкнулись, тож і своєї людині рахувати нічого.
+   * Інакше виходило найгірше поєднання: фіча лежить, а денний ліміт тане.
+   */
+  if (!reached) {
     await refundQuota(db, { userId: String(msg.from.id), feature: 'smart_transaction' });
   }
-  return sendSmartTransactionConfirmation(msg, parsed, context.today);
+  return sendSmartTransactionConfirmation(msg, result, context.today);
 }
 
 async function trySmartTransactionImage(msg, image) {
@@ -3999,6 +4016,87 @@ const userRateLimit = rateLimitMiddleware({
   keyFn: (req) => (req.authUserId ? `u:${req.authUserId}` : null),
 });
 app.use('/api', userRateLimit);
+
+/**
+ * Куди їдуть скарги на помилки. Без цього числа фіча вимкнена: слати нема
+ * кому, і чесніше відповісти клієнту відмовою, ніж мовчки з'їсти лист, який
+ * людина писала.
+ */
+const FEEDBACK_CHAT_ID = Number(process.env.FEEDBACK_CHAT_ID) || 0;
+
+/**
+ * Власний ліміт поверх загального. Триста запитів на хвилину — це про роботу
+ * застосунку, а тут людина пише текст руками: більше кількох листів за десять
+ * хвилин означає або зрив, або флуд, і в обох випадках приймати їх нема сенсу.
+ */
+const FEEDBACK_RATE_LIMIT = perInstanceLimit(Number(process.env.FEEDBACK_RATE_LIMIT_PER_10MIN) || 3);
+const feedbackRateLimit = rateLimitMiddleware({
+  windowMs: 10 * 60_000,
+  max: FEEDBACK_RATE_LIMIT,
+  keyFn: (req) => (req.authUserId ? `fb:${req.authUserId}` : null),
+});
+
+app.post('/api/feedback', feedbackRateLimit, async (req, res) => {
+  const userId = String(req.authUserId ?? '');
+  if (!userId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  if (!FEEDBACK_CHAT_ID) {
+    res.status(503).json({ error: 'Feedback is not configured', code: 'not_configured' });
+    return;
+  }
+  const text = normalizeFeedbackText(req.body?.text);
+  if (!text) {
+    res.status(400).json({ error: `text must be 1..${FEEDBACK_MAX_LENGTH} characters` });
+    return;
+  }
+  const image = normalizeFeedbackImage(req.body?.image);
+  if (!image.ok) {
+    res.status(400).json({ error: `image is ${image.reason}`, code: image.reason });
+    return;
+  }
+
+  // Через outbox, а не напряму: цей процес — API, бота під рукою в нього
+  // немає. Заразом лист переживе перезапуск і не загубиться на деплої.
+  const nowMs = Date.now();
+  await enqueueOutbox(db, {
+    chatId: FEEDBACK_CHAT_ID,
+    // Скарга чекає на відповідь живої людини, тож іде поперед розсилок.
+    lane: 'interactive',
+    nowMs,
+    text: buildFeedbackReport({
+      text,
+      userId,
+      username: req.authUsername,
+      screen: req.body?.screen,
+      appVersion: req.body?.appVersion,
+      platform: req.body?.platform,
+      tgVersion: req.body?.tgVersion,
+      error: req.body?.error,
+      hasImage: Boolean(image.image),
+    }),
+  });
+
+  if (image.image) {
+    // Окремим повідомленням, а не підписом: підпис у Telegram обмежений 1024
+    // символами, а лист буває вчетверо довшим — частина скарги просто зникла б.
+    //
+    // Секунда вперед — щоб знімок не обігнав текст: черга бере рядки за часом,
+    // і при однаковій мітці порядок двох сусідів нічим не закріплений.
+    await enqueueOutbox(db, {
+      chatId: FEEDBACK_CHAT_ID,
+      kind: 'photo',
+      lane: 'interactive',
+      nowMs: nowMs + 1000,
+      fileBase64: image.image,
+      fileOptions: { filename: 'feedback.jpg', contentType: 'image/jpeg' },
+      options: { caption: buildFeedbackPhotoCaption({ userId, username: req.authUsername }) },
+    });
+  }
+
+  res.status(202).json({ ok: true });
+});
 
 app.get('/api/reports/settings', async (req, res) => {
   const userId = String(req.authUserId ?? '');

@@ -45,6 +45,12 @@ const makeBot = (behaviour = () => undefined) => {
       sent.push({ chatId, text, options });
       return { message_id: sent.length };
     },
+    async sendPhoto(chatId, file, options, fileOptions) {
+      const outcome = behaviour(sent.length);
+      if (outcome instanceof Error) throw outcome;
+      sent.push({ chatId, file, options, fileOptions });
+      return { message_id: sent.length };
+    },
   };
   // Смуги, як у справжньої обгортки навколо бота.
   bot.bulk = { ...bot, sendMessage: (...a) => { bot.lanes.push('bulk'); return bot.sendMessage(...a); } };
@@ -83,6 +89,27 @@ describe('drainOutbox', () => {
     expect(stats).toEqual({ sent: 1, retried: 0, dropped: 0 });
     expect(bot.sent[0]).toMatchObject({ chatId: 42, text: 'бюджет вичерпано' });
     expect(await outboxDepth(db)).toBe(0);
+  });
+
+  it('збирає знімок назад у буфер: через JSON буфер не проходить', async () => {
+    const png = Buffer.from('якийсь знімок екрана, довший за поріг у 64 байти — інакше він не пройде перевірку');
+    await enqueueOutbox(db, {
+      chatId: 42,
+      kind: 'photo',
+      fileBase64: png.toString('base64'),
+      fileOptions: { filename: 'feedback.jpg', contentType: 'image/jpeg' },
+      options: { caption: 'знімок до скарги' },
+      nowMs: NOW,
+    });
+    const bot = makeBot();
+
+    const stats = await drainOutbox(db, bot, { nowMs: NOW });
+
+    expect(stats).toEqual({ sent: 1, retried: 0, dropped: 0 });
+    expect(Buffer.isBuffer(bot.sent[0].file)).toBe(true);
+    expect(bot.sent[0].file.equals(png)).toBe(true);
+    expect(bot.sent[0].fileOptions).toEqual({ filename: 'feedback.jpg', contentType: 'image/jpeg' });
+    expect(bot.sent[0].options).toEqual({ caption: 'знімок до скарги' });
   });
 
   it('за замовчуванням шле смугою розсилки, щоб не тіснити відповіді людям', async () => {

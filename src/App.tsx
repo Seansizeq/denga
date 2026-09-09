@@ -5,6 +5,7 @@ import { SyncProvider } from './context/SyncContext';
 import { TransactionProvider } from './context/TransactionContext';
 import { PortfolioProvider } from './context/PortfolioContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import FeedbackSheet from './components/feedback/FeedbackSheet';
 import BottomNavigation from './components/BottomNavigation';
 import { ToastProvider } from './components/ui/Toast';
 import DataStatusBanner from './components/ui/DataStatusBanner';
@@ -122,30 +123,57 @@ const NotFound: React.FC = () => {
 const RouteErrorBoundary: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { t } = useTranslation();
   const { pathname } = useLocation();
+  // Про що саме скаржитись: текст падіння лишається тут, поки людина не
+  // закриє форму. `null` — форма закрита.
+  const [reporting, setReporting] = useState<string | null>(null);
+
   return (
     <ErrorBoundary
       resetKey={pathname}
-      fallback={(retry) => (
+      fallback={(retry, error) => (
         <div style={{ padding: '80px 24px', textAlign: 'center' }}>
           <p style={{ fontSize: 17, fontWeight: 600, marginBottom: 8 }}>{t('common', 'errorTitle')}</p>
           <p style={{ color: 'var(--text-secondary, #9490a0)', fontSize: 15, marginBottom: 20 }}>
             {t('common', 'errorHint')}
           </p>
-          <button
-            type="button"
-            onClick={retry}
-            style={{
-              padding: '12px 24px',
-              borderRadius: 12,
-              border: 'none',
-              background: 'var(--accent-primary, #7C5CFF)',
-              color: '#fff',
-              fontSize: 15,
-              fontWeight: 600,
-            }}
-          >
-            {t('common', 'retry')}
-          </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }}>
+            <button
+              type="button"
+              onClick={retry}
+              style={{
+                padding: '12px 24px',
+                borderRadius: 12,
+                border: 'none',
+                background: 'var(--accent-primary, #7C5CFF)',
+                color: '#fff',
+                fontSize: 15,
+                fontWeight: 600,
+              }}
+            >
+              {t('common', 'retry')}
+            </button>
+            {/* Саме тут скаржаться найчастіше, і саме тут до листа є що
+                прикласти: текст помилки підставиться сам. */}
+            <button
+              type="button"
+              onClick={() => setReporting(error?.message ?? 'unknown error')}
+              style={{
+                padding: '12px 24px',
+                borderRadius: 12,
+                border: 'none',
+                background: 'rgba(255, 255, 255, 0.08)',
+                color: 'var(--text-primary, #fff)',
+                fontSize: 15,
+                fontWeight: 600,
+              }}
+            >
+              {t('feedback', 'row')}
+            </button>
+          </div>
+
+          {reporting !== null ? (
+            <FeedbackSheet screen={pathname} error={reporting} onClose={() => setReporting(null)} />
+          ) : null}
         </div>
       )}
     >

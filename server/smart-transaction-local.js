@@ -24,10 +24,15 @@ const resolveTimeoutMs = () => Number(process.env.LOCAL_LLM_TIMEOUT_MS) || DEFAU
  * A local model runs on hardware nobody is renting by the token, so the budget
  * is patience, not quota — the timeout is far longer than Gemini's 15s. First
  * call after a model loads is the slow one.
+ *
+ * @returns {Promise<{ result: object|null, reached: boolean }>} `reached` — сервер
+ * моделі відповів (будь-яким статусом). Хибне значення означає, що запит не
+ * доїхав узагалі: ноутбук спить, порт закритий, тайлнет мовчить — тобто спроба
+ * нічого не коштувала й нікому.
  */
-export async function parseWithLocalModel({ text, categories, accounts = [], defaultCurrency = 'UAH', today }) {
+export async function attemptWithLocalModel({ text, categories, accounts = [], defaultCurrency = 'UAH', today }) {
   const baseUrl = getBaseUrl();
-  if (!baseUrl) return null;
+  if (!baseUrl) return { result: null, reached: false };
 
   const system = buildSystemPrompt({ categories, accounts, defaultCurrency, today });
 
@@ -72,30 +77,36 @@ export async function parseWithLocalModel({ text, categories, accounts = [], def
     // Timeout, connection refused, laptop asleep — all the same to the caller:
     // no answer, fall back to the manual flow.
     console.warn('[smart-transaction] local model request failed:', err?.message || err);
-    return null;
+    return { result: null, reached: false };
   }
 
   if (!res.ok) {
     console.warn(`[smart-transaction] local model HTTP ${res.status}: ${await res.text().catch(() => '')}`);
-    return null;
+    return { result: null, reached: true };
   }
 
   let data;
   try {
     data = await res.json();
   } catch {
-    return null;
+    return { result: null, reached: true };
   }
   const raw = data?.choices?.[0]?.message?.content;
-  if (!raw) return null;
+  if (!raw) return { result: null, reached: true };
 
   const parsed = parseModelJson(raw);
   if (!parsed) {
     console.warn('[smart-transaction] local model returned unparseable JSON:', String(raw).slice(0, 200));
-    return null;
+    return { result: null, reached: true };
   }
-  return normalizeResult(parsed, { categories, accounts, defaultCurrency, today });
+  return {
+    result: normalizeResult(parsed, { categories, accounts, defaultCurrency, today }),
+    reached: true,
+  };
 }
+
+/** Сумісна обгортка для тих, кому потрібен лише результат. */
+export const parseWithLocalModel = async (args) => (await attemptWithLocalModel(args)).result;
 
 /**
  * Constrained decoding should make this a plain JSON.parse. It is tolerant of a

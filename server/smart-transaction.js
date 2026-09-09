@@ -10,14 +10,17 @@
 // Pick one with SMART_TRANSACTION_PROVIDER:
 //   gemini (default) — Google Gemini, needs GEMINI_API_KEY
 //   local            — any OpenAI-compatible server, needs LOCAL_LLM_URL
+//
+// SMART_TRANSACTION_FALLBACK lists who to ask when the chosen one gives no
+// answer — see `resolveFallbackNames`.
 
-import { isGeminiEnabled, parseWithGemini } from './smart-transaction-gemini.js';
-import { isLocalModelEnabled, parseWithLocalModel } from './smart-transaction-local.js';
+import { attemptWithGemini, isGeminiEnabled } from './smart-transaction-gemini.js';
+import { attemptWithLocalModel, isLocalModelEnabled } from './smart-transaction-local.js';
 import { preferExplicitCategory } from './smart-transaction-shared.js';
 
 const PROVIDERS = {
-  gemini: { isEnabled: isGeminiEnabled, parse: parseWithGemini },
-  local: { isEnabled: isLocalModelEnabled, parse: parseWithLocalModel },
+  gemini: { isEnabled: isGeminiEnabled, attempt: attemptWithGemini },
+  local: { isEnabled: isLocalModelEnabled, attempt: attemptWithLocalModel },
 };
 
 export const DEFAULT_PROVIDER = 'gemini';
@@ -58,11 +61,101 @@ const currentProvider = () => {
   return { name, ...PROVIDERS[name] };
 };
 
-/** Whether the selected provider is configured well enough to be worth calling. */
-export const isSmartTransactionEnabled = () => {
-  const provider = currentProvider();
-  return Boolean(provider?.isEnabled());
+let warnedAboutFallback = null;
+
+/**
+ * Запасні провайдери: кого питати, коли основний не відповів.
+ *
+ * Порожньо за замовчуванням — і це не обережність заради обережності. `local`
+ * вибирають рівно для того, щоб текст витрат не покидав свою машину; мовчазний
+ * відкат у Google на першій же мережевій помилці звів би цей вибір нанівець.
+ * Тому запасний шлях вмикає та сама людина, що й основний, і бачить його в
+ * конфігурації, а не дізнається постфактум.
+ *
+ * Незнайома назва — не привід глушити основний провайдер (на відміну від
+ * `SMART_TRANSACTION_PROVIDER`, де вимкнення й є безпечним боком помилки):
+ * рядок, якого немає серед провайдерів, нікуди дані не відправить. Тож така
+ * назва просто випадає зі списку, голосно, один раз у лог.
+ *
+ * @returns {string[]} назви провайдерів у порядку спроб, без основного й дублів
+ */
+export const resolveFallbackNames = (raw, primaryName) => {
+  const unknown = [];
+  const out = [];
+  for (const part of String(raw ?? '').split(',')) {
+    const name = part.trim().toLowerCase();
+    if (!name) continue;
+    if (!Object.prototype.hasOwnProperty.call(PROVIDERS, name)) {
+      unknown.push(name);
+      continue;
+    }
+    if (name === primaryName || out.includes(name)) continue;
+    out.push(name);
+  }
+  if (unknown.length > 0 && warnedAboutFallback !== raw) {
+    warnedAboutFallback = raw;
+    console.error(
+      `[smart-transaction] невідомі імена в SMART_TRANSACTION_FALLBACK: ${unknown.join(', ')}. ` +
+        `Доступні: ${PROVIDER_NAMES.join(', ')}. Решта списку працює.`
+    );
+  }
+  return out;
 };
+
+/** Основний провайдер плюс запасні — у порядку, в якому їх питатимуть. */
+const providerChain = () => {
+  const primary = currentProvider();
+  if (!primary) return [];
+  const fallbacks = resolveFallbackNames(process.env.SMART_TRANSACTION_FALLBACK, primary.name);
+  return [primary, ...fallbacks.map((name) => ({ name, ...PROVIDERS[name] }))];
+};
+
+/** Whether at least one provider in the chain is configured well enough to call. */
+export const isSmartTransactionEnabled = () => providerChain().some((provider) => provider.isEnabled());
+
+/**
+ * Розбір із ознакою «чи дійшли ми бодай до когось».
+ *
+ * `reached` існує заради денної квоти. Квота захищає чужий сервіс від потоку
+ * запитів, а не карає людину за спробу: коли модель лежить і жоден запит навіть
+ * не пішов, слот має повернутися. Розрізняє це тільки провайдер — знадвору
+ * «сервер не відповів» і «сервер відповів дурницею» виглядають однаково.
+ *
+ * Ланцюг зупиняється на першій **відповіді**, а не на першій вдалій транзакції:
+ * `{ isTransaction: false }` — це теж відповідь («це не витрата»), і питати за
+ * неї ще й запасного означало б платити двічі за той самий «ні» й відправляти
+ * назовні звичайне листування.
+ *
+ * @returns {Promise<{ result: object|null, reached: boolean }>}
+ */
+export async function attemptSmartTransaction({
+  text,
+  categories,
+  accounts = [],
+  defaultCurrency = 'UAH',
+  today = new Date().toISOString().slice(0, 10),
+}) {
+  if (!text || !Array.isArray(categories) || categories.length === 0) {
+    return { result: null, reached: false };
+  }
+
+  const chain = providerChain().filter((provider) => provider.isEnabled());
+  let reached = false;
+
+  for (const provider of chain) {
+    const outcome = await provider.attempt({ text, categories, accounts, defaultCurrency, today });
+    reached = reached || outcome?.reached === true;
+    const result = outcome?.result ?? null;
+    if (result) {
+      if (provider !== chain[0]) {
+        console.warn(`[smart-transaction] відповів запасний провайдер: ${provider.name}`);
+      }
+      return { result: preferExplicitCategory(result, { text, categories }), reached };
+    }
+  }
+
+  return { result: null, reached };
+}
 
 /**
  * @returns {Promise<null | {
@@ -71,18 +164,7 @@ export const isSmartTransactionEnabled = () => {
  *   date?: string, accountKey?: string|null, accountName?: string|null, note?: string
  * }>}
  */
-export async function parseSmartTransaction({
-  text,
-  categories,
-  accounts = [],
-  defaultCurrency = 'UAH',
-  today = new Date().toISOString().slice(0, 10),
-}) {
-  if (!text || !Array.isArray(categories) || categories.length === 0) return null;
-
-  const provider = currentProvider();
-  if (!provider || !provider.isEnabled()) return null;
-
-  const parsed = await provider.parse({ text, categories, accounts, defaultCurrency, today });
-  return preferExplicitCategory(parsed, { text, categories });
+export async function parseSmartTransaction(args) {
+  const { result } = await attemptSmartTransaction(args);
+  return result;
 }

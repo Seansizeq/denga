@@ -564,6 +564,14 @@ export type Dict = {
     placeholderStocks: string;
     placeholderDebt: string;
   };
+  feedback: {
+    row: string; rowDescription: string; section: string;
+    title: string; placeholder: string; hint: string;
+    send: string; cancel: string; sent: string;
+    addImage: string; removeImage: string; imageAlt: string;
+    errorEmpty: string; errorRateLimited: string; errorUnavailable: string; errorFailed: string;
+    errorImage: string;
+  };
   common: {
     loading: string; retry: string; notFoundTitle: string;
     errorTitle: string; errorHint: string;

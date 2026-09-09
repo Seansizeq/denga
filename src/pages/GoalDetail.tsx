@@ -625,7 +625,6 @@ const GoalDetail: React.FC = () => {
         goal={goal}
         scope={resultScope ?? 'total'}
         periodEarned={resultScope === 'month' ? periods.month : periods.today}
-        previousEarned={resultScope === 'month' ? periods.prevMonth : periods.yesterday}
       />
 
       {contributeOpen ? (
