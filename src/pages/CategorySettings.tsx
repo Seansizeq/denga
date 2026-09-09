@@ -8,7 +8,6 @@ import {
 } from '../constants/categories';
 import { getCategoryIcon } from '../constants/categoryIcons';
 import { useCategoryCatalog, type CatalogCategory } from '../hooks/useCategoryCatalog';
-import { useGoBack } from '../hooks/useGoBack';
 import { useTranslation } from '../i18n/LanguageContext';
 import type { CategoryType } from '../api/client';
 import { hapticLight, showAppAlert, showAppConfirm } from '../utils/notify';
@@ -21,7 +20,6 @@ type EditorState =
 
 const CategorySettings: React.FC = () => {
   const { t } = useTranslation();
-  const goBack = useGoBack('/settings');
   const [type, setType] = useState<CategoryType>('expense');
   const { categories, loading, reorder, createCategory, saveCategory, removeCategory } =
     useCategoryCatalog(type);
@@ -170,9 +168,6 @@ const CategorySettings: React.FC = () => {
   return (
     <div className={styles.container}>
       <header className={styles.header}>
-        <button type="button" className={styles.back} onClick={goBack}>
-          ← {t('settings', 'title')}
-        </button>
         <div className={styles.titleRow}>
           <h1 className={styles.title}>{t('categoriesManager', 'title')}</h1>
           <button

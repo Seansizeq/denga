@@ -29,7 +29,6 @@ import type { DisplayCurrency } from '../utils/formatters';
 import { localIsoDate } from '../utils/dateRanges';
 import { computeGoalPace, deadlineDeltaDays, fillColorForPct, progressPct, sumAccountPeriodDeltas } from '../utils/goals';
 import { useTranslation } from '../i18n/LanguageContext';
-import { useGoBack } from '../hooks/useGoBack';
 import { showAppConfirm } from '../utils/notify';
 import { usePortfolio } from '../context/PortfolioContext';
 import { useDenominationRates } from '../hooks/useDenominationRates';
@@ -56,7 +55,6 @@ const SOURCE_PALETTE = [
 const GoalDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const goBack = useGoBack('/goals');
   const { t, locale } = useTranslation();
   const [goal, setGoal] = useState<Goal | null>(null);
   const [contributions, setContributions] = useState<GoalContribution[]>([]);
@@ -299,11 +297,6 @@ const GoalDetail: React.FC = () => {
   if (loading) {
     return (
       <div className={styles.container} aria-busy="true" aria-label={t('common', 'loading')}>
-        <header className={styles.header}>
-          <button type="button" className={styles.back} onClick={goBack}>
-            ← {t('goals', 'title')}
-          </button>
-        </header>
         <div className={hero.skeletonHero} aria-hidden="true">
           <div className={hero.skeletonTop}>
             <div className={hero.skeletonIcon} />
@@ -330,9 +323,6 @@ const GoalDetail: React.FC = () => {
   if (error || !goal || !pace) {
     return (
       <div className={styles.container}>
-        <button type="button" className={styles.back} onClick={goBack}>
-          ← {t('goals', 'title')}
-        </button>
         <p className={styles.bannerError} role="alert">
           {error || t('goals', 'loadError')}
         </p>
@@ -346,11 +336,6 @@ const GoalDetail: React.FC = () => {
 
   return (
     <div className={styles.container}>
-      <header className={styles.header}>
-        <button type="button" className={styles.back} onClick={goBack}>
-          ← {t('goals', 'title')}
-        </button>
-      </header>
 
       {actionError ? (
         <p className={styles.bannerError} role="alert">

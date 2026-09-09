@@ -13,15 +13,6 @@
   margin-bottom: 16px;
 }
 
-.back {
-  background: none;
-  border: none;
-  color: var(--accent-primary-strong);
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  padding: 0 0 4px;
-}
 
 .title {
   font-size: 28px;

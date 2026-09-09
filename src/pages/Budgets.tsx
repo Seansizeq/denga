@@ -3,7 +3,6 @@ import { apiFetch, deleteBudget, getBudgets, setBudget, type CategoryBudget } fr
 import { CATEGORIES, getCustomCategoryData, inferCustomCategoryColor, inferCustomCategoryIcon } from '../constants/categories';
 import { getCategoryIcon } from '../constants/categoryIcons';
 import { useTranslation } from '../i18n/LanguageContext';
-import { useGoBack } from '../hooks/useGoBack';
 import type { CategoryKey } from '../i18n/translations';
 import type { DisplayCurrency } from '../utils/formatters';
 import styles from './Budgets.module.css';
@@ -24,7 +23,6 @@ const categoryVisual = (categoryId: string) => {
 };
 
 const Budgets: React.FC = () => {
-  const goBack = useGoBack('/stats');
   const { t, displayCurrency } = useTranslation();
   const [budgets, setBudgets] = useState<CategoryBudget[]>([]);
   const [customExpense, setCustomExpense] = useState<CustomRow[]>([]);
@@ -115,9 +113,6 @@ const Budgets: React.FC = () => {
   return (
     <div className={styles.container}>
       <header className={styles.header}>
-        <button type="button" className={styles.back} onClick={goBack}>
-          ← {t('stats', 'title')}
-        </button>
         <h1 className={styles.title}>{t('budgets', 'title')}</h1>
         <p className={styles.subtitle}>{t('budgets', 'subtitle')}</p>
       </header>

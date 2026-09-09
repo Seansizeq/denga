@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ChevronRight, Pencil, Plus, Repeat } from 'lucide-react';
 import { formatCurrency, type PlannerCurrency } from '../utils/formatters';
 import { useTranslation } from '../i18n/LanguageContext';
-import { useGoBack } from '../hooks/useGoBack';
 import { useCategoryCatalog } from '../hooks/useCategoryCatalog';
 import { hapticLight, showAppConfirm } from '../utils/notify';
 import { apiFetch } from '../api/client';
@@ -85,7 +84,6 @@ const isSubscriptionArray = (v: unknown): v is Subscription[] =>
   );
 
 const Subscriptions: React.FC = () => {
-  const goBack = useGoBack('/');
   const { t, locale } = useTranslation();
   const [items, setItems] = usePersistedState<Subscription[]>(
     SUBSCRIPTIONS_STORAGE_KEY,
@@ -374,9 +372,6 @@ const Subscriptions: React.FC = () => {
   return (
     <div className={styles.container}>
       <header className={styles.header}>
-        <button type="button" className={styles.back} onClick={goBack}>
-          ← {t('subscriptions', 'back')}
-        </button>
         <h1 className={styles.title}>{t('subscriptions', 'title')}</h1>
         <span className={styles.subtitle}>{t('subscriptions', 'subtitle')}</span>
       </header>

@@ -16,7 +16,6 @@ import type { DisplayCurrency } from '../utils/formatters';
 import { localIsoDate } from '../utils/dateRanges';
 import { deadlineDeltaDays, fillColorForPct, progressPct } from '../utils/goals';
 import { useTranslation } from '../i18n/LanguageContext';
-import { useGoBack } from '../hooks/useGoBack';
 import FormSheet from '../components/ui/FormSheet';
 import GoalIcon, { ICON_KEYS, toGoalIconKey, type GoalIconKey } from '../components/goals/GoalIcon';
 import sheet from '../components/ui/FormSheet.module.css';
@@ -27,7 +26,6 @@ const GOAL_COLOR_RE = /^#[0-9A-Fa-f]{6}$/;
 
 const Goals: React.FC = () => {
   const navigate = useNavigate();
-  const goBack = useGoBack('/');
   const { t, locale, displayCurrency } = useTranslation();
   const [goals, setGoals] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(true);
@@ -218,9 +216,6 @@ const Goals: React.FC = () => {
   return (
     <div className={styles.container}>
       <header className={styles.header}>
-        <button type="button" className={styles.back} onClick={goBack}>
-          ← {t('nav', 'home')}
-        </button>
         <h1 className={styles.title}>{t('goals', 'title')}</h1>
         <p className={styles.subtitle}>{t('goals', 'subtitle')}</p>
       </header>
