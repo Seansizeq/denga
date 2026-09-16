@@ -184,7 +184,7 @@ describe('ScanReceipt', () => {
       expect(screen.getByDisplayValue('АТБ')).toBeTruthy();
     });
   });
-  describe('the account decides the unit', () => {
+  describe('the receipt decides the unit', () => {
     const plnReceipt = {
       ok: true,
       receipt: {
@@ -215,7 +215,7 @@ describe('ScanReceipt', () => {
       return { user, container: view.container };
     };
 
-    it('re-states the total in the unit of the account that paid', async () => {
+    it('records the printed total, and says what the card gives up for it', async () => {
       mocks.portfolioAccounts = [
         { accountKey: 'karta', name: 'Karta', primaryCurrency: 'PLN', section: 'bank' },
         { accountKey: 'privat', name: 'Privat', primaryCurrency: 'UAH', section: 'bank' },
@@ -226,22 +226,23 @@ describe('ScanReceipt', () => {
       const { user, container } = await scan();
       expect(totalInput(container).value).toBe('100');
 
-      // 100 PLN -> 25 USD -> 1000 UAH: the card is charged hryvnias, and
-      // relabelling the figure would have claimed 100 ₴ was spent.
+      // The paper says 100 zl, so 100 zl is what happened. The hryvnia card is
+      // debited the converted sum — 100 PLN -> 25 USD -> 1000 UAH — and the
+      // hint is where that number is stated, not the input.
       await user.click(screen.getByRole('button', { name: 'Privat' }));
-      expect(totalInput(container).value).toBe('1000');
-      expect(screen.getByText('scan.amountFromAccount')).toBeTruthy();
+      expect(totalInput(container).value).toBe('100');
+      expect(screen.getByText(/addTx\.chargedFromAccount/).textContent).toMatch(/1\s?000,00\s*UAH/);
 
       await user.click(screen.getByRole('button', { name: 'Зберегти без змін' }));
       await waitFor(() => expect(mocks.addTransaction).toHaveBeenCalled());
       expect(mocks.addTransaction.mock.calls[0][0]).toMatchObject({
-        amount: 1000,
-        currency: 'UAH',
+        amount: 100,
+        currency: 'PLN',
         type: 'expense',
       });
     });
 
-    it('leaves the receipt figure alone when the account holds its currency', async () => {
+    it('stays quiet when the account holds the receipt currency', async () => {
       mocks.portfolioAccounts = [
         { accountKey: 'karta', name: 'Karta', primaryCurrency: 'PLN', section: 'bank' },
       ];
@@ -252,14 +253,14 @@ describe('ScanReceipt', () => {
       await user.click(screen.getByRole('button', { name: 'Karta' }));
 
       expect(totalInput(container).value).toBe('100');
-      expect(screen.queryByText('scan.amountFromAccount')).toBe(null);
+      expect(screen.queryByText(/addTx\.chargedFromAccount/)).toBe(null);
 
       await user.click(screen.getByRole('button', { name: 'Зберегти без змін' }));
       await waitFor(() => expect(mocks.addTransaction).toHaveBeenCalled());
       expect(mocks.addTransaction.mock.calls[0][0]).toMatchObject({ amount: 100, currency: 'PLN' });
     });
 
-    it('keeps the correction the user typed', async () => {
+    it('keeps the correction the user typed, in the receipt currency', async () => {
       mocks.portfolioAccounts = [
         { accountKey: 'privat', name: 'Privat', primaryCurrency: 'UAH', section: 'bank' },
       ];
@@ -268,28 +269,36 @@ describe('ScanReceipt', () => {
 
       const { user, container } = await scan();
       await user.click(screen.getByRole('button', { name: 'Privat' }));
-      // The bank charged its own rate, not ours.
-      fireEvent.change(totalInput(container), { target: { value: '1012.40' } });
+      // OCR misread the till, so it is the zloty figure that gets corrected —
+      // and the hint follows it.
+      fireEvent.change(totalInput(container), { target: { value: '98.50' } });
+      expect(screen.getByText(/addTx\.chargedFromAccount/).textContent).toMatch(/985,00\s*UAH/);
 
       await user.click(screen.getByRole('button', { name: 'Зберегти без змін' }));
       await waitFor(() => expect(mocks.addTransaction).toHaveBeenCalled());
-      expect(mocks.addTransaction.mock.calls[0][0]).toMatchObject({ amount: 1012.4, currency: 'UAH' });
+      expect(mocks.addTransaction.mock.calls[0][0]).toMatchObject({ amount: 98.5, currency: 'PLN' });
     });
 
-    it('asks for the figure when the asset cannot be priced', async () => {
+    it('omits the hint when the asset cannot be priced, and still saves the receipt', async () => {
       mocks.portfolioAccounts = [
         { accountKey: 'ledger', name: 'Ledger', primaryCurrency: 'ETH', section: 'crypto' },
       ];
       mocks.cryptoPrices = {};
       mocks.scanReceipt.mockResolvedValue(plnReceipt);
+      mocks.addTransaction.mockResolvedValue(true);
 
       const { user, container } = await scan();
       await user.click(screen.getByRole('button', { name: 'Ledger' }));
 
-      // Guessing how much ETH left the wallet would invent the figure.
-      expect(totalInput(container).value).toBe('');
-      expect(screen.getByText('scan.amountRateUnavailable')).toBeTruthy();
-      expect(screen.getByRole('button', { name: 'Зберегти без змін' }).hasAttribute('disabled')).toBe(true);
+      // Naming how much ETH left the wallet would invent the figure, so nothing
+      // is named. The receipt is still what it is, and the server is the one
+      // that refuses the write while no price exists.
+      expect(totalInput(container).value).toBe('100');
+      expect(screen.queryByText(/addTx\.chargedFromAccount/)).toBe(null);
+
+      await user.click(screen.getByRole('button', { name: 'Зберегти без змін' }));
+      await waitFor(() => expect(mocks.addTransaction).toHaveBeenCalled());
+      expect(mocks.addTransaction.mock.calls[0][0]).toMatchObject({ amount: 100, currency: 'PLN' });
     });
   });
 });

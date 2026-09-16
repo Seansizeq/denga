@@ -29,7 +29,7 @@ const DEFAULT_REPORTS: ReportSettings = {
  * заради значення, яке ніхто не розводив по різних годинах.
  */
 const NotificationsSection: React.FC = () => {
-  const { t, displayCurrency } = useTranslation();
+  const { t } = useTranslation();
   const { saving, run } = useSaveSetting();
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [reports, setReports] = useState<ReportSettings>(DEFAULT_REPORTS);
@@ -50,16 +50,6 @@ const NotificationsSection: React.FC = () => {
       cancelled = true;
     };
   }, []);
-
-  // Валюта звіту не має власного перемикача — вона просто йде за валютою застосунку.
-  useEffect(() => {
-    if (reports.reportCurrency === displayCurrency) return;
-    void run(
-      () => updateReportSettings({ reportCurrency: displayCurrency }),
-      (next) => setReports(next),
-      { silent: true },
-    );
-  }, [displayCurrency, reports.reportCurrency, run]);
 
   const items = useMemo(() => visibleReminders(reminders), [reminders]);
 

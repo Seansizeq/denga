@@ -8,7 +8,13 @@
  * out of the same dictionary to recover the id. An array of objects would show
  * up as raw JSON in the picker.
  */
-import { DENOMINATIONS, denominationPrecision, normalizeDenomination } from './denomination.js';
+import {
+  DENOMINATIONS,
+  FIAT_DENOMINATIONS,
+  denominationPrecision,
+  isFiatDenomination,
+  normalizeDenomination,
+} from './denomination.js';
 
 /**
  * The note travels to the same 120-char column as every other transaction, and
@@ -114,13 +120,21 @@ export const buildOptionMaps = ({ categories = [], accounts = [], type = 'expens
  * chosen row goes straight into the request, and the label is resolved back to
  * an id here.
  *
- * @param list 'categories' | 'accounts' — that one list at the top level.
+ * @param list 'categories' | 'accounts' | 'currencies' — that one list at the
+ *   top level.
  */
 export const buildOptionsPayload = ({ categories = [], accounts = [], type = 'expense', list } = {}) => {
   const maps = buildOptionMaps({ categories, accounts, type });
   if (list === 'accounts') return Object.keys(maps.accounts);
   if (list === 'categories') return Object.keys(maps.categories);
-  return { categories: Object.keys(maps.categories), accounts: Object.keys(maps.accounts) };
+  // Crypto is deliberately absent: a quick add is a shop receipt, and a token
+  // amount belongs to the wallet that holds it rather than to a picker.
+  if (list === 'currencies') return [...FIAT_DENOMINATIONS];
+  return {
+    categories: Object.keys(maps.categories),
+    accounts: Object.keys(maps.accounts),
+    currencies: [...FIAT_DENOMINATIONS],
+  };
 };
 
 /**
@@ -148,11 +162,38 @@ const matchesAccount = (account, value) =>
   String(account?.accountKey ?? '').trim().toLowerCase() === value.toLowerCase();
 
 /**
+ * The unit of a quick add that did not state one.
+ *
+ * It follows the wallet's default currency, never the account the money leaves.
+ * Buying groceries in Warsaw with a Ukrainian card is a zloty expense: taking
+ * the account's own unit relabelled the figure read off the price tag as
+ * hryvnia, and the ledger was out by a factor of ten every time.
+ *
+ * The rule is the same for every account — a card, a cash box, a token wallet.
+ * Whatever the amount is counted in, the balance settles the difference at the
+ * day's rate, so the account still moves by the right number.
+ *
+ * The account's own unit is only the fallback, for a wallet whose default
+ * currency is not known yet.
+ */
+const quickAddCurrency = (accountDenomination, defaultCurrency) => {
+  const preferred = String(defaultCurrency ?? '').trim().toUpperCase();
+  if (isFiatDenomination(preferred)) return preferred;
+  return accountDenomination ?? normalizeDenomination(null);
+};
+
+/**
  * Validates one quick-add transaction against the user's own categories and
  * accounts. Both lists are the caller's, so an id that belongs to somebody else
  * fails here rather than reaching the database.
+ *
+ * @param defaultCurrency the wallet's own currency, used when the payload names
+ *   none. See `quickAddCurrency`.
  */
-export const validateAutomationTransaction = (body, { categories = [], accounts = [] } = {}) => {
+export const validateAutomationTransaction = (
+  body,
+  { categories = [], accounts = [], defaultCurrency = null } = {}
+) => {
   const amount = Number(body?.amount);
   if (!Number.isFinite(amount) || amount <= 0) {
     return { ok: false, status: 400, code: 'INVALID_AMOUNT', error: 'сума має бути більшою за 0' };
@@ -181,11 +222,10 @@ export const validateAutomationTransaction = (body, { categories = [], accounts 
   if (rawCurrency && !DENOMINATIONS.includes(rawCurrency)) {
     return { ok: false, status: 400, code: 'INVALID_CURRENCY', error: `валюта має бути однією з ${DENOMINATIONS.join(', ')}` };
   }
-  // Unstated currency follows the chosen account, so a quick add never needs a
-  // currency picker and a crypto account is not charged in hryvnia.
+  const accountDenomination = account ? normalizeDenomination(account.primaryCurrency) : null;
   const currency = rawCurrency
     ? normalizeDenomination(rawCurrency)
-    : normalizeDenomination(account?.primaryCurrency);
+    : quickAddCurrency(accountDenomination, defaultCurrency);
 
   const note = String(body?.note ?? '').trim().slice(0, AUTOMATION_NOTE_MAX);
   const rawDate = String(body?.date ?? '').trim();
@@ -206,6 +246,9 @@ export const validateAutomationTransaction = (body, { categories = [], accounts 
     date: rawDate || new Date().toISOString().slice(0, 10),
     account: account ? String(account.accountKey) : null,
     accountName: account ? String(account.name ?? account.accountKey) : null,
+    // What the balance will actually move in, so the caller can show the
+    // converted figure next to the one that was typed.
+    accountCurrency: accountDenomination,
     note: note || String(category.name ?? category.id),
   };
 };
@@ -218,10 +261,37 @@ const formatAmount = (amount, currency) => {
 /**
  * The one line the automation shows in its notification. Built here so the
  * shortcut only has to print a field instead of assembling text on the phone.
+ *
+ * When the amount was entered in a different unit from the account it leaves,
+ * the converted figure rides along: without it the notification reads "50 PLN"
+ * off a hryvnia card and leaves you guessing what the balance actually moved
+ * by.
  */
-export const buildResultMessage = ({ type, amount, currency, categoryName, accountName }) => {
+export const buildResultMessage = ({
+  type,
+  amount,
+  currency,
+  categoryName,
+  accountName,
+  accountCurrency = null,
+  convertedAmount = null,
+}) => {
   const head = type === 'income' ? '✅ Дохід' : '✅ Витрата';
-  return [`${head} ${formatAmount(amount, currency)} ${currency}`, categoryName, accountName]
+  // A zero is treated as "no rate to hand", which is what a missing crypto
+  // price comes back as: better to print one figure than an invented second.
+  const showsConversion =
+    Boolean(accountCurrency) &&
+    accountCurrency !== currency &&
+    Number.isFinite(Number(convertedAmount)) &&
+    Number(convertedAmount) > 0;
+  const converted = showsConversion
+    ? ` ≈ ${formatAmount(convertedAmount, accountCurrency)} ${accountCurrency}`
+    : '';
+  return [
+    `${head} ${formatAmount(amount, currency)} ${currency}${converted}`,
+    categoryName,
+    accountName,
+  ]
     .filter(Boolean)
     .join(' · ');
 };

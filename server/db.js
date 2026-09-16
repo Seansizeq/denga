@@ -709,6 +709,85 @@ export async function initDb() {
     /* already exists */
   }
 
+  // Привʼязка картки банку до рахунку в гаманці. Токен банку лежить тут же:
+  // він потрібен, щоб перевстановити вебхук, якщо банк його вимкне (monobank
+  // вимикає після трьох невдалих спроб доставки — вистачить довгого деплою),
+  // і щоб підтягнути виписку за пропущений час. Рядок видаляється цілком,
+  // коли людина відключає картку, — іншого місця, де цей токен живе, немає.
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS bank_links (
+      user_id TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      bank_account_id TEXT NOT NULL,
+      account_key TEXT NOT NULL,
+      currency TEXT NOT NULL,
+      label TEXT NOT NULL DEFAULT '',
+      token TEXT,
+      webhook_token TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, provider, bank_account_id)
+    )
+  `);
+  // Адреса вебхука має власний секрет, не спільний із токеном для ярликів.
+  // Інакше «оновити токен» у налаштуваннях тихо відрізало б і банк: посилання
+  // в ярликах людина переклеїть, а що банк перестав доставляти — помітить
+  // через тиждень за дірою в обліку.
+  await db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_bank_links_webhook
+    ON bank_links(provider, webhook_token)
+  `);
+
+  // Операції, записані автоматично: з вебхука банку або з ярлика на телефоні.
+  //
+  // Таблиця потрібна з двох причин. Перша — `external_id`: банк повторює
+  // доставку, доки не отримає 200, і без унікального ключа кожен повтор ставав
+  // би другою такою самою витратою. Друга — картка виправлення живе в
+  // бот-процесі, а пишеться операція в API-процесі; памʼять між ними не
+  // спільна, тож стан картки має лежати там, де його бачать обидва.
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS bank_inbox (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      external_id TEXT NOT NULL,
+      transaction_id TEXT,
+      merchant TEXT NOT NULL DEFAULT '',
+      merchant_key TEXT NOT NULL DEFAULT '',
+      amount REAL NOT NULL DEFAULT 0,
+      currency TEXT NOT NULL DEFAULT 'UAH',
+      type TEXT NOT NULL DEFAULT 'expense',
+      account_key TEXT,
+      account_name TEXT,
+      category_id TEXT NOT NULL DEFAULT '',
+      category_source TEXT NOT NULL DEFAULT '',
+      picker_ids TEXT,
+      created_at TEXT NOT NULL
+    )
+  `);
+  await db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_bank_inbox_external
+    ON bank_inbox(user_id, provider, external_id)
+  `);
+  // Старі картки прибираються за строком, а не живуть вічно: після натискання
+  // кнопки рядок уже нічого не вирішує, крім захисту від повтору доставки.
+  await db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_bank_inbox_created
+    ON bank_inbox(created_at)
+  `);
+
+  // Чого людина навчила, виправивши категорію на картці. Ключ — назва
+  // торговця, зведена до порівнюваного вигляду (див. `bank-category.js`).
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS bank_merchant_rules (
+      user_id TEXT NOT NULL,
+      merchant_key TEXT NOT NULL,
+      category_id TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, merchant_key)
+    )
+  `);
+
   await removeRetiredBybitIntegration(db);
 
   // Turn legacy free-text crypto positions into real balances. Takes its own

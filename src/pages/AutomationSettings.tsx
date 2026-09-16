@@ -2,6 +2,7 @@ import React from 'react';
 import { useTranslation } from '../i18n/LanguageContext';
 import PlannerTemplateSection from '../components/settings/PlannerTemplateSection';
 import PlannerAutomationSection from '../components/settings/PlannerAutomationSection';
+import BankLinkSection from '../components/settings/BankLinkSection';
 import styles from './AutomationSettings.module.css';
 
 /**
@@ -17,6 +18,7 @@ const AutomationSettings: React.FC = () => {
       <header className={styles.header}>
         <h1 className={styles.title}>{t('settings', 'automationTitle')}</h1>
       </header>
+      <BankLinkSection />
       <PlannerTemplateSection />
       <PlannerAutomationSection />
     </div>

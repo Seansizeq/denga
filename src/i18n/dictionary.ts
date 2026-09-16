@@ -123,7 +123,11 @@ export type Dict = {
     saveFailed: string;
     paymentAccount: string;
     paymentAccountHint: string;
-    currencyFromAccount: string;
+
+    amountCurrency: string;
+    /** Сума в іншій валюті, ніж рахунок: скільки насправді зміниться на рахунку. */
+    chargedFromAccount: string;
+    creditedToAccount: string;
     paymentAccountNone: string;
     templates: string;
     saveAsTemplate: string;
@@ -155,7 +159,6 @@ export type Dict = {
     deleteConfirm: string;
     edit: string;
     delete: string;
-    back: string;
     filteredTitle: string;
     clearFilter: string;
     calendar: string;
@@ -297,7 +300,6 @@ export type Dict = {
     saveError: string;
     disabledSection: string;
     enable: string;
-    back: string;
   };
   stats: {
     title: string;
@@ -368,9 +370,31 @@ export type Dict = {
     automationExpenseDescription: string;
     automationCategoriesUrl: string;
     automationAccountsUrl: string;
+    automationCurrenciesUrl: string;
     automationTransactionUrl: string;
     automationExpenseHowTo: string;
+    automationExpenseHowToCurrency: string;
     automationExpenseHowToWidget: string;
+    automationWalletTitle: string;
+    automationWalletDescription: string;
+    automationWalletHowTo: string;
+    automationWalletHowToCard: string;
+    automationWalletLimits: string;
+    bankTitle: string;
+    bankDescription: string;
+    bankWritesTo: string;
+    bankTokenLabel: string;
+    bankTokenPlaceholder: string;
+    bankTokenHint: string;
+    bankLoadAccounts: string;
+    bankChooseAccount: string;
+    bankChooseWallet: string;
+    bankConnect: string;
+    bankConnected: string;
+    bankDisconnect: string;
+    bankUnsupportedCurrency: string;
+    bankNoWalletAccount: string;
+    bankHowTo: string;
     weeklyAutoReport: string;
     monthlyAutoReport: string;
     dailyReminder: string;
@@ -523,8 +547,6 @@ export type Dict = {
     reviewReasonManualCheck: string;
     ocrTextTitle: string;
     selectPaymentAccount: string;
-    amountFromAccount: string;
-    amountRateUnavailable: string;
     errorAuth: string;
     errorNotConfigured: string;
     errorRateLimited: string;

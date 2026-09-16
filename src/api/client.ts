@@ -44,6 +44,8 @@ export type PlannerAutomation = {
   categoriesUrl: string;
   /** Рахунки для списку вибору в ярлику на телефоні. */
   accountsUrl: string;
+  /** Валюти для необовʼязкового вибору в ярлику: без нього рахує валюта за замовчуванням. */
+  currenciesUrl: string;
   /** Збереження однієї витрати з ярлика. */
   transactionUrl: string;
 };
@@ -144,6 +146,81 @@ export const rotatePlannerAutomationToken = async (): Promise<PlannerAutomation>
   const res = await apiFetch('/api/planner/automation/rotate-token', { method: 'POST' });
   if (!res.ok) throw new Error('failed to rotate automation token');
   return res.json();
+};
+
+/** Прив'язана картка банку: її рухи самі лягають в облік. */
+export type BankLink = {
+  provider: string;
+  bankAccountId: string;
+  accountKey: string;
+  accountName: string | null;
+  currency: string;
+  label: string;
+  updatedAt: string;
+};
+
+export type MonobankAccountOption = {
+  id: string;
+  kind: 'account' | 'jar';
+  label: string;
+  currency: string | null;
+  balance: number | null;
+  /** Гаманець рахує баланси не в кожній валюті — решту показуємо, але не даємо звʼязати. */
+  supported: boolean;
+};
+
+/**
+ * Помилки банку — єдині в застосунку, які треба показати словами: «не той
+ * токен» і «банк не відповів» вимагають різних дій від людини. Сервер шле
+ * готовий текст у `message`, тож тут його лише дістаємо.
+ */
+const bankError = async (res: Response, fallback: string): Promise<Error> => {
+  try {
+    const body = await res.json();
+    return new Error(String(body?.message || body?.error || fallback));
+  } catch {
+    return new Error(fallback);
+  }
+};
+
+export const getBankLinks = async (): Promise<BankLink[]> => {
+  const res = await apiFetch('/api/bank/links');
+  if (!res.ok) throw new Error('failed to load bank links');
+  return (await res.json()).links ?? [];
+};
+
+export const fetchMonobankAccounts = async (token: string): Promise<MonobankAccountOption[]> => {
+  const res = await apiFetch('/api/bank/monobank/accounts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token }),
+  });
+  if (!res.ok) throw await bankError(res, 'failed to load monobank accounts');
+  return (await res.json()).accounts ?? [];
+};
+
+export const linkMonobankAccount = async (payload: {
+  token: string;
+  bankAccountId: string;
+  accountKey: string;
+  currency: string | null;
+  label: string;
+}): Promise<BankLink[]> => {
+  const res = await apiFetch('/api/bank/monobank/link', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw await bankError(res, 'failed to link monobank account');
+  return (await res.json()).links ?? [];
+};
+
+export const unlinkMonobankAccount = async (bankAccountId: string): Promise<BankLink[]> => {
+  const res = await apiFetch(`/api/bank/monobank/links/${encodeURIComponent(bankAccountId)}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) throw await bankError(res, 'failed to unlink monobank account');
+  return (await res.json()).links ?? [];
 };
 
 export const updatePlannerSettings = async (

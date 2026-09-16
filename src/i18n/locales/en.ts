@@ -103,7 +103,10 @@ const dictionary: Dict = {
     saveFailed: 'Could not save. Check your connection and try again.',
     paymentAccount: 'Account',
     paymentAccountHint: 'Pick a card or cash — this account will update on Accounts',
-    currencyFromAccount: 'The currency comes from the account — change the account to change it',
+
+    amountCurrency: 'Amount currency',
+    chargedFromAccount: 'Charged to the account:',
+    creditedToAccount: 'Credited to the account:',
     paymentAccountNone: 'Not set',
     templates: 'Templates',
     saveAsTemplate: 'Save as template',
@@ -135,7 +138,6 @@ const dictionary: Dict = {
     deleteConfirm: 'Delete this transaction?',
     edit: 'Edit',
     delete: 'Delete',
-    back: 'Home',
     filteredTitle: 'Filtered transactions',
     clearFilter: 'Show all',
     calendar: 'Calendar',
@@ -277,7 +279,6 @@ const dictionary: Dict = {
     saveError: 'Could not save subscription. Check your connection.',
     disabledSection: 'Disabled (still in database)',
     enable: 'Enable',
-    back: 'Home',
   },
   stats: {
     title: 'Stats',
@@ -318,8 +319,9 @@ const dictionary: Dict = {
     deleteAccountFailed: 'Could not delete. Please try again.',
     title: 'Settings',
     language: 'Interface language',
-    currency: 'Display currency',
-    currencyDescription: 'Choose the currency used to display amounts in the app',
+    currency: 'Default currency',
+    currencyDescription:
+      'Amounts are shown in it, and entries from the bot and the phone shortcut are counted in it when none is stated.',
     currencyUah: 'Hryvnia (₴)',
     currencyPln: 'Zloty (zł)',
     currencyUsd: 'US Dollar ($)',
@@ -351,14 +353,45 @@ const dictionary: Dict = {
       'Android: Tasker or MacroDroid → "Geofence / Location" trigger → HTTP Request (GET) action → paste the link.',
     automationExpenseTitle: 'Quick expense from your phone',
     automationExpenseDescription:
-      'A phone shortcut reads your categories and accounts from the first two links and saves the expense through the third. The lists are fetched on every run, so a new category or account never has to be typed into the shortcut by hand.',
+      'A phone shortcut reads your categories, accounts and currencies from the links and saves the expense through the last one. The lists are fetched on every run, so a new category or account never has to be typed into the shortcut by hand.',
     automationCategoriesUrl: 'Link: category list',
     automationAccountsUrl: 'Link: account list',
+    automationCurrenciesUrl: 'Link: currency list',
     automationTransactionUrl: 'Link: add an expense',
     automationExpenseHowTo:
-      'iOS, for each list: "Get Contents of URL" with the link → "Choose from List" right after it. Then "Get Contents of URL" with the third link, method POST, JSON body: amount (the number from "Ask for Input"), and categoryId and account — just the rows you chose from the lists.',
+      'iOS, for each list: "Get Contents of URL" with the link → "Choose from List" right after it. Then "Get Contents of URL" with the last link, method POST, JSON body: amount (the number from "Ask for Input"), and categoryId and account — just the rows you chose from the lists.',
+    automationExpenseHowToCurrency:
+      'The currency field is optional: without it the amount is counted in the default currency from settings. Add the currency list to the shortcut and you can pay in zloty from a hryvnia card — the card is charged at the current rate.',
     automationExpenseHowToWidget:
       'Put the shortcuts in their own Shortcuts folder and add the Shortcuts widget to your Home Screen — one tap records the expense without opening the app.',
+    automationWalletTitle: 'Card payments via Apple Pay',
+    automationWalletDescription:
+      'The automation fires the moment you tap the terminal: Wallet passes the amount and the merchant, the app guesses the category, and the bot sends a card so one tap fixes it. A fixed category is remembered for that merchant.',
+    automationWalletHowTo:
+      'iOS: Shortcuts → Automation → New → "Wallet" (called "Transaction" in older versions) → pick the card → Run Immediately. Actions: Match Text on Transaction Amount with [0-9.,]+ → Get Contents of URL with the link, method POST, JSON body.',
+    automationWalletHowToCard:
+      'JSON fields: amount — the matched number, currency — the card currency (UAH, PLN or USD), merchant — Transaction Name, account — your account key. Leave the category out: that is what makes the correction card appear.',
+    automationWalletLimits:
+      'Only in-store card taps are caught. Apple does not report in-app or in-browser payments — add those by hand, or link the bank card above.',
+    bankTitle: 'Bank card',
+    bankDescription:
+      'A linked card records everything by itself — shop purchases, online payments and subscriptions. The bot sends a card with the guessed category so one tap fixes it.',
+    bankWritesTo: 'Records into',
+    bankTokenLabel: 'monobank personal token',
+    bankTokenPlaceholder: 'u_XXXXXXXXXXXXXXXXXXXXXX',
+    bankTokenHint:
+      'Open api.monobank.ua on your phone, sign in through the monobank app and copy the token. It only grants read access to your statement.',
+    bankLoadAccounts: 'Show cards',
+    bankChooseAccount: 'Which card to link',
+    bankChooseWallet: 'Where to record',
+    bankConnect: 'Link',
+    bankConnected: 'Card linked',
+    bankDisconnect: 'Unlink',
+    bankUnsupportedCurrency: 'Currency not supported',
+    bankNoWalletAccount:
+      'No account in this currency. Create one on the Accounts screen — that is where the operations will land.',
+    bankHowTo:
+      'If the same card also runs the Apple Pay automation, turn one of them off: otherwise every purchase is recorded twice.',
     weeklyAutoReport: 'Weekly report',
     monthlyAutoReport: 'Monthly report',
     dailyReminder: 'Daily reminder',
@@ -512,8 +545,6 @@ const dictionary: Dict = {
     reviewReasonManualCheck: 'This result has ambiguous signals and should be checked manually.',
     ocrTextTitle: 'Recognized text',
     selectPaymentAccount: 'Select the account to debit',
-    amountFromAccount: 'The receipt says {amount} — converted into the account currency at the current rate. Correct it if the bank charged differently.',
-    amountRateUnavailable: 'No rate available — enter the amount that actually left the account (the receipt says {amount}).',
     errorAuth: 'Authorization expired. Open the app from Telegram again.',
     errorNotConfigured: 'Receipt OCR is not configured on the server. Add OCR_SPACE_API_KEY in .env or enable an explicit fallback.',
     errorRateLimited: 'Too many attempts. Wait a few seconds and try again.',

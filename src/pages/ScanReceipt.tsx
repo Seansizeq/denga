@@ -13,7 +13,7 @@ import { formatCurrency } from '../utils/formatters';
 import { mergeAccountIntoNoteLimited } from '../utils/transactionAccount';
 import { usePaymentAccountOptions } from '../hooks/usePaymentAccountOptions';
 import { useDenominationRates } from '../hooks/useDenominationRates';
-import { normalizeDenomination, roundForDenomination, type Denomination } from '../utils/denomination';
+import { formatDenominationAmount, normalizeDenomination, type Denomination } from '../utils/denomination';
 import styles from './ScanReceipt.module.css';
 
 type ViewState = 'idle' | 'loading' | 'result' | 'review' | 'error';
@@ -57,29 +57,23 @@ const ScanReceipt: React.FC = () => {
   const [draftTotal, setDraftTotal] = useState('');
   const [draftDate, setDraftDate] = useState('');
   const [draftNote, setDraftNote] = useState('');
-  /** Which unit `draftTotal` is currently counted in, so a change can convert it. */
-  const draftTotalUnitRef = useRef<Denomination>('UAH');
 
   const { allowedPaymentKeys, paymentChipOptions } = usePaymentAccountOptions(
     portfolioAccounts,
     language,
     paymentAccount,
   );
-  const { rateBetween } = useDenominationRates();
+  const { convert } = useDenominationRates();
 
-  // The receipt says what was paid, the account says in what: money charged to a
-  // hryvnia card leaves hryvnias even when the till printed zloty. So the total
-  // is written in the account's unit, and the receipt figure becomes the source
-  // of the conversion rather than the amount that gets stored.
+  // The receipt is what happened, so the total stays in the unit the till
+  // printed — the same rule the Add screen follows, and the same for every
+  // account behind it. The card is debited the converted sum by the server, and
+  // the line under the total says by how much.
   const receiptDenomination = normalizeDenomination(receipt?.currency);
   const accountDenomination = useMemo<Denomination | null>(
     () => portfolioAccounts.find((account) => account.key === paymentAccount)?.currency ?? null,
     [portfolioAccounts, paymentAccount],
   );
-  const entryDenomination: Denomination = accountDenomination ?? receiptDenomination;
-  const convertedFromReceipt = entryDenomination !== receiptDenomination;
-  const conversionRateMissing =
-    convertedFromReceipt && rateBetween(receiptDenomination, entryDenomination) === null;
 
   const triggerCamera = () => {
     setError(null);
@@ -175,7 +169,6 @@ const ScanReceipt: React.FC = () => {
   };
 
   useEffect(() => {
-    draftTotalUnitRef.current = normalizeDenomination(receipt?.currency);
     if (!receipt) {
       setDraftShop('');
       setDraftTotal('');
@@ -189,27 +182,30 @@ const ScanReceipt: React.FC = () => {
     setDraftNote('');
   }, [receipt]);
 
-  // Switching accounts re-states the total in the new account's unit instead of
-  // relabelling it: 120 zl paid from a hryvnia card is ~1 250 UAH, not 120 UAH.
-  // The converted figure is a suggestion — the bank's own rate wins as soon as
-  // the user corrects it, and an unpriceable asset asks for the figure outright.
-  useEffect(() => {
-    const from = draftTotalUnitRef.current;
-    if (from === entryDenomination) return;
-    draftTotalUnitRef.current = entryDenomination;
-    setDraftTotal((current) => {
-      const parsed = Number.parseFloat(current.replace(',', '.'));
-      if (!(parsed > 0)) return current;
-      const rate = rateBetween(from, entryDenomination);
-      if (rate === null) return '';
-      return String(roundForDenomination(parsed * rate, entryDenomination));
-    });
-  }, [entryDenomination, rateBetween]);
-
   const parsedDraftTotal = useMemo(() => {
     const value = Number.parseFloat(draftTotal.replace(',', '.'));
     return Number.isFinite(value) && value > 0 ? value : null;
   }, [draftTotal]);
+
+  /**
+   * What the account gives up for a total counted in the receipt's own unit.
+   *
+   * The figure used to be written into the input instead, which quietly turned
+   * a 120 zl receipt into a 1 250 ₴ record: the ledger then knew the rate we
+   * guessed, not the price on the paper.
+   */
+  const accountConversionHint = useMemo(() => {
+    if (!accountDenomination || accountDenomination === receiptDenomination) return null;
+    if (parsedDraftTotal == null) return null;
+    const converted = convert(parsedDraftTotal, receiptDenomination, accountDenomination);
+    // No rate to hand: say nothing rather than name a number we do not have.
+    if (converted === null) return null;
+    return `${t('addTx', 'chargedFromAccount')} ≈ ${formatDenominationAmount(
+      converted,
+      accountDenomination,
+      locale,
+    )}`;
+  }, [accountDenomination, receiptDenomination, parsedDraftTotal, convert, locale, t]);
 
   const saveScannedTransaction = async () => {
     if (!receipt || parsedDraftTotal == null || saving) return;
@@ -219,7 +215,7 @@ const ScanReceipt: React.FC = () => {
     const note = mergeAccountIntoNoteLimited(buildScannedNote(receipt), paymentAccount, allowedPaymentKeys);
     const ok = await addTransaction({
       amount: parsedDraftTotal,
-      currency: entryDenomination,
+      currency: receiptDenomination,
       type: 'expense',
       categoryId: selectedCategoryId,
       date: draftDate || undefined,
@@ -238,7 +234,7 @@ const ScanReceipt: React.FC = () => {
     const params = new URLSearchParams();
     params.set('type', 'expense');
     if (parsedDraftTotal != null) params.set('amount', String(parsedDraftTotal));
-    params.set('currency', entryDenomination);
+    params.set('currency', receiptDenomination);
     if (draftDate) params.set('date', draftDate);
     if (selectedCategoryId) params.set('categoryId', selectedCategoryId);
     else if (receipt.categoryId) params.set('categoryId', receipt.categoryId);
@@ -410,15 +406,12 @@ const ScanReceipt: React.FC = () => {
                 placeholder={t('scan', 'noTotalFound')}
               />
             </div>
-            <span className={styles.currencyChip}>{entryDenomination}</span>
+            <span className={styles.currencyChip}>{receiptDenomination}</span>
           </div>
 
-          {convertedFromReceipt && receipt.total != null ? (
+          {accountConversionHint ? (
             <p className={styles.conversionHint} role="status">
-              {t('scan', conversionRateMissing ? 'amountRateUnavailable' : 'amountFromAccount').replace(
-                '{amount}',
-                formatCurrency(receipt.total, locale, receipt.currency),
-              )}
+              {accountConversionHint}
             </p>
           ) : null}
 

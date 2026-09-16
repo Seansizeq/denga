@@ -42,6 +42,7 @@ const GeneralSettingsSection: React.FC = () => {
         />
         <SettingsRow
           label={t('settings', 'currency')}
+          sublabel={t('settings', 'currencyDescription')}
           value={t('settings', currencyLabelKey(displayCurrency))}
           chevron
           onClick={() => setCurrencySheetOpen(true)}

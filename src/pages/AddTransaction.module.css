@@ -231,13 +231,6 @@
   line-height: 1;
 }
 
-/* The unit is read-only here — it comes from the account — but still tappable,
-   since tapping it is how you reach the account that sets it. */
-.currencyFromAccount {
-  appearance: none;
-  font-family: inherit;
-  cursor: pointer;
-}
 
 .amountInput {
   border: none;
@@ -547,7 +540,10 @@
   box-shadow: none;
   cursor: not-allowed;
 }
-.transferRateHint {
+.transferRateHint,
+/* Amount counted in another unit than the account behind it: the line says what
+   the balance will actually move by, before the record is saved. */
+.conversionHint {
   margin: 8px 4px 0;
   font-size: 12px;
   line-height: 1.4;

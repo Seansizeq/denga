@@ -194,33 +194,34 @@ describe('AddTransaction', () => {
     expect((document.querySelector('select') as HTMLSelectElement).value).toBe('USD');
   });
 
-  describe('the account decides the unit', () => {
+  describe('the unit is the wallet default, whatever the account', () => {
     const cryptoAndCard = [
       { accountKey: 'binance', name: 'Binance', primaryCurrency: 'USDT', section: 'crypto' },
       { accountKey: 'karta', name: 'Karta', primaryCurrency: 'PLN', section: 'bank' },
     ];
 
-    /** The read-only unit shown next to the amount once an account is picked. */
-    const unitBadge = () => screen.getByRole('button', { name: 'addTx.currencyFromAccount' });
+    /** The read-only unit shown beside the amount for a record already in it. */
+    const unitBadge = () => screen.getByText('USDT');
 
-    it('denominates the amount by the account it is paid from', () => {
+    it('lets a token wallet take an amount counted in money', () => {
+      mocks.displayCurrency = 'UAH';
       mocks.portfolioAccounts = cryptoAndCard;
       renderAdd('/add?account=binance');
 
-      // The old picker let you claim UAH for money that leaves a USDT wallet,
-      // which the server could only reject.
-      expect(document.querySelector('select')).toBe(null);
-      expect(unitBadge().textContent).toBe('USDT');
+      // No account is an exception any more: the picker stays, and the wallet
+      // is debited the converted position.
+      expect((document.querySelector('select') as HTMLSelectElement).value).toBe('UAH');
     });
 
     it('leaves the token unit behind when the money moves to a card', () => {
       mocks.portfolioAccounts = cryptoAndCard;
-      renderAdd('/add?account=binance');
+      renderAdd('/add?account=binance&currency=USDT');
 
+      expect(document.querySelector('select')).toBe(null);
       fireEvent.click(screen.getByText('addTx.paymentAccount'));
       fireEvent.click(screen.getByText('Karta'));
-      // USDT cannot stay on a Polish card, so the card's own unit takes over —
-      // and being fiat, it is open to the picker again.
+      // A position cannot follow to another account: 25 USDT and 25 of whatever
+      // the card holds are different assets, not the same one repriced.
       expect((document.querySelector('select') as HTMLSelectElement).value).toBe('PLN');
     });
 
@@ -250,7 +251,40 @@ describe('AddTransaction', () => {
       expect(mocks.addTransaction.mock.calls[0][0]).toMatchObject({ amount: 20, currency: 'PLN' });
     });
 
-    it('sends the account unit on save', async () => {
+    it('says what the card will be debited when the units differ', async () => {
+      mocks.displayCurrency = 'PLN';
+      mocks.portfolioAccounts = [
+        { accountKey: 'privat24', name: 'Privat24', primaryCurrency: 'UAH', section: 'bank' },
+      ];
+      renderAdd('/add?account=privat24');
+
+      fireEvent.change(screen.getByPlaceholderText('addTx.amountPlaceholder'), {
+        target: { value: '20' },
+      });
+
+      // 20 PLN -> 5 USD -> 200 UAH at the mocked rates.
+      const hint = await screen.findByText(/addTx\.chargedFromAccount/);
+      expect(hint.textContent).toContain('200,00');
+      expect(hint.textContent).toContain('UAH');
+    });
+
+    it('stays quiet when the amount is already in the account unit', async () => {
+      mocks.displayCurrency = 'UAH';
+      mocks.portfolioAccounts = [
+        { accountKey: 'privat24', name: 'Privat24', primaryCurrency: 'UAH', section: 'bank' },
+      ];
+      renderAdd('/add?account=privat24');
+
+      fireEvent.change(screen.getByPlaceholderText('addTx.amountPlaceholder'), {
+        target: { value: '20' },
+      });
+
+      await vi.waitFor(() => expect(screen.getByText('Privat24')).toBeTruthy());
+      expect(screen.queryByText(/addTx\.chargedFromAccount/)).toBeNull();
+    });
+
+    it('sends the unit as typed, not the one the account keeps', async () => {
+      mocks.displayCurrency = 'PLN';
       mocks.portfolioAccounts = cryptoAndCard;
       renderAdd('/add?account=binance');
 
@@ -262,9 +296,24 @@ describe('AddTransaction', () => {
       await vi.waitFor(() => expect(mocks.addTransaction).toHaveBeenCalled());
       expect(mocks.addTransaction.mock.calls[0][0]).toMatchObject({
         amount: 25,
-        currency: 'USDT',
+        currency: 'PLN',
         type: 'expense',
       });
+    });
+
+    it('says what a token wallet gives up for an amount in money', async () => {
+      mocks.displayCurrency = 'PLN';
+      mocks.portfolioAccounts = cryptoAndCard;
+      renderAdd('/add?account=binance');
+
+      fireEvent.change(screen.getByPlaceholderText('addTx.amountPlaceholder'), {
+        target: { value: '20' },
+      });
+
+      // 20 PLN -> 5 USD -> 5 USDT at the mocked rates.
+      const hint = await screen.findByText(/addTx\.chargedFromAccount/);
+      expect(hint.textContent).toContain('5');
+      expect(hint.textContent).toContain('USDT');
     });
 
     it('keeps the picker while no account stands behind the amount', () => {
@@ -293,17 +342,24 @@ describe('AddTransaction', () => {
       expect((document.querySelector('select') as HTMLSelectElement).value).toBe('UAH');
     });
 
-    it('still hands a crypto wallet its own unit when editing', () => {
+    it('keeps a money amount when the account picked is a token wallet', () => {
       mocks.portfolioAccounts = [
         { accountKey: 'privat24', name: 'Binance', primaryCurrency: 'USDT', section: 'crypto' },
       ];
       renderAdd('/add?edit=tx-1');
 
-      // The stored 50 UAH survives until the wallet is picked deliberately;
-      // after that no picker remains, because a token position takes no zloty.
+      // The stored 50 UAH is what happened, and picking the wallet it left does
+      // not restate it as a position.
       expect((document.querySelector('select') as HTMLSelectElement).value).toBe('UAH');
       fireEvent.click(screen.getByText('addTx.paymentAccount'));
       fireEvent.click(within(screen.getByRole('dialog')).getByText('Binance'));
+      expect((document.querySelector('select') as HTMLSelectElement).value).toBe('UAH');
+    });
+
+    it('shows a stored token unit without offering to restate it', () => {
+      mocks.portfolioAccounts = cryptoAndCard;
+      renderAdd('/add?account=binance&currency=USDT');
+
       expect(document.querySelector('select')).toBe(null);
       expect(unitBadge().textContent).toBe('USDT');
     });

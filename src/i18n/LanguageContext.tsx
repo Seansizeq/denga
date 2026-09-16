@@ -6,11 +6,13 @@ import type { TelegramWindow } from '../types/telegram';
 import type { CurrencyCode, FxRatesPayload } from '../utils/currency';
 import { convertCurrency, fallbackRates } from '../utils/currency';
 import { setMoneyHiddenFlag } from '../utils/moneyPrivacy';
-import { apiFetch } from '../api/client';
+import { apiFetch, updateReportSettings } from '../api/client';
 import { usePersistedState } from '../hooks/usePersistedState';
 
 const STORAGE_KEY = 'denga_lang';
 const CURRENCY_STORAGE_KEY = 'denga_currency';
+/** Яку валюту сервер уже знає. Див. ефект синхронізації нижче. */
+const CURRENCY_SYNCED_KEY = 'denga_currency_synced';
 const HIDE_MONEY_STORAGE_KEY = 'denga_hide_money';
 const FX_STORAGE_KEY = 'denga_fx_rates_v1';
 const DEFAULT_LANG: Language = 'uk';
@@ -179,6 +181,33 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       /* ignore */
     }
   }, [moneyHidden]);
+
+  // Валюта за замовчуванням — не лише про показ: бот і ярлик на телефоні
+  // рахують у ній запис, де валюту не вказано, а читають її з сервера. Тому
+  // вибір має туди доїхати — і доїхати навіть тоді, коли екран налаштувань
+  // більше не відкривають. Позначка памʼятає, що серверу вже сказали, тож
+  // невдалу спробу (офлайн) повторить наступний запуск, а вдалу не повторить
+  // ніхто: інакше кожен старт застосунку писав би в базу те саме.
+  useEffect(() => {
+    let synced: string | null = null;
+    try {
+      synced = localStorage.getItem(CURRENCY_SYNCED_KEY);
+    } catch {
+      /* ignore */
+    }
+    if (synced === displayCurrency) return;
+    void updateReportSettings({ reportCurrency: displayCurrency })
+      .then(() => {
+        try {
+          localStorage.setItem(CURRENCY_SYNCED_KEY, displayCurrency);
+        } catch {
+          /* ignore */
+        }
+      })
+      .catch(() => {
+        /* спробуємо ще раз на наступному запуску */
+      });
+  }, [displayCurrency]);
 
   const refreshFxRates = useCallback(async () => {
     try {

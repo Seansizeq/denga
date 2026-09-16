@@ -96,11 +96,10 @@ export const computeNetDeltas = (entries, accountsByKey, convert) => {
  * transfer subtracted 2 200 from a 70 USDT position: the number was simply
  * added, and nothing compared the two units.
  *
- * Fiat differences settle through FX, which is what every report already does.
- * A crypto/fiat mismatch is refused instead of priced: turning hryvnias into a
- * token position at today's rate would silently invent how much of the asset
- * was actually sold. The Add screen already records that properly as a
- * transfer with both sides stated.
+ * Every pair settles at the day's rate, the same way for every account: fiat
+ * through FX, crypto through its USD price. What is left to refuse is a rate we
+ * do not have — a token price that has not arrived — because a balance moved by
+ * a guessed number is worse than a request that fails out loud.
  *
  * Returns `{ ok: true, delta }` or `{ ok: false, reason }`.
  */

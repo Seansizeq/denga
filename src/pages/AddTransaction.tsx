@@ -18,6 +18,7 @@ import {
 } from '../utils/transactionAccount';
 import { SUPPORTED_CURRENCIES } from '../utils/currency';
 import {
+  formatDenominationAmount,
   isCryptoDenomination,
   isFiatDenomination,
   normalizeDenomination,
@@ -51,7 +52,7 @@ const AddTransaction: React.FC = () => {
   const navigate = useNavigate();
   const goBack = useGoBack('/');
   const { transactions, addTransaction, updateTransaction, isBootstrapping } = useTransactions();
-  const { t, language, displayCurrency } = useTranslation();
+  const { t, language, locale, displayCurrency } = useTranslation();
   const [searchParams] = useSearchParams();
   const {
     templates,
@@ -130,7 +131,7 @@ const AddTransaction: React.FC = () => {
     type === 'income' ? 'income' : 'expense',
   );
   const { accounts: rawAccounts } = usePortfolio();
-  const { rateBetween } = useDenominationRates();
+  const { convert, rateBetween } = useDenominationRates();
   const portfolioAccounts = useMemo<Array<{ key: string; name: string; currency: Denomination }>>(
     () => {
       const list: Array<{ key: string; name: string; currency: Denomination }> = [];
@@ -154,14 +155,10 @@ const AddTransaction: React.FC = () => {
     [rawAccounts],
   );
 
-  // A crypto wallet holds a position in a token, and hryvnias cannot be poured
-  // into one: pricing them at today's rate would invent how much of the asset
-  // was actually bought. Such an account still dictates the unit outright.
-  //
-  // Between fiat units the server settles the difference at the current rate,
-  // so a hryvnia card can take an amount typed in zloty. There the account no
-  // longer overrules the picker: the figure stays in whatever the app counts
-  // in, and the card is debited by the converted sum.
+  // The account no longer dictates the unit, and it dictates it for nobody: a
+  // card, a cash box and a token wallet all behave the same. The figure stays
+  // in whatever the app counts in, and the server settles the difference at the
+  // day's rate, so the account is moved by the converted sum.
   const paymentAccountDenomination = useMemo<Denomination | null>(
     () => portfolioAccounts.find((account) => account.key === paymentAccount)?.currency ?? null,
     [portfolioAccounts, paymentAccount],
@@ -171,24 +168,19 @@ const AddTransaction: React.FC = () => {
   // stored 500 ₴ expense as 500 zł because the card behind it is Polish.
   const [currencyFollowsAccount, setCurrencyFollowsAccount] = useState(!isEditing);
   const accountDenomination = currencyFollowsAccount ? paymentAccountDenomination : null;
-  const forcedDenomination =
-    accountDenomination && isCryptoDenomination(accountDenomination) ? accountDenomination : null;
 
   useEffect(() => {
-    if (forcedDenomination) {
-      setCurrency((current) => (current === forcedDenomination ? current : forcedDenomination));
-      return;
-    }
-    // Moving off a wallet onto a card: a token amount cannot follow, and the
-    // card's own currency is the closest thing to what was meant.
+    // A token amount is the one thing that cannot simply follow to another
+    // account: 0.4 of a position means a different asset on each wallet, not a
+    // different price. Anything counted in money stays exactly as typed.
     if (accountDenomination) {
       setCurrency((current) => (isCryptoDenomination(current) ? accountDenomination : current));
     }
-  }, [forcedDenomination, accountDenomination]);
+  }, [accountDenomination]);
 
-  // The picker earns its place wherever the unit is genuinely open — any fiat
-  // amount that no crypto account has claimed.
-  const currencyEditable = !forcedDenomination && isFiatDenomination(currency);
+  // The picker offers the currencies an amount can be typed in; a crypto unit
+  // is not one of them, and only ever appears on a record already written in it.
+  const currencyEditable = isFiatDenomination(currency);
 
   // Icon tone / section / iconKey per account, so the picker can show avatars
   // matching the rest of the app instead of a bare text list.
@@ -415,6 +407,29 @@ const AddTransaction: React.FC = () => {
     },
     [categoryOptions, t],
   );
+
+  /**
+   * What the account will really move by when the amount is counted in another
+   * unit — the zloty price of a Warsaw receipt paid with a hryvnia card.
+   *
+   * The server settles that difference at the day's rate whatever we show, so
+   * the line is not a second calculation: it is the only place the person can
+   * see the number before agreeing to it.
+   */
+  const accountConversionHint = useMemo(() => {
+    if (type === 'transfer') return null;
+    if (!paymentAccountDenomination || paymentAccountDenomination === currency) return null;
+    const value = parseFloat(amount.replace(',', '.'));
+    if (!Number.isFinite(value) || value <= 0) return null;
+    const converted = convert(value, currency, paymentAccountDenomination);
+    // A missing crypto price must read as nothing at all, never as zero.
+    if (converted === null) return null;
+    return `${t('addTx', type === 'income' ? 'creditedToAccount' : 'chargedFromAccount')} ≈ ${formatDenominationAmount(
+      converted,
+      paymentAccountDenomination,
+      locale,
+    )}`;
+  }, [type, paymentAccountDenomination, currency, amount, convert, locale, t]);
 
   const accountDisplayLabel = useMemo(() => {
     if (!paymentAccount) return t('addTx', 'paymentAccountNone');
@@ -714,7 +729,7 @@ const AddTransaction: React.FC = () => {
                 className={styles.currencySelect}
                 value={currency}
                 onChange={(e) => setCurrency(normalizeDenomination(e.target.value))}
-                aria-label={t('settings', 'currency')}
+                aria-label={t('addTx', 'amountCurrency')}
               >
                 {SUPPORTED_CURRENCIES.map((c) => (
                   <option key={c} value={c}>
@@ -723,19 +738,16 @@ const AddTransaction: React.FC = () => {
                 ))}
               </select>
             ) : (
-              // Tapping the unit opens the account sheet: the account is the
-              // only place it can be changed from.
-              <button
-                type="button"
-                className={`${styles.currencyBadge} ${styles.currencyFromAccount}`}
-                onClick={() => setAccountSheetOpen(true)}
-                title={t('addTx', 'currencyFromAccount')}
-                aria-label={t('addTx', 'currencyFromAccount')}
-              >
-                {currency}
-              </button>
+              // A record already written in a token unit. It is shown, not
+              // offered: the picker deals in money, and re-denominating a saved
+              // position would restate how much of the asset moved.
+              <span className={styles.currencyBadge}>{currency}</span>
             )}
           </div>
+
+          {accountConversionHint ? (
+            <p className={styles.conversionHint}>{accountConversionHint}</p>
+          ) : null}
 
           <div className={styles.dateInline}>
             <input

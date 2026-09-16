@@ -117,6 +117,11 @@ const PlannerAutomationSection: React.FC = () => {
         />
         <LinkRow label={t('settings', 'automationAccountsUrl')} url={automation.accountsUrl} onCopy={copy} />
         <LinkRow
+          label={t('settings', 'automationCurrenciesUrl')}
+          url={automation.currenciesUrl}
+          onCopy={copy}
+        />
+        <LinkRow
           label={t('settings', 'automationTransactionUrl')}
           url={automation.transactionUrl}
           onCopy={copy}
@@ -124,7 +129,24 @@ const PlannerAutomationSection: React.FC = () => {
 
         <div className={styles.howTo}>
           <p className={styles.howToLine}>{t('settings', 'automationExpenseHowTo')}</p>
+          <p className={styles.howToLine}>{t('settings', 'automationExpenseHowToCurrency')}</p>
           <p className={styles.howToLine}>{t('settings', 'automationExpenseHowToWidget')}</p>
+        </div>
+      </SettingsSection>
+
+      <SettingsSection
+        label={t('settings', 'automationWalletTitle')}
+        description={t('settings', 'automationWalletDescription')}
+      >
+        <LinkRow
+          label={t('settings', 'automationTransactionUrl')}
+          url={automation.transactionUrl}
+          onCopy={copy}
+        />
+        <div className={styles.howTo}>
+          <p className={styles.howToLine}>{t('settings', 'automationWalletHowTo')}</p>
+          <p className={styles.howToLine}>{t('settings', 'automationWalletHowToCard')}</p>
+          <p className={styles.howToLine}>{t('settings', 'automationWalletLimits')}</p>
         </div>
       </SettingsSection>
 

@@ -126,10 +126,29 @@ import {
   validateTemplatePayload,
 } from './expense-templates.js';
 import {
+  AUTOMATION_NOTE_MAX,
   buildOptionsPayload,
   buildResultMessage,
   validateAutomationTransaction,
 } from './automation-transaction.js';
+import { merchantKey, resolveBankCategory } from './bank-category.js';
+import {
+  BANK_CARD_CATEGORY_LIMIT,
+  buildBankCardKeyboard,
+  buildBankCardResult,
+  buildBankCardText,
+  buildBankCategoryKeyboard,
+  createBankCardId,
+  parseBankCallback,
+} from './bank-card.js';
+import {
+  MonobankError,
+  describeMonobankAccounts,
+  fetchMonobankClientInfo,
+  normalizeStatementEvent,
+  setMonobankWebhook,
+  statementToEntry,
+} from './monobank.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -2170,6 +2189,9 @@ const buildAutomationUrls = (req, token) => {
     // links would otherwise be shown as the same string.
     categoriesUrl: `${base}/api/automation/options?list=categories&${q}`,
     accountsUrl: `${base}/api/automation/options?list=accounts&${q}`,
+    // Optional in the shortcut: leave it out and the amount is counted in the
+    // wallet's default currency, which is what most days need.
+    currenciesUrl: `${base}/api/automation/options?list=currencies&${q}`,
     transactionUrl: `${base}/api/automation/transaction?${q}`,
   };
 };
@@ -2702,6 +2724,185 @@ const replaceSmartTransactionMessage = async (chatId, messageId, content) => {
     console.warn('[smart-transaction] could not replace confirmation message:', err?.message || err);
   }
 };
+
+/**
+ * Категорії пікера в тому самому порядку, у якому їх пронумеровано в кнопках.
+ *
+ * Список ідентифікаторів записаний разом із карткою, а не будується наново:
+ * між показом кнопок і натисканням людина могла завести нову категорію, і
+ * свіжий список зсунув би номери — тап по «Продукти» списав би на «Паливо».
+ * Категорії, видалені за цей час, відпадають однаково в обох викликах, тож
+ * нумерація лишається спільною.
+ */
+const bankCardOptions = async (userId, card) => {
+  let ids = [];
+  try {
+    const parsed = JSON.parse(String(card?.pickerIds ?? '[]'));
+    ids = Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    ids = [];
+  }
+  const categories = await getSmartCategoriesForUser(userId, { includeOther: true });
+  const byId = new Map(categories.map((c) => [String(c.id), c]));
+  return ids.map((id) => byId.get(id)).filter(Boolean);
+};
+
+/**
+ * Кнопки на картці операції, яку записали без підтвердження.
+ *
+ * Тут дві дії, і обидві виправляють уже наявний запис: змінити категорію або
+ * прибрати його зовсім. Зміна категорії заразом **запамʼятовується** для цього
+ * торговця — інакше той самий магазин питав би про себе щотижня.
+ *
+ * Скасування картки не видаляє рядок `bank_inbox`, лише відвʼязує транзакцію:
+ * рядок і далі тримає `external_id`, а без нього наступна доставка того самого
+ * руху з банку створила б витрату, яку щойно прибрали.
+ */
+const handleBankCardCallback = async (callbackQuery, chatId, userId) => {
+  const parsed = parseBankCallback(callbackQuery.data);
+  const messageId = Number(callbackQuery.message?.message_id);
+  const answer = (text) => bot.answerCallbackQuery(callbackQuery.id, text ? { text } : undefined);
+  if (!parsed) {
+    await answer();
+    return;
+  }
+
+  const card = await db.get(
+    `SELECT id, transaction_id AS transactionId, merchant, merchant_key AS merchantKey,
+            amount, currency, type, account_name AS accountName, category_id AS categoryId,
+            picker_ids AS pickerIds
+     FROM bank_inbox
+     WHERE id = ? AND user_id = ?
+     LIMIT 1`,
+    [parsed.cardId, userId],
+  );
+  if (!card) {
+    await answer('Ця картка вже не діє');
+    await replaceSmartTransactionMessage(
+      chatId,
+      messageId,
+      '⌛ Звідси операція вже не редагується — відкрийте застосунок.',
+    );
+    return;
+  }
+
+  const editKeyboard = async (markup) => {
+    try {
+      await bot.editMessageReplyMarkup(markup, { chat_id: chatId, message_id: messageId });
+    } catch (error) {
+      // Та сама розкладка у відповідь на повторний тап — Telegram вважає це
+      // помилкою, хоча користувач бачить рівно те, що хотів.
+      if (!isTelegramBadRequest(error)) throw error;
+    }
+  };
+
+  if (parsed.action === 'keep') {
+    await editKeyboard(buildBankCardKeyboard(card.id));
+    await answer();
+    return;
+  }
+
+  if (!card.transactionId) {
+    await answer('Цю операцію вже прибрано');
+    return;
+  }
+
+  if (parsed.action === 'categories') {
+    const options = await bankCardOptions(userId, card);
+    if (options.length === 0) {
+      await answer('Немає з чого обрати');
+      return;
+    }
+    await editKeyboard(buildBankCategoryKeyboard(card.id, options));
+    await answer();
+    return;
+  }
+
+  const current = await db.get('SELECT * FROM transactions WHERE user_id = ? AND id = ? LIMIT 1', [
+    userId,
+    card.transactionId,
+  ]);
+  if (!current) {
+    await db.run('UPDATE bank_inbox SET transaction_id = NULL WHERE id = ?', [card.id]);
+    await answer('Операції вже немає');
+    await replaceSmartTransactionMessage(chatId, messageId, '⌛ Цю операцію вже видалено в застосунку.');
+    return;
+  }
+
+  const convert = await buildAccountUnitConverter();
+
+  if (parsed.action === 'pick') {
+    const options = await bankCardOptions(userId, card);
+    const chosen = options[Number(parsed.index)];
+    if (!chosen) {
+      await answer('Категорію не знайдено');
+      return;
+    }
+    const next = { ...current, categoryId: String(chosen.id) };
+    try {
+      await withTransaction(db, async (tx) => {
+        // Категорія не завжди косметична: `debt_return` списує борг, а не
+        // поповнює рахунок. Тому стара дія знімається, нова накладається — як
+        // і при звичайному редагуванні операції.
+        await assertTransactionPreconditions(
+          tx,
+          userId,
+          [{ tx: current, multiplier: -1 }, { tx: next, multiplier: 1 }],
+          convert,
+        );
+        await applyTransactionEffects(tx, userId, current, -1, convert);
+        await applyTransactionEffects(tx, userId, next, 1, convert);
+        await tx.run('UPDATE transactions SET categoryId = ? WHERE user_id = ? AND id = ?', [
+          next.categoryId,
+          userId,
+          card.transactionId,
+        ]);
+        await tx.run('UPDATE bank_inbox SET category_id = ?, category_source = ? WHERE id = ?', [
+          next.categoryId,
+          'rule',
+          card.id,
+        ]);
+        await rememberBankMerchantRule(tx, userId, card.merchantKey, next.categoryId);
+      });
+    } catch (error) {
+      if (error instanceof TransactionRefused) {
+        await answer('Так не вийде: баланс рахунку цього не дозволяє');
+        return;
+      }
+      throw error;
+    }
+    await answer(`Тепер «${chosen.name}» — і надалі теж`);
+    await replaceSmartTransactionMessage(
+      chatId,
+      messageId,
+      buildBankCardResult({ ...card, categoryName: chosen.name }),
+    );
+    return;
+  }
+
+  if (parsed.action === 'drop') {
+    try {
+      await withTransaction(db, async (tx) => {
+        await assertTransactionPreconditions(tx, userId, [{ tx: current, multiplier: -1 }], convert);
+        await applyTransactionEffects(tx, userId, current, -1, convert);
+        await tx.run('DELETE FROM transactions WHERE user_id = ? AND id = ?', [userId, card.transactionId]);
+        await tx.run('UPDATE bank_inbox SET transaction_id = NULL WHERE id = ?', [card.id]);
+      });
+    } catch (error) {
+      if (error instanceof TransactionRefused) {
+        await answer('Не вийде прибрати: борг пішов би в мінус');
+        return;
+      }
+      throw error;
+    }
+    await answer('Прибрано');
+    await replaceSmartTransactionMessage(chatId, messageId, buildBankCardResult({ ...card, dropped: true }));
+    return;
+  }
+
+  await answer();
+};
+
 const CUSTOM_CATEGORY_PREFIX = 'custom:';
 const CUSTOM_CATEGORY_SEPARATOR = '|';
 
@@ -3199,6 +3400,13 @@ if (bot) {
       return;
     }
 
+    // Картка операції, яку записали без підтвердження (банк або ярлик).
+    // Кнопки тут виправляють уже зроблений запис, а не вирішують його долю.
+    if (parseBankCallback(callbackQuery.data)) {
+      await handleBankCardCallback(callbackQuery, chatId, cbUserId);
+      return;
+    }
+
     if (
       callbackQuery.data === 'smart_save'
       || callbackQuery.data === 'smart_edit'
@@ -3262,11 +3470,11 @@ if (bot) {
         { tx: transaction, multiplier: 1 },
       ]);
       if (mismatches.length > 0) {
-        await bot.answerCallbackQuery(callbackQuery.id, { text: 'Валюта не збігається з рахунком' });
+        await bot.answerCallbackQuery(callbackQuery.id, { text: 'Немає курсу для перерахунку' });
         await replaceSmartTransactionMessage(
           chatId,
           callbackMessageId,
-          '⚠️ Не збережено: валюта операції не сумісна з вибраним рахунком.',
+          '⚠️ Не збережено: немає курсу, щоб перерахувати суму на вибраний рахунок.',
         );
         return;
       }
@@ -3870,7 +4078,12 @@ app.get('/api/automation/options', async (req, res) => {
     return;
   }
   const type = req.query?.type === 'income' ? 'income' : req.query?.type === 'all' ? 'all' : 'expense';
-  const list = req.query?.list === 'accounts' || req.query?.list === 'categories' ? req.query.list : undefined;
+  const list =
+    req.query?.list === 'accounts' ||
+    req.query?.list === 'categories' ||
+    req.query?.list === 'currencies'
+      ? req.query.list
+      : undefined;
   const [categories, accounts] = await Promise.all([
     getAutomationCategories(userId),
     getAutomationAccounts(userId),
@@ -3905,6 +4118,27 @@ app.post('/api/automation/transaction', async (req, res) => {
 
   let payload = req.body;
   const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
+  const merchant = typeof req.body?.merchant === 'string' ? req.body.merchant.trim() : '';
+
+  /**
+   * Звідки взялася категорія, коли її ніхто не обирав. Порожньо — обирали
+   * руками, і тоді картка виправлення в чат не летить.
+   */
+  let guessedSource = '';
+  // Ярлик, що спрацював на дотик картки: Wallet передав суму й назву
+  // торговця, а обрати категорію не було кому — людина в цей момент забирає
+  // покупку з каси. Вгадуємо тут, а виправити дасть картка в Telegram.
+  if (merchant && !text && !payload?.categoryId) {
+    const guess = resolveBankCategory({
+      merchant,
+      type: 'expense',
+      rules: await getBankMerchantRules(userId),
+      categories,
+    });
+    guessedSource = guess.source;
+    payload = { ...payload, categoryId: guess.categoryId, note: payload?.note || merchant };
+  }
+
   if (text) {
     const parsed = await parseSmartTransaction({
       text,
@@ -3930,13 +4164,51 @@ app.post('/api/automation/transaction', async (req, res) => {
     };
   }
 
-  const validated = validateAutomationTransaction(payload, { categories, accounts });
+  // The wallet's own currency, not the card's, is what an unstated amount is
+  // counted in — see `quickAddCurrency`.
+  const validated = validateAutomationTransaction(payload, {
+    categories,
+    accounts,
+    defaultCurrency: reportSettings.reportCurrency,
+  });
   if (!validated.ok) {
     res.status(validated.status).json({
       error: validated.error,
       code: validated.code,
       message: `⚠️ ${validated.error}`,
     });
+    return;
+  }
+
+  // Вгадана категорія йде спільним шляхом із вебхуком банку: там уже є і
+  // запис, і картка виправлення, і памʼять про торговця. Дублювати це тут
+  // означало б два місця, де категорія вчиться по-різному.
+  if (guessedSource) {
+    const outcome = await recordAutomaticTransaction({
+      userId,
+      provider: 'wallet',
+      // Ярлик власного id операції не має: Wallet його не передає. Захист від
+      // повтору тут і не потрібен — дві однакові кави поспіль це дві покупки.
+      externalId: `wallet:${uuidv4()}`,
+      type: validated.type,
+      amount: validated.amount,
+      currency: validated.currency,
+      merchant,
+      accountKey: validated.account,
+      accountName: validated.accountName,
+      categoryId: validated.categoryId,
+      categorySource: guessedSource,
+      timeMs: Date.parse(`${validated.date}T12:00:00.000Z`) || Date.now(),
+    });
+    if (!outcome.ok) {
+      res.status(409).json({
+        error: 'this run was already recorded',
+        code: outcome.code,
+        message: '⚠️ Цю операцію вже записано',
+      });
+      return;
+    }
+    res.status(201).json({ ok: true, message: outcome.message, transaction: outcome.transaction });
     return;
   }
 
@@ -3953,15 +4225,24 @@ app.post('/api/automation/transaction', async (req, res) => {
     note: validated.account ? mergeAccountIntoNote(validated.note, validated.account) : validated.note,
   };
 
-  const { mismatches, overdrafts } = await checkTransactionPreconditions(db, userId, [
-    { tx: transaction, multiplier: 1 },
-  ]);
+  // One converter for the whole request, so the check, the write and the
+  // notification all speak of the same rate.
+  const convertToAccountUnit = await buildAccountUnitConverter();
+  const { mismatches, overdrafts } = await checkTransactionPreconditions(
+    db,
+    userId,
+    [{ tx: transaction, multiplier: 1 }],
+    convertToAccountUnit
+  );
   if (mismatches.length > 0) {
+    // Any two units convert, so what is missing here is the rate itself — a
+    // token price CoinGecko has not handed us yet. Saying so beats blaming the
+    // account, which is holding nothing against us.
     res.status(409).json({
-      error: 'transaction currency does not match the account balance unit',
+      error: 'no rate to express this amount in the account balance unit',
       code: 'ACCOUNT_DENOMINATION_MISMATCH',
       accounts: mismatches,
-      message: `⚠️ ${validated.accountName ?? 'Рахунок'} веде облік в іншій валюті`,
+      message: `⚠️ Немає курсу, щоб перерахувати суму на ${validated.accountName ?? 'рахунок'}`,
     });
     return;
   }
@@ -3989,16 +4270,350 @@ app.post('/api/automation/transaction', async (req, res) => {
       transaction.note,
     ]
   );
-  await applyTransactionEffects(db, userId, transaction);
+  await applyTransactionEffects(db, userId, transaction, 1, convertToAccountUnit);
   if (transaction.type === 'expense') {
     await checkBudgetThresholdsAfterExpense(userId, transaction.categoryId);
   }
 
+  // A zloty expense off a hryvnia card debits the card at today's rate, so the
+  // notification states both figures: the one that was typed, and the one the
+  // balance moved by.
+  const convertedAmount =
+    validated.accountCurrency && validated.accountCurrency !== validated.currency
+      ? convertToAccountUnit(validated.amount, validated.currency, validated.accountCurrency)
+      : null;
+
   res.status(201).json({
     ok: true,
-    message: buildResultMessage(validated),
+    message: buildResultMessage({ ...validated, convertedAmount }),
     transaction,
   });
+});
+
+// --- Операції, записані без участі людини (вебхук банку, ярлик на телефоні) ---
+
+/**
+ * Скільки тримаємо картку в `bank_inbox`.
+ *
+ * Строк тут не про UI, а про захист від повтору доставки: рядок лишається
+ * єдиним слідом того, що цю операцію вже провели. Місяця вистачає з запасом —
+ * банк здається після трьох спроб протягом одинадцяти хвилин.
+ */
+const BANK_INBOX_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+const createBankWebhookToken = () => crypto.randomBytes(24).toString('hex');
+
+const getBankMerchantRules = async (userId) => {
+  const rows = await db.all(
+    'SELECT merchant_key AS key, category_id AS categoryId FROM bank_merchant_rules WHERE user_id = ?',
+    [userId],
+  );
+  const rules = {};
+  for (const row of rows ?? []) {
+    if (row?.key) rules[String(row.key)] = String(row.categoryId ?? '');
+  }
+  return rules;
+};
+
+const rememberBankMerchantRule = async (dbConn, userId, key, categoryId) => {
+  if (!key || !categoryId) return;
+  await dbConn.run(
+    `INSERT INTO bank_merchant_rules (user_id, merchant_key, category_id, updated_at)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(user_id, merchant_key) DO UPDATE SET
+       category_id = excluded.category_id,
+       updated_at = excluded.updated_at`,
+    [userId, key, categoryId, new Date().toISOString()],
+  );
+};
+
+/** Куди слати картку. Немає рядка в `users` — людина ще не писала боту. */
+const getBotChatId = async (userId) => {
+  const row = await db.get('SELECT chat_id AS chatId FROM users WHERE telegram_id = ? LIMIT 1', [userId]);
+  const chatId = Number(row?.chatId);
+  return Number.isFinite(chatId) && chatId !== 0 ? chatId : null;
+};
+
+const getAccountRow = (userId, accountKey) =>
+  db.get(
+    `SELECT account_key AS accountKey, name, primary_currency AS primaryCurrency
+     FROM account_portfolio
+     WHERE user_id = ? AND account_key = ?
+     LIMIT 1`,
+    [userId, String(accountKey ?? '').trim().toLowerCase()],
+  );
+
+/**
+ * Записати операцію, яку ніхто не підтверджував, і запропонувати виправлення.
+ *
+ * Порядок саме такий — спершу запис, потім картка, — і це головне рішення
+ * усієї фічі. Зворотний порядок (спитати, потім записати) виглядає обережнішим,
+ * але означає, що облік повний рівно настільки, наскільки регулярно людина
+ * відкриває Telegram. Вебхук спрацьовує, коли телефон у кишені; до вечора
+ * половина карток загубиться в стрічці, і замість повного обліку вийде той
+ * самий ручний ввід, лише з зайвим кроком.
+ *
+ * Тому операція лягає в базу одразу, а картка дає виправити категорію або
+ * прибрати запис. Ціна помилки несиметрична: зайвий запис видно у списку й
+ * легко прибрати, а витрати, якої там немає, не видно ніколи.
+ *
+ * @param externalId унікальний у межах провайдера id операції. Саме він
+ *   захищає від подвійного запису при повторній доставці.
+ * @param categoryId категорія, яку назвав викликач (ярлик з пікером). Коли
+ *   вона є, картка не надсилається: вибір уже зроблено руками.
+ */
+const recordAutomaticTransaction = async ({
+  userId,
+  provider,
+  externalId,
+  type = 'expense',
+  amount,
+  currency,
+  merchant = '',
+  mcc = null,
+  accountKey = null,
+  accountName = null,
+  timeMs = Date.now(),
+  categoryId: explicitCategoryId = null,
+  categorySource = 'explicit',
+}) => {
+  const cardId = createBankCardId();
+  const nowIso = new Date().toISOString();
+
+  // Заявка на зовнішній id ставиться до будь-якої роботи. Банк повторює
+  // доставку, доки не побачить 200, а ще той самий рядок виписки прилітає
+  // вдруге, коли блокування суми перетворюється на списання: обидва випадки
+  // мають зупинитися тут, на унікальному індексі, а не стати другою витратою.
+  const claim = await db.run(
+    `INSERT OR IGNORE INTO bank_inbox (id, user_id, provider, external_id, created_at)
+     VALUES (?, ?, ?, ?, ?)`,
+    [cardId, userId, provider, String(externalId), nowIso],
+  );
+  if (!claim?.changes) return { ok: false, code: 'DUPLICATE' };
+
+  try {
+    const [categories, rules, account, userTimeZone] = await Promise.all([
+      getAutomationCategories(userId),
+      getBankMerchantRules(userId),
+      accountKey ? getAccountRow(userId, accountKey) : Promise.resolve(null),
+      getUserTimeZone(db, userId),
+    ]);
+
+    const explicit = explicitCategoryId
+      ? categories.find((c) => String(c?.id) === String(explicitCategoryId))
+      : null;
+    const resolved = explicit
+      ? {
+          categoryId: String(explicit.id),
+          categoryName: String(explicit.name ?? explicit.id),
+          source: categorySource,
+        }
+      : resolveBankCategory({ merchant, mcc, type, rules, categories });
+
+    // День рахується в поясі людини, а не в UTC: покупка о 01:30 у Варшаві —
+    // це сьогодні, і в місячному звіті вона має бути там, де її зробили.
+    const iso = new Date(timeMs).toISOString();
+    const day = dayFromIsoInZone(iso, userTimeZone) ?? iso.slice(0, 10);
+
+    const label = String(merchant ?? '').trim().slice(0, AUTOMATION_NOTE_MAX) || resolved.categoryName;
+    const resolvedAccountKey = account ? String(account.accountKey) : null;
+    const transaction = {
+      id: uuidv4(),
+      user_id: userId,
+      amount,
+      currency,
+      categoryId: resolved.categoryId,
+      type,
+      date: `${day}T12:00:00.000Z`,
+      note: resolvedAccountKey ? mergeAccountIntoNote(label, resolvedAccountKey) : label,
+    };
+
+    // Курс береться до входу в транзакцію: усередині `buildAccountUnitConverter`
+    // живе мережевий виклик, і тримати на ньому лок запису не можна.
+    const convert = await buildAccountUnitConverter();
+    const pickerIds = categories.filter((c) => c?.type === type).slice(0, BANK_CARD_CATEGORY_LIMIT).map((c) => String(c.id));
+
+    await withTransaction(db, async (tx) => {
+      await assertTransactionPreconditions(tx, userId, [{ tx: transaction, multiplier: 1 }], convert);
+      await tx.run(
+        `INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, note)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          transaction.id,
+          transaction.user_id,
+          transaction.amount,
+          transaction.currency,
+          transaction.categoryId,
+          transaction.type,
+          transaction.date,
+          transaction.note,
+        ],
+      );
+      await applyTransactionEffects(tx, userId, transaction, 1, convert);
+      await tx.run(
+        `UPDATE bank_inbox SET
+           transaction_id = ?, merchant = ?, merchant_key = ?, amount = ?, currency = ?,
+           type = ?, account_key = ?, account_name = ?, category_id = ?, category_source = ?, picker_ids = ?
+         WHERE id = ?`,
+        [
+          transaction.id,
+          String(merchant ?? '').slice(0, 120),
+          merchantKey(merchant),
+          amount,
+          currency,
+          type,
+          resolvedAccountKey,
+          account ? String(account.name ?? resolvedAccountKey) : accountName,
+          resolved.categoryId,
+          resolved.source,
+          JSON.stringify(pickerIds),
+          cardId,
+        ],
+      );
+      // Прибирання старих карток їде разом із записом нової: окремий таймер
+      // тримав би процес живим, а рядків тут кілька на день.
+      await tx.run('DELETE FROM bank_inbox WHERE created_at < ?', [
+        new Date(Date.now() - BANK_INBOX_TTL_MS).toISOString(),
+      ]);
+    });
+
+    if (type === 'expense') {
+      await checkBudgetThresholdsAfterExpense(userId, resolved.categoryId);
+    }
+
+    const finalAccountName = account ? String(account.name ?? resolvedAccountKey) : accountName;
+    const result = {
+      ok: true,
+      cardId,
+      transaction,
+      categoryId: resolved.categoryId,
+      categoryName: resolved.categoryName,
+      source: resolved.source,
+      message: buildResultMessage({
+        type,
+        amount,
+        currency,
+        categoryName: resolved.categoryName,
+        accountName: finalAccountName,
+      }),
+    };
+
+    // Картка потрібна лише тоді, коли категорія — здогад. Ярлик, у якому
+    // людина сама тицьнула категорію, не має за це ще й звітувати в чат.
+    if (resolved.source !== 'explicit') {
+      const chatId = await getBotChatId(userId);
+      if (chatId) {
+        await enqueueOutbox(db, {
+          chatId,
+          lane: 'interactive',
+          text: buildBankCardText({
+            merchant,
+            amount,
+            currency,
+            categoryName: resolved.categoryName,
+            accountName: finalAccountName,
+            type,
+            source: resolved.source,
+          }),
+          options: { reply_markup: buildBankCardKeyboard(cardId) },
+        });
+      }
+    }
+
+    return result;
+  } catch (error) {
+    // Заявку треба відпустити: інакше операція, що не записалася через курс
+    // або мінусовий борг, більше ніколи не повториться — унікальний індекс
+    // мовчки відкидатиме кожну наступну доставку як дубль.
+    await db.run('DELETE FROM bank_inbox WHERE id = ?', [cardId]).catch(() => {});
+    throw error;
+  }
+};
+
+// --- Вебхук банку ---
+
+/**
+ * Адреса, яку прописуємо в банку. Секрет у шляху, а не в query: деякі проксі
+ * ріжуть рядок запиту при переадресації, і тоді вебхук мовчки приходив би без
+ * токена.
+ */
+const buildBankWebhookUrl = (req, provider, webhookToken) => {
+  const proto = String(req.get('x-forwarded-proto') ?? req.protocol ?? 'https').split(',')[0].trim();
+  const host = String(req.get('x-forwarded-host') ?? req.get('host') ?? '').split(',')[0].trim();
+  return host ? `${proto}://${host}/api/bank/${provider}/hook/${webhookToken}` : '';
+};
+
+const BANK_WEBHOOK_RATE_LIMIT_PER_MIN = perInstanceLimit(Number(process.env.BANK_WEBHOOK_RATE_LIMIT_PER_MIN) || 120);
+app.use(
+  '/api/bank/monobank/hook',
+  rateLimitMiddleware({
+    windowMs: 60_000,
+    max: BANK_WEBHOOK_RATE_LIMIT_PER_MIN,
+    keyFn: (req) => `bank-hook:${clientIpKey(req)}`,
+  }),
+);
+
+/**
+ * Прийом виписки monobank.
+ *
+ * Банк дає на відповідь пʼять секунд, а запис операції може чекати на курс
+ * валют — тобто на чужу мережу. Тому відповідаємо одразу, а роботу робимо
+ * після: невідповідь коштувала б трьох повторів і вимкненого вебхука, тоді як
+ * повтор через власну помилку однаково впіймається на `external_id`.
+ *
+ * Той самий маршрут відповідає на перевірку адреси: перш ніж увімкнути
+ * вебхук, monobank стукає сюди й чекає 200. Токен усе одно перевіряється —
+ * друкарська помилка має провалити встановлення голосно, а не тихо створити
+ * адресу, куди прилітатиме чуже.
+ */
+app.all('/api/bank/monobank/hook/:token', async (req, res) => {
+  const token = String(req.params?.token ?? '').trim();
+  const link = token
+    ? await db.get(
+        `SELECT user_id AS userId FROM bank_links
+         WHERE provider = 'monobank' AND webhook_token = ?
+         LIMIT 1`,
+        [token],
+      )
+    : null;
+  if (!link?.userId) {
+    res.status(404).json({ error: 'Unknown webhook' });
+    return;
+  }
+  const event = req.method === 'POST' ? normalizeStatementEvent(req.body) : null;
+  res.status(200).json({ ok: true });
+  if (!event) return;
+
+  const userId = String(link.userId);
+  try {
+    const account = await db.get(
+      `SELECT account_key AS accountKey, currency FROM bank_links
+       WHERE user_id = ? AND provider = 'monobank' AND bank_account_id = ?
+       LIMIT 1`,
+      [userId, event.accountId],
+    );
+    // Вебхук один на всі рахунки клієнта, тож сюди приходять і ті картки, яких
+    // людина не привʼязувала. Це не помилка — просто не наша операція.
+    if (!account?.accountKey) return;
+
+    const entry = statementToEntry({ item: event.item, accountCurrency: normalizeDenomination(account.currency) });
+    if (!entry) return;
+
+    await recordAutomaticTransaction({
+      userId,
+      provider: 'monobank',
+      externalId: entry.externalId,
+      type: entry.type,
+      amount: entry.amount,
+      currency: entry.currency,
+      merchant: entry.merchant,
+      mcc: entry.mcc,
+      accountKey: account.accountKey,
+      timeMs: entry.timeMs,
+    });
+  } catch (error) {
+    console.error('[bank] не вдалося записати операцію monobank', error?.message || error);
+  }
 });
 
 // --- API Logic ---
@@ -6766,6 +7381,215 @@ app.put('/api/planner/settings', async (req, res) => {
     return;
   }
   res.json(updated);
+});
+
+// --- Підключення банківської картки (екран «Автоматизація») ---
+
+/**
+ * Відповідь banku на хвилину.
+ *
+ * `/personal/client-info` monobank віддає не частіше ніж раз на 60 секунд на
+ * токен, а підключення — це рівно два запити підряд: спершу показати список
+ * карток, потім звʼязати обрану. Другий викликав би 429 просто тому, що
+ * людина швидко тицьнула. Тут API-процесів кілька, тож пам'ять спільною не
+ * буває — промах кешу не помилка, і нижче є запасний шлях.
+ */
+const monobankClientInfoCache = createExpiringMap({ ttlMs: 120_000 });
+
+const listBankLinks = (userId) =>
+  db.all(
+    `SELECT b.provider, b.bank_account_id AS bankAccountId, b.account_key AS accountKey,
+            b.currency, b.label, b.updated_at AS updatedAt, a.name AS accountName
+     FROM bank_links b
+     LEFT JOIN account_portfolio a ON a.user_id = b.user_id AND a.account_key = b.account_key
+     WHERE b.user_id = ?
+     ORDER BY b.updated_at DESC`,
+    [userId],
+  );
+
+const MONOBANK_ERROR_MESSAGE = {
+  BAD_TOKEN: 'monobank не прийняв токен. Перевірте, що скопіювали його цілком з api.monobank.ua',
+  RATE_LIMITED: 'monobank дозволяє один запит на хвилину. Спробуйте ще раз за хвилину.',
+  TIMEOUT: 'monobank не відповів вчасно. Спробуйте ще раз.',
+  NETWORK: 'Не вдалося достукатися до monobank.',
+  BANK_ERROR: 'monobank відповів помилкою. Спробуйте пізніше.',
+};
+
+const sendMonobankError = (res, error) => {
+  if (!(error instanceof MonobankError)) return false;
+  res.status(error.code === 'BAD_TOKEN' ? 400 : 502).json({
+    error: error.message,
+    code: error.code,
+    message: MONOBANK_ERROR_MESSAGE[error.code] ?? MONOBANK_ERROR_MESSAGE.BANK_ERROR,
+  });
+  return true;
+};
+
+const readBankToken = (value) => {
+  const token = String(value ?? '').trim();
+  return /^[A-Za-z0-9_-]{20,200}$/.test(token) ? token : '';
+};
+
+app.get('/api/bank/links', async (req, res) => {
+  res.json({ links: await listBankLinks(req.authUserId) });
+});
+
+/**
+ * Список карток за токеном. Нічого не зберігає: людина ще не обрала, що саме
+ * звʼязувати, і токен на цьому кроці може виявитися чужим або зіпсованим.
+ */
+app.post('/api/bank/monobank/accounts', async (req, res) => {
+  const token = readBankToken(req.body?.token);
+  if (!token) {
+    res.status(400).json({ error: 'token is required', code: 'BAD_TOKEN', message: MONOBANK_ERROR_MESSAGE.BAD_TOKEN });
+    return;
+  }
+  let info;
+  try {
+    info = await fetchMonobankClientInfo(token);
+  } catch (error) {
+    if (sendMonobankError(res, error)) return;
+    throw error;
+  }
+  monobankClientInfoCache.set(token, info);
+  // Гаманець рахує баланси лише в тих валютах, які знає. Рахунок в іншій
+  // валюті показуємо, але звʼязати не дамо — інакше кожна його операція
+  // впиралася б у перевірку валюти рахунку й нікуди не потрапляла.
+  res.json({
+    accounts: describeMonobankAccounts(info).map((account) => ({
+      ...account,
+      supported: Boolean(account.currency) && DENOMINATIONS.includes(account.currency),
+    })),
+  });
+});
+
+/**
+ * Звʼязати картку monobank із рахунком гаманця й увімкнути вебхук.
+ *
+ * Рядок пишеться **до** звернення в банк навмисно: перш ніж увімкнути вебхук,
+ * monobank сам стукає на вказану адресу й чекає 200, а маршрут відповідає лише
+ * тоді, коли вже знає цей `webhook_token`. Якщо банк відмовив — рядок
+ * прибирається, і в базі не лишається привʼязки, якої насправді немає.
+ */
+app.post('/api/bank/monobank/link', async (req, res) => {
+  const userId = req.authUserId;
+  const token = readBankToken(req.body?.token);
+  const bankAccountId = String(req.body?.bankAccountId ?? '').trim();
+  const accountKey = String(req.body?.accountKey ?? '').trim().toLowerCase();
+  if (!token || !bankAccountId || !accountKey) {
+    res.status(400).json({ error: 'token, bankAccountId and accountKey are required' });
+    return;
+  }
+
+  const walletAccount = await getAccountRow(userId, accountKey);
+  if (!walletAccount) {
+    res.status(404).json({ error: 'Account not found', code: 'UNKNOWN_ACCOUNT' });
+    return;
+  }
+
+  const cached = monobankClientInfoCache.get(token);
+  const described = cached ? describeMonobankAccounts(cached) : [];
+  const bankAccount = described.find((row) => row.id === bankAccountId);
+  // Кеш промахнувся (інший процес, довга пауза) — беремо валюту з того ж
+  // списку, який щойно показали людині. Повторний запит у банк тут коштував
+  // би 429 на рівному місці, а збрехати цим полем можна лише собі: нижче воно
+  // однаково звіряється з валютою рахунку гаманця.
+  const currency = normalizeDenomination(bankAccount?.currency ?? req.body?.currency);
+  const label = String(bankAccount?.label ?? req.body?.label ?? 'monobank').trim().slice(0, 60);
+
+  const walletCurrency = normalizeDenomination(walletAccount.primaryCurrency);
+  if (currency !== walletCurrency) {
+    res.status(409).json({
+      error: 'bank account currency does not match the wallet account',
+      code: 'CURRENCY_MISMATCH',
+      message: `Картка веде облік у ${currency}, а рахунок «${walletAccount.name}» — у ${walletCurrency}.`,
+    });
+    return;
+  }
+
+  const existing = await db.get(
+    `SELECT webhook_token AS webhookToken FROM bank_links
+     WHERE user_id = ? AND provider = 'monobank' AND webhook_token != ''
+     LIMIT 1`,
+    [userId],
+  );
+  // Вебхук у monobank один на клієнта, не на картку: усі привʼязки однієї
+  // людини мають ділити одну адресу, інакше друга картка перезаписала б першу.
+  const webhookToken = existing?.webhookToken ? String(existing.webhookToken) : createBankWebhookToken();
+  const webhookUrl = buildBankWebhookUrl(req, 'monobank', webhookToken);
+  if (!webhookUrl) {
+    res.status(500).json({ error: 'cannot build webhook url', code: 'NO_PUBLIC_HOST' });
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const previous = await db.get(
+    `SELECT 1 FROM bank_links WHERE user_id = ? AND provider = 'monobank' AND bank_account_id = ? LIMIT 1`,
+    [userId, bankAccountId],
+  );
+  await db.run(
+    `INSERT INTO bank_links (user_id, provider, bank_account_id, account_key, currency, label, token, webhook_token, created_at, updated_at)
+     VALUES (?, 'monobank', ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(user_id, provider, bank_account_id) DO UPDATE SET
+       account_key = excluded.account_key,
+       currency = excluded.currency,
+       label = excluded.label,
+       token = excluded.token,
+       webhook_token = excluded.webhook_token,
+       updated_at = excluded.updated_at`,
+    [userId, bankAccountId, accountKey, currency, label, token, webhookToken, now, now],
+  );
+
+  try {
+    await setMonobankWebhook(token, webhookUrl);
+  } catch (error) {
+    if (!previous) {
+      await db.run(
+        `DELETE FROM bank_links WHERE user_id = ? AND provider = 'monobank' AND bank_account_id = ?`,
+        [userId, bankAccountId],
+      );
+    }
+    if (sendMonobankError(res, error)) return;
+    throw error;
+  }
+
+  res.status(201).json({ links: await listBankLinks(userId) });
+});
+
+app.delete('/api/bank/monobank/links/:bankAccountId', async (req, res) => {
+  const userId = req.authUserId;
+  const bankAccountId = String(req.params?.bankAccountId ?? '').trim();
+  const row = await db.get(
+    `SELECT token FROM bank_links WHERE user_id = ? AND provider = 'monobank' AND bank_account_id = ? LIMIT 1`,
+    [userId, bankAccountId],
+  );
+  if (!row) {
+    res.status(404).json({ error: 'Link not found' });
+    return;
+  }
+  await db.run(
+    `DELETE FROM bank_links WHERE user_id = ? AND provider = 'monobank' AND bank_account_id = ?`,
+    [userId, bankAccountId],
+  );
+
+  const remaining = await db.get(
+    `SELECT 1 FROM bank_links WHERE user_id = ? AND provider = 'monobank' LIMIT 1`,
+    [userId],
+  );
+  // Поки лишилася хоч одна привʼязана картка, вебхук потрібен: він один на
+  // всіх. Знімаємо його тільки разом з останньою.
+  if (!remaining && row.token) {
+    try {
+      await setMonobankWebhook(String(row.token), '');
+    } catch (error) {
+      // Привʼязки вже немає, і операції з цієї картки тепер нікуди не ляжуть
+      // (маршрут не знайде рядка). Невимкнений у банку вебхук — незручність
+      // у їхньому кабінеті, а не привід не дати людині відключитися.
+      console.warn('[bank] не вдалося зняти вебхук monobank:', error?.message || error);
+    }
+  }
+
+  res.json({ links: await listBankLinks(userId) });
 });
 
 app.get('/api/planner/automation', async (req, res) => {

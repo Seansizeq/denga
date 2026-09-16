@@ -38,7 +38,12 @@ describe('buildOptionsPayload', () => {
     expect(buildOptionsPayload({ categories, accounts })).toEqual({
       categories: ['Продукти', 'Транспорт', 'Кава'],
       accounts: ['💳 Santander', '💵 Готівка', '🪙 USDT'],
+      currencies: ['UAH', 'PLN', 'USD'],
     });
+  });
+
+  it('offers the fiat currencies, so a shortcut can ask which one the price was in', () => {
+    expect(buildOptionsPayload({ categories, accounts, list: 'currencies' })).toEqual(['UAH', 'PLN', 'USD']);
   });
 
   it('offers expense categories by default, and the other types on request', () => {
@@ -105,7 +110,7 @@ describe('buildOptionsPayload', () => {
       categories: [{ id: '  ', name: 'Ніщо', type: 'expense' }],
       accounts: [{ accountKey: '', name: 'Ніщо' }],
     });
-    expect(payload).toEqual({ categories: [], accounts: [] });
+    expect(payload).toMatchObject({ categories: [], accounts: [] });
   });
 });
 
@@ -163,10 +168,39 @@ describe('validateAutomationTransaction', () => {
     });
   });
 
-  it('takes the currency from the account when none is given', () => {
+  it('falls back to the account currency when the wallet has no default', () => {
     expect(validateAutomationTransaction(valid({ account: 'santander' }), ctx)).toMatchObject({ currency: 'PLN' });
     expect(validateAutomationTransaction(valid({ account: 'usdt' }), ctx)).toMatchObject({ currency: 'USDT' });
     expect(validateAutomationTransaction(valid({ account: undefined }), ctx)).toMatchObject({ currency: 'UAH', account: null });
+  });
+
+  it('counts an unstated amount in the default currency, not the card behind it', () => {
+    const inPln = { ...ctx, defaultCurrency: 'PLN' };
+    // A hryvnia card in a Polish shop: the price tag is in zloty, and the card
+    // is debited the converted sum by the balance effects.
+    expect(validateAutomationTransaction(valid({ account: 'wallet' }), inPln)).toMatchObject({
+      currency: 'PLN',
+      accountCurrency: 'UAH',
+    });
+    expect(validateAutomationTransaction(valid({ account: undefined }), inPln)).toMatchObject({ currency: 'PLN' });
+  });
+
+  it('lets the payload name its own currency over the default', () => {
+    expect(
+      validateAutomationTransaction(valid({ account: 'wallet', currency: 'USD' }), { ...ctx, defaultCurrency: 'PLN' })
+    ).toMatchObject({ currency: 'USD', accountCurrency: 'UAH' });
+  });
+
+  it('counts a token wallet in the default currency too — no account is an exception', () => {
+    expect(
+      validateAutomationTransaction(valid({ account: 'usdt' }), { ...ctx, defaultCurrency: 'PLN' })
+    ).toMatchObject({ currency: 'PLN', accountCurrency: 'USDT' });
+  });
+
+  it('ignores a default currency that is not a supported fiat one', () => {
+    expect(
+      validateAutomationTransaction(valid({ account: 'santander' }), { ...ctx, defaultCurrency: 'EUR' })
+    ).toMatchObject({ currency: 'PLN' });
   });
 
   it('refuses an unsupported currency instead of folding it into UAH', () => {
@@ -219,5 +253,45 @@ describe('buildResultMessage', () => {
     expect(
       buildResultMessage({ type: 'expense', amount: 0.00012345, currency: 'BTC', categoryName: 'Інше' })
     ).toBe('✅ Витрата 0.00012345 BTC · Інше');
+  });
+
+  it('states what the card was actually debited when the units differ', () => {
+    expect(
+      buildResultMessage({
+        type: 'expense',
+        amount: 50,
+        currency: 'PLN',
+        accountCurrency: 'UAH',
+        convertedAmount: 487.2,
+        categoryName: 'Продукти',
+        accountName: 'Картка',
+      })
+    ).toBe('✅ Витрата 50 PLN ≈ 487.2 UAH · Продукти · Картка');
+  });
+
+  it('says nothing extra when the amount is already in the account unit', () => {
+    expect(
+      buildResultMessage({
+        type: 'expense',
+        amount: 50,
+        currency: 'UAH',
+        accountCurrency: 'UAH',
+        convertedAmount: 50,
+        categoryName: 'Продукти',
+      })
+    ).toBe('✅ Витрата 50 UAH · Продукти');
+  });
+
+  it('omits the conversion rather than inventing one when the rate is missing', () => {
+    expect(
+      buildResultMessage({
+        type: 'expense',
+        amount: 50,
+        currency: 'PLN',
+        accountCurrency: 'UAH',
+        convertedAmount: null,
+        categoryName: 'Продукти',
+      })
+    ).toBe('✅ Витрата 50 PLN · Продукти');
   });
 });
