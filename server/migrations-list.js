@@ -8,6 +8,7 @@
  * пройшла, її не повторять, тож правка застосується лише до нових — і схеми
  * розʼїдуться. Потрібна зміна — нова міграція.
  */
+import { randomUUID } from 'node:crypto';
 import { recreateTable } from './migrations.js';
 
 const nowIso = () => new Date().toISOString();
@@ -172,8 +173,165 @@ export const userDataVersionCounters = {
   },
 };
 
+/**
+ * Зміни жили у двох несумісних місцях.
+ *
+ * `planner_days` — рядок на день, куди писала форма календаря: з усього опису
+ * там лишалося число `workedHours`, а початок і кінець зникали. Бот писав у
+ * `planner_shift_entries` — скільки завгодно змін на день і зі справжнім
+ * часом. Читання брало **або одне, або інше**: якщо на день був хоч один запис
+ * бота, рядок дня ігнорувався цілком — і зміна, заведена руками, тихо зникала
+ * з усіх підсумків. Дані лежали на місці, у звіті їх не було.
+ *
+ * Тут ручні зміни переїжджають у записи, після чого джерело лишається одне.
+ * Рядок дня не зникає: він стає похідним кешем для крапки й символа в
+ * календарі, і тут-таки перераховується сумою своїх змін.
+ *
+ * Що переноситься: дні з `hasShift = 1`, у яких є години або сума, і на які ще
+ * немає жодного запису. День, позначений без годин і без грошей, лишається
+ * просто позначеним — переносити з нього нічого.
+ *
+ * Час у перенесених змінах не вигадується. Його ніколи не зберігали, тож режим
+ * у них — «годинами»; форма покаже тривалість і порожні поля часу замість
+ * правдоподібних 09:00–17:00, яких насправді ніхто не вводив.
+ */
+export const plannerDaysToShiftEntries = {
+  id: '004-planner-days-to-shift-entries',
+  run: async (tx) => {
+    /** Доба — межа, за якою будь-яке число вже помилка вводу. Див. MAX_SHIFT_HOURS. */
+    const MAX_HOURS = 24;
+    const now = nowIso();
+
+    const days = await tx.all(`
+      SELECT d.day AS storedDay, d.user_id AS userId, d.workedHours AS workedHours,
+             d.salaryRate AS salaryRate, d.salaryAmount AS salaryAmount,
+             d.salary_currency AS salaryCurrency, d.note AS note
+      FROM planner_days d
+      WHERE d.hasShift = 1
+        AND (COALESCE(d.workedHours, 0) > 0 OR COALESCE(d.salaryAmount, 0) > 0)
+    `);
+
+    for (const row of days ?? []) {
+      const userId = String(row.userId ?? '');
+      // Ключ рядка — `<user_id>:<YYYY-MM-DD>`; сама дата завжди десять
+      // останніх символів.
+      const day = String(row.storedDay ?? '').slice(-10);
+      if (!userId || !/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
+
+      const existing = await tx.get(
+        'SELECT COUNT(1) AS cnt FROM planner_shift_entries WHERE user_id = ? AND day = ?',
+        [userId, day],
+      );
+      if ((Number(existing?.cnt) || 0) > 0) continue;
+
+      const workedHours = Math.min(MAX_HOURS, Math.max(0, Number(row.workedHours) || 0));
+      const salaryRate = Math.max(0, Number(row.salaryRate) || 0);
+      // Сума рахується зі ставки тут-таки, а не при кожному читанні.
+      //
+      // Рядок дня зберігав ставку й години окремо, а гроші показував добутком,
+      // порахованим на льоту. Запис зміни так не вміє — у нього сума лежить
+      // полем. Якби ми перенесли нуль, зміна на 6,5 години по 40 за годину
+      // після міграції коштувала б нічого.
+      const storedAmount = Math.max(0, Number(row.salaryAmount) || 0);
+      const salaryAmount = storedAmount > 0
+        ? storedAmount
+        : Number((salaryRate * workedHours).toFixed(2));
+      const currency = String(row.salaryCurrency ?? '').toUpperCase() === 'PLN' ? 'PLN' : 'UAH';
+      // Опівдні — щоб мітка була всередині свого дня в будь-якому поясі й
+      // порядок змін лишався визначеним.
+      const noonIso = `${day}T12:00:00.000Z`;
+
+      await tx.run(
+        `INSERT INTO planner_shift_entries
+         (id, user_id, day, started_at, ended_at, worked_hours, salary_rate, salary_amount,
+          salary_currency, note, template_id, start_time, end_time, entry_mode, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, '', '', 'hours', ?, ?)`,
+        [
+          randomUUID(),
+          userId,
+          day,
+          noonIso,
+          noonIso,
+          workedHours,
+          salaryRate,
+          salaryAmount,
+          currency,
+          String(row.note ?? '').trim(),
+          now,
+          now,
+        ],
+      );
+    }
+
+    // Зміни бота мають справжні мітки часу, але порожні `start_time`/`end_time`:
+    // колонок не було. Відновлюємо їх із міток у поясі користувача — інакше
+    // форма показала б порожнечу там, де час насправді відомий.
+    const botEntries = await tx.all(`
+      SELECT e.id AS id, e.started_at AS startedAt, e.ended_at AS endedAt,
+             COALESCE(u.timezone, 'Europe/Warsaw') AS timezone
+      FROM planner_shift_entries e
+      LEFT JOIN users u ON u.telegram_id = CAST(e.user_id AS INTEGER)
+      WHERE e.start_time = '' AND e.started_at <> e.ended_at
+    `);
+
+    // Формат розібраний тут, а не спільним помічником: міграція — знімок
+    // поведінки на момент, коли її написали, і зміна помічника не має її
+    // «поїхати».
+    const timeInZone = (iso, timeZone) => {
+      const date = new Date(String(iso ?? ''));
+      if (Number.isNaN(date.getTime())) return '';
+      try {
+        const parts = new Intl.DateTimeFormat('en-CA', {
+          timeZone,
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        }).formatToParts(date);
+        const map = Object.fromEntries(parts.filter((p) => p.type !== 'literal').map((p) => [p.type, p.value]));
+        if (!map.hour || !map.minute) return '';
+        return `${map.hour === '24' ? '00' : map.hour}:${map.minute}`;
+      } catch {
+        return '';
+      }
+    };
+
+    for (const entry of botEntries ?? []) {
+      const startTime = timeInZone(entry.startedAt, entry.timezone);
+      const endTime = timeInZone(entry.endedAt, entry.timezone);
+      if (!startTime || !endTime || startTime === endTime) continue;
+      await tx.run(
+        `UPDATE planner_shift_entries
+         SET start_time = ?, end_time = ?, entry_mode = 'range', updated_at = ?
+         WHERE id = ?`,
+        [startTime, endTime, now, entry.id],
+      );
+    }
+
+    // Рядок дня одразу приводиться до суми своїх змін — інакше він лишився б із
+    // числами, які більше ніхто не читає, до першої правки.
+    await tx.run(
+      `UPDATE planner_days SET
+         workedHours = COALESCE((
+           SELECT SUM(e.worked_hours) FROM planner_shift_entries e
+           WHERE e.user_id = planner_days.user_id AND e.day = substr(planner_days.day, -10)
+         ), workedHours),
+         salaryAmount = COALESCE((
+           SELECT SUM(e.salary_amount) FROM planner_shift_entries e
+           WHERE e.user_id = planner_days.user_id AND e.day = substr(planner_days.day, -10)
+         ), salaryAmount),
+         updatedAt = ?
+       WHERE EXISTS (
+         SELECT 1 FROM planner_shift_entries e
+         WHERE e.user_id = planner_days.user_id AND e.day = substr(planner_days.day, -10)
+       )`,
+      [now],
+    );
+  },
+};
+
 export const MIGRATIONS = [
   customCategoriesUserScopedKey,
   legacyTransactionCurrencyFromNote,
   userDataVersionCounters,
+  plannerDaysToShiftEntries,
 ];

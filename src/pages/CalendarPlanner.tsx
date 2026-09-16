@@ -9,7 +9,11 @@ import {
 } from '../api/client';
 import { hapticLight, hapticResult, showAppAlert, showAppConfirm } from '../utils/notify';
 import { buildPastDays, isWithinLastDays } from '../utils/dateRanges';
-import ShiftEditSheet from '../components/ui/ShiftEditSheet';
+import ShiftFormSheet, {
+  type ShiftFormPayload,
+  type ShiftFormValue,
+} from '../components/ui/ShiftFormSheet';
+import { formatHoursMinutes, formatTimeRange } from '../utils/shiftDuration';
 import styles from './CalendarPlanner.module.css';
 
 interface DayPlan {
@@ -55,6 +59,10 @@ interface ShiftEntry {
   day: string;
   startedAt: string;
   endedAt: string;
+  /** `range` — тривалість рахується з часу, `hours` — названа прямо. */
+  mode: 'range' | 'hours';
+  startTime: string;
+  endTime: string;
   workedHours: number;
   salaryRate: number;
   salaryAmount: number;
@@ -134,17 +142,6 @@ const toNumber = (value: unknown): number => {
   return Number.isFinite(n) ? Math.max(0, n) : 0;
 };
 
-const addHoursToTime = (start: string, hours: number): string => {
-  const [h, m] = start.split(':').map(Number);
-  if (!Number.isFinite(h) || !Number.isFinite(m)) return '17:00';
-  const startMin = h * 60 + m;
-  const endMin = startMin + Math.round(hours * 60);
-  const total = ((endMin % (24 * 60)) + 24 * 60) % (24 * 60);
-  const eh = Math.floor(total / 60);
-  const em = total % 60;
-  return `${String(eh).padStart(2, '0')}:${String(em).padStart(2, '0')}`;
-};
-
 const parseNoteToNameSymbol = (note: string): { name: string; symbol: string } => {
   const raw = note.trim();
   if (!raw) return { name: '', symbol: '' };
@@ -153,11 +150,6 @@ const parseNoteToNameSymbol = (note: string): { name: string; symbol: string } =
     return { name: parts[0], symbol: parts.slice(1).join(' • ') };
   }
   return { name: parts[0] ?? '', symbol: '' };
-};
-
-const parseMoneyInput = (raw: string): number => {
-  const n = parseFloat(String(raw).replace(',', '.').trim());
-  return Number.isFinite(n) ? Math.max(0, n) : 0;
 };
 
 const shiftMonthValue = (value: string, delta: number): string => {
@@ -185,9 +177,6 @@ const dayTintStyle = (note: string): React.CSSProperties | undefined => {
   };
 };
 
-const normalizeTemplateKey = (name: string, symbol: string, currency: PlannerCurrency): string =>
-  `${name.trim().toLowerCase()}::${symbol.trim().toLowerCase()}::${currency === 'PLN' ? 'PLN' : 'UAH'}`;
-
 const formatElapsedShiftTime = (
   startedAt: string,
   unitLabels: { hours: string; minutes: string }
@@ -197,24 +186,6 @@ const formatElapsedShiftTime = (
   const diffSec = Math.max(0, Math.floor((Date.now() - startedMs) / 1000));
   const hours = Math.floor(diffSec / 3600);
   const minutes = Math.floor((diffSec % 3600) / 60);
-  return `${hours}${unitLabels.hours} ${minutes}${unitLabels.minutes}`;
-};
-
-const formatDecimalHoursAsHoursMinutes = (
-  decimalHours: number,
-  unitLabels: { hours: string; minutes: string }
-): string => {
-  const total = Math.max(0, Number(decimalHours) || 0);
-  const totalMinutes = Math.round(total * 60);
-  let hours = Math.floor(totalMinutes / 60);
-  let minutes = totalMinutes - hours * 60;
-  if (minutes === 60) {
-    hours += 1;
-    minutes = 0;
-  }
-  if (hours === 0 && minutes === 0) return `0${unitLabels.hours}`;
-  if (hours === 0) return `${minutes}${unitLabels.minutes}`;
-  if (minutes === 0) return `${hours}${unitLabels.hours}`;
   return `${hours}${unitLabels.hours} ${minutes}${unitLabels.minutes}`;
 };
 
@@ -243,9 +214,7 @@ const CalendarPlanner: React.FC = () => {
   const [month, setMonth] = useState(todayIso().slice(0, 7));
   const [selectedDay, setSelectedDay] = useState(todayIso());
   const [store, setStore] = useState<PlannerStore>({});
-  const [justSaved, setJustSaved] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [chooserOpen, setChooserOpen] = useState(false);
   const [startShiftChooserOpen, setStartShiftChooserOpen] = useState(false);
   /** Аркуш дій по дню — те, що відкривається утриманням числа в календарі. */
@@ -257,24 +226,17 @@ const CalendarPlanner: React.FC = () => {
    * закриває проміжок; після цього починається новий.
    */
   const [rangeAnchor, setRangeAnchor] = useState<string | null>(null);
-  const [editorOpened, setEditorOpened] = useState(false);
-  const [shiftName, setShiftName] = useState('');
-  const [shiftSymbol, setShiftSymbol] = useState('');
-  const [isFullDay, setIsFullDay] = useState(true);
-  const [startTime, setStartTime] = useState('09:00');
-  const [endTime, setEndTime] = useState('17:00');
   const [, setVvRev] = useState(0);
   const [shiftTemplates, setShiftTemplates] = useState<ShiftTemplate[]>([]);
   const [defaultShiftTemplateId, setDefaultShiftTemplateId] = useState<string | null>(null);
-  const [salaryRateInput, setSalaryRateInput] = useState('');
-  const [salaryAmountInput, setSalaryAmountInput] = useState('');
-  const [salaryCurrency, setSalaryCurrency] = useState<PlannerCurrency>('UAH');
   const [reportRange, setReportRange] = useState<PlannerReportRange>('month');
   const [customFrom, setCustomFrom] = useState(() => `${todayIso().slice(0, 7)}-01`);
   const [customTo, setCustomTo] = useState(() => todayIso());
   const [activeShift, setActiveShift] = useState<ActiveShift | null>(null);
   const [activeShiftLoading, setActiveShiftLoading] = useState(false);
-  const [editingShift, setEditingShift] = useState<ShiftEntry | null>(null);
+  /** Відкрита форма зміни: null — закрита, запис без id — нова. */
+  const [shiftForm, setShiftForm] = useState<ShiftFormValue | null>(null);
+  const [shiftFormDay, setShiftFormDay] = useState(todayIso());
   const [dayShiftEntries, setDayShiftEntries] = useState<ShiftEntry[]>([]);
   const [dayShiftEntriesLoading, setDayShiftEntriesLoading] = useState(false);
   const [reportShiftEntries, setReportShiftEntries] = useState<ShiftEntry[]>([]);
@@ -285,7 +247,7 @@ const CalendarPlanner: React.FC = () => {
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const [shiftElapsedText, setShiftElapsedText] = useState('0г 0хв');
 
-  const modalAnyOpen = chooserOpen || editorOpened || startShiftChooserOpen || dayActionsOpen;
+  const modalAnyOpen = chooserOpen || startShiftChooserOpen || dayActionsOpen;
 
   const overlayBox = modalAnyOpen ? readVisualOverlayBox() : null;
 
@@ -498,37 +460,18 @@ const CalendarPlanner: React.FC = () => {
     return { totalHours, totalSalaryUah, totalSalaryPln, filledDays, totalShifts };
   }, [store, reportDaysKey]);
 
-  const reportShiftBanners = useMemo(() => {
-    const days = reportDaysKey ? reportDaysKey.split('|') : [];
-    const existingDays = new Set(reportShiftEntries.map((entry) => entry.day));
-    const merged = [...reportShiftEntries];
-    for (const day of days) {
-      if (existingDays.has(day)) continue;
-      const plan = store[day];
-      if (!plan?.hasShift) continue;
-      const fallbackPay = plan.salaryAmountUah || plan.salaryAmountPln
-        ? (plan.salaryAmountPln && plan.salaryAmountPln > 0 ? plan.salaryAmountPln : plan.salaryAmountUah || 0)
-        : expectedPayForDay(plan);
-      const fallbackCurrency: PlannerCurrency =
-        plan.salaryAmountPln && plan.salaryAmountPln > 0
-          ? 'PLN'
-          : plan.salaryCurrency === 'PLN'
-            ? 'PLN'
-            : 'UAH';
-      merged.push({
-        id: `day-${day}`,
-        day,
-        startedAt: `${day}T00:00:00.000Z`,
-        endedAt: `${day}T00:00:00.000Z`,
-        workedHours: toNumber(plan.workedHours),
-        salaryRate: toNumber(plan.salaryRate),
-        salaryAmount: toNumber(fallbackPay),
-        salaryCurrency: fallbackCurrency,
-        note: plan.note ?? '',
-      });
-    }
-    return merged.sort((a, b) => String(b.endedAt || '').localeCompare(String(a.endedAt || '')));
-  }, [reportShiftEntries, reportDaysKey, store]);
+  /**
+   * Стрічка змін за період.
+   *
+   * Раніше сюди домішувалися вигадані записи з рядків днів — для тих днів, де
+   * зміна жила тільки в `planner_days`. Такий запис не можна було ні виправити,
+   * ні видалити: кнопки на ньому ховалися за перевіркою id. Тепер кожна зміна —
+   * справжній запис, тож і показувати нічого вигадувати не треба.
+   */
+  const reportShiftBanners = useMemo(
+    () => [...reportShiftEntries].sort((a, b) => String(b.startedAt || '').localeCompare(String(a.startedAt || ''))),
+    [reportShiftEntries],
+  );
 
   useEffect(() => {
     void reloadPlannerData();
@@ -759,137 +702,11 @@ const CalendarPlanner: React.FC = () => {
     void loadReportShiftEntries(days);
   }, [reportDaysKey, loadReportShiftEntries]);
 
-  const hoursFromTimeRange = (start: string, end: string): number => {
-    const [sh, sm] = start.split(':').map(Number);
-    const [eh, em] = end.split(':').map(Number);
-    if (!Number.isFinite(sh) || !Number.isFinite(sm) || !Number.isFinite(eh) || !Number.isFinite(em)) return 0;
-    const startMin = sh * 60 + sm;
-    let endMin = eh * 60 + em;
-    if (endMin <= startMin) endMin += 24 * 60;
-    return Math.max(0, Number(((endMin - startMin) / 60).toFixed(2)));
-  };
-
-  const persistShiftTemplate = async () => {
-    const name = shiftName.trim();
-    const symbol = shiftSymbol.trim();
-    if (!name && !symbol) return;
-    try {
-      const workedHours = isFullDay ? 8 : hoursFromTimeRange(startTime, endTime);
-      const response = await apiFetch('/api/planner/shift-templates', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name,
-          symbol,
-          isFullDay,
-          startTime,
-          endTime,
-          workedHours,
-          salaryRate: parseMoneyInput(salaryRateInput),
-          salaryAmount: parseMoneyInput(salaryAmountInput),
-          salaryCurrency,
-        }),
-      });
-      if (response.ok) {
-        void loadShiftTemplates();
-        void loadPlannerSettings();
-      }
-    } catch (error) {
-      console.error('Failed to save shift template:', error);
-    }
-  };
-
-  const saveDay = async (dayIso: string, payload: DayPlan): Promise<boolean> => {
-    setSaving(true);
-    try {
-      const response = await apiFetch(`/api/planner/${dayIso}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (!response.ok) throw new Error(`Planner save failed: ${response.status}`);
-      setJustSaved(true);
-      window.setTimeout(() => setJustSaved(false), 1200);
-      return true;
-    } catch (error) {
-      console.error('Failed to save planner day:', error);
-      return false;
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const applyShift = (payload: DayPlan) => {
-    prefillEditorFromPlan(payload);
-    setEditorOpened(true);
-    setChooserOpen(false);
-  };
-
-  const prefillEditorFromPlan = (plan: DayPlan) => {
-    const { name, symbol } = parseNoteToNameSymbol(plan.note);
-    setShiftName(name);
-    setShiftSymbol(symbol);
-    const wh = plan.workedHours;
-    if (Math.abs(wh - 8) < 0.05) {
-      setIsFullDay(true);
-      setStartTime('09:00');
-      setEndTime('17:00');
-    } else if (wh > 0) {
-      setIsFullDay(false);
-      setStartTime('09:00');
-      setEndTime(addHoursToTime('09:00', wh));
-    } else {
-      setIsFullDay(true);
-      setStartTime('09:00');
-      setEndTime('17:00');
-    }
-    setSalaryRateInput(plan.salaryRate > 0 ? String(plan.salaryRate) : '');
-    setSalaryAmountInput(plan.salaryAmount > 0 ? String(plan.salaryAmount) : '');
-    setSalaryCurrency(plan.salaryCurrency === 'PLN' ? 'PLN' : 'UAH');
-  };
-
-  const openEditShift = () => {
-    prefillEditorFromPlan(current);
-    setEditorOpened(true);
-    setChooserOpen(false);
-  };
-
-  const removeShiftFromDay = async () => {
-    if (!(await showAppConfirm(t('planner', 'deleteShiftConfirm')))) return;
-    const payload: DayPlan = {
-      ...current,
-      hasShift: false,
-      workedHours: 0,
-      note: '',
-      salaryRate: 0,
-      salaryAmount: 0,
-      salaryCurrency: 'UAH',
-    };
-    const ok = await saveDay(selectedDay, payload);
-    if (ok) {
-      setStore((prev) => ({ ...prev, [selectedDay]: payload }));
-      setChooserOpen(false);
-    }
-  };
-
-  const applyTemplateToDay = async (tpl: ShiftTemplate) => {
-    setSaving(true);
-    try {
-      const response = await apiFetch(`/api/planner/${encodeURIComponent(selectedDay)}/shifts`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ templateId: tpl.id }),
-      });
-      if (!response.ok) throw new Error(`Apply template failed: ${response.status}`);
-      await reloadPlannerData();
-      await loadDayShiftEntries(selectedDay);
-      await loadReportShiftEntries(reportDays);
-      setChooserOpen(false);
-    } catch (error) {
-      console.error('Failed to apply template as shift entry:', error);
-    } finally {
-      setSaving(false);
-    }
+  const refreshAfterShiftEntryMutation = async (dayIso: string) => {
+    const days = reportDaysKey ? reportDaysKey.split('|') : [];
+    await reloadPlannerData();
+    await loadReportShiftEntries(days);
+    await loadDayShiftEntries(dayIso);
   };
 
   const deleteShiftTemplate = async (tpl: ShiftTemplate) => {
@@ -907,55 +724,151 @@ const CalendarPlanner: React.FC = () => {
     }
   };
 
-  const refreshAfterShiftEntryMutation = async (dayIso: string) => {
-    const days = reportDaysKey ? reportDaysKey.split('|') : [];
-    await reloadPlannerData();
-    await loadReportShiftEntries(days);
-    if (chooserOpen && dayIso === selectedDay) {
-      await loadDayShiftEntries(dayIso);
+  /**
+   * Порожня форма для нової зміни.
+   *
+   * Значення за замовчуванням — звичайний денний проміжок, а не «вісім годин»:
+   * час одразу видно й видно, що його можна змінити. Раніше на цьому місці була
+   * форма **дня**, тож друга зміна за добу просто перезаписувала першу.
+   */
+  const openNewShift = (dayIso: string) => {
+    setShiftFormDay(dayIso);
+    setShiftForm({
+      id: '',
+      mode: 'range',
+      startTime: '09:00',
+      endTime: '17:00',
+      workedHours: 8,
+      salaryRate: 0,
+      salaryAmount: 0,
+      salaryCurrency: 'UAH',
+      name: '',
+      symbol: '',
+    });
+    setChooserOpen(false);
+  };
+
+  /** Нова зміна, заповнена шаблоном, — разом із його власним часом. */
+  const openNewShiftFromTemplate = (dayIso: string, tpl: ShiftTemplate) => {
+    const byRange = !tpl.isFullDay && Boolean(tpl.startTime && tpl.endTime);
+    setShiftFormDay(dayIso);
+    setShiftForm({
+      id: '',
+      mode: byRange ? 'range' : 'hours',
+      startTime: tpl.startTime || '09:00',
+      endTime: tpl.endTime || '17:00',
+      workedHours: tpl.workedHours,
+      salaryRate: tpl.salaryRate,
+      salaryAmount: tpl.salaryAmount,
+      salaryCurrency: tpl.salaryCurrency,
+      name: tpl.name,
+      symbol: tpl.symbol,
+    });
+    setChooserOpen(false);
+  };
+
+  /** Правка конкретної зміни — тієї, по якій торкнулися, а не «зміни дня». */
+  const openEditShiftEntry = (entry: ShiftEntry) => {
+    const { name, symbol } = parseNoteToNameSymbol(entry.note);
+    setShiftFormDay(entry.day);
+    setShiftForm({
+      id: entry.id,
+      mode: entry.mode === 'range' ? 'range' : 'hours',
+      startTime: entry.startTime || '09:00',
+      endTime: entry.endTime || '17:00',
+      workedHours: entry.workedHours,
+      salaryRate: entry.salaryRate,
+      salaryAmount: entry.salaryAmount,
+      salaryCurrency: entry.salaryCurrency,
+      name,
+      symbol,
+    });
+    setChooserOpen(false);
+  };
+
+  const submitShiftForm = async (payload: ShiftFormPayload) => {
+    const editingId = shiftForm?.id ?? '';
+    const body = {
+      mode: payload.mode,
+      startTime: payload.startTime,
+      endTime: payload.endTime,
+      workedHours: payload.workedHours,
+      salaryRate: payload.salaryRate,
+      salaryAmount: payload.salaryAmount,
+      salaryCurrency: payload.salaryCurrency,
+      name: payload.name,
+      symbol: payload.symbol,
+    };
+    const response = await apiFetch(
+      editingId
+        ? `/api/planner/shifts/${encodeURIComponent(editingId)}`
+        : `/api/planner/${encodeURIComponent(shiftFormDay)}/shifts`,
+      {
+        method: editingId ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      },
+    );
+    // Помилку видно у формі — інакше вона лишалася б у консолі, а людина
+    // бачила б, що «зберегти» нічого не робить.
+    if (!response.ok) throw new Error(`Save shift failed: ${response.status}`);
+
+    if (!editingId && payload.saveAsTemplate && (payload.name || payload.symbol)) {
+      await saveShiftTemplate(payload);
+    }
+    await refreshAfterShiftEntryMutation(shiftFormDay);
+  };
+
+  /**
+   * Шаблон зберігається лише за явною згодою у формі.
+   *
+   * Раніше він створювався сам із будь-якої названої зміни, і список заростав
+   * одноразовими підписами.
+   */
+  const saveShiftTemplate = async (payload: ShiftFormPayload) => {
+    try {
+      const response = await apiFetch('/api/planner/shift-templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: payload.name,
+          symbol: payload.symbol,
+          isFullDay: payload.mode === 'hours',
+          startTime: payload.startTime || '09:00',
+          endTime: payload.endTime || '17:00',
+          workedHours: payload.workedHours,
+          salaryRate: payload.salaryRate,
+          salaryAmount: payload.salaryAmount,
+          salaryCurrency: payload.salaryCurrency,
+        }),
+      });
+      if (response.ok) {
+        void loadShiftTemplates();
+        void loadPlannerSettings();
+      }
+    } catch (error) {
+      console.error('Failed to save shift template:', error);
     }
   };
 
-  const handleEditReportShift = (entry: ShiftEntry) => {
-    if (entry.id.startsWith('day-')) return;
-    setEditingShift(entry);
-  };
-
-  const handleSaveEditedShift = async (
-    entry: ShiftEntry,
-    next: { workedHours: number; salaryAmount: number; note: string },
-  ) => {
+  const deleteShiftEntry = async (entry: ShiftEntry) => {
     const response = await apiFetch(`/api/planner/shifts/${encodeURIComponent(entry.id)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        workedHours: next.workedHours,
-        salaryAmount: next.salaryAmount,
-        salaryCurrency: entry.salaryCurrency,
-        note: next.note,
-      }),
+      method: 'DELETE',
     });
-    // Помилку видно у формі — раніше вона мовчки лишалася в консолі.
-    if (!response.ok) throw new Error(`Edit shift failed: ${response.status}`);
+    if (!response.ok && response.status !== 204) throw new Error(`Delete shift failed: ${response.status}`);
     await refreshAfterShiftEntryMutation(entry.day);
   };
 
   const handleDeleteReportShift = async (entry: ShiftEntry) => {
-    if (entry.id.startsWith('day-')) return;
     if (!(await showAppConfirm(t('planner', 'deleteShiftEntryConfirm')))) return;
     try {
-      const response = await apiFetch(`/api/planner/shifts/${encodeURIComponent(entry.id)}`, {
-        method: 'DELETE',
-      });
-      if (!response.ok && response.status !== 204) throw new Error(`Delete shift failed: ${response.status}`);
-      await refreshAfterShiftEntryMutation(entry.day);
+      await deleteShiftEntry(entry);
     } catch (error) {
       console.error('Failed to delete report shift:', error);
       hapticResult('error');
       showAppAlert(t('addTx', 'saveFailed'));
     }
   };
-
   const todayIsoStr = todayIso();
   const currentMonthLabel = monthLabel(month, locale);
 
@@ -983,6 +896,24 @@ const CalendarPlanner: React.FC = () => {
     month: 'long',
   });
   const selectedDayPay = expectedPayForDay(current);
+
+  /**
+   * Підпис зміни у списку: час, тривалість, гроші.
+   *
+   * Час тут головний — саме за ним дві зміни одного дня й відрізняються. Доки
+   * списки показували лише години й суму, вибрати потрібну можна було навмання.
+   */
+  const describeShiftEntry = (entry: ShiftEntry): string => {
+    const range = entry.mode === 'range' ? formatTimeRange(entry.startTime, entry.endTime) : '';
+    const duration = formatHoursMinutes(entry.workedHours, {
+      hours: t('planner', 'hoursShort'),
+      minutes: t('planner', 'minutesShort'),
+    });
+    const pay = entry.salaryAmount > 0
+      ? formatPlannerMoney(entry.salaryAmount, locale, entry.salaryCurrency)
+      : '';
+    return [range, duration, pay].filter(Boolean).join(' · ');
+  };
 
   return (
     <div className={styles.container}>
@@ -1183,7 +1114,7 @@ const CalendarPlanner: React.FC = () => {
             <div className={styles.reportStatItem}>
               <span className={styles.reportLabel}>{t('planner', 'reportHoursTotal')}</span>
               <strong className={styles.reportValue}>
-                {formatDecimalHoursAsHoursMinutes(monthReport.totalHours, {
+                {formatHoursMinutes(monthReport.totalHours, {
                   hours: t('planner', 'hoursShort'),
                   minutes: t('planner', 'minutesShort'),
                 })}
@@ -1228,7 +1159,7 @@ const CalendarPlanner: React.FC = () => {
                     <span className={styles.dayShiftMain}>{entry.note || t('planner', 'shiftTitle')}</span>
                     <span className={styles.dayShiftMeta}>
                       {entry.day} ·{' '}
-                      {formatDecimalHoursAsHoursMinutes(entry.workedHours, {
+                      {formatHoursMinutes(entry.workedHours, {
                         hours: t('planner', 'hoursShort'),
                         minutes: t('planner', 'minutesShort'),
                       })}{' '}
@@ -1240,7 +1171,7 @@ const CalendarPlanner: React.FC = () => {
                         <button
                           type="button"
                           className={styles.dayShiftEditBtn}
-                          onClick={() => void handleEditReportShift(entry)}
+                          onClick={() => void openEditShiftEntry(entry)}
                         >
                           {t('planner', 'editShift')}
                         </button>
@@ -1292,7 +1223,7 @@ const CalendarPlanner: React.FC = () => {
             <p className={styles.dayActionsTitle}>{selectedDayLabel}</p>
             <p className={styles.dayActionsMeta}>
               {dayHasShift
-                ? `${formatDecimalHoursAsHoursMinutes(current.workedHours, {
+                ? `${formatHoursMinutes(current.workedHours, {
                     hours: t('planner', 'hoursShort'),
                     minutes: t('planner', 'minutesShort'),
                   })}${
@@ -1311,7 +1242,7 @@ const CalendarPlanner: React.FC = () => {
                   setChooserOpen(true);
                 }}
               >
-                {dayHasShift ? t('planner', 'editShift') : t('planner', 'addShift')}
+                {dayHasShift ? t('planner', 'dayShifts') : t('planner', 'addShift')}
               </button>
               {/* Почати зміну можна лише коли жодна не йде — інакше кнопки немає,
                   як і раніше було під календарем. */}
@@ -1375,7 +1306,22 @@ const CalendarPlanner: React.FC = () => {
                 </ul>
               </>
             ) : null}
-            <p className={styles.templateSectionLabel}>{t('planner', 'dayShifts')}</p>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Шторка дня: список змін цього дня, а не одна «зміна дня». Кожен рядок
+          відкриває саме свою зміну — раніше кнопка «Редагувати» вела до форми
+          дня, і на дні із записом бота збереження просто нічого не міняло. */}
+      {chooserOpen && overlayBox ? (
+        <div
+          className={`${styles.modalOverlay} ${overlayBox.keyboardOpen ? styles.modalOverlayKeyboard : ''}`}
+          style={{ top: overlayBox.top, height: overlayBox.height }}
+          onClick={() => setChooserOpen(false)}
+        >
+          <div className={styles.modalSheet} onClick={(e) => e.stopPropagation()}>
+            <p className={styles.dayActionsTitle}>{selectedDayLabel}</p>
+
             {dayShiftEntriesLoading ? (
               <p className={styles.dayShiftsEmpty}>{t('common', 'loading')}</p>
             ) : dayShiftEntries.length === 0 ? (
@@ -1384,62 +1330,27 @@ const CalendarPlanner: React.FC = () => {
               <ul className={styles.dayShiftsList} role="list">
                 {dayShiftEntries.map((entry) => (
                   <li key={entry.id} className={styles.dayShiftRow}>
-                    <span className={styles.dayShiftMain}>{entry.note || t('planner', 'shiftTitle')}</span>
-                    <span className={styles.dayShiftMeta}>
-                      {formatDecimalHoursAsHoursMinutes(entry.workedHours, {
-                        hours: t('planner', 'hoursShort'),
-                        minutes: t('planner', 'minutesShort'),
-                      })}{' '}
-                      ·{' '}
-                      {entry.salaryAmount > 0 ? formatPlannerMoney(entry.salaryAmount, locale, entry.salaryCurrency) : '—'}
-                    </span>
+                    <button
+                      type="button"
+                      className={styles.dayShiftPickBtn}
+                      onClick={() => openEditShiftEntry(entry)}
+                    >
+                      <span className={styles.dayShiftMain}>{entry.note || t('planner', 'shiftTitle')}</span>
+                      <span className={styles.dayShiftMeta}>{describeShiftEntry(entry)}</span>
+                    </button>
                   </li>
                 ))}
               </ul>
             )}
-          </div>
-        </div>
-      ) : null}
 
-      {chooserOpen && overlayBox ? (
-        <div
-          className={`${styles.modalOverlay} ${overlayBox.keyboardOpen ? styles.modalOverlayKeyboard : ''}`}
-          style={{ top: overlayBox.top, height: overlayBox.height }}
-          onClick={() => setChooserOpen(false)}
-        >
-          <div className={styles.modalSheet} onClick={(e) => e.stopPropagation()}>
-            {dayHasShift ? (
-              <div className={styles.dayShiftActions}>
-                <button type="button" className={styles.editShiftBtn} onClick={openEditShift}>
-                  {t('planner', 'editShift')}
-                </button>
-                <button
-                  type="button"
-                  className={styles.deleteShiftBtn}
-                  disabled={saving}
-                  onClick={() => void removeShiftFromDay()}
-                >
-                  {t('planner', 'deleteShift')}
-                </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                className={styles.addShiftBtn}
-                onClick={() =>
-                  applyShift({
-                    hasShift: true,
-                    workedHours: 8,
-                    salaryRate: 0,
-                    salaryAmount: 0,
-                    salaryCurrency: 'UAH',
-                    note: '',
-                  })
-                }
-              >
-                {t('planner', 'addShift')}
-              </button>
-            )}
+            <button
+              type="button"
+              className={styles.addShiftBtn}
+              onClick={() => openNewShift(selectedDay)}
+            >
+              {t('planner', 'addShift')}
+            </button>
+
             {shiftTemplates.length > 0 ? (
               <>
                 <p className={styles.templateSectionLabel}>{t('planner', 'templates')}</p>
@@ -1452,11 +1363,12 @@ const CalendarPlanner: React.FC = () => {
                     const curTag = tpl.salaryCurrency === 'PLN' ? 'zł' : '₴';
                     return (
                       <li key={tpl.id} className={styles.templateRow}>
+                        {/* Шаблон відкриває форму вже заповненою — разом зі
+                            своїм часом, який досі мовчки замінювався на «зараз». */}
                         <button
                           type="button"
                           className={styles.templateBtn}
-                          disabled={saving}
-                          onClick={() => void applyTemplateToDay(tpl)}
+                          onClick={() => openNewShiftFromTemplate(selectedDay, tpl)}
                         >
                           {label}
                           <span className={styles.templateCurrencyTag}>{curTag}</span>
@@ -1464,7 +1376,6 @@ const CalendarPlanner: React.FC = () => {
                         <button
                           type="button"
                           className={styles.templateDeleteBtn}
-                          disabled={saving}
                           aria-label={t('planner', 'deleteTemplate')}
                           title={t('planner', 'deleteTemplate')}
                           onClick={(e) => {
@@ -1484,183 +1395,33 @@ const CalendarPlanner: React.FC = () => {
         </div>
       ) : null}
 
-      {editorOpened && overlayBox ? (
-        <div
-          className={`${styles.modalOverlay} ${overlayBox.keyboardOpen ? styles.modalOverlayKeyboard : ''}`}
-          style={{ top: overlayBox.top, height: overlayBox.height }}
-          onClick={() => setEditorOpened(false)}
-        >
-          <section className={styles.modalSheetEditor} onClick={(e) => e.stopPropagation()}>
-            <div className={styles.editorTop}>
-                <button
-                  type="button"
-                  className={styles.closeTextBtn}
-                  onClick={() => setEditorOpened(false)}
-                >
-                  <span>{t('planner', 'dismiss')}</span>
-                </button>
-              <h2 className={styles.modalTitle}>{t('planner', 'shiftTitle')}</h2>
-            </div>
-
-            <div className={styles.modalScrollBody}>
-              <div className={styles.formBlock}>
-                <div className={styles.formRow}>
-                  <label htmlFor="shift-name">{t('subscriptions', 'name')}</label>
-                  <input
-                    id="shift-name"
-                    type="text"
-                    enterKeyHint="next"
-                    autoComplete="off"
-                    value={shiftName}
-                    onChange={(e) => setShiftName(e.target.value)}
-                    className={styles.fieldInput}
-                  />
-                </div>
-                <div className={styles.formRow}>
-                  <label htmlFor="shift-symbol">{t('planner', 'shiftSymbolLabel')}</label>
-                  <input
-                    id="shift-symbol"
-                    type="text"
-                    enterKeyHint="done"
-                    autoComplete="off"
-                    value={shiftSymbol}
-                    onChange={(e) => setShiftSymbol(e.target.value)}
-                    className={styles.fieldInput}
-                  />
-                </div>
-              </div>
-
-              <h3 className={styles.groupTitle}>{t('planner', 'defaultValues')}</h3>
-              <div className={styles.formBlock}>
-                <div className={styles.rowBetween}>
-                  <span className={styles.rowLabel}>{t('planner', 'fullDay')}</span>
-                  <label className={styles.switch}>
-                    <input type="checkbox" checked={isFullDay} onChange={(e) => setIsFullDay(e.target.checked)} />
-                    <span className={styles.slider} />
-                  </label>
-                </div>
-                <div className={styles.rowBetween}>
-                  <span className={styles.rowLabel}>{t('planner', 'timeStart')}</span>
-                  <input
-                    type="time"
-                    value={startTime}
-                    onChange={(e) => setStartTime(e.target.value)}
-                    className={styles.timeInput}
-                    disabled={isFullDay}
-                  />
-                </div>
-                <div className={styles.rowBetween}>
-                  <span className={styles.rowLabel}>{t('planner', 'timeEnd')}</span>
-                  <input
-                    type="time"
-                    value={endTime}
-                    onChange={(e) => setEndTime(e.target.value)}
-                    className={styles.timeInput}
-                    disabled={isFullDay}
-                  />
-                </div>
-              </div>
-
-              <h3 className={styles.groupTitle}>{t('planner', 'shiftPayment')}</h3>
-              <p className={styles.salaryHint}>{t('planner', 'salaryForReportHint')}</p>
-              <div className={styles.formBlock}>
-                <div className={styles.rowBetween}>
-                  <span className={styles.rowLabel}>{t('planner', 'currency')}</span>
-                  <div className={styles.currencySegment} role="group" aria-label={t('planner', 'currency')}>
-                    <button
-                      type="button"
-                      className={styles.currencySegmentBtn}
-                      aria-pressed={salaryCurrency === 'UAH'}
-                      onClick={() => setSalaryCurrency('UAH')}
-                    >
-                      ₴
-                    </button>
-                    <button
-                      type="button"
-                      className={styles.currencySegmentBtn}
-                      aria-pressed={salaryCurrency === 'PLN'}
-                      onClick={() => setSalaryCurrency('PLN')}
-                    >
-                      zł
-                    </button>
-                  </div>
-                </div>
-                <div className={styles.formRow}>
-                  <label htmlFor="shift-rate">{t('planner', 'salaryRate')}</label>
-                  <input
-                    id="shift-rate"
-                    type="text"
-                    inputMode="decimal"
-                    enterKeyHint="next"
-                    autoComplete="off"
-                    placeholder="0"
-                    value={salaryRateInput}
-                    onChange={(e) => setSalaryRateInput(e.target.value)}
-                    className={styles.fieldInput}
-                  />
-                </div>
-                <div className={styles.formRow}>
-                  <label htmlFor="shift-amount">{t('planner', 'salaryAmount')}</label>
-                  <input
-                    id="shift-amount"
-                    type="text"
-                    inputMode="decimal"
-                    enterKeyHint="done"
-                    autoComplete="off"
-                    placeholder="0"
-                    value={salaryAmountInput}
-                    onChange={(e) => setSalaryAmountInput(e.target.value)}
-                    className={styles.fieldInput}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              className={styles.saveBtn}
-              disabled={saving}
-              onClick={async () => {
-                const workedHours = isFullDay ? 8 : hoursFromTimeRange(startTime, endTime);
-                const salaryRate = parseMoneyInput(salaryRateInput);
-                const salaryAmount = parseMoneyInput(salaryAmountInput);
-                const payload: DayPlan = {
-                  ...current,
-                  hasShift: true,
-                  workedHours,
-                  salaryRate,
-                  salaryAmount,
-                  salaryCurrency,
-                  note: [shiftName.trim(), shiftSymbol.trim()].filter(Boolean).join(' • '),
-                };
-                const ok = await saveDay(selectedDay, payload);
-                if (ok) {
-                  setStore((prev) => ({ ...prev, [selectedDay]: payload }));
-                  const nextTemplateKey = normalizeTemplateKey(shiftName, shiftSymbol, salaryCurrency);
-                  const templateAlreadyExists = shiftTemplates.some(
-                    (tpl) => normalizeTemplateKey(tpl.name, tpl.symbol, tpl.salaryCurrency) === nextTemplateKey
-                  );
-                  if (!templateAlreadyExists && (shiftName.trim() || shiftSymbol.trim())) {
-                    await persistShiftTemplate();
-                  }
-                  setEditorOpened(false);
-                }
-              }}
-            >
-              {justSaved ? t('planner', 'saved') : saving ? '...' : t('planner', 'save')}
-            </button>
-          </section>
-        </div>
-      ) : null}
-
-      <ShiftEditSheet
-        shift={editingShift}
-        onClose={() => setEditingShift(null)}
-        onSave={async (next) => {
-          if (!editingShift) return;
-          await handleSaveEditedShift(editingShift, next);
-        }}
+      {/* Ключ змушує форму зібратися наново на кожне відкриття.
+          Без нього поля лишалися б з попереднього разу: їхній початковий стан
+          береться один раз, при монтуванні, — і зміна, відкрита на правку,
+          показувала б типові 09:00–17:00 замість власного часу. */}
+      {shiftForm ? (
+      <ShiftFormSheet
+        key={shiftForm.id || `new-${shiftFormDay}`}
+        value={shiftForm}
+        dayLabel={parseIsoLocal(shiftFormDay).toLocaleDateString(locale, {
+          weekday: 'short',
+          day: 'numeric',
+          month: 'long',
+        })}
+        templates={shiftTemplates}
+        onClose={() => setShiftForm(null)}
+        onSubmit={submitShiftForm}
+        onDelete={
+          shiftForm?.id
+            ? async () => {
+                const entry = dayShiftEntries.find((row) => row.id === shiftForm.id)
+                  ?? reportShiftEntries.find((row) => row.id === shiftForm.id);
+                if (entry) await deleteShiftEntry(entry);
+              }
+            : undefined
+        }
       />
+      ) : null}
 
       <div className={styles.spacer} />
     </div>

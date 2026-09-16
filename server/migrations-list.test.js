@@ -9,6 +9,7 @@ import { runMigrations } from './migrations.js';
 import {
   customCategoriesUserScopedKey,
   legacyTransactionCurrencyFromNote,
+  plannerDaysToShiftEntries,
   userDataVersionCounters,
 } from './migrations-list.js';
 
@@ -196,5 +197,136 @@ describe('003 — лічильники версії даних', () => {
     await runMigrations(db, [userDataVersionCounters], silent);
 
     expect((await version()).tx).toBe(2);
+  });
+});
+
+describe('004 — ручні зміни переїжджають у записи', () => {
+  const addDay = (userId, day, patch = {}) =>
+    db.run(
+      `INSERT INTO planner_days (day, user_id, hasShift, workedHours, salaryRate, salaryAmount, salary_currency, note, updatedAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        `${userId}:${day}`,
+        userId,
+        patch.hasShift === undefined ? 1 : patch.hasShift,
+        patch.workedHours ?? 8,
+        patch.salaryRate ?? 0,
+        patch.salaryAmount ?? 800,
+        patch.salaryCurrency ?? 'UAH',
+        patch.note ?? 'Склад • 🌙',
+        now(),
+      ],
+    );
+
+  const addEntry = (userId, day, patch = {}) =>
+    db.run(
+      `INSERT INTO planner_shift_entries
+       (id, user_id, day, started_at, ended_at, worked_hours, salary_rate, salary_amount,
+        salary_currency, note, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, 0, ?, 'UAH', ?, ?, ?)`,
+      [
+        patch.id ?? `e-${day}`,
+        userId,
+        day,
+        patch.startedAt ?? `${day}T06:00:00.000Z`,
+        patch.endedAt ?? `${day}T14:00:00.000Z`,
+        patch.workedHours ?? 8,
+        patch.salaryAmount ?? 500,
+        patch.note ?? 'З бота',
+        now(),
+        now(),
+      ],
+    );
+
+  const runStep = async () => {
+    await db.run('DELETE FROM app_cache');
+    await runMigrations(db, [plannerDaysToShiftEntries], silent);
+  };
+
+  const entriesOf = (userId, day) =>
+    db.all('SELECT * FROM planner_shift_entries WHERE user_id = ? AND day = ?', [userId, day]);
+
+  it('робить із рядка дня справжню зміну', async () => {
+    await addDay('111', '2026-05-04', { workedHours: 7.5, salaryAmount: 750, salaryCurrency: 'PLN' });
+    await runStep();
+
+    const [entry] = await entriesOf('111', '2026-05-04');
+    expect(entry).toMatchObject({
+      worked_hours: 7.5,
+      salary_amount: 750,
+      salary_currency: 'PLN',
+      note: 'Склад • 🌙',
+      // Часу ніколи не зберігали, тож вигадувати його нема з чого.
+      entry_mode: 'hours',
+      start_time: '',
+    });
+  });
+
+  it('не чіпає день, де зміна вже є записом', async () => {
+    // Інакше день із запущеною ботом зміною отримав би другу, з тими самими
+    // годинами — і місяць виріс би вдвічі.
+    await addDay('111', '2026-05-05');
+    await addEntry('111', '2026-05-05');
+    await runStep();
+
+    expect(await entriesOf('111', '2026-05-05')).toHaveLength(1);
+  });
+
+  it('позначений день без годин і грошей лишається просто позначеним', async () => {
+    await addDay('111', '2026-05-06', { workedHours: 0, salaryAmount: 0 });
+    await runStep();
+
+    expect(await entriesOf('111', '2026-05-06')).toHaveLength(0);
+    const day = await db.get("SELECT hasShift FROM planner_days WHERE day = '111:2026-05-06'");
+    expect(day.hasShift).toBe(1);
+  });
+
+  it('ріже тривалість, набрану без двокрапки', async () => {
+    // «8:30» на цифровій клавіатурі виходило як 830 годин.
+    await addDay('111', '2026-05-07', { workedHours: 830 });
+    await runStep();
+
+    const [entry] = await entriesOf('111', '2026-05-07');
+    expect(entry.worked_hours).toBe(24);
+  });
+
+  it('відновлює час змін бота з їхніх міток', async () => {
+    await db.run('INSERT OR REPLACE INTO users (telegram_id, chat_id, timezone) VALUES (111, 111, ?)', ['UTC']);
+    await addEntry('111', '2026-05-08', {
+      startedAt: '2026-05-08T09:15:00.000Z',
+      endedAt: '2026-05-08T17:45:00.000Z',
+    });
+    await runStep();
+
+    const [entry] = await entriesOf('111', '2026-05-08');
+    expect(entry).toMatchObject({ start_time: '09:15', end_time: '17:45', entry_mode: 'range' });
+  });
+
+  it('рядок дня стає сумою своїх змін', async () => {
+    await addDay('111', '2026-05-09', { workedHours: 3, salaryAmount: 300 });
+    await addEntry('111', '2026-05-09', { id: 'e-extra', workedHours: 5, salaryAmount: 500 });
+    await runStep();
+
+    const day = await db.get("SELECT workedHours, salaryAmount FROM planner_days WHERE day = '111:2026-05-09'");
+    // Ручна зміна не переносилась (запис уже був), тож день дорівнює запису.
+    expect(day).toMatchObject({ workedHours: 5, salaryAmount: 500 });
+  });
+
+  it('рахує суму зі ставки, коли рядок дня показував її на льоту', async () => {
+    // День зберігав ставку й години окремо, а гроші малював добутком. Запис
+    // зміни так не вміє — сума має лягти полем, інакше вона зникне.
+    await addDay('111', '2026-05-11', { workedHours: 6.5, salaryRate: 40, salaryAmount: 0 });
+    await runStep();
+
+    const [entry] = await entriesOf('111', '2026-05-11');
+    expect(entry.salary_amount).toBe(260);
+  });
+  it('виконується один раз', async () => {
+    await addDay('111', '2026-05-10');
+    await runStep();
+    const second = await runMigrations(db, [plannerDaysToShiftEntries], silent);
+
+    expect(second.applied).toEqual([]);
+    expect(await entriesOf('111', '2026-05-10')).toHaveLength(1);
   });
 });

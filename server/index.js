@@ -131,6 +131,12 @@ import {
   buildResultMessage,
   validateAutomationTransaction,
 } from './automation-transaction.js';
+import {
+  clampWorkedHours,
+  normalizeShiftInput,
+  shiftInstants,
+  summarizeDayEntries,
+} from './planner-shift.js';
 import { merchantKey, resolveBankCategory } from './bank-category.js';
 import {
   BANK_CARD_CATEGORY_LIMIT,
@@ -2137,6 +2143,132 @@ const upsertPlannerDay = async (dbConn, userId, day, patch) => {
   };
 };
 
+/**
+ * Рядки змін одного дня в тому вигляді, у якому їх читають усі: і шторка дня,
+ * і звіт, і перерахунок кешу.
+ */
+const readShiftEntryRows = (dbConn, userId, { day = null, from = null, to = null } = {}) =>
+  dbConn.all(
+    `SELECT id, day, started_at, ended_at, worked_hours, salary_rate, salary_amount,
+            salary_currency, note, template_id, start_time, end_time, entry_mode
+     FROM planner_shift_entries
+     WHERE user_id = ?${day ? ' AND day = ?' : ''}${from ? ' AND day >= ? AND day <= ?' : ''}
+     ORDER BY started_at ASC, created_at ASC`,
+    [userId, ...(day ? [day] : []), ...(from ? [from, to] : [])],
+  );
+
+const mapShiftEntryRow = (row) => ({
+  id: String(row.id),
+  day: String(row.day),
+  startedAt: String(row.started_at),
+  endedAt: String(row.ended_at),
+  mode: String(row.entry_mode) === 'range' ? 'range' : 'hours',
+  startTime: String(row.start_time ?? ''),
+  endTime: String(row.end_time ?? ''),
+  workedHours: Math.max(0, Number(row.worked_hours) || 0),
+  salaryRate: Math.max(0, Number(row.salary_rate) || 0),
+  salaryAmount: Math.max(0, Number(row.salary_amount) || 0),
+  salaryCurrency: normalizeCurrency(row.salary_currency) === 'PLN' ? 'PLN' : 'UAH',
+  note: String(row.note ?? ''),
+  templateId: row.template_id ? String(row.template_id) : null,
+});
+
+/**
+ * Привести рядок дня до суми його змін.
+ *
+ * `planner_days` більше не окреме джерело, а похідний кеш: за ним календар
+ * малює крапку й символ, і тільки. Доки він був другим місцем, куди пишуть
+ * зміни, день із записом бота ховав зміну, заведену руками, — читання брало
+ * щось одне.
+ *
+ * Викликається після кожної правки змін цього дня.
+ */
+const syncPlannerDayFromEntries = async (dbConn, userId, day) => {
+  const rows = await readShiftEntryRows(dbConn, userId, { day });
+  const summary = summarizeDayEntries((rows ?? []).map(mapShiftEntryRow));
+  if (summary.count === 0) {
+    return upsertPlannerDay(dbConn, userId, day, {
+      hasShift: false,
+      workedHours: 0,
+      salaryRate: 0,
+      salaryAmount: 0,
+      salaryCurrency: 'UAH',
+      note: '',
+    });
+  }
+  // Рядок дня має одну суму й одну валюту, а день може змішувати гривню зі
+  // злотим. Беремо більшу — розділені суми однаково віддає `/api/planner`,
+  // а це число лишається для календаря й бота.
+  const currency = summary.salaryAmountPln > summary.salaryAmountUah ? 'PLN' : 'UAH';
+  const latest = (rows ?? []).map(mapShiftEntryRow).at(-1);
+  return upsertPlannerDay(dbConn, userId, day, {
+    hasShift: true,
+    workedHours: summary.workedHours,
+    salaryRate: latest?.salaryRate ?? 0,
+    salaryAmount: currency === 'PLN' ? summary.salaryAmountPln : summary.salaryAmountUah,
+    salaryCurrency: currency,
+    note: summary.latestNote,
+  });
+};
+
+/**
+ * Один запис зміни — і одразу перерахунок дня.
+ *
+ * Спільний для всіх чотирьох місць, що завершують зміну: бот, ярлик на
+ * телефоні, застосунок і форма в календарі. Доки кожне писало свій INSERT,
+ * нові колонки доводилося б додавати в чотири майже однакові списки — саме так
+ * і виходили розбіжності на кшталт «час є, але не там».
+ */
+const insertShiftEntry = async (dbConn, userId, day, entry) => {
+  const nowIso = new Date().toISOString();
+  const id = uuidv4();
+  await dbConn.run(
+    `INSERT INTO planner_shift_entries
+     (id, user_id, day, started_at, ended_at, worked_hours, salary_rate, salary_amount,
+      salary_currency, note, template_id, start_time, end_time, entry_mode, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id,
+      userId,
+      day,
+      String(entry.startedAt),
+      String(entry.endedAt),
+      clampWorkedHours(entry.workedHours),
+      Math.max(0, Number(entry.salaryRate) || 0),
+      Math.max(0, Number(entry.salaryAmount) || 0),
+      normalizeCurrency(entry.salaryCurrency) === 'PLN' ? 'PLN' : 'UAH',
+      String(entry.note ?? '').trim(),
+      entry.templateId ? String(entry.templateId) : null,
+      String(entry.startTime ?? ''),
+      String(entry.endTime ?? ''),
+      entry.mode === 'range' ? 'range' : 'hours',
+      nowIso,
+      nowIso,
+    ],
+  );
+  await syncPlannerDayFromEntries(dbConn, userId, day);
+  return id;
+};
+
+/**
+ * Зміна, що завершилася сама (бот, ярлик, кнопка в застосунку).
+ *
+ * Мітки часу тут справжні, тож режим — «проміжок», а час годинника
+ * відновлюється з міток у поясі людини: інакше форма показала б порожні поля
+ * там, де час насправді відомий.
+ */
+const insertFinishedShiftEntry = async (dbConn, userId, day, entry, userTimeZone) => {
+  const startTime = parseTimeFromIso(entry.startedAt, userTimeZone);
+  const endTime = parseTimeFromIso(entry.endedAt, userTimeZone);
+  const hasRange = Boolean(startTime && endTime && startTime !== endTime);
+  return insertShiftEntry(dbConn, userId, day, {
+    ...entry,
+    mode: hasRange ? 'range' : 'hours',
+    startTime: hasRange ? startTime : '',
+    endTime: hasRange ? endTime : '',
+  });
+};
+
 const createAutomationToken = () => crypto.randomBytes(24).toString('hex');
 
 const ensurePlannerUserSettings = async (dbConn, userId) => {
@@ -3180,30 +3312,22 @@ if (bot) {
     }
     const nowIso = now.toISOString();
     const entryNote = baseNote || buildBotShiftNote(active.started_at, nowIso, userTimeZone);
-    await db.run(
-      `INSERT INTO planner_shift_entries
-       (id, user_id, day, started_at, ended_at, worked_hours, salary_rate, salary_amount, salary_currency, note, template_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        uuidv4(),
-        userId,
-        day,
-        String(active.started_at),
-        nowIso,
-        roundedHours,
-        Math.max(0, shiftSalaryRate),
-        Math.max(0, salaryAmount),
-        shiftSalaryCurrency,
-        entryNote,
-        active.template_id ? String(active.template_id) : null,
-        nowIso,
-        nowIso,
-      ]
+    await insertFinishedShiftEntry(
+      db,
+      userId,
+      day,
+      {
+        startedAt: String(active.started_at),
+        endedAt: nowIso,
+        workedHours: roundedHours,
+        salaryRate: shiftSalaryRate,
+        salaryAmount,
+        salaryCurrency: shiftSalaryCurrency,
+        note: entryNote,
+        templateId: active.template_id ? String(active.template_id) : null,
+      },
+      userTimeZone,
     );
-    await upsertPlannerDay(db, userId, day, {
-      hasShift: true,
-      note: entryNote,
-    });
     bot.sendMessage(
       msg.chat.id,
       `🔴 Зміну завершено (${parseTimeFromIso(now.toISOString(), userTimeZone)}). Відпрацьовано: ${formatHoursAsHoursMinutes(roundedHours)}.`
@@ -4021,30 +4145,22 @@ app.get('/api/automation/shift/end', async (req, res) => {
   }
   const nowIso = now.toISOString();
   const entryNote = baseNote || buildBotShiftNote(active.started_at, nowIso, userTimeZone);
-  await db.run(
-    `INSERT INTO planner_shift_entries
-     (id, user_id, day, started_at, ended_at, worked_hours, salary_rate, salary_amount, salary_currency, note, template_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      uuidv4(),
-      userId,
-      day,
-      String(active.started_at),
-      nowIso,
-      roundedHours,
-      Math.max(0, shiftSalaryRate),
-      Math.max(0, salaryAmount),
-      shiftSalaryCurrency,
-      entryNote,
-      active.template_id ? String(active.template_id) : null,
-      nowIso,
-      nowIso,
-    ]
+  await insertFinishedShiftEntry(
+    db,
+    userId,
+    day,
+    {
+      startedAt: String(active.started_at),
+      endedAt: nowIso,
+      workedHours: roundedHours,
+      salaryRate: shiftSalaryRate,
+      salaryAmount,
+      salaryCurrency: shiftSalaryCurrency,
+      note: entryNote,
+      templateId: active.template_id ? String(active.template_id) : null,
+    },
+    userTimeZone,
   );
-  await upsertPlannerDay(db, userId, day, {
-    hasShift: true,
-    note: entryNote,
-  });
   res.json({
     ok: true,
     action: 'end',
@@ -7049,86 +7165,68 @@ app.get('/api/planner', async (req, res) => {
         [plannerDayKey(userId, likePattern)]
       );
   const entries = rangeFrom
-    ? await db.all(
-        `SELECT day, worked_hours, salary_amount, salary_currency, note, ended_at
-         FROM planner_shift_entries
-         WHERE user_id = ? AND day >= ? AND day <= ?
-         ORDER BY ended_at DESC`,
-        [userId, rangeFrom, rangeTo]
-      )
+    ? await readShiftEntryRows(db, userId, { from: rangeFrom, to: rangeTo })
     : await db.all(
-        `SELECT day, worked_hours, salary_amount, salary_currency, note, ended_at
+        `SELECT id, day, started_at, ended_at, worked_hours, salary_rate, salary_amount,
+                salary_currency, note, template_id, start_time, end_time, entry_mode
          FROM planner_shift_entries
          WHERE user_id = ? AND day LIKE ?
-         ORDER BY ended_at DESC`,
-        [userId, likePattern]
+         ORDER BY started_at ASC, created_at ASC`,
+        [userId, likePattern],
       );
 
+  /**
+   * Години й гроші рахуються **лише** зі змін.
+   *
+   * Раніше тут був вибір «або зміни, або рядок дня», і він мовчки з'їдав дані:
+   * варто було на дні з ручною зміною запустити зміну ботом, і ручна зникала з
+   * усіх підсумків. Тепер ручна зміна — теж запис (міграція 004 перенесла й
+   * старі), а рядок дня лишився кешем для крапки в календарі: з нього беруться
+   * тільки позначка й символ.
+   */
   const entriesByDay = new Map();
-  for (const row of entries) {
-    const key = String(row.day || '');
-    if (!key) continue;
-    const current = entriesByDay.get(key) ?? {
-      workedHours: 0,
-      salaryAmountUah: 0,
-      salaryAmountPln: 0,
-      entriesCount: 0,
-      latestEndedAt: '',
-      latestNote: '',
-    };
-    const hours = Math.max(0, Number(row.worked_hours) || 0);
-    const amount = Math.max(0, Number(row.salary_amount) || 0);
-    const currency = normalizeCurrency(row.salary_currency) === 'PLN' ? 'PLN' : 'UAH';
-    current.workedHours += hours;
-    if (currency === 'PLN') current.salaryAmountPln += amount;
-    else current.salaryAmountUah += amount;
-    current.entriesCount += 1;
-    if (!current.latestEndedAt || String(row.ended_at || '') > current.latestEndedAt) {
-      current.latestEndedAt = String(row.ended_at || '');
-      current.latestNote = String(row.note || '').trim();
-    }
-    entriesByDay.set(key, current);
+  for (const row of entries ?? []) {
+    const entry = mapShiftEntryRow(row);
+    const list = entriesByDay.get(entry.day) ?? [];
+    list.push(entry);
+    entriesByDay.set(entry.day, list);
   }
 
   const mergedByDay = new Map();
   for (const row of days) {
     const dayIso = plannerDayFromStored(userId, row.day);
-    const entryAgg = entriesByDay.get(dayIso);
-    const basePay = Math.max(0, Number(row.salaryAmount) || 0);
-    const baseCurrency = normalizeCurrency(row.salary_currency) === 'PLN' ? 'PLN' : 'UAH';
-    const hasEntries = Boolean((entryAgg?.entriesCount || 0) > 0);
-    const salaryAmountUah = hasEntries ? (entryAgg?.salaryAmountUah || 0) : (baseCurrency === 'UAH' ? basePay : 0);
-    const salaryAmountPln = hasEntries ? (entryAgg?.salaryAmountPln || 0) : (baseCurrency === 'PLN' ? basePay : 0);
-    const workedHours = hasEntries ? (entryAgg?.workedHours || 0) : (Number(row.workedHours) || 0);
-    const merged = {
+    const summary = summarizeDayEntries(entriesByDay.get(dayIso) ?? []);
+    mergedByDay.set(dayIso, {
       day: dayIso,
-      hasShift: Boolean(row.hasShift) || Boolean(entryAgg),
-      workedHours,
+      hasShift: Boolean(row.hasShift) || summary.count > 0,
+      workedHours: summary.workedHours,
       salaryRate: Number(row.salaryRate) || 0,
-      salaryAmount: Number(row.salaryAmount) || 0,
-      salaryCurrency: baseCurrency,
-      salaryAmountUah,
-      salaryAmountPln,
-      shiftsCount: (entryAgg?.entriesCount || 0) + (Boolean(row.hasShift) && !(entryAgg?.entriesCount > 0) ? 1 : 0),
-      note: String(row.note ?? '').trim() || String(entryAgg?.latestNote ?? '').trim(),
+      salaryAmount: summary.salaryAmountUah + summary.salaryAmountPln,
+      salaryCurrency: summary.salaryAmountPln > summary.salaryAmountUah ? 'PLN' : 'UAH',
+      salaryAmountUah: summary.salaryAmountUah,
+      salaryAmountPln: summary.salaryAmountPln,
+      shiftsCount: summary.count,
+      note: String(row.note ?? '').trim() || summary.latestNote,
       updatedAt: row.updatedAt,
-    };
-    mergedByDay.set(dayIso, merged);
+    });
   }
-  for (const [dayIso, entryAgg] of entriesByDay.entries()) {
+  // День, зміни якого є, а рядка-кешу ще немає: так буває рівно доти, доки
+  // перерахунок не дійшов до нього — наприклад, після відновлення з дампа.
+  for (const [dayIso, list] of entriesByDay.entries()) {
     if (mergedByDay.has(dayIso)) continue;
+    const summary = summarizeDayEntries(list);
     mergedByDay.set(dayIso, {
       day: dayIso,
       hasShift: true,
-      workedHours: entryAgg.workedHours,
+      workedHours: summary.workedHours,
       salaryRate: 0,
-      salaryAmount: 0,
-      salaryCurrency: 'UAH',
-      salaryAmountUah: entryAgg.salaryAmountUah,
-      salaryAmountPln: entryAgg.salaryAmountPln,
-      shiftsCount: entryAgg.entriesCount || 0,
-      note: entryAgg.latestNote,
-      updatedAt: entryAgg.latestEndedAt || new Date().toISOString(),
+      salaryAmount: summary.salaryAmountUah + summary.salaryAmountPln,
+      salaryCurrency: summary.salaryAmountPln > summary.salaryAmountUah ? 'PLN' : 'UAH',
+      salaryAmountUah: summary.salaryAmountUah,
+      salaryAmountPln: summary.salaryAmountPln,
+      shiftsCount: summary.count,
+      note: summary.latestNote,
+      updatedAt: summary.latestEndedAt || new Date().toISOString(),
     });
   }
 
@@ -7136,6 +7234,7 @@ app.get('/api/planner', async (req, res) => {
     Array.from(mergedByDay.values()).sort((a, b) => String(a.day).localeCompare(String(b.day)))
   );
 });
+
 
 app.get('/api/planner/shift-entries', async (req, res) => {
   const userId = req.authUserId;
@@ -7145,27 +7244,8 @@ app.get('/api/planner/shift-entries', async (req, res) => {
     res.status(400).json({ error: 'Query from/to must be YYYY-MM-DD and from <= to' });
     return;
   }
-  const rows = await db.all(
-    `SELECT id, day, started_at, ended_at, worked_hours, salary_rate, salary_amount, salary_currency, note, template_id
-     FROM planner_shift_entries
-     WHERE user_id = ? AND day >= ? AND day <= ?
-     ORDER BY ended_at DESC`,
-    [userId, from, to]
-  );
-  res.json(
-    rows.map((row) => ({
-      id: String(row.id),
-      day: String(row.day),
-      startedAt: String(row.started_at),
-      endedAt: String(row.ended_at),
-      workedHours: Math.max(0, Number(row.worked_hours) || 0),
-      salaryRate: Math.max(0, Number(row.salary_rate) || 0),
-      salaryAmount: Math.max(0, Number(row.salary_amount) || 0),
-      salaryCurrency: normalizeCurrency(row.salary_currency) === 'PLN' ? 'PLN' : 'UAH',
-      note: String(row.note ?? ''),
-      templateId: row.template_id ? String(row.template_id) : null,
-    }))
-  );
+  const rows = await readShiftEntryRows(db, userId, { from, to });
+  res.json((rows ?? []).map(mapShiftEntryRow));
 });
 
 app.get('/api/planner/:day/shifts', async (req, res) => {
@@ -7175,29 +7255,51 @@ app.get('/api/planner/:day/shifts', async (req, res) => {
     res.status(400).json({ error: 'day param must be in YYYY-MM-DD format' });
     return;
   }
-  const rows = await db.all(
-    `SELECT id, day, started_at, ended_at, worked_hours, salary_rate, salary_amount, salary_currency, note, template_id
-     FROM planner_shift_entries
-     WHERE user_id = ? AND day = ?
-     ORDER BY ended_at DESC`,
-    [userId, day]
-  );
-  res.json(
-    rows.map((row) => ({
-      id: String(row.id),
-      day: String(row.day),
-      startedAt: String(row.started_at),
-      endedAt: String(row.ended_at),
-      workedHours: Math.max(0, Number(row.worked_hours) || 0),
-      salaryRate: Math.max(0, Number(row.salary_rate) || 0),
-      salaryAmount: Math.max(0, Number(row.salary_amount) || 0),
-      salaryCurrency: normalizeCurrency(row.salary_currency) === 'PLN' ? 'PLN' : 'UAH',
-      note: String(row.note ?? ''),
-      templateId: row.template_id ? String(row.template_id) : null,
-    }))
-  );
+  const rows = await readShiftEntryRows(db, userId, { day });
+  res.json((rows ?? []).map(mapShiftEntryRow));
 });
 
+/**
+ * Шаблон у тій самій формі, у якій `normalizeShiftInput` очікує джерело
+ * значень за замовчуванням — разом із часом. Саме часу тут раніше й бракувало:
+ * шаблон «Нічна 22:00–06:00» застосовувався до дня як «зараз», бо маршрут брав
+ * із нього лише години й гроші.
+ */
+const readShiftTemplate = async (userId, templateId) => {
+  if (!templateId) return null;
+  const row = await db.get(
+    `SELECT id, name, symbol, is_full_day, start_time, end_time, worked_hours, salary_rate, salary_amount, currency
+     FROM planner_shift_templates
+     WHERE user_id = ? AND id = ?
+     LIMIT 1`,
+    [userId, templateId],
+  );
+  if (!row?.id) return null;
+  return {
+    id: String(row.id),
+    isFullDay: Boolean(row.is_full_day),
+    startTime: String(row.start_time ?? ''),
+    endTime: String(row.end_time ?? ''),
+    workedHours: Number(row.worked_hours) || 0,
+    salaryRate: Number(row.salary_rate) || 0,
+    salaryAmount: Number(row.salary_amount) || 0,
+    salaryCurrency: normalizeCurrency(row.currency) === 'PLN' ? 'PLN' : 'UAH',
+    note: [String(row.name ?? '').trim(), String(row.symbol ?? '').trim()].filter(Boolean).join(' • '),
+  };
+};
+
+/** Час на годиннику людини → мить у UTC. Пояс її власний, не серверний. */
+const shiftClockToUtcMs = (userTimeZone) => (day, hours, minutes, seconds = 0) =>
+  wallDateTimeInZoneToUtcMs(day, hours, minutes, seconds, userTimeZone);
+
+/**
+ * Одна зміна на день.
+ *
+ * Створюється або з форми (початок і кінець, або пряма тривалість), або з
+ * шаблону — але в обох випадках одним шляхом, тож правила однакові. Другу
+ * зміну на той самий день додавати можна: саме цього бракувало, коли календар
+ * писав у рядок дня, де вона була рівно одна.
+ */
 app.post('/api/planner/:day/shifts', async (req, res) => {
   const userId = req.authUserId;
   const { day } = req.params;
@@ -7207,68 +7309,43 @@ app.post('/api/planner/:day/shifts', async (req, res) => {
   }
   const body = (req.body && typeof req.body === 'object') ? req.body : {};
   const templateId = typeof body.templateId === 'string' ? body.templateId.trim() : '';
-  let workedHours = Math.max(0, Number(body.workedHours) || 0);
-  let salaryRate = Math.max(0, Number(body.salaryRate) || 0);
-  let salaryAmount = Math.max(0, Number(body.salaryAmount) || 0);
-  let salaryCurrency = normalizeCurrency(body.salaryCurrency) === 'PLN' ? 'PLN' : 'UAH';
-  let note = typeof body.note === 'string' ? body.note.trim() : '';
-  let resolvedTemplateId = null;
-
-  if (templateId) {
-    const tpl = await db.get(
-      `SELECT id, name, symbol, worked_hours, salary_rate, salary_amount, currency
-       FROM planner_shift_templates
-       WHERE user_id = ? AND id = ?
-       LIMIT 1`,
-      [userId, templateId]
-    );
-    if (!tpl?.id) {
-      res.status(404).json({ error: 'Template not found' });
-      return;
-    }
-    resolvedTemplateId = String(tpl.id);
-    workedHours = Math.max(0, Number(tpl.worked_hours) || 0);
-    salaryRate = Math.max(0, Number(tpl.salary_rate) || 0);
-    salaryAmount = Math.max(0, Number(tpl.salary_amount) || 0);
-    salaryCurrency = normalizeCurrency(tpl.currency) === 'PLN' ? 'PLN' : 'UAH';
-    note = [String(tpl.name ?? '').trim(), String(tpl.symbol ?? '').trim()].filter(Boolean).join(' • ');
+  const template = await readShiftTemplate(userId, templateId);
+  if (templateId && !template) {
+    res.status(404).json({ error: 'Template not found' });
+    return;
   }
 
-  if (salaryAmount <= 0 && salaryRate > 0 && workedHours > 0) {
-    salaryAmount = Number((salaryRate * workedHours).toFixed(2));
+  const normalized = normalizeShiftInput({ body, template });
+  if (!normalized.ok) {
+    res.status(400).json({ error: normalized.error, code: normalized.code });
+    return;
   }
 
-  const nowIso = new Date().toISOString();
-  const startedAt = typeof body.startedAt === 'string' && body.startedAt.trim() ? body.startedAt.trim() : nowIso;
-  const endedAt = typeof body.endedAt === 'string' && body.endedAt.trim() ? body.endedAt.trim() : nowIso;
-  const id = uuidv4();
-
-  await db.run(
-    `INSERT INTO planner_shift_entries
-     (id, user_id, day, started_at, ended_at, worked_hours, salary_rate, salary_amount, salary_currency, note, template_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, userId, day, startedAt, endedAt, workedHours, salaryRate, salaryAmount, salaryCurrency, note, resolvedTemplateId, nowIso, nowIso]
-  );
-
-  await upsertPlannerDay(db, userId, day, {
-    hasShift: true,
-    note: note || '',
-  });
-
-  res.status(201).json({
-    id,
+  const userTimeZone = await getUserTimeZone(db, userId);
+  const instants = shiftInstants({
     day,
-    startedAt,
-    endedAt,
-    workedHours,
-    salaryRate,
-    salaryAmount,
-    salaryCurrency,
-    note,
-    templateId: resolvedTemplateId,
+    mode: normalized.value.mode,
+    startTime: normalized.value.startTime,
+    endTime: normalized.value.endTime,
+    toUtcMs: shiftClockToUtcMs(userTimeZone),
   });
+
+  const id = await insertShiftEntry(db, userId, day, {
+    ...normalized.value,
+    ...instants,
+    templateId: template?.id ?? null,
+  });
+
+  res.status(201).json({ id, day, templateId: template?.id ?? null, ...instants, ...normalized.value });
 });
 
+/**
+ * Правка однієї зміни.
+ *
+ * Поля, яких немає в тілі, лишаються як були — форма може надіслати лише те, що
+ * змінила. Мітки часу перераховуються разом із часом на годиннику: інакше
+ * зміна, пересунута з ранку на ніч, лишилася б у стрічці там, де була.
+ */
 app.put('/api/planner/shifts/:id', async (req, res) => {
   const userId = req.authUserId;
   const id = typeof req.params.id === 'string' ? req.params.id.trim() : '';
@@ -7276,53 +7353,64 @@ app.put('/api/planner/shifts/:id', async (req, res) => {
     res.status(400).json({ error: 'invalid id' });
     return;
   }
-  const current = await db.get(
-    `SELECT id, day, started_at, ended_at, worked_hours, salary_rate, salary_amount, salary_currency, note
+  const row = await db.get(
+    `SELECT id, day, started_at, ended_at, worked_hours, salary_rate, salary_amount,
+            salary_currency, note, template_id, start_time, end_time, entry_mode
      FROM planner_shift_entries
      WHERE user_id = ? AND id = ?
      LIMIT 1`,
-    [userId, id]
+    [userId, id],
   );
-  if (!current?.id) {
+  if (!row?.id) {
     res.status(404).json({ error: 'not found' });
     return;
   }
-  const workedHours = req.body.workedHours === undefined
-    ? Math.max(0, Number(current.worked_hours) || 0)
-    : Math.max(0, Number(req.body.workedHours) || 0);
-  const salaryRate = req.body.salaryRate === undefined
-    ? Math.max(0, Number(current.salary_rate) || 0)
-    : Math.max(0, Number(req.body.salaryRate) || 0);
-  let salaryAmount = req.body.salaryAmount === undefined
-    ? Math.max(0, Number(current.salary_amount) || 0)
-    : Math.max(0, Number(req.body.salaryAmount) || 0);
-  if (salaryAmount <= 0 && salaryRate > 0 && workedHours > 0) {
-    salaryAmount = Number((salaryRate * workedHours).toFixed(2));
+  const current = mapShiftEntryRow(row);
+  const body = (req.body && typeof req.body === 'object') ? req.body : {};
+
+  const normalized = normalizeShiftInput({ body, current });
+  if (!normalized.ok) {
+    res.status(400).json({ error: normalized.error, code: normalized.code });
+    return;
   }
-  const salaryCurrency = normalizeCurrency(req.body.salaryCurrency ?? current.salary_currency) === 'PLN' ? 'PLN' : 'UAH';
-  const note = typeof req.body.note === 'string' ? req.body.note.trim() : String(current.note ?? '');
-  const startedAt = typeof req.body.startedAt === 'string' && req.body.startedAt.trim() ? req.body.startedAt.trim() : String(current.started_at);
-  const endedAt = typeof req.body.endedAt === 'string' && req.body.endedAt.trim() ? req.body.endedAt.trim() : String(current.ended_at);
+
+  const userTimeZone = await getUserTimeZone(db, userId);
+  const instants = shiftInstants({
+    day: current.day,
+    mode: normalized.value.mode,
+    startTime: normalized.value.startTime,
+    endTime: normalized.value.endTime,
+    toUtcMs: shiftClockToUtcMs(userTimeZone),
+    // Зміна без проміжку часу лишає свої попередні мітки: вони вже визначають
+    // її місце в стрічці, і зсувати його правкою суми не за що.
+    fallbackIso: current.startedAt,
+  });
+
   const updatedAt = new Date().toISOString();
   await db.run(
     `UPDATE planner_shift_entries
-     SET started_at = ?, ended_at = ?, worked_hours = ?, salary_rate = ?, salary_amount = ?, salary_currency = ?, note = ?, updated_at = ?
+     SET started_at = ?, ended_at = ?, worked_hours = ?, salary_rate = ?, salary_amount = ?,
+         salary_currency = ?, note = ?, start_time = ?, end_time = ?, entry_mode = ?, updated_at = ?
      WHERE user_id = ? AND id = ?`,
-    [startedAt, endedAt, workedHours, salaryRate, salaryAmount, salaryCurrency, note, updatedAt, userId, id]
+    [
+      instants.startedAt,
+      instants.endedAt,
+      normalized.value.workedHours,
+      normalized.value.salaryRate,
+      normalized.value.salaryAmount,
+      normalized.value.salaryCurrency,
+      normalized.value.note,
+      normalized.value.startTime,
+      normalized.value.endTime,
+      normalized.value.mode,
+      updatedAt,
+      userId,
+      id,
+    ],
   );
-  await upsertPlannerDay(db, userId, String(current.day), { hasShift: true, note });
-  res.json({
-    id,
-    day: String(current.day),
-    startedAt,
-    endedAt,
-    workedHours,
-    salaryRate,
-    salaryAmount,
-    salaryCurrency,
-    note,
-    updatedAt,
-  });
+  await syncPlannerDayFromEntries(db, userId, current.day);
+
+  res.json({ id, day: current.day, templateId: current.templateId, ...instants, ...normalized.value, updatedAt });
 });
 
 app.delete('/api/planner/shifts/:id', async (req, res) => {
@@ -7334,29 +7422,17 @@ app.delete('/api/planner/shifts/:id', async (req, res) => {
   }
   const current = await db.get(
     'SELECT day FROM planner_shift_entries WHERE user_id = ? AND id = ? LIMIT 1',
-    [userId, id]
+    [userId, id],
   );
   if (!current?.day) {
     res.status(404).json({ error: 'not found' });
     return;
   }
   await db.run('DELETE FROM planner_shift_entries WHERE user_id = ? AND id = ?', [userId, id]);
-  const remaining = await db.get(
-    'SELECT COUNT(1) AS cnt FROM planner_shift_entries WHERE user_id = ? AND day = ?',
-    [userId, String(current.day)]
-  );
-  if ((Number(remaining?.cnt) || 0) <= 0) {
-    await upsertPlannerDay(db, userId, String(current.day), {
-      hasShift: false,
-      workedHours: 0,
-      salaryRate: 0,
-      salaryAmount: 0,
-      salaryCurrency: 'UAH',
-      note: '',
-    });
-  }
+  await syncPlannerDayFromEntries(db, userId, String(current.day));
   res.status(204).end();
 });
+
 
 app.get('/api/planner/settings', async (req, res) => {
   const userId = req.authUserId;
@@ -7620,49 +7696,15 @@ app.post('/api/planner/automation/rotate-token', async (req, res) => {
   });
 });
 
-app.put('/api/planner/:day', async (req, res) => {
-  const userId = req.authUserId;
-  const { day } = req.params;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
-    res.status(400).json({ error: 'day param must be in YYYY-MM-DD format' });
-    return;
-  }
-
-  const hasShift = req.body.hasShift ? 1 : 0;
-  const workedHours = Number(req.body.workedHours) || 0;
-  const salaryRate = Number(req.body.salaryRate) || 0;
-  const salaryAmount = Number(req.body.salaryAmount) || 0;
-  const salaryCurrency = req.body.salaryCurrency === 'PLN' ? 'PLN' : 'UAH';
-  const note = typeof req.body.note === 'string' ? req.body.note.trim() : '';
-  const updatedAt = new Date().toISOString();
-  const dayKey = plannerDayKey(userId, day);
-
-  await db.run(
-    `INSERT INTO planner_days (day, user_id, hasShift, workedHours, salaryRate, salaryAmount, salary_currency, note, updatedAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(day) DO UPDATE SET
-      user_id = excluded.user_id,
-       hasShift = excluded.hasShift,
-       workedHours = excluded.workedHours,
-       salaryRate = excluded.salaryRate,
-       salaryAmount = excluded.salaryAmount,
-       salary_currency = excluded.salary_currency,
-       note = excluded.note,
-       updatedAt = excluded.updatedAt`,
-    [dayKey, userId, hasShift, workedHours, salaryRate, salaryAmount, salaryCurrency, note, updatedAt]
-  );
-
-  res.json({
-    day,
-    hasShift: Boolean(hasShift),
-    workedHours,
-    salaryRate,
-    salaryAmount,
-    salaryCurrency,
-    note,
-    updatedAt,
-  });
-});
+/*
+ * `PUT /api/planner/:day` більше немає.
+ *
+ * Це був другий шлях запису зміни — той, яким користувався календар, доки
+ * писав у рядок дня. Саме через нього зміна, заведена руками, і зміна з бота
+ * опинялися в різних таблицях, а читання показувало щось одне. Тепер зміну
+ * створює лише `POST /api/planner/:day/shifts`, а рядок дня перераховується
+ * з неї (`syncPlannerDayFromEntries`).
+ */
 
 const normalizeShiftTemplateKey = (name, symbol, currency) =>
   `${String(name).trim().toLowerCase()}::${String(symbol).trim().toLowerCase()}::${currency === 'PLN' ? 'PLN' : 'UAH'}`;
@@ -7860,31 +7902,23 @@ app.post('/api/planner/active-shift/end', async (req, res) => {
   }
   const entryNote = baseNote || buildBotShiftNote(active.started_at, now.toISOString(), userTimeZone);
   const nowIso = now.toISOString();
-  await db.run(
-    `INSERT INTO planner_shift_entries
-     (id, user_id, day, started_at, ended_at, worked_hours, salary_rate, salary_amount, salary_currency, note, template_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      uuidv4(),
-      userId,
-      day,
-      String(active.started_at),
-      nowIso,
-      roundedHours,
-      Math.max(0, shiftSalaryRate),
-      Math.max(0, salaryAmount),
-      shiftSalaryCurrency,
-      entryNote,
-      active.template_id ? String(active.template_id) : null,
-      nowIso,
-      nowIso,
-    ]
+  await insertFinishedShiftEntry(
+    db,
+    userId,
+    day,
+    {
+      startedAt: String(active.started_at),
+      endedAt: nowIso,
+      workedHours: roundedHours,
+      salaryRate: shiftSalaryRate,
+      salaryAmount,
+      salaryCurrency: shiftSalaryCurrency,
+      note: entryNote,
+      templateId: active.template_id ? String(active.template_id) : null,
+    },
+    userTimeZone,
   );
-  await upsertPlannerDay(db, userId, day, {
-    hasShift: true,
-    note: entryNote,
-  });
-  
+
   const dayTotals = await db.get(
     `SELECT COALESCE(SUM(worked_hours), 0) AS total_hours
      FROM planner_shift_entries

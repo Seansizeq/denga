@@ -418,6 +418,34 @@ export async function initDb() {
       updated_at TEXT NOT NULL
     )
   `);
+  // Час зміни в годиннику людини — окремо від `started_at`/`ended_at`, які є
+  // мітками в UTC. Дублювання свідоме: мітки потрібні для порядку й для бота, а
+  // «22:00–06:00» треба показати рівно так, як його ввели, без зворотного
+  // переведення через пояс, яке на переході на літній час зсуває годину.
+  try {
+    await db.exec(`ALTER TABLE planner_shift_entries ADD COLUMN start_time TEXT NOT NULL DEFAULT ''`);
+  } catch {
+    /* already exists */
+  }
+  try {
+    await db.exec(`ALTER TABLE planner_shift_entries ADD COLUMN end_time TEXT NOT NULL DEFAULT ''`);
+  } catch {
+    /* already exists */
+  }
+  // 'range' — тривалість рахується з часу, 'hours' — названа прямо. Старі рядки
+  // часу не мають, тож для них чесне значення саме 'hours'; міграція
+  // 004 підніме до 'range' ті, у яких мітки справжні.
+  try {
+    await db.exec(`ALTER TABLE planner_shift_entries ADD COLUMN entry_mode TEXT NOT NULL DEFAULT 'hours'`);
+  } catch {
+    /* already exists */
+  }
+  // Читання завжди йде по дню одного користувача: і шторка дня, і звіт за
+  // період. Без індексу кожне таке читання перебирало всі зміни всіх днів.
+  await db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_planner_shift_entries_user_day
+    ON planner_shift_entries(user_id, day)
+  `);
 
   await db.exec(`
     CREATE TABLE IF NOT EXISTS account_portfolio (

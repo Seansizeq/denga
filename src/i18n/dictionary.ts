@@ -266,6 +266,12 @@ export type Dict = {
     shiftsShort: string;
     salaryForReportHint: string;
     shiftPayment: string;
+    shiftDurationTitle: string;
+    shiftModeRange: string;
+    shiftModeHours: string;
+    shiftDurationInvalid: string;
+    shiftOvernightHint: string;
+    saveAsTemplate: string;
   };
   subscriptions: {
     title: string;

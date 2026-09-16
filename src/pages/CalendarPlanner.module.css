@@ -1134,3 +1134,21 @@
 .spacer {
   height: 8px;
 }
+/* Рядок зміни у шторці дня цілком тапабельний: раніше список був лише для
+   перегляду, і вибрати, яку саме зміну виправляти, було ніяк. */
+.dayShiftPickBtn {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.dayShiftPickBtn:active {
+  opacity: 0.7;
+}
