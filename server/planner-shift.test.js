@@ -210,3 +210,33 @@ describe('buildShiftNote', () => {
     expect(buildShiftNote('', '')).toBe('');
   });
 });
+
+describe('normalizeShiftInput — шаблон', () => {
+  it('не перетворює ставку на фіксовану суму', () => {
+    // Шаблон зі ставкою 85/год має лишитися ставкою. Інакше він застигає
+    // сумою за свою типову тривалість, і чотиригодинна зміна з нього коштує
+    // стільки ж, скільки восьмигодинна.
+    const result = normalizeShiftInput({
+      body: { mode: 'range', startTime: '22:00', endTime: '06:00', salaryRate: 85 },
+      deriveAmount: false,
+    });
+    expect(result.value).toMatchObject({ salaryRate: 85, salaryAmount: 0 });
+  });
+
+  it('фіксовану суму шаблону зберігає як є', () => {
+    const result = normalizeShiftInput({
+      body: { mode: 'hours', workedHours: 6, salaryAmount: 300, salaryCurrency: 'PLN' },
+      deriveAmount: false,
+    });
+    expect(result.value).toMatchObject({ salaryAmount: 300, salaryCurrency: 'PLN' });
+  });
+
+  it('зміна, створена з такого шаблону, рахує суму за своїми годинами', () => {
+    const template = { isFullDay: false, startTime: '22:00', endTime: '06:00', salaryRate: 85, salaryAmount: 0 };
+    const full = normalizeShiftInput({ body: {}, template });
+    expect(full.value.salaryAmount).toBe(680);
+
+    const short = normalizeShiftInput({ body: { mode: 'range', startTime: '22:00', endTime: '02:00' }, template });
+    expect(short.value).toMatchObject({ workedHours: 4, salaryAmount: 340 });
+  });
+});

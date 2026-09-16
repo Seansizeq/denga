@@ -7,12 +7,14 @@ import {
   apiFetch,
   getPlannerSettings,
 } from '../api/client';
-import { hapticLight, hapticResult, showAppAlert, showAppConfirm } from '../utils/notify';
+import { hapticLight, showAppConfirm } from '../utils/notify';
 import { buildPastDays, isWithinLastDays } from '../utils/dateRanges';
 import ShiftFormSheet, {
+  FormError,
   type ShiftFormPayload,
   type ShiftFormValue,
 } from '../components/ui/ShiftFormSheet';
+import ShiftTemplatesSheet from '../components/ui/ShiftTemplatesSheet';
 import { formatHoursMinutes, formatTimeRange } from '../utils/shiftDuration';
 import styles from './CalendarPlanner.module.css';
 
@@ -217,8 +219,9 @@ const CalendarPlanner: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [chooserOpen, setChooserOpen] = useState(false);
   const [startShiftChooserOpen, setStartShiftChooserOpen] = useState(false);
-  /** Аркуш дій по дню — те, що відкривається утриманням числа в календарі. */
-  const [dayActionsOpen, setDayActionsOpen] = useState(false);
+  const [templatesSheetOpen, setTemplatesSheetOpen] = useState(false);
+  /** Відкрита форма шаблону: null — закрита, запис без id — новий шаблон. */
+  const [templateForm, setTemplateForm] = useState<ShiftFormValue | null>(null);
   /** Місяць, показаний у календарі всередині звіту — окремий від головного. */
   const [panelMonth, setPanelMonth] = useState(() => todayIso().slice(0, 7));
   /**
@@ -247,7 +250,7 @@ const CalendarPlanner: React.FC = () => {
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const [shiftElapsedText, setShiftElapsedText] = useState('0г 0хв');
 
-  const modalAnyOpen = chooserOpen || startShiftChooserOpen || dayActionsOpen;
+  const modalAnyOpen = chooserOpen || startShiftChooserOpen || templatesSheetOpen;
 
   const overlayBox = modalAnyOpen ? readVisualOverlayBox() : null;
 
@@ -570,7 +573,7 @@ const CalendarPlanner: React.FC = () => {
    */
   const openDayActions = (dayIso: string) => {
     setSelectedDay(dayIso);
-    setDayActionsOpen(true);
+    setChooserOpen(true);
   };
 
   const handleDayTouchStart = (dayIso: string, e: React.TouchEvent) => {
@@ -709,19 +712,67 @@ const CalendarPlanner: React.FC = () => {
     await loadDayShiftEntries(dayIso);
   };
 
+  /**
+   * Форма шаблону — та сама, що й у зміни: поля збігаються, тож друга форма
+   * розійшлася б із першою на першій же правці.
+   */
+  const openTemplateEditor = (tpl: ShiftTemplate | null) => {
+    const byRange = Boolean(tpl && !tpl.isFullDay && tpl.startTime && tpl.endTime);
+    setTemplateForm({
+      id: tpl?.id ?? '',
+      mode: tpl ? (byRange ? 'range' : 'hours') : 'range',
+      startTime: tpl?.startTime || '09:00',
+      endTime: tpl?.endTime || '17:00',
+      workedHours: tpl?.workedHours ?? 8,
+      salaryRate: tpl?.salaryRate ?? 0,
+      salaryAmount: tpl?.salaryAmount ?? 0,
+      salaryCurrency: tpl?.salaryCurrency ?? 'UAH',
+      name: tpl?.name ?? '',
+      symbol: tpl?.symbol ?? '',
+    });
+  };
+
+  const submitTemplateForm = async (payload: ShiftFormPayload) => {
+    const editingId = templateForm?.id ?? '';
+    const response = await apiFetch(
+      editingId
+        ? `/api/planner/shift-templates/${encodeURIComponent(editingId)}`
+        : '/api/planner/shift-templates',
+      {
+        method: editingId ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: payload.name,
+          symbol: payload.symbol,
+          isFullDay: payload.mode === 'hours',
+          mode: payload.mode,
+          startTime: payload.startTime,
+          endTime: payload.endTime,
+          workedHours: payload.workedHours,
+          salaryRate: payload.salaryRate,
+          salaryAmount: payload.salaryAmount,
+          salaryCurrency: payload.salaryCurrency,
+        }),
+      },
+    );
+    // Два шаблони з однаковою назвою, символом і валютою нерозрізненні у
+    // списку — сервер про це каже, і сказати це треба людині, а не в консоль.
+    if (response.status === 409) throw new FormError(t('planner', 'templateExists'));
+    if (!response.ok) throw new Error(`Save template failed: ${response.status}`);
+    await loadShiftTemplates();
+    await loadPlannerSettings();
+  };
+
   const deleteShiftTemplate = async (tpl: ShiftTemplate) => {
     if (!(await showAppConfirm(t('planner', 'deleteTemplateConfirm')))) return;
-    try {
-      const response = await apiFetch(`/api/planner/shift-templates/${encodeURIComponent(tpl.id)}`, {
-        method: 'DELETE',
-      });
-      if (response.ok) {
-        void loadShiftTemplates();
-        void loadPlannerSettings();
-      }
-    } catch (error) {
-      console.error('Failed to delete shift template:', error);
+    const response = await apiFetch(`/api/planner/shift-templates/${encodeURIComponent(tpl.id)}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok && response.status !== 204) {
+      throw new Error(`Delete template failed: ${response.status}`);
     }
+    await loadShiftTemplates();
+    await loadPlannerSettings();
   };
 
   /**
@@ -744,25 +795,6 @@ const CalendarPlanner: React.FC = () => {
       salaryCurrency: 'UAH',
       name: '',
       symbol: '',
-    });
-    setChooserOpen(false);
-  };
-
-  /** Нова зміна, заповнена шаблоном, — разом із його власним часом. */
-  const openNewShiftFromTemplate = (dayIso: string, tpl: ShiftTemplate) => {
-    const byRange = !tpl.isFullDay && Boolean(tpl.startTime && tpl.endTime);
-    setShiftFormDay(dayIso);
-    setShiftForm({
-      id: '',
-      mode: byRange ? 'range' : 'hours',
-      startTime: tpl.startTime || '09:00',
-      endTime: tpl.endTime || '17:00',
-      workedHours: tpl.workedHours,
-      salaryRate: tpl.salaryRate,
-      salaryAmount: tpl.salaryAmount,
-      salaryCurrency: tpl.salaryCurrency,
-      name: tpl.name,
-      symbol: tpl.symbol,
     });
     setChooserOpen(false);
   };
@@ -842,7 +874,9 @@ const CalendarPlanner: React.FC = () => {
           salaryCurrency: payload.salaryCurrency,
         }),
       });
-      if (response.ok) {
+      // 409 означає, що шаблон із такою назвою вже є — саме той, який людина
+      // й хотіла мати. Мета досягнута, скаржитись нема на що.
+      if (response.ok || response.status === 409) {
         void loadShiftTemplates();
         void loadPlannerSettings();
       }
@@ -859,16 +893,6 @@ const CalendarPlanner: React.FC = () => {
     await refreshAfterShiftEntryMutation(entry.day);
   };
 
-  const handleDeleteReportShift = async (entry: ShiftEntry) => {
-    if (!(await showAppConfirm(t('planner', 'deleteShiftEntryConfirm')))) return;
-    try {
-      await deleteShiftEntry(entry);
-    } catch (error) {
-      console.error('Failed to delete report shift:', error);
-      hapticResult('error');
-      showAppAlert(t('addTx', 'saveFailed'));
-    }
-  };
   const todayIsoStr = todayIso();
   const currentMonthLabel = monthLabel(month, locale);
 
@@ -896,6 +920,25 @@ const CalendarPlanner: React.FC = () => {
     month: 'long',
   });
   const selectedDayPay = expectedPayForDay(current);
+
+  /**
+   * Заробіток дня словами.
+   *
+   * День може змішувати валюти — денна зміна в гривні й нічна в злотих. Одним
+   * числом це не показати: підсумок «1 325 zł» з 425 ₴ і 900 zł ні про що не
+   * говорить. Тому обидві суми лишаються окремими.
+   */
+  const selectedDayPayLabel = (() => {
+    const uah = toNumber(current.salaryAmountUah);
+    const pln = toNumber(current.salaryAmountPln);
+    const parts: string[] = [];
+    if (uah > 0) parts.push(formatPlannerMoney(uah, locale, 'UAH'));
+    if (pln > 0) parts.push(formatPlannerMoney(pln, locale, 'PLN'));
+    if (parts.length === 0 && selectedDayPay > 0) {
+      parts.push(formatPlannerMoney(selectedDayPay, locale, current.salaryCurrency));
+    }
+    return parts.join(' + ');
+  })();
 
   /**
    * Підпис зміни у списку: час, тривалість, гроші.
@@ -1156,34 +1199,21 @@ const CalendarPlanner: React.FC = () => {
               <ul className={styles.dayShiftsList} role="list">
                 {reportShiftBanners.map((entry) => (
                   <li key={`report-${entry.id}`} className={styles.dayShiftRow}>
-                    <span className={styles.dayShiftMain}>{entry.note || t('planner', 'shiftTitle')}</span>
-                    <span className={styles.dayShiftMeta}>
-                      {entry.day} ·{' '}
-                      {formatHoursMinutes(entry.workedHours, {
-                        hours: t('planner', 'hoursShort'),
-                        minutes: t('planner', 'minutesShort'),
-                      })}{' '}
-                      ·{' '}
-                      {entry.salaryAmount > 0 ? formatPlannerMoney(entry.salaryAmount, locale, entry.salaryCurrency) : '—'}
-                    </span>
-                    {!entry.id.startsWith('day-') ? (
-                      <div className={styles.dayShiftActionsInline}>
-                        <button
-                          type="button"
-                          className={styles.dayShiftEditBtn}
-                          onClick={() => void openEditShiftEntry(entry)}
-                        >
-                          {t('planner', 'editShift')}
-                        </button>
-                        <button
-                          type="button"
-                          className={styles.dayShiftDeleteBtn}
-                          onClick={() => void handleDeleteReportShift(entry)}
-                        >
-                          {t('planner', 'deleteShift')}
-                        </button>
-                      </div>
-                    ) : null}
+                    {/* Рядок відкривається тапом — так само, як у шторці дня.
+                        Дві кнопки на кожному рядку робили з переліку змін
+                        суцільну стіну дій, а видалення однаково живе у формі. */}
+                    <button
+                      type="button"
+                      className={styles.dayShiftPickBtn}
+                      onClick={() => openEditShiftEntry(entry)}
+                    >
+                      <span className={styles.dayShiftMain}>{entry.note || t('planner', 'shiftTitle')}</span>
+                      <span className={styles.dayShiftMeta}>
+                        {parseIsoLocal(entry.day).toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
+                        {' · '}
+                        {describeShiftEntry(entry)}
+                      </span>
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -1213,56 +1243,6 @@ const CalendarPlanner: React.FC = () => {
         </div>
       ) : null}
 
-      {dayActionsOpen && overlayBox ? (
-        <div
-          className={`${styles.modalOverlay} ${overlayBox.keyboardOpen ? styles.modalOverlayKeyboard : ''}`}
-          style={{ top: overlayBox.top, height: overlayBox.height }}
-          onClick={() => setDayActionsOpen(false)}
-        >
-          <div className={styles.modalSheet} onClick={(e) => e.stopPropagation()}>
-            <p className={styles.dayActionsTitle}>{selectedDayLabel}</p>
-            <p className={styles.dayActionsMeta}>
-              {dayHasShift
-                ? `${formatHoursMinutes(current.workedHours, {
-                    hours: t('planner', 'hoursShort'),
-                    minutes: t('planner', 'minutesShort'),
-                  })}${
-                    selectedDayPay > 0
-                      ? ` · ${formatPlannerMoney(selectedDayPay, locale, current.salaryCurrency)}`
-                      : ''
-                  }`
-                : t('planner', 'dayShiftsEmpty')}
-            </p>
-            <div className={styles.dayActions}>
-              <button
-                type="button"
-                className={styles.addShiftBtn}
-                onClick={() => {
-                  setDayActionsOpen(false);
-                  setChooserOpen(true);
-                }}
-              >
-                {dayHasShift ? t('planner', 'dayShifts') : t('planner', 'addShift')}
-              </button>
-              {/* Почати зміну можна лише коли жодна не йде — інакше кнопки немає,
-                  як і раніше було під календарем. */}
-              {!activeShift ? (
-                <button
-                  type="button"
-                  className={styles.startShiftBtn}
-                  disabled={activeShiftLoading}
-                  onClick={() => {
-                    setDayActionsOpen(false);
-                    openStartShiftFlow();
-                  }}
-                >
-                  {activeShiftLoading ? '...' : t('planner', 'startShift')}
-                </button>
-              ) : null}
-            </div>
-          </div>
-        </div>
-      ) : null}
 
       {startShiftChooserOpen && overlayBox ? (
         <div
@@ -1271,6 +1251,10 @@ const CalendarPlanner: React.FC = () => {
           onClick={() => setStartShiftChooserOpen(false)}
         >
           <div className={styles.modalSheet} onClick={(e) => e.stopPropagation()}>
+            {/* Зміна стартує від поточного часу, а не від дня, з якого сюди
+                зайшли. Мовчати про це означало дати людині натиснути й потім
+                шукати зміну не там, де вона її чекала. */}
+            <p className={styles.dayActionsMeta}>{t('planner', 'startShiftNow')}</p>
             <button
               type="button"
               className={styles.addShiftBtn}
@@ -1310,9 +1294,11 @@ const CalendarPlanner: React.FC = () => {
         </div>
       ) : null}
 
-      {/* Шторка дня: список змін цього дня, а не одна «зміна дня». Кожен рядок
-          відкриває саме свою зміну — раніше кнопка «Редагувати» вела до форми
-          дня, і на дні із записом бота збереження просто нічого не міняло. */}
+      {/* Одна шторка дня замість двох.
+          Раніше утримання дня відкривало аркуш із двома кнопками, а список змін
+          лежав ще на крок глибше — два дотики, щоб побачити те, заради чого
+          день і відкривали. Тепер тут одразу все: що на дні є, що можна додати
+          і де лежать шаблони. */}
       {chooserOpen && overlayBox ? (
         <div
           className={`${styles.modalOverlay} ${overlayBox.keyboardOpen ? styles.modalOverlayKeyboard : ''}`}
@@ -1321,12 +1307,18 @@ const CalendarPlanner: React.FC = () => {
         >
           <div className={styles.modalSheet} onClick={(e) => e.stopPropagation()}>
             <p className={styles.dayActionsTitle}>{selectedDayLabel}</p>
+            <p className={styles.dayActionsMeta}>
+              {dayHasShift && current.workedHours > 0
+                ? `${formatHoursMinutes(current.workedHours, {
+                    hours: t('planner', 'hoursShort'),
+                    minutes: t('planner', 'minutesShort'),
+                  })}${selectedDayPayLabel ? ` · ${selectedDayPayLabel}` : ''}`
+                : t('planner', 'dayShiftsEmpty')}
+            </p>
 
             {dayShiftEntriesLoading ? (
               <p className={styles.dayShiftsEmpty}>{t('common', 'loading')}</p>
-            ) : dayShiftEntries.length === 0 ? (
-              <p className={styles.dayShiftsEmpty}>{t('planner', 'dayShiftsEmpty')}</p>
-            ) : (
+            ) : dayShiftEntries.length > 0 ? (
               <ul className={styles.dayShiftsList} role="list">
                 {dayShiftEntries.map((entry) => (
                   <li key={entry.id} className={styles.dayShiftRow}>
@@ -1341,64 +1333,50 @@ const CalendarPlanner: React.FC = () => {
                   </li>
                 ))}
               </ul>
-            )}
+            ) : null}
 
+            <div className={styles.dayActions}>
+              <button
+                type="button"
+                className={styles.addShiftBtn}
+                onClick={() => openNewShift(selectedDay)}
+              >
+                {t('planner', 'addShift')}
+              </button>
+              {/* Почати зміну можна лише коли жодна не йде. */}
+              {!activeShift ? (
+                <button
+                  type="button"
+                  className={styles.startShiftBtn}
+                  disabled={activeShiftLoading}
+                  onClick={() => {
+                    setChooserOpen(false);
+                    openStartShiftFlow();
+                  }}
+                >
+                  {activeShiftLoading ? '...' : t('planner', 'startShift')}
+                </button>
+              ) : null}
+            </div>
+
+            {/* Шаблони — окремий екран, а не список тут-таки: у шторці дня вони
+                були вперемішку з діями, а хрестик видалення стояв упритул до
+                кнопки застосування. */}
             <button
               type="button"
-              className={styles.addShiftBtn}
-              onClick={() => openNewShift(selectedDay)}
+              className={styles.manageTemplatesBtn}
+              onClick={() => {
+                setChooserOpen(false);
+                setTemplatesSheetOpen(true);
+              }}
             >
-              {t('planner', 'addShift')}
+              {t('planner', 'manageTemplates')}
+              <span className={styles.manageTemplatesCount}>{shiftTemplates.length}</span>
             </button>
-
-            {shiftTemplates.length > 0 ? (
-              <>
-                <p className={styles.templateSectionLabel}>{t('planner', 'templates')}</p>
-                <ul className={styles.templateList} role="list">
-                  {shiftTemplates.map((tpl) => {
-                    const label =
-                      tpl.name.trim() && tpl.symbol.trim()
-                        ? `${tpl.name.trim()} · ${tpl.symbol.trim()}`
-                        : tpl.name.trim() || tpl.symbol.trim();
-                    const curTag = tpl.salaryCurrency === 'PLN' ? 'zł' : '₴';
-                    return (
-                      <li key={tpl.id} className={styles.templateRow}>
-                        {/* Шаблон відкриває форму вже заповненою — разом зі
-                            своїм часом, який досі мовчки замінювався на «зараз». */}
-                        <button
-                          type="button"
-                          className={styles.templateBtn}
-                          onClick={() => openNewShiftFromTemplate(selectedDay, tpl)}
-                        >
-                          {label}
-                          <span className={styles.templateCurrencyTag}>{curTag}</span>
-                        </button>
-                        <button
-                          type="button"
-                          className={styles.templateDeleteBtn}
-                          aria-label={t('planner', 'deleteTemplate')}
-                          title={t('planner', 'deleteTemplate')}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            void deleteShiftTemplate(tpl);
-                          }}
-                        >
-                          ×
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </>
-            ) : null}
           </div>
         </div>
       ) : null}
 
-      {/* Ключ змушує форму зібратися наново на кожне відкриття.
-          Без нього поля лишалися б з попереднього разу: їхній початковий стан
-          береться один раз, при монтуванні, — і зміна, відкрита на правку,
-          показувала б типові 09:00–17:00 замість власного часу. */}
       {shiftForm ? (
       <ShiftFormSheet
         key={shiftForm.id || `new-${shiftFormDay}`}
@@ -1416,11 +1394,43 @@ const CalendarPlanner: React.FC = () => {
             ? async () => {
                 const entry = dayShiftEntries.find((row) => row.id === shiftForm.id)
                   ?? reportShiftEntries.find((row) => row.id === shiftForm.id);
-                if (entry) await deleteShiftEntry(entry);
+                if (!entry) return;
+                // Записана робота — те, чого не відновити. Одне питання перед
+                // видаленням тут коштує менше, ніж загублена зміна.
+                if (!(await showAppConfirm(t('planner', 'deleteShiftEntryConfirm')))) return;
+                await deleteShiftEntry(entry);
               }
             : undefined
         }
       />
+      ) : null}
+
+      <ShiftTemplatesSheet
+        open={templatesSheetOpen}
+        templates={shiftTemplates}
+        defaultTemplateId={defaultShiftTemplateId}
+        locale={locale}
+        onClose={() => setTemplatesSheetOpen(false)}
+        onCreate={() => openTemplateEditor(null)}
+        onEdit={(tpl) => openTemplateEditor(tpl as ShiftTemplate)}
+      />
+
+      {templateForm ? (
+        <ShiftFormSheet
+          key={templateForm.id || 'new-template'}
+          kind="template"
+          value={templateForm}
+          onClose={() => setTemplateForm(null)}
+          onSubmit={submitTemplateForm}
+          onDelete={
+            templateForm.id
+              ? async () => {
+                  const tpl = shiftTemplates.find((row) => row.id === templateForm.id);
+                  if (tpl) await deleteShiftTemplate(tpl);
+                }
+              : undefined
+          }
+        />
       ) : null}
 
       <div className={styles.spacer} />

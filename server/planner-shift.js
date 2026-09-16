@@ -98,9 +98,14 @@ export const buildShiftNote = (name, symbol) =>
  *   Досі час шаблону ігнорувався — «Нічна 22:00–06:00» лягала як «зараз».
  * @param current наявний рядок при редагуванні: поля, яких немає в тілі,
  *   лишаються як були.
+ * @param deriveAmount чи рахувати суму зі ставки. Для зміни — так: це
+ *   конкретна відпрацьована робота, і добуток ставки на її години є остаточним
+ *   числом. Для **шаблону** — ні: шаблон зі ставкою 85/год має лишитися
+ *   ставкою, інакше він застигне фіксованою сумою за свою типову тривалість і
+ *   чотиригодинна зміна з нього коштуватиме стільки ж, скільки восьмигодинна.
  * @returns {{ ok: true, value: object } | { ok: false, code: string, error: string }}
  */
-export const normalizeShiftInput = ({ body = {}, template = null, current = null } = {}) => {
+export const normalizeShiftInput = ({ body = {}, template = null, current = null, deriveAmount = true } = {}) => {
   const source = template ?? {};
   const fallbackMode = template
     ? (template.isFullDay ? 'hours' : 'range')
@@ -140,7 +145,7 @@ export const normalizeShiftInput = ({ body = {}, template = null, current = null
   let salaryAmount = readMoney(body.salaryAmount ?? source.salaryAmount ?? current?.salaryAmount);
   // Ставка × години — те, що людина інакше рахувала б на калькуляторі. Але
   // лише коли суми не назвали: названа сума завжди точніша за обчислену.
-  if (salaryAmount <= 0 && salaryRate > 0) {
+  if (deriveAmount && salaryAmount <= 0 && salaryRate > 0) {
     salaryAmount = Number((salaryRate * workedHours).toFixed(2));
   }
 

@@ -271,6 +271,15 @@ export type Dict = {
     shiftModeHours: string;
     shiftDurationInvalid: string;
     shiftOvernightHint: string;
+    templateNew: string;
+    templateAdd: string;
+    templateEdit: string;
+    templatesEmpty: string;
+    templatesHint: string;
+    templateDefaultTag: string;
+    templateExists: string;
+    manageTemplates: string;
+    startShiftNow: string;
     saveAsTemplate: string;
   };
   subscriptions: {

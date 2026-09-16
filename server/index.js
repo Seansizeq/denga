@@ -7201,7 +7201,12 @@ app.get('/api/planner', async (req, res) => {
       hasShift: Boolean(row.hasShift) || summary.count > 0,
       workedHours: summary.workedHours,
       salaryRate: Number(row.salaryRate) || 0,
-      salaryAmount: summary.salaryAmountUah + summary.salaryAmountPln,
+      // Одне число — одна валюта. Гривні й злоті повертаються окремими полями
+      // нижче; складати їх в одну суму означало б видати 425 ₴ + 900 zł за
+      // «1325 zł».
+      salaryAmount: summary.salaryAmountPln > summary.salaryAmountUah
+        ? summary.salaryAmountPln
+        : summary.salaryAmountUah,
       salaryCurrency: summary.salaryAmountPln > summary.salaryAmountUah ? 'PLN' : 'UAH',
       salaryAmountUah: summary.salaryAmountUah,
       salaryAmountPln: summary.salaryAmountPln,
@@ -7220,7 +7225,9 @@ app.get('/api/planner', async (req, res) => {
       hasShift: true,
       workedHours: summary.workedHours,
       salaryRate: 0,
-      salaryAmount: summary.salaryAmountUah + summary.salaryAmountPln,
+      salaryAmount: summary.salaryAmountPln > summary.salaryAmountUah
+        ? summary.salaryAmountPln
+        : summary.salaryAmountUah,
       salaryCurrency: summary.salaryAmountPln > summary.salaryAmountUah ? 'PLN' : 'UAH',
       salaryAmountUah: summary.salaryAmountUah,
       salaryAmountPln: summary.salaryAmountPln,
@@ -7757,23 +7764,29 @@ app.post('/api/planner/shift-templates', async (req, res) => {
   const normalizedKeyScoped = scopedTemplateKey(userId, normalized_key);
   const now = new Date().toISOString();
   const existing = await db.get('SELECT id FROM planner_shift_templates WHERE user_id = ? AND normalized_key = ?', [userId, normalizedKeyScoped]);
-  const id = existing?.id ?? uuidv4();
 
-  if (existing) {
-    await db.run(
-      `UPDATE planner_shift_templates SET
-        name = ?, symbol = ?, is_full_day = ?, start_time = ?, end_time = ?, worked_hours = ?, salary_rate = ?, salary_amount = ?, currency = ?, updated_at = ?
-       WHERE user_id = ? AND id = ?`,
-      [name, symbol, isFullDay ? 1 : 0, startTime, endTime, workedHours, salaryRate, salaryAmount, salaryCurrency, now, userId, id]
-    );
-  } else {
-    await db.run(
-      `INSERT INTO planner_shift_templates
-        (id, user_id, normalized_key, name, symbol, is_full_day, start_time, end_time, worked_hours, salary_rate, salary_amount, currency, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, userId, normalizedKeyScoped, name, symbol, isFullDay ? 1 : 0, startTime, endTime, workedHours, salaryRate, salaryAmount, salaryCurrency, now, now]
-    );
+  // Створення не перезаписує наявне.
+  //
+  // Раніше цей маршрут був upsert-ом за ключем: «новий» шаблон із зайнятою
+  // назвою мовчки затирав старий. У списку кількість не мінялася, тож людина
+  // бачила той самий рядок і не здогадувалася, що в нього щойно поїхали ставка
+  // й час. Правити шаблон тепер є чим — це `PUT` за id.
+  if (existing?.id) {
+    res.status(409).json({
+      error: 'a template with the same name, symbol and currency already exists',
+      code: 'TEMPLATE_EXISTS',
+      id: String(existing.id),
+    });
+    return;
   }
+
+  const id = uuidv4();
+  await db.run(
+    `INSERT INTO planner_shift_templates
+      (id, user_id, normalized_key, name, symbol, is_full_day, start_time, end_time, worked_hours, salary_rate, salary_amount, currency, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, userId, normalizedKeyScoped, name, symbol, isFullDay ? 1 : 0, startTime, endTime, workedHours, salaryRate, salaryAmount, salaryCurrency, now, now]
+  );
 
   res.json({
     id,
@@ -7789,6 +7802,130 @@ app.post('/api/planner/shift-templates', async (req, res) => {
     updatedAt: now,
   });
 });
+
+/**
+ * Правка шаблону.
+ *
+ * Досі правити шаблон було нічим, і це не недогляд у клієнті: `POST` шукає
+ * шаблон за ключем «назва + символ + валюта» й оновлює знайдений. Отже
+ * перейменувати шаблон було неможливо в принципі — інша назва означала інший
+ * ключ, тобто **новий** шаблон, а старий лишався поруч. Люди накопичували
+ * «Денна», «Денна 2», «денна» й видаляли їх вручну.
+ *
+ * Тут шаблон знаходиться за id, тож назва — звичайне поле. Ключ перераховується
+ * й перевіряється: два шаблони з однаковою назвою, символом і валютою
+ * нерозрізненні у списку, і мовчки злити їх гірше, ніж сказати про це.
+ *
+ * Поля тривалості й грошей проходять ту саму перевірку, що й у зміни
+ * (`normalizeShiftInput`): шаблон із 830 годинами створив би рівно ту саму
+ * помилку, тільки багато разів.
+ */
+app.put('/api/planner/shift-templates/:id', async (req, res) => {
+  const userId = req.authUserId;
+  const id = typeof req.params.id === 'string' ? req.params.id.trim() : '';
+  if (!id) {
+    res.status(400).json({ error: 'invalid id' });
+    return;
+  }
+  const current = await db.get(
+    `SELECT id, name, symbol, is_full_day, start_time, end_time, worked_hours,
+            salary_rate, salary_amount, currency
+     FROM planner_shift_templates
+     WHERE user_id = ? AND id = ?
+     LIMIT 1`,
+    [userId, id],
+  );
+  if (!current?.id) {
+    res.status(404).json({ error: 'not found' });
+    return;
+  }
+
+  const body = (req.body && typeof req.body === 'object') ? req.body : {};
+  const name = typeof body.name === 'string' ? body.name.trim() : String(current.name ?? '');
+  const symbol = typeof body.symbol === 'string' ? body.symbol.trim() : String(current.symbol ?? '');
+  if (!name && !symbol) {
+    res.status(400).json({ error: 'name or symbol required', code: 'EMPTY_TEMPLATE' });
+    return;
+  }
+
+  const normalized = normalizeShiftInput({
+    body,
+    // Шаблон зберігає ставку ставкою: суму з неї рахує вже конкретна зміна,
+    // коли стане відомо, скільки годин вона насправді триває.
+    deriveAmount: false,
+    current: {
+      mode: current.is_full_day ? 'hours' : 'range',
+      startTime: String(current.start_time ?? ''),
+      endTime: String(current.end_time ?? ''),
+      workedHours: Number(current.worked_hours) || 0,
+      salaryRate: Number(current.salary_rate) || 0,
+      salaryAmount: Number(current.salary_amount) || 0,
+      salaryCurrency: normalizeCurrency(current.currency) === 'PLN' ? 'PLN' : 'UAH',
+      note: '',
+    },
+  });
+  if (!normalized.ok) {
+    res.status(400).json({ error: normalized.error, code: normalized.code });
+    return;
+  }
+
+  const nextKey = scopedTemplateKey(
+    userId,
+    normalizeShiftTemplateKey(name, symbol, normalized.value.salaryCurrency),
+  );
+  const clash = await db.get(
+    'SELECT id FROM planner_shift_templates WHERE user_id = ? AND normalized_key = ? AND id != ? LIMIT 1',
+    [userId, nextKey, id],
+  );
+  if (clash?.id) {
+    res.status(409).json({
+      error: 'a template with the same name, symbol and currency already exists',
+      code: 'TEMPLATE_EXISTS',
+    });
+    return;
+  }
+
+  // Шаблон «на весь день» — це той, у якого немає часу, а є тривалість. Та сама
+  // різниця, що й у зміни, лише названа старою колонкою.
+  const isFullDay = normalized.value.mode === 'hours';
+  const now = new Date().toISOString();
+  await db.run(
+    `UPDATE planner_shift_templates SET
+       normalized_key = ?, name = ?, symbol = ?, is_full_day = ?, start_time = ?, end_time = ?,
+       worked_hours = ?, salary_rate = ?, salary_amount = ?, currency = ?, updated_at = ?
+     WHERE user_id = ? AND id = ?`,
+    [
+      nextKey,
+      name,
+      symbol,
+      isFullDay ? 1 : 0,
+      isFullDay ? '' : normalized.value.startTime,
+      isFullDay ? '' : normalized.value.endTime,
+      normalized.value.workedHours,
+      normalized.value.salaryRate,
+      normalized.value.salaryAmount,
+      normalized.value.salaryCurrency,
+      now,
+      userId,
+      id,
+    ],
+  );
+
+  res.json({
+    id,
+    name,
+    symbol,
+    isFullDay,
+    startTime: isFullDay ? '' : normalized.value.startTime,
+    endTime: isFullDay ? '' : normalized.value.endTime,
+    workedHours: normalized.value.workedHours,
+    salaryRate: normalized.value.salaryRate,
+    salaryAmount: normalized.value.salaryAmount,
+    salaryCurrency: normalized.value.salaryCurrency,
+    updatedAt: now,
+  });
+});
+
 
 app.delete('/api/planner/shift-templates/:id', async (req, res) => {
   const userId = req.authUserId;

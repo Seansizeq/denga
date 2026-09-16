@@ -8,6 +8,21 @@ import extra from './ShiftFormSheet.module.css';
 
 export type ShiftMode = 'range' | 'hours';
 
+/**
+ * Помилка, текст якої призначений людині.
+ *
+ * Звичайна помилка збереження показується загальним «не вдалося зберегти»:
+ * `Save template failed: 500` людині нічого не каже. Але є відмови, які
+ * пояснюють саме те, що треба виправити в цій формі, — наприклад, що шаблон із
+ * такою назвою вже є. Такі кидаються цим класом і показуються дослівно.
+ */
+export class FormError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'FormError';
+  }
+}
+
 export interface ShiftFormTemplate {
   id: string;
   name: string;
@@ -50,8 +65,14 @@ export interface ShiftFormPayload {
 interface ShiftFormSheetProps {
   /** null — форма закрита; без `id` — нова зміна. */
   value: ShiftFormValue | null;
-  dayLabel: string;
-  templates: ShiftFormTemplate[];
+  /**
+   * Що саме описує форма. Поля в зміни й шаблону однакові — назва, тривалість,
+   * гроші, — тож форма одна: друга, майже така сама, розійшлася б із першою на
+   * першій же правці.
+   */
+  kind?: 'shift' | 'template';
+  dayLabel?: string;
+  templates?: ShiftFormTemplate[];
   onClose: () => void;
   onSubmit: (payload: ShiftFormPayload) => Promise<void>;
   onDelete?: () => Promise<void>;
@@ -89,14 +110,16 @@ const clampInt = (raw: string, max: number): number => {
  */
 const ShiftFormSheet: React.FC<ShiftFormSheetProps> = ({
   value,
-  dayLabel,
-  templates,
+  kind = 'shift',
+  dayLabel = '',
+  templates = [],
   onClose,
   onSubmit,
   onDelete,
 }) => {
   const { t } = useTranslation();
   const editing = Boolean(value?.id);
+  const isTemplate = kind === 'template';
 
   const [mode, setMode] = useState<ShiftMode>(value?.mode ?? 'range');
   const [startTime, setStartTime] = useState(value?.startTime || '09:00');
@@ -161,8 +184,8 @@ const ShiftFormSheet: React.FC<ShiftFormSheetProps> = ({
         saveAsTemplate,
       });
       onClose();
-    } catch {
-      setError(t('addTx', 'saveFailed'));
+    } catch (e) {
+      setError(e instanceof FormError ? e.message : t('addTx', 'saveFailed'));
     } finally {
       setSaving(false);
     }
@@ -174,8 +197,8 @@ const ShiftFormSheet: React.FC<ShiftFormSheetProps> = ({
     try {
       await onDelete();
       onClose();
-    } catch {
-      setError(t('addTx', 'saveFailed'));
+    } catch (e) {
+      setError(e instanceof FormError ? e.message : t('addTx', 'saveFailed'));
     } finally {
       setSaving(false);
     }
@@ -191,7 +214,11 @@ const ShiftFormSheet: React.FC<ShiftFormSheetProps> = ({
 
   return (
     <FormSheet
-      title={editing ? t('planner', 'editShift') : t('planner', 'addShift')}
+      title={
+        isTemplate
+          ? t('planner', editing ? 'templateEdit' : 'templateNew')
+          : t('planner', editing ? 'shiftTitle' : 'addShift')
+      }
       onClose={onClose}
       onSubmit={() => void handleSave()}
       submitLabel={t('addTx', 'save')}
@@ -199,11 +226,12 @@ const ShiftFormSheet: React.FC<ShiftFormSheetProps> = ({
       submitDisabled={saving}
       error={error || undefined}
     >
-      <p className={extra.dayCaption}>{dayLabel}</p>
+      {isTemplate ? null : <p className={extra.dayCaption}>{dayLabel}</p>}
 
-      {/* Шаблон тепер підставляє значення в цю саму форму, а не пише зміну повз
-          неї: раніше він був окремим шляхом запису й ігнорував власний час. */}
-      {!editing && templates.length > 0 ? (
+      {/* Шаблон підставляє значення в цю саму форму — і при створенні, і при
+          правці. Доки чіпи були лише в новій зміні, застосувати шаблон до вже
+          наявної не було чим: доводилося видаляти її й заводити наново. */}
+      {!isTemplate && templates.length > 0 ? (
         <div>
           <p className={styles.blockLabel}>{t('planner', 'templates')}</p>
           <div className={extra.templateChips}>
@@ -354,7 +382,7 @@ const ShiftFormSheet: React.FC<ShiftFormSheetProps> = ({
 
       {/* Шаблон створюється лише тут і лише навмисно. Раніше будь-яка названа
           зміна мовчки ставала шаблоном, і список заростав одноразовими. */}
-      {!editing ? (
+      {!isTemplate && !editing ? (
         <div className={styles.group}>
           <label className={styles.row}>
             <span className={styles.rowLabel}>{t('planner', 'saveAsTemplate')}</span>
@@ -369,7 +397,7 @@ const ShiftFormSheet: React.FC<ShiftFormSheetProps> = ({
 
       {editing && onDelete ? (
         <button type="button" className={styles.deleteRow} disabled={saving} onClick={() => void handleDelete()}>
-          {t('planner', 'deleteShift')}
+          {t('planner', isTemplate ? 'deleteTemplate' : 'deleteShift')}
         </button>
       ) : null}
     </FormSheet>
