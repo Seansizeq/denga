@@ -197,32 +197,6 @@ export async function initDb() {
     /* already exists */
   }
 
-  try {
-    await db.exec(`ALTER TABLE planner_shift_templates ADD COLUMN currency TEXT NOT NULL DEFAULT 'UAH'`);
-  } catch {
-    /* already exists */
-  }
-  try {
-    await db.exec(`ALTER TABLE planner_shift_templates ADD COLUMN salary_rate REAL NOT NULL DEFAULT 0`);
-  } catch {
-    /* already exists */
-  }
-  try {
-    await db.exec(`ALTER TABLE planner_shift_templates ADD COLUMN salary_amount REAL NOT NULL DEFAULT 0`);
-  } catch {
-    /* already exists */
-  }
-
-  try {
-    await db.exec(
-      `UPDATE planner_shift_templates SET normalized_key = normalized_key || '::UAH'
-       WHERE normalized_key NOT LIKE '%::UAH' AND normalized_key NOT LIKE '%::PLN'
-         AND normalized_key LIKE '%::%' AND normalized_key NOT LIKE '%::%::%'`
-    );
-  } catch {
-    /* ignore */
-  }
-
   await db.exec(`
     CREATE TABLE IF NOT EXISTS custom_categories (
       id TEXT PRIMARY KEY,
@@ -403,10 +377,39 @@ export async function initDb() {
       worked_hours REAL NOT NULL DEFAULT 8,
       salary_rate REAL NOT NULL DEFAULT 0,
       salary_amount REAL NOT NULL DEFAULT 0,
+      currency TEXT NOT NULL DEFAULT 'UAH',
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )
   `);
+  // Доганяння давніх баз — після `CREATE`, а не перед ним. Доки ці `ALTER`
+  // стояли вище, на свіжій базі вони мовчки падали з «таблиці ще немає», а
+  // сам `CREATE` колонки `currency` не мав: шаблони змін до першого
+  // перезапуску падали з «no such column: currency». Див. db-schema.test.js.
+  try {
+    await db.exec(`ALTER TABLE planner_shift_templates ADD COLUMN currency TEXT NOT NULL DEFAULT 'UAH'`);
+  } catch {
+    /* already exists */
+  }
+  try {
+    await db.exec(`ALTER TABLE planner_shift_templates ADD COLUMN salary_rate REAL NOT NULL DEFAULT 0`);
+  } catch {
+    /* already exists */
+  }
+  try {
+    await db.exec(`ALTER TABLE planner_shift_templates ADD COLUMN salary_amount REAL NOT NULL DEFAULT 0`);
+  } catch {
+    /* already exists */
+  }
+  try {
+    await db.exec(
+      `UPDATE planner_shift_templates SET normalized_key = normalized_key || '::UAH'
+       WHERE normalized_key NOT LIKE '%::UAH' AND normalized_key NOT LIKE '%::PLN'
+         AND normalized_key LIKE '%::%' AND normalized_key NOT LIKE '%::%::%'`
+    );
+  } catch {
+    /* ignore */
+  }
 
   await db.exec(`
     CREATE TABLE IF NOT EXISTS planner_shift_entries (
