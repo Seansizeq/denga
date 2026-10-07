@@ -63,8 +63,19 @@ import {
   deleteGoalAccount,
   ensureGoalAccount,
   getGoalAccountBalance,
+  planGoalRefund,
+  rebaseGoalAccount,
+  shrinkContribution,
   syncGoalAccount,
 } from './goal-account.js';
+import { createAccountKey } from './account-key.js';
+import { moveCategoryReferences, releaseCategoryReferences } from './category-references.js';
+import {
+  addSubscriptionCycle,
+  parseIsoDate,
+  rollForwardChargeDate,
+  toIsoDate,
+} from './subscription-schedule.js';
 import { legacyDebtPhraseForDirection } from './debt-direction.js';
 import {
   DEFAULT_INIT_DATA_MAX_AGE_SEC,
@@ -570,27 +581,6 @@ const getAccountsByKeys = async (dbConn, userId, keys) => {
     ])
   );
 };
-const toIsoDate = (d) => {
-  if (!(d instanceof Date) || Number.isNaN(d.getTime())) return '';
-  return d.toISOString().slice(0, 10);
-};
-const parseIsoDate = (value) => {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
-  const d = new Date(`${value}T00:00:00.000Z`);
-  if (Number.isNaN(d.getTime())) return null;
-  if (toIsoDate(d) !== value) return null;
-  return d;
-};
-const addMonthsClamped = (date, months) => {
-  const year = date.getUTCFullYear();
-  const month = date.getUTCMonth();
-  const day = date.getUTCDate();
-  const first = new Date(Date.UTC(year, month + months, 1));
-  const lastDay = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)).getUTCDate();
-  first.setUTCDate(Math.min(day, lastDay));
-  return first;
-};
-const addSubscriptionCycle = (date, cycle) => (cycle === 'yearly' ? addMonthsClamped(date, 12) : addMonthsClamped(date, 1));
 const FX_CACHE_TTL_MS = 10 * 60 * 1000;
 const FX_FALLBACK = {
   base: 'USD',
@@ -897,7 +887,7 @@ const runSubscriptionAutopayForUser = async (userId) => {
 
   await withTransaction(db, async (tx, afterCommit) => {
     const dueSubs = await tx.all(
-      `SELECT id, name, amount, currency, categoryId, cycle, nextChargeDate, note
+      `SELECT id, name, amount, currency, categoryId, cycle, nextChargeDate, note, account_key AS accountKey
        FROM subscriptions
        WHERE user_id = ? AND active = 1 AND nextChargeDate <= ?
        ORDER BY nextChargeDate ASC`,
@@ -939,7 +929,11 @@ const runSubscriptionAutopayForUser = async (userId) => {
         const subCategoryId = typeof sub.categoryId === 'string' && sub.categoryId.trim()
           ? sub.categoryId
           : 'other_expense';
-        const note = buildSubscriptionChargeNote(sub);
+        // Рахунок їде в примітці, як і в усіх інших витрат: саме там його шукає
+        // перерахунок балансу. Без рахунку списання лише записується.
+        const note = sub.accountKey
+          ? mergeAccountIntoNote(buildSubscriptionChargeNote(sub), sub.accountKey)
+          : buildSubscriptionChargeNote(sub);
         const charge = {
           id: uuidv4(),
           user_id: userId,
@@ -2641,6 +2635,50 @@ const lastTransactionImageByUser = createExpiringMap({ ttlMs: 5 * 60 * 1000 });
 const TRANSACTION_IMAGE_RATE_LIMIT_MS = 3000;
 
 /**
+ * Запис операції, підтвердженої в чаті бота.
+ *
+ * Той самий порядок, що й у `POST /api/transactions`: перевірка боргу й курсу,
+ * запис і зміна балансу — одним неподільним кроком під локом. Раніше ввід
+ * голого числа писав рядок і баланс двома окремими запитами без жодної
+ * перевірки: збій на балансі лишав записану операцію, яка нічого не рухала, а
+ * борг міг піти в мінус.
+ *
+ * @returns {Promise<{ ok: true } | { ok: false, code: string }>} відмова — лише
+ *   з передбачуваних причин (немає курсу, борг у мінус); решта помилок летить далі
+ */
+const saveBotTransaction = async (transaction) => {
+  // Курс — до входу в транзакцію: тримати лок запису на мережі не можна.
+  const convert = await buildAccountUnitConverter();
+  try {
+    await withTransaction(db, async (tx, afterCommit) => {
+      await assertTransactionPreconditions(tx, transaction.user_id, [{ tx: transaction, multiplier: 1 }], convert);
+      await tx.run(
+        'INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, note, telegram_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          transaction.id,
+          transaction.user_id,
+          transaction.amount,
+          transaction.currency,
+          transaction.categoryId,
+          transaction.type,
+          transaction.date,
+          transaction.note,
+          transaction.telegram_user_id,
+        ]
+      );
+      await applyTransactionEffects(tx, transaction.user_id, transaction, 1, convert);
+      if (transaction.type === 'expense') {
+        afterCommit(() => checkBudgetThresholdsAfterExpense(transaction.user_id, transaction.categoryId));
+      }
+    });
+  } catch (error) {
+    if (error instanceof TransactionRefused) return { ok: false, code: error.payload.code };
+    throw error;
+  }
+  return { ok: true };
+};
+
+/**
  * Build the category list (built-in + user's custom) passed to the smart parser.
  *
  * `includeOther` adds the catch-all pair. The bot's own keyboard leaves them
@@ -3454,15 +3492,20 @@ if (bot) {
       }
       return;
     }
+    // Голе число рахується у валюті гаманця — тій самій, що й у розумному
+    // розборі та в ярликах. Валюта фіксується тут, щоб у підтвердженні стояла
+    // та, яку людина бачила в питанні.
+    const { reportCurrency } = await getReportSettings(db, String(msg.from.id));
     pendingTransactions.set(msg.chat.id, {
       userId: String(msg.from.id),
       amount,
+      currency: reportCurrency,
       createdAt: Date.now(),
     });
     const keyboard = {
       inline_keyboard: BOT_CATEGORY_OPTIONS.map((c) => [{ text: c.name, callback_data: `cat_${c.id}` }]),
     };
-    bot.sendMessage(msg.chat.id, `Виберіть категорію для суми ${amount}:`, { reply_markup: keyboard });
+    bot.sendMessage(msg.chat.id, `Виберіть категорію для суми ${amount} ${reportCurrency}:`, { reply_markup: keyboard });
   });
 
   bot.on('callback_query', async (callbackQuery) => {
@@ -3590,36 +3633,9 @@ if (bot) {
         note,
         telegram_user_id: callbackQuery.from.id,
       };
-      const { mismatches, overdrafts } = await checkTransactionPreconditions(db, transaction.user_id, [
-        { tx: transaction, multiplier: 1 },
-      ]);
-      if (mismatches.length > 0) {
-        await bot.answerCallbackQuery(callbackQuery.id, { text: 'Немає курсу для перерахунку' });
-        await replaceSmartTransactionMessage(
-          chatId,
-          callbackMessageId,
-          '⚠️ Не збережено: немає курсу, щоб перерахувати суму на вибраний рахунок.',
-        );
-        return;
-      }
-      if (overdrafts.length > 0) {
-        await bot.answerCallbackQuery(callbackQuery.id, { text: 'Недостатньо коштів' });
-        await replaceSmartTransactionMessage(
-          chatId,
-          callbackMessageId,
-          '⚠️ Не збережено: операція перевищує доступний залишок боргового рахунку.',
-        );
-        return;
-      }
-
+      let saved;
       try {
-        await withTransaction(db, async (tx) => {
-          await tx.run(
-            'INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, note, telegram_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            [transaction.id, transaction.user_id, transaction.amount, transaction.currency, transaction.categoryId, transaction.type, transaction.date, transaction.note, transaction.telegram_user_id]
-          );
-          await applyTransactionEffects(tx, transaction.user_id, transaction);
-        });
+        saved = await saveBotTransaction(transaction);
       } catch (err) {
         console.error('[smart-transaction] could not save confirmed transaction:', err);
         await bot.answerCallbackQuery(callbackQuery.id, { text: 'Не вдалося зберегти' });
@@ -3630,8 +3646,23 @@ if (bot) {
         );
         return;
       }
-      if (transaction.type === 'expense') {
-        await checkBudgetThresholdsAfterExpense(transaction.user_id, transaction.categoryId);
+      if (!saved.ok && saved.code === 'ACCOUNT_DENOMINATION_MISMATCH') {
+        await bot.answerCallbackQuery(callbackQuery.id, { text: 'Немає курсу для перерахунку' });
+        await replaceSmartTransactionMessage(
+          chatId,
+          callbackMessageId,
+          '⚠️ Не збережено: немає курсу, щоб перерахувати суму на вибраний рахунок.',
+        );
+        return;
+      }
+      if (!saved.ok) {
+        await bot.answerCallbackQuery(callbackQuery.id, { text: 'Недостатньо коштів' });
+        await replaceSmartTransactionMessage(
+          chatId,
+          callbackMessageId,
+          '⚠️ Не збережено: операція перевищує доступний залишок боргового рахунку.',
+        );
+        return;
       }
       await bot.answerCallbackQuery(callbackQuery.id, { text: 'Збережено ✅' });
       await replaceSmartTransactionMessage(
@@ -3714,7 +3745,10 @@ if (bot) {
         [pending.userId]
       );
       pending.categoryId = categoryId;
-      pending.type = (categoryId === 'salary' || categoryId === 'other_income') ? 'income' : 'expense';
+      // Тип — з самої категорії. Доки тут був перелік «доходних» id, нова
+      // доходна категорія («Повернення боргу») записувалась витратою й
+      // списувала гроші, які насправді прийшли.
+      pending.type = category.type === 'income' ? 'income' : 'expense';
       const accountButtons = Array.isArray(accounts)
         ? accounts.slice(0, 20).map((a) => [{
             text: String(a.name ?? a.accountKey ?? '').trim().slice(0, 28) || String(a.accountKey),
@@ -3735,6 +3769,10 @@ if (bot) {
         bot.answerCallbackQuery(callbackQuery.id, { text: 'Спочатку оберіть категорію.' });
         return;
       }
+      // Запит знімається до першого `await`. Обробник однопотоковий, тож
+      // друге натискання, що прийде, поки перше пише в базу, вже не знайде
+      // запиту — замість другої такої самої операції.
+      pendingTransactions.delete(chatId);
       const picked = callbackQuery.data.replace('acc_', '');
       const accountKey = picked === 'none' ? null : String(picked).trim().toLowerCase();
       const note = accountKey
@@ -3744,22 +3782,46 @@ if (bot) {
         id: uuidv4(),
         user_id: pending.userId,
         amount: pending.amount,
-        currency: 'UAH',
+        currency: pending.currency,
         categoryId: pending.categoryId,
         type: pending.type,
         date: new Date().toISOString(),
         note,
         telegram_user_id: callbackQuery.from.id,
       };
-      await db.run(
-        'INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, note, telegram_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [transaction.id, transaction.user_id, transaction.amount, transaction.currency, transaction.categoryId, transaction.type, transaction.date, transaction.note, transaction.telegram_user_id]
-      );
-      await applyTransactionEffects(db, transaction.user_id, transaction);
-      pendingTransactions.delete(chatId);
+
+      let saved;
+      try {
+        saved = await saveBotTransaction(transaction);
+      } catch (error) {
+        console.error('[bot] could not save transaction:', error);
+        await bot.answerCallbackQuery(callbackQuery.id, { text: 'Не вдалося зберегти' });
+        await bot.sendMessage(chatId, '⚠️ Транзакцію не збережено. Надішліть суму ще раз.');
+        return;
+      }
+      if (!saved.ok) {
+        // Інший рахунок може підійти, а кнопки під повідомленням ще живі —
+        // повертаємо запит, якщо людина тим часом не почала новий.
+        if (!pendingTransactions.get(chatId)) pendingTransactions.set(chatId, pending);
+        const noRate = saved.code === 'ACCOUNT_DENOMINATION_MISMATCH';
+        await bot.answerCallbackQuery(callbackQuery.id, {
+          text: noRate ? 'Немає курсу для перерахунку' : 'Недостатньо коштів',
+        });
+        await bot.sendMessage(
+          chatId,
+          noRate
+            ? '⚠️ Не збережено: немає курсу, щоб перерахувати суму на цей рахунок. Оберіть інший.'
+            : '⚠️ Не збережено: операція перевищує залишок боргового рахунку. Оберіть інший.',
+        );
+        return;
+      }
       bot.answerCallbackQuery(callbackQuery.id);
       const category = CATEGORIES.find((c) => c.id === pending.categoryId);
-      bot.sendMessage(chatId, `✅ Транзакцію ${pending.amount} (${category ? category.name : pending.categoryId}) додано!`);
+      const shownAmount = Number(pending.amount).toLocaleString('uk-UA', { maximumFractionDigits: 2 });
+      bot.sendMessage(
+        chatId,
+        `✅ Транзакцію ${shownAmount} ${pending.currency} (${category ? category.name : pending.categoryId}) додано!`,
+      );
     }
   });
 } else if (!RUNS_BOT) {
@@ -5344,71 +5406,101 @@ app.patch('/api/goals/:id', async (req, res) => {
     return;
   }
 
-  const now = new Date().toISOString();
-  await db.run(
-    `UPDATE goals SET name = ?, type = ?, target_amount = ?, baseline_amount = ?, currency = ?, deadline = ?, icon = ?, color = ?, archived = ?, updated_at = ?
-     WHERE id = ? AND user_id = ?`,
-    [name, type, targetAmount, baselineAmount, currency, deadline, icon, color, archived ? 1 : 0, now, id, userId]
-  );
-
+  // Курс — до транзакції: усередині неї мережі бути не має.
   const fx = await fetchFxRates().catch(() => FX_FALLBACK);
-  // A frozen `converted_amount` is only meaningful against the currency it was
-  // frozen for. Switching the goal's currency re-bases every contribution, so
-  // the stored values are recomputed here — otherwise 8000 frozen as UAH would
-  // be read straight back as 8000 USD.
   const previousCurrency = normalizeCurrency(current.currency);
-  if (previousCurrency !== currency) {
-    const stale = await db.all(
-      `SELECT id, amount, currency FROM goal_contributions WHERE goal_id = ? AND user_id = ?`,
+  const previousBaseline = Number(current.baseline_amount) || 0;
+  const existingAccountKey = String(current.account_key ?? '').trim();
+
+  // Ціль, її внески й баланс рахунку змінюються разом: валюта, переведена в
+  // цілі, але не на рахунку, — саме та розбіжність, яку тут прибрано.
+  const { row, contribCount, accountKey, saved } = await withTransaction(db, async (tx) => {
+    const now = new Date().toISOString();
+    const rebased = rebaseGoalAccount({
+      balance: existingAccountKey ? await getGoalAccountBalance(tx, userId, existingAccountKey) : 0,
+      previousCurrency,
+      nextCurrency: currency,
+      previousBaseline,
+      requestedBaseline: baselineAmount,
+      convert: goalConverter(fx),
+    });
+
+    await tx.run(
+      `UPDATE goals SET name = ?, type = ?, target_amount = ?, baseline_amount = ?, currency = ?, deadline = ?, icon = ?, color = ?, archived = ?, updated_at = ?
+       WHERE id = ? AND user_id = ?`,
+      [name, type, targetAmount, rebased.baseline, currency, deadline, icon, color, archived ? 1 : 0, now, id, userId]
+    );
+
+    // A frozen `converted_amount` is only meaningful against the currency it was
+    // frozen for. Switching the goal's currency re-bases every contribution, so
+    // the stored values are recomputed here — otherwise 8000 frozen as UAH would
+    // be read straight back as 8000 USD.
+    if (previousCurrency !== currency) {
+      const stale = await tx.all(
+        `SELECT id, amount, currency FROM goal_contributions WHERE goal_id = ? AND user_id = ?`,
+        [id, userId]
+      );
+      for (const contribution of stale || []) {
+        const from = contribution.currency ? normalizeCurrency(contribution.currency) : previousCurrency;
+        const { converted, rate } = freezeContributionConversion(
+          Number(contribution.amount) || 0,
+          from,
+          currency,
+          goalConverter(fx)
+        );
+        await tx.run('UPDATE goal_contributions SET converted_amount = ?, fx_rate = ? WHERE id = ? AND user_id = ?', [
+          converted,
+          rate,
+          contribution.id,
+          userId,
+        ]);
+      }
+    }
+
+    const contribRows = await tx.all(
+      `SELECT amount, currency, converted_amount AS convertedAmount
+       FROM goal_contributions WHERE goal_id = ? AND user_id = ?`,
       [id, userId]
     );
-    for (const row of stale || []) {
-      const from = row.currency ? normalizeCurrency(row.currency) : previousCurrency;
-      const { converted, rate } = freezeContributionConversion(
-        Number(row.amount) || 0,
-        from,
-        currency,
-        goalConverter(fx)
-      );
-      await db.run('UPDATE goal_contributions SET converted_amount = ?, fx_rate = ? WHERE id = ? AND user_id = ?', [
-        converted,
-        rate,
-        row.id,
-        userId,
-      ]);
-    }
-  }
-
-  const contribRows = await db.all(
-    `SELECT amount, currency, converted_amount AS convertedAmount
-     FROM goal_contributions WHERE goal_id = ? AND user_id = ?`,
-    [id, userId]
-  );
-  const row = await db.get(
-    `SELECT g.id, g.user_id, g.name, g.type, g.target_amount, g.baseline_amount, g.currency, g.deadline, g.icon, g.color, g.archived, g.created_at, g.updated_at, g.account_key
-     FROM goals g WHERE g.id = ? AND g.user_id = ?`,
-    [id, userId]
-  );
-  const accountKey = await backfillGoalAccount(
-    db,
-    userId,
-    row,
-    sumGoalContributions(contribRows, currency, fx, baselineAmount)
-  );
-  // Назва й валюта рахунку йдуть за ціллю.
-  await syncGoalAccount(db, userId, accountKey, { name, currency });
-  // Стартова сума — початковий залишок рахунку. Якщо її змінили, різницю треба
-  // перенести на баланс: інакше правка стартової суми нічого б не робила.
-  const previousBaseline = Number(current.baseline_amount) || 0;
-  if (previousBaseline !== baselineAmount) {
-    await db.run(
-      `UPDATE account_portfolio SET primary_amount = primary_amount + ?, updatedAt = ?
-       WHERE account_key = ? AND user_id = ?`,
-      [baselineAmount - previousBaseline, new Date().toISOString(), accountKey, userId]
+    const goalRow = await tx.get(
+      `SELECT g.id, g.user_id, g.name, g.type, g.target_amount, g.baseline_amount, g.currency, g.deadline, g.icon, g.color, g.archived, g.created_at, g.updated_at, g.account_key
+       FROM goals g WHERE g.id = ? AND g.user_id = ?`,
+      [id, userId]
     );
-  }
-  const saved = await getGoalAccountBalance(db, userId, accountKey);
-  res.json(mapGoalRow(row, saved, (contribRows || []).length, accountKey));
+    // Давня ціль без рахунку отримує його вже в новій валюті й з уже
+    // переведеною сумою — переводити його ще раз нижче не треба.
+    const key = await backfillGoalAccount(
+      tx,
+      userId,
+      goalRow,
+      sumGoalContributions(contribRows, currency, fx, rebased.baseline)
+    );
+    // Назва й валюта рахунку йдуть за ціллю.
+    await syncGoalAccount(tx, userId, key, { name, currency });
+    if (existingAccountKey && previousCurrency !== currency) {
+      // Валюта змінилась — баланс переведено за курсом. Раніше мінявся лише
+      // підпис: 40 000 ₴ ставали 40 000 $.
+      await tx.run(
+        `UPDATE account_portfolio SET primary_amount = ?, updatedAt = ? WHERE account_key = ? AND user_id = ?`,
+        [rebased.balance, now, key, userId]
+      );
+    } else if (existingAccountKey && rebased.baseline !== previousBaseline) {
+      // Стартова сума — початковий залишок рахунку. Якщо її змінили, різницю
+      // треба перенести на баланс: інакше правка стартової суми нічого б не робила.
+      await tx.run(
+        `UPDATE account_portfolio SET primary_amount = primary_amount + ?, updatedAt = ?
+         WHERE account_key = ? AND user_id = ?`,
+        [rebased.baseline - previousBaseline, now, key, userId]
+      );
+    }
+    return {
+      row: goalRow,
+      contribCount: (contribRows || []).length,
+      accountKey: key,
+      saved: await getGoalAccountBalance(tx, userId, key),
+    };
+  });
+  res.json(mapGoalRow(row, saved, contribCount, accountKey));
 });
 
 app.delete('/api/goals/:id', async (req, res) => {
@@ -5423,24 +5515,89 @@ app.delete('/api/goals/:id', async (req, res) => {
     res.status(404).json({ error: 'Goal not found' });
     return;
   }
-  const linked = await db.all(
-    'SELECT transaction_id AS transactionId FROM goal_contributions WHERE goal_id = ? AND user_id = ? AND transaction_id IS NOT NULL',
-    [id, userId]
-  );
-  for (const row of linked || []) {
-    const tid = row?.transactionId ? String(row.transactionId).trim() : '';
-    if (!tid) continue;
-    const txRow = await db.get('SELECT * FROM transactions WHERE user_id = ? AND id = ? LIMIT 1', [userId, tid]);
-    if (txRow) {
-      await applyTransactionEffects(db, userId, txRow, -1);
-      await db.run('DELETE FROM transactions WHERE user_id = ? AND id = ?', [userId, tid]);
-    }
+  // Курс — до транзакції: усередині неї мережі бути не має.
+  const convert = await buildAccountUnitConverter();
+  const goalAccount = String(cur.account_key ?? '').trim().toLowerCase();
+
+  try {
+    await withTransaction(db, async (tx) => {
+      const linked = await tx.all(
+        `SELECT transaction_id AS transactionId FROM goal_contributions
+         WHERE goal_id = ? AND user_id = ? AND transaction_id IS NOT NULL
+         ORDER BY date DESC, created_at DESC`,
+        [id, userId]
+      );
+      const contributions = [];
+      const seen = new Set();
+      for (const row of linked || []) {
+        const tid = row?.transactionId ? String(row.transactionId).trim() : '';
+        if (!tid || seen.has(tid)) continue;
+        seen.add(tid);
+        const txRow = await tx.get('SELECT * FROM transactions WHERE user_id = ? AND id = ? LIMIT 1', [userId, tid]);
+        if (txRow) contributions.push(txRow);
+      }
+
+      // Повертається рівно те, що ще лежить у цілі (див. `planGoalRefund`).
+      // Раніше відкочувались усі внески, і гроші, вже витрачені з цілі,
+      // зʼявлялися на картці вдруге. Внесок оцінюється тим самим курсом, яким
+      // його нижче й знімуть.
+      const accountsByKey = goalAccount ? await getAccountRowsForEffects(tx, userId, [goalAccount]) : new Map();
+      const goalAccountRow = accountsByKey.get(goalAccount);
+      const plan = planGoalRefund(
+        contributions.map((txRow) => ({
+          id: txRow.id,
+          goalDelta: computeNetDeltas([{ tx: txRow, multiplier: 1 }], accountsByKey, convert).get(goalAccount) ?? 0,
+        })),
+        goalAccountRow ? Number(goalAccountRow.primaryAmount) || 0 : Infinity,
+      );
+      const byId = new Map(contributions.map((txRow) => [txRow.id, txRow]));
+      const refunded = plan.refundIds.map((tid) => byId.get(tid));
+      let partialRow = plan.partial ? byId.get(plan.partial.id) : null;
+      let shrunk = partialRow ? shrinkContribution(partialRow, 1 - plan.partial.share) : null;
+      if (shrunk && !(shrunk.amount > 0)) {
+        // Від внеску лишилися б копійки округлення — повертаємо його цілком.
+        refunded.push(partialRow);
+        partialRow = null;
+        shrunk = null;
+      }
+
+      await assertTransactionPreconditions(
+        tx,
+        userId,
+        [
+          ...refunded.map((txRow) => ({ tx: txRow, multiplier: -1 })),
+          ...(partialRow ? [{ tx: partialRow, multiplier: -1 }, { tx: shrunk, multiplier: 1 }] : []),
+        ],
+        convert,
+        { overdraftError: 'returning the goal money would push a debt balance below zero' },
+      );
+      for (const txRow of refunded) {
+        await applyTransactionEffects(tx, userId, txRow, -1, convert);
+        await tx.run('DELETE FROM transactions WHERE user_id = ? AND id = ?', [userId, txRow.id]);
+      }
+      if (partialRow) {
+        // У транзакції лишається та частка внеску, що пішла з цілі раніше.
+        await applyTransactionEffects(tx, userId, partialRow, -1, convert);
+        await applyTransactionEffects(tx, userId, shrunk, 1, convert);
+        await tx.run('UPDATE transactions SET amount = ?, transferToAmount = ? WHERE user_id = ? AND id = ?', [
+          shrunk.amount,
+          shrunk.transferToAmount ?? null,
+          userId,
+          partialRow.id,
+        ]);
+      }
+      // Внески, що не повернулись, лишаються в історії як були: ці гроші
+      // вийшли з цілі раніше, і переписувати те, що з ними сталося, нема чим.
+      await tx.run('DELETE FROM goal_contributions WHERE goal_id = ? AND user_id = ?', [id, userId]);
+      // Рахунок цілі йде разом із ціллю: усе, що на ньому лишалося з внесків,
+      // уже повернуто вище.
+      await deleteGoalAccount(tx, userId, cur.account_key);
+      await tx.run('DELETE FROM goals WHERE id = ? AND user_id = ?', [id, userId]);
+    });
+  } catch (error) {
+    if (sendIfRefused(res, error)) return;
+    throw error;
   }
-  await db.run('DELETE FROM goal_contributions WHERE goal_id = ? AND user_id = ?', [id, userId]);
-  // Рахунок цілі йде разом із ціллю: тримати його осиротілим у гаманці немає
-  // сенсу, а транзакції, що його наповнювали, вже відкочені вище.
-  await deleteGoalAccount(db, userId, cur.account_key);
-  await db.run('DELETE FROM goals WHERE id = ? AND user_id = ?', [id, userId]);
   res.status(204).end();
 });
 
@@ -5990,13 +6147,11 @@ app.post('/api/accounts', async (req, res) => {
     return;
   }
 
-  const normalizedBase = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'account';
-  const userSlug = String(userId).replace(/[^a-z0-9]/gi, '');
-  let accountKey = `${userSlug}_${normalizedBase}`;
-  let suffix = 2;
+  // Ключ із випадковим хвостом: звільнений видаленим рахунком ключ не
+  // дістається новому разом з усіма посиланнями на старий (див. account-key.js).
+  let accountKey = createAccountKey(userId, name);
   while (await db.get('SELECT 1 FROM account_portfolio WHERE account_key = ? LIMIT 1', [accountKey])) {
-    accountKey = `${userSlug}_${normalizedBase}_${suffix}`;
-    suffix += 1;
+    accountKey = createAccountKey(userId, name);
   }
 
   const now = new Date().toISOString();
@@ -6359,7 +6514,7 @@ app.delete('/api/accounts/:key', async (req, res) => {
     return;
   }
 
-  await withTransaction(db, async (tx) => {
+  const releasedBankLinks = await withTransaction(db, async (tx) => {
     await tx.run(
       `UPDATE transactions SET debtEventId = NULL
        WHERE user_id = ? AND debtEventId IN (
@@ -6368,8 +6523,21 @@ app.delete('/api/accounts/:key', async (req, res) => {
       [userId, userId, accountKey]
     );
     await tx.run('DELETE FROM debt_events WHERE user_id = ? AND debt_account_key = ?', [userId, accountKey]);
+    // Те, що вказувало на рахунок наперед, а не в історії, відвʼязується разом
+    // із ним. Привʼязана картка банку інакше й далі писала б операції в нікуди,
+    // а підписка й шаблон підставляли б рахунок, якого немає.
+    const links = await tx.all(
+      `SELECT provider, token FROM bank_links WHERE user_id = ? AND account_key = ?`,
+      [userId, accountKey]
+    );
+    await tx.run('DELETE FROM bank_links WHERE user_id = ? AND account_key = ?', [userId, accountKey]);
+    await tx.run('UPDATE subscriptions SET account_key = NULL WHERE user_id = ? AND account_key = ?', [userId, accountKey]);
+    await tx.run('UPDATE expense_templates SET account_key = NULL WHERE user_id = ? AND account_key = ?', [userId, accountKey]);
     await tx.run('DELETE FROM account_portfolio WHERE user_id = ? AND account_key = ?', [userId, accountKey]);
+    return links ?? [];
   });
+  const monobankToken = releasedBankLinks.find((link) => link.provider === 'monobank' && link.token)?.token;
+  await releaseMonobankWebhookIfUnused(userId, monobankToken);
   res.status(204).end();
 });
 
@@ -6915,9 +7083,10 @@ app.patch('/api/custom-categories/:id', async (req, res) => {
 
   const nextId = createCustomCategoryId(name, icon, color);
   const now = new Date().toISOString();
-  // Перейменування змінює сам id категорії, тож посилання в транзакціях мають
-  // переїхати разом із ним. Половина цієї роботи лишила б транзакції з id,
-  // якого вже немає.
+  // Будь-яка правка — назва, значок чи колір — змінює сам id категорії, тож
+  // усе, що на неї посилається, має переїхати разом із ним: транзакції,
+  // бюджет, підписки, шаблони, правила банку (див. category-references.js).
+  // Половина цієї роботи лишила б посилання на id, якого вже немає.
   await withTransaction(db, async (tx) => {
     await tx.run(
       `UPDATE custom_categories
@@ -6925,10 +7094,7 @@ app.patch('/api/custom-categories/:id', async (req, res) => {
        WHERE user_id = ? AND id = ?`,
       [nextId, name, normalizedName, icon, color, now, userId, id]
     );
-    await tx.run(
-      'UPDATE transactions SET categoryId = ? WHERE user_id = ? AND categoryId = ?',
-      [nextId, userId, id]
-    );
+    await moveCategoryReferences(tx, userId, id, nextId);
   });
 
   res.json({
@@ -6967,7 +7133,10 @@ app.delete('/api/custom-categories/:id', async (req, res) => {
   const effectiveType = current?.type ?? (txTypeGuess?.type === 'income' ? 'income' : 'expense');
   const fallback = effectiveType === 'income' ? 'other_income' : 'other_expense';
   await withTransaction(db, async (tx) => {
-    await tx.run('UPDATE transactions SET categoryId = ? WHERE user_id = ? AND categoryId = ?', [fallback, userId, id]);
+    // Операції, підписки й шаблони — в «Інше»; бюджет і правила банку для цієї
+    // категорії — геть. Підписка, що лишалась на видаленій категорії, списувала
+    // в неї далі, і категорія знову зʼявлялась у списку як «давня».
+    await releaseCategoryReferences(tx, userId, id, fallback);
     if (current) {
       await tx.run('DELETE FROM custom_categories WHERE user_id = ? AND id = ?', [userId, id]);
     }
@@ -6976,11 +7145,44 @@ app.delete('/api/custom-categories/:id', async (req, res) => {
   res.status(204).end();
 });
 
+/** Рахунки, з яких може списуватися підписка: гроші, а не борг чи ціль. */
+const SUBSCRIPTION_ACCOUNT_SECTIONS = ['bank', 'cash'];
+
+/**
+ * Рахунок підписки з тіла запиту.
+ *
+ * @param {unknown} raw `undefined` — поле не передали; `null`/'' — без рахунку
+ * @param {string | null} [unchanged] рахунок, що вже стоїть на підписці: його
+ *   не перевіряємо вдруге, інакше правка назви падала б через те, що рахунок
+ *   тим часом переїхав в іншу секцію
+ * @returns {Promise<{ ok: true, value: string | null | undefined } | { ok: false }>}
+ */
+const readSubscriptionAccount = async (userId, raw, unchanged = null) => {
+  if (raw === undefined) return { ok: true, value: undefined };
+  if (raw === null) return { ok: true, value: null };
+  if (typeof raw !== 'string') return { ok: false };
+  const key = raw.trim().toLowerCase();
+  if (!key) return { ok: true, value: null };
+  if (unchanged && key === unchanged) return { ok: true, value: key };
+  const account = await db.get(
+    'SELECT section FROM account_portfolio WHERE user_id = ? AND account_key = ? LIMIT 1',
+    [userId, key]
+  );
+  if (!account || !SUBSCRIPTION_ACCOUNT_SECTIONS.includes(account.section)) return { ok: false };
+  return { ok: true, value: key };
+};
+
+const SUBSCRIPTION_ACCOUNT_ERROR = {
+  error: 'accountKey must be one of your bank or cash accounts',
+  code: 'SUBSCRIPTION_ACCOUNT_INVALID',
+};
+
 app.get('/api/subscriptions', async (req, res) => {
   const userId = req.authUserId;
   await runSubscriptionAutopayForUser(userId);
   const rows = await db.all(
-    `SELECT id, name, amount, currency, categoryId, cycle, nextChargeDate, note, active, icon, color, createdAt, updatedAt
+    `SELECT id, name, amount, currency, categoryId, cycle, nextChargeDate, note, active, icon, color,
+            account_key AS accountKey, createdAt, updatedAt
      FROM subscriptions
      WHERE user_id = ?
      ORDER BY active DESC, nextChargeDate ASC, createdAt DESC`
@@ -6994,6 +7196,7 @@ app.get('/api/subscriptions', async (req, res) => {
       currency: normalizeCurrency(row.currency),
       categoryId: typeof row.categoryId === 'string' && row.categoryId.trim() ? row.categoryId : 'other_expense',
       active: Boolean(row.active),
+      accountKey: row.accountKey ?? null,
     }))
   );
 });
@@ -7007,7 +7210,7 @@ app.post('/api/subscriptions', async (req, res) => {
     ? req.body.categoryId.trim()
     : 'other_expense';
   const cycle = req.body?.cycle === 'yearly' ? 'yearly' : 'monthly';
-  const nextChargeDate = typeof req.body?.nextChargeDate === 'string' ? req.body.nextChargeDate : '';
+  const requestedChargeDate = typeof req.body?.nextChargeDate === 'string' ? req.body.nextChargeDate : '';
   const note = typeof req.body?.note === 'string' ? req.body.note.trim() : '';
   const icon = typeof req.body?.icon === 'string' && req.body.icon.trim() ? req.body.icon.trim() : null;
   const color = typeof req.body?.color === 'string' && req.body.color.trim() ? req.body.color.trim() : null;
@@ -7020,17 +7223,26 @@ app.post('/api/subscriptions', async (req, res) => {
     res.status(400).json({ error: 'amount must be > 0' });
     return;
   }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(nextChargeDate)) {
+  if (!parseIsoDate(requestedChargeDate)) {
     res.status(400).json({ error: 'nextChargeDate must be in YYYY-MM-DD format' });
     return;
   }
+  const account = await readSubscriptionAccount(userId, req.body?.accountKey);
+  if (!account.ok) {
+    res.status(400).json(SUBSCRIPTION_ACCOUNT_ERROR);
+    return;
+  }
+  // Дата з минулого — не прохання списати всі пропущені місяці разом, а
+  // «підписка йде відтоді»: наступне списання — найближча дата циклу.
+  const nextChargeDate = rollForwardChargeDate(requestedChargeDate, cycle, toIsoDate(new Date()));
+  const accountKey = account.value ?? null;
 
   const id = uuidv4();
   const now = new Date().toISOString();
   await db.run(
-    `INSERT INTO subscriptions (id, user_id, name, amount, currency, categoryId, cycle, nextChargeDate, note, active, icon, color, createdAt, updatedAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)`,
-    [id, userId, name, amount, currency, categoryId, cycle, nextChargeDate, note, icon, color, now, now]
+    `INSERT INTO subscriptions (id, user_id, name, amount, currency, categoryId, cycle, nextChargeDate, note, active, icon, color, account_key, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)`,
+    [id, userId, name, amount, currency, categoryId, cycle, nextChargeDate, note, icon, color, accountKey, now, now]
   );
 
   res.status(201).json({
@@ -7045,6 +7257,7 @@ app.post('/api/subscriptions', async (req, res) => {
     active: true,
     icon,
     color,
+    accountKey,
     createdAt: now,
     updatedAt: now,
   });
@@ -7072,7 +7285,7 @@ app.patch('/api/subscriptions/:id', async (req, res) => {
   const cycle = req.body?.cycle === undefined
     ? current.cycle
     : (req.body.cycle === 'yearly' ? 'yearly' : 'monthly');
-  const nextChargeDate = req.body?.nextChargeDate === undefined
+  const requestedChargeDate = req.body?.nextChargeDate === undefined
     ? current.nextChargeDate
     : String(req.body.nextChargeDate);
   const note = typeof req.body?.note === 'string' ? req.body.note.trim() : (current.note ?? '');
@@ -7092,17 +7305,34 @@ app.patch('/api/subscriptions/:id', async (req, res) => {
     res.status(400).json({ error: 'amount must be > 0' });
     return;
   }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(nextChargeDate)) {
+  if (!parseIsoDate(requestedChargeDate)) {
     res.status(400).json({ error: 'nextChargeDate must be in YYYY-MM-DD format' });
     return;
   }
+  const currentAccountKey = current.account_key ? String(current.account_key) : null;
+  const account = await readSubscriptionAccount(userId, req.body?.accountKey, currentAccountKey);
+  if (!account.ok) {
+    res.status(400).json(SUBSCRIPTION_ACCOUNT_ERROR);
+    return;
+  }
+  const accountKey = account.value === undefined ? currentAccountKey : account.value;
+
+  // Підписку, що ожила після паузи, або дату, яку людина щойно поставила в
+  // минуле, пересуваємо на найближчий цикл. Інакше автосписання догнало б усі
+  // місяці паузи одним махом. Дату, яку не чіпали, лишаємо: якщо вона минула,
+  // це списання, яке такт ще не встиг провести, і пропускати його не можна.
+  const reactivated = active && !current.active;
+  const dateChanged = requestedChargeDate !== current.nextChargeDate;
+  const nextChargeDate = active && (reactivated || dateChanged)
+    ? rollForwardChargeDate(requestedChargeDate, cycle, toIsoDate(new Date()))
+    : requestedChargeDate;
 
   const now = new Date().toISOString();
   await db.run(
     `UPDATE subscriptions
-     SET name = ?, amount = ?, currency = ?, categoryId = ?, cycle = ?, nextChargeDate = ?, note = ?, active = ?, icon = ?, color = ?, updatedAt = ?
+     SET name = ?, amount = ?, currency = ?, categoryId = ?, cycle = ?, nextChargeDate = ?, note = ?, active = ?, icon = ?, color = ?, account_key = ?, updatedAt = ?
      WHERE user_id = ? AND id = ?`,
-    [name, amount, currency, categoryId, cycle, nextChargeDate, note, active ? 1 : 0, icon, color, now, userId, id]
+    [name, amount, currency, categoryId, cycle, nextChargeDate, note, active ? 1 : 0, icon, color, accountKey, now, userId, id]
   );
   res.json({
     ...current,
@@ -7116,6 +7346,7 @@ app.patch('/api/subscriptions/:id', async (req, res) => {
     active,
     icon,
     color,
+    accountKey,
     updatedAt: now,
   });
 });
@@ -7654,26 +7885,34 @@ app.delete('/api/bank/monobank/links/:bankAccountId', async (req, res) => {
     `DELETE FROM bank_links WHERE user_id = ? AND provider = 'monobank' AND bank_account_id = ?`,
     [userId, bankAccountId],
   );
+  await releaseMonobankWebhookIfUnused(userId, row.token);
 
+  res.json({ links: await listBankLinks(userId) });
+});
+
+/**
+ * Зняти вебхук monobank, коли привʼязаних карток не лишилося.
+ *
+ * Поки лишилася хоч одна, вебхук потрібен: він один на всіх. Знімаємо його
+ * тільки разом з останньою — і коли людина відключає картку сама, і коли
+ * видаляє рахунок, до якого картка була привʼязана.
+ */
+async function releaseMonobankWebhookIfUnused(userId, token) {
+  if (!token) return;
   const remaining = await db.get(
     `SELECT 1 FROM bank_links WHERE user_id = ? AND provider = 'monobank' LIMIT 1`,
     [userId],
   );
-  // Поки лишилася хоч одна привʼязана картка, вебхук потрібен: він один на
-  // всіх. Знімаємо його тільки разом з останньою.
-  if (!remaining && row.token) {
-    try {
-      await setMonobankWebhook(String(row.token), '');
-    } catch (error) {
-      // Привʼязки вже немає, і операції з цієї картки тепер нікуди не ляжуть
-      // (маршрут не знайде рядка). Невимкнений у банку вебхук — незручність
-      // у їхньому кабінеті, а не привід не дати людині відключитися.
-      console.warn('[bank] не вдалося зняти вебхук monobank:', error?.message || error);
-    }
+  if (remaining) return;
+  try {
+    await setMonobankWebhook(String(token), '');
+  } catch (error) {
+    // Привʼязки вже немає, і операції з цієї картки тепер нікуди не ляжуть
+    // (маршрут не знайде рядка). Невимкнений у банку вебхук — незручність
+    // у їхньому кабінеті, а не привід не дати людині відключитися.
+    console.warn('[bank] не вдалося зняти вебхук monobank:', error?.message || error);
   }
-
-  res.json({ links: await listBankLinks(userId) });
-});
+}
 
 app.get('/api/planner/automation', async (req, res) => {
   const userId = req.authUserId;

@@ -1,5 +1,117 @@
 import { describe, expect, it } from 'vitest';
-import { GOAL_ACCOUNT_KEY_MAX, GOAL_SECTION, USER_CREATABLE_SECTIONS, goalAccountKey, goalAccountName } from './goal-account.js';
+import {
+  GOAL_ACCOUNT_KEY_MAX,
+  GOAL_SECTION,
+  USER_CREATABLE_SECTIONS,
+  goalAccountKey,
+  goalAccountName,
+  planGoalRefund,
+  rebaseGoalAccount,
+  shrinkContribution,
+} from './goal-account.js';
+
+/** 1 USD = 40 UAH = 4 PLN — круглі числа, щоб перевірка читалась очима. */
+const RATES = { USD: 1, UAH: 40, PLN: 4 };
+const convert = (amount, from, to) => (amount / RATES[from]) * RATES[to];
+
+describe('rebaseGoalAccount', () => {
+  it('зміна валюти переводить баланс за курсом, а не лише міняє підпис', () => {
+    const out = rebaseGoalAccount({
+      balance: 40000,
+      previousCurrency: 'UAH',
+      nextCurrency: 'USD',
+      previousBaseline: 0,
+      requestedBaseline: 0,
+      convert,
+    });
+    expect(out).toEqual({ balance: 1000, baseline: 0 });
+  });
+
+  it('незмінена стартова сума переводиться разом із балансом', () => {
+    const out = rebaseGoalAccount({
+      balance: 6000,
+      previousCurrency: 'UAH',
+      nextCurrency: 'USD',
+      previousBaseline: 4000,
+      requestedBaseline: 4000,
+      convert,
+    });
+    expect(out).toEqual({ balance: 150, baseline: 100 });
+  });
+
+  it('нова стартова сума — уже в новій валюті, різниця лягає на баланс', () => {
+    const out = rebaseGoalAccount({
+      balance: 6000,
+      previousCurrency: 'UAH',
+      nextCurrency: 'USD',
+      previousBaseline: 4000,
+      requestedBaseline: 120,
+      convert,
+    });
+    // 6000 ₴ = 150 $, стара стартова 4000 ₴ = 100 $, нова 120 $ → +20 $.
+    expect(out).toEqual({ balance: 170, baseline: 120 });
+  });
+
+  it('без зміни валюти працює як раніше: різниця стартової суми — на баланс', () => {
+    const out = rebaseGoalAccount({
+      balance: 500,
+      previousCurrency: 'PLN',
+      nextCurrency: 'PLN',
+      previousBaseline: 100,
+      requestedBaseline: 150,
+      convert,
+    });
+    expect(out).toEqual({ balance: 550, baseline: 150 });
+  });
+});
+
+describe('planGoalRefund', () => {
+  const contributions = [
+    { id: 'mar', goalDelta: 100 },
+    { id: 'feb', goalDelta: 100 },
+    { id: 'jan', goalDelta: 100 },
+  ];
+
+  it('нічого не витрачено — повертаються всі внески, як і раніше', () => {
+    expect(planGoalRefund(contributions, 300)).toEqual({ refundIds: ['mar', 'feb', 'jan'], partial: null });
+  });
+
+  it('стартова сума в балансі не заважає повернути всі внески', () => {
+    expect(planGoalRefund(contributions, 1300)).toEqual({ refundIds: ['mar', 'feb', 'jan'], partial: null });
+  });
+
+  it('частину витрачено — повертається рівно залишок, починаючи з найновішого', () => {
+    expect(planGoalRefund(contributions, 150)).toEqual({
+      refundIds: ['mar'],
+      partial: { id: 'feb', share: 0.5 },
+    });
+  });
+
+  it('усе витрачено — повертати нічого', () => {
+    expect(planGoalRefund(contributions, 0)).toEqual({ refundIds: [], partial: null });
+    expect(planGoalRefund(contributions, -20)).toEqual({ refundIds: [], partial: null });
+  });
+
+  it('копійки округлення не роблять із повного повернення часткове', () => {
+    expect(planGoalRefund(contributions, 299.995).refundIds).toEqual(['mar', 'feb', 'jan']);
+  });
+
+  it('ціль без рахунку повертає все, як і раніше', () => {
+    expect(planGoalRefund(contributions, Infinity).refundIds).toEqual(['mar', 'feb', 'jan']);
+  });
+});
+
+describe('shrinkContribution', () => {
+  it('обидві сторони переказу зменшуються в одній пропорції', () => {
+    const out = shrinkContribution({ id: 't', amount: 4000, transferToAmount: 100 }, 0.25);
+    expect(out).toMatchObject({ id: 't', amount: 1000, transferToAmount: 25 });
+  });
+
+  it('дохід без другої сторони зменшує лише суму', () => {
+    const out = shrinkContribution({ id: 't', amount: 90, transferToAmount: null }, 1 / 3);
+    expect(out).toMatchObject({ amount: 30, transferToAmount: null });
+  });
+});
 
 /**
  * Той самий маркер, яким рахунок їде в примітці доходу чи витрати

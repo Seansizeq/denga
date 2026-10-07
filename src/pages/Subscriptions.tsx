@@ -5,6 +5,7 @@ import { useTranslation } from '../i18n/LanguageContext';
 import { useCategoryCatalog } from '../hooks/useCategoryCatalog';
 import { hapticLight, showAppConfirm } from '../utils/notify';
 import { apiFetch } from '../api/client';
+import { usePortfolio } from '../context/PortfolioContext';
 import { usePersistedState } from '../hooks/usePersistedState';
 import {
   CATEGORIES,
@@ -65,10 +66,15 @@ interface Subscription {
   /** Значок, вибраний вручну — якщо є, має пріоритет над каталогом сервісів і категорією. */
   icon?: string | null;
   color?: string | null;
+  /** Рахунок, з якого списується підписка. Без нього списання лише записується. */
+  accountKey?: string | null;
 }
 
 const normalizeSubCurrency = (raw: unknown): SubscriptionCurrency =>
   raw === 'PLN' ? 'PLN' : 'UAH';
+
+/** Підписка списується з грошей, а не з боргу чи цілі — як і перевіряє сервер. */
+const SUBSCRIPTION_ACCOUNT_SECTIONS = new Set(['bank', 'cash']);
 
 const normalizeCategoryId = (raw: unknown): string =>
   typeof raw === 'string' && raw.trim() ? raw : DEFAULT_CATEGORY_ID;
@@ -99,6 +105,7 @@ const Subscriptions: React.FC = () => {
   const [nextChargeDate, setNextChargeDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [active, setActive] = useState(true);
   const [note, setNote] = useState('');
+  const [accountKey, setAccountKey] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [listError, setListError] = useState('');
@@ -109,6 +116,18 @@ const Subscriptions: React.FC = () => {
   const [customIcon, setCustomIcon] = useState<string | null>(null);
   const [customColor, setCustomColor] = useState<string | null>(null);
   const [iconSheetOpen, setIconSheetOpen] = useState(false);
+  const { accounts } = usePortfolio();
+
+  const accountOptions = useMemo(() => {
+    const list: Array<{ key: string; name: string }> = [];
+    for (const row of accounts) {
+      const key = String(row.accountKey ?? '').trim().toLowerCase();
+      const section = String(row.section ?? '').trim();
+      if (!key || !SUBSCRIPTION_ACCOUNT_SECTIONS.has(section)) continue;
+      list.push({ key, name: String(row.name ?? '').trim() || key });
+    }
+    return list;
+  }, [accounts]);
 
   const load = useCallback(async () => {
     setListError('');
@@ -170,6 +189,7 @@ const Subscriptions: React.FC = () => {
     setNextChargeDate(new Date().toISOString().slice(0, 10));
     setActive(true);
     setNote('');
+    setAccountKey('');
     setCustomIcon(null);
     setCustomColor(null);
     setEditingId(null);
@@ -260,6 +280,7 @@ const Subscriptions: React.FC = () => {
             icon: customIcon,
             color: customColor,
             note: note.trim(),
+            accountKey: accountKey || null,
           }),
         }
       );
@@ -318,6 +339,7 @@ const Subscriptions: React.FC = () => {
     setCustomIcon(sub.icon ?? null);
     setCustomColor(sub.color ?? null);
     setNote(sub.note ?? '');
+    setAccountKey(sub.accountKey ?? '');
   };
 
   const renderTotals = (totals: Record<SubscriptionCurrency, number>) => {
@@ -560,6 +582,33 @@ const Subscriptions: React.FC = () => {
                     <ChevronRight size={18} strokeWidth={2} className={styles.rowChevron} />
                   </span>
                 </button>
+
+                {/* Без рахунку списання лише записується; з рахунком — ще й зменшує його баланс. */}
+                <label className={styles.row}>
+                  <span className={styles.rowLabel}>{t('subscriptions', 'account')}</span>
+                  <select
+                    className={`${styles.rowField} ${styles.rowSelect}`}
+                    value={accountKey}
+                    onChange={(e) => setAccountKey(e.target.value)}
+                  >
+                    <option value="">{t('subscriptions', 'accountNone')}</option>
+                    {accountOptions.map((option) => (
+                      <option key={option.key} value={option.key}>
+                        {option.name}
+                      </option>
+                    ))}
+                    {/* Рахунок, що вже стоїть на підписці, лишається у списку, навіть якщо
+                        тепер він в іншому розділі, — інакше вибір зник би непомітно. */}
+                    {accountKey && !accountOptions.some((option) => option.key === accountKey) ? (
+                      <option value={accountKey}>
+                        {String(
+                          accounts.find((row) => String(row.accountKey ?? '').toLowerCase() === accountKey)?.name ??
+                            accountKey,
+                        )}
+                      </option>
+                    ) : null}
+                  </select>
+                </label>
               </div>
 
               <div className={styles.group}>
@@ -777,6 +826,7 @@ const Subscriptions: React.FC = () => {
             setNextChargeDate(new Date().toISOString().slice(0, 10));
             setActive(true);
             setNote('');
+            setAccountKey('');
             setCustomIcon(null);
             setCustomColor(null);
             setEditingId(null);

@@ -300,6 +300,8 @@ export type Dict = {
     startPrefix: string;
     nextChargeDate: string;
     active: string;
+    account: string;
+    accountNone: string;
     renewCaption: string;
     customIconTitle: string;
     resetIcon: string;

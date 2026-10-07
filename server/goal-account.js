@@ -132,6 +132,97 @@ export const backfillGoalAccount = async (db, userId, goalRow, savedInGoalCurren
   return accountKey;
 };
 
+const roundMoney = (value) => Math.round(value * 100) / 100;
+
+/**
+ * Баланс рахунку цілі й її стартова сума після правки цілі.
+ *
+ * Раніше зміна валюти цілі міняла лише підпис рахунку: 40 000 ₴ ставали
+ * 40 000 $, і на ту саму різницю виростав загальний капітал. Тепер баланс
+ * переводиться за курсом.
+ *
+ * Стартова сума — частина балансу, тож іде за ним. Форма надсилає її завжди,
+ * тому розрізнити «не чіпали» і «ввели нову» можна лише за числом: те саме
+ * число, що й було, означає старе значення в старій валюті — воно
+ * переводиться. Інше число — нове значення, вже в новій валюті, і різниця з
+ * переведеною старою лягає на баланс так само, як і без зміни валюти.
+ *
+ * @param {(amount: number, from: string, to: string) => number} convert
+ * @returns {{ balance: number, baseline: number }}
+ */
+export const rebaseGoalAccount = ({
+  balance,
+  previousCurrency,
+  nextCurrency,
+  previousBaseline,
+  requestedBaseline,
+  convert,
+}) => {
+  const current = Number(balance) || 0;
+  const before = Number(previousBaseline) || 0;
+  const requested = Number(requestedBaseline) || 0;
+  if (previousCurrency === nextCurrency) {
+    return { balance: current + (requested - before), baseline: requested };
+  }
+  const rebasedBalance = roundMoney(convert(current, previousCurrency, nextCurrency));
+  const rebasedBaseline = roundMoney(convert(before, previousCurrency, nextCurrency));
+  const baseline = requested === before ? rebasedBaseline : requested;
+  return { balance: roundMoney(rebasedBalance + (baseline - rebasedBaseline)), baseline };
+};
+
+/**
+ * Які внески повернути на рахунки, коли ціль видаляють.
+ *
+ * Раніше відкочувались усі внески — незалежно від того, що сталося з грошима
+ * далі. Якщо з рахунку цілі вже оплатили покупку, видалення цілі повертало ці
+ * гроші на картку вдруге: зʼявлялися гроші, яких не існує.
+ *
+ * Тепер повертається рівно те, що ще лежить у цілі. Внески перебираються від
+ * найновішого: вони й повертаються першими, бо давніші частіше вже
+ * витрачені. Той, що вміщується лише частково, повертається частково. Решта
+ * лишається в історії як була — ці гроші пішли з цілі раніше.
+ *
+ * Стартова сума при цьому вважається витраченою першою: на рахунки в
+ * застосунку вона не повертається, бо звідти й не приходила.
+ *
+ * @param {{ id: string, goalDelta: number }[]} contributions від найновішого;
+ *   `goalDelta` — скільки внесок додав рахунку цілі в його одиниці
+ * @param {number} balance скільки на рахунку цілі зараз; `Infinity`, якщо
+ *   рахунку немає (давня ціль) — тоді повертається все, як і раніше
+ * @returns {{ refundIds: string[], partial: { id: string, share: number } | null }}
+ */
+export const planGoalRefund = (contributions, balance, { epsilon = 0.01 } = {}) => {
+  let remaining = Number.isNaN(Number(balance)) ? 0 : Number(balance);
+  const refundIds = [];
+  for (const { id, goalDelta } of contributions ?? []) {
+    const delta = Math.max(0, Number(goalDelta) || 0);
+    if (delta <= remaining + epsilon) {
+      refundIds.push(id);
+      remaining -= delta;
+      continue;
+    }
+    if (remaining > epsilon) return { refundIds, partial: { id, share: remaining / delta } };
+    break;
+  }
+  return { refundIds, partial: null };
+};
+
+/**
+ * Внесок, з якого повертається лише частка: у транзакції лишається те, що
+ * справді пішло з цілі раніше. Обидві сторони переказу зменшуються в тій самій
+ * пропорції.
+ */
+export const shrinkContribution = (txRow, keepShare) => {
+  const keep = Math.min(1, Math.max(0, Number(keepShare) || 0));
+  const amount = roundMoney((Number(txRow.amount) || 0) * keep);
+  const toAmount = Number(txRow.transferToAmount);
+  return {
+    ...txRow,
+    amount,
+    transferToAmount: Number.isFinite(toAmount) && toAmount > 0 ? roundMoney(toAmount * keep) : txRow.transferToAmount,
+  };
+};
+
 export const getGoalAccountBalance = async (db, userId, accountKey) => {
   if (!accountKey) return 0;
   const row = await db.get(
