@@ -46,7 +46,7 @@ const tryParseJson = async (response: Response) => {
 };
 
 export const TransactionProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { transactions, stale, loaded, refresh, setTransactions } = useSync();
+  const { transactions, stale, loaded, refresh, setTransactions, editTransactions } = useSync();
 
   const balance = useMemo<Balance>(() => {
     let income = 0;
@@ -95,7 +95,8 @@ export const TransactionProvider: React.FC<{ children: React.ReactNode }> = ({ c
         if (!response.ok) return false;
         const updated = await tryParseJson(response);
         if (updated && typeof updated === 'object') {
-          setTransactions((prev) => prev.map((tx) => (tx.id === id ? normalizeTransaction(updated) : tx)));
+          // Операція може бути старшою за знімок — правка мусить дійти й туди.
+          editTransactions((prev) => prev.map((tx) => (tx.id === id ? normalizeTransaction(updated) : tx)));
         }
         void refresh();
         return true;
@@ -109,7 +110,7 @@ export const TransactionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       try {
         const res = await apiFetch(`/api/transactions/${id}`, { method: 'DELETE' });
         if (res.status !== 204 && !res.ok) return false;
-        setTransactions((prev) => prev.filter((t) => t.id !== id));
+        editTransactions((prev) => prev.filter((t) => t.id !== id));
         void refresh();
         return true;
       } catch (error) {
@@ -128,7 +129,7 @@ export const TransactionProvider: React.FC<{ children: React.ReactNode }> = ({ c
       isBootstrapping: !loaded,
       transactionsStale: stale,
     };
-  }, [transactions, balance, loaded, stale, refresh, setTransactions]);
+  }, [transactions, balance, loaded, stale, refresh, setTransactions, editTransactions]);
 
   return <TransactionContext.Provider value={value}>{children}</TransactionContext.Provider>;
 };

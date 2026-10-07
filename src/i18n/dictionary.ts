@@ -602,6 +602,7 @@ export type Dict = {
     placeholderCrypto: string;
     placeholderStocks: string;
     placeholderDebt: string;
+    balanceChanged: string;
   };
   feedback: {
     row: string; rowDescription: string; section: string;

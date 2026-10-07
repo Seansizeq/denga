@@ -4,6 +4,7 @@ import { useTranslation } from '../../i18n/LanguageContext';
 import { AccountIconGlyph, type AccountIconKey } from '../../utils/accountIcons';
 import {
   DENOMINATIONS,
+  formatDenominationAmount,
   isCryptoDenomination,
   normalizeDenomination,
   type Denomination,
@@ -29,10 +30,38 @@ export type EditableAccount = {
   debtDirection: 'owed_to_me' | 'owed_by_me' | null;
 };
 
+/**
+ * Чи міняли баланс у формі — і від якого числа.
+ *
+ * Форма рахунку — це ще й назва, значок, розділ. Доки вона завжди надсилала
+ * баланс цілком, перейменування рахунку, на який щойно лягла операція з банку,
+ * повертало старий баланс, а різницю записувало «корекцією». Тепер баланс
+ * їде лише змінений і разом із числом, від якого його редагували.
+ */
+export interface BalanceEdit {
+  changed: boolean;
+  /** Баланс, який людина бачила, коли редагувала. */
+  expected: number;
+}
+
+/**
+ * Рахунок рухався, поки його редагували. Несе поточний баланс, щоб форма
+ * показала його й дала зберегти свідомо.
+ */
+export class BalanceChangedError extends Error {
+  readonly currentAmount: number;
+
+  constructor(currentAmount: number) {
+    super('balance changed while editing');
+    this.name = 'BalanceChangedError';
+    this.currentAmount = currentAmount;
+  }
+}
+
 interface AccountEditSheetProps {
   initial: EditableAccount;
   onClose: () => void;
-  onSave: (next: EditableAccount) => Promise<void>;
+  onSave: (next: EditableAccount, balance: BalanceEdit) => Promise<void>;
   onDelete?: (accountKey: string) => Promise<void>;
 }
 
@@ -107,9 +136,12 @@ const SECTION_PLACEHOLDER_KEYS: Record<
 };
 
 const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, onSave, onDelete }) => {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const [name, setName] = useState(() => initial.name);
   const [amount, setAmount] = useState(() => String(initial.primaryAmount));
+  // Баланс, від якого редагуємо. Після відмови «рахунок рухався» стає тим, що
+  // зараз на сервері: друге збереження — уже свідоме, з новим числом перед очима.
+  const [baseAmount, setBaseAmount] = useState(() => initial.primaryAmount);
   const [currency, setCurrency] = useState<Denomination>(() => normalizeDenomination(initial.primaryCurrency));
   const [section, setSection] = useState<EditableAccount['section']>(() => initial.section);
   const [iconKey, setIconKey] = useState(() => (initial.iconKey ?? '').trim());
@@ -145,20 +177,33 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
     try {
       // sub_text is a free-form note again; the position lives in the balance.
       const builtSubText = initial.subText;
-      await onSave({
-        ...initial,
-        section,
-        name: name.trim(),
-        primaryAmount: n,
-        primaryCurrency: currency,
-        subText: builtSubText,
-        badge: initial.badge,
-        iconKey: iconKey.trim(),
-        debtDirection: section === 'debt' ? debtDirection : null,
-        iconTone,
-      });
+      await onSave(
+        {
+          ...initial,
+          section,
+          name: name.trim(),
+          primaryAmount: n,
+          primaryCurrency: currency,
+          subText: builtSubText,
+          badge: initial.badge,
+          iconKey: iconKey.trim(),
+          debtDirection: section === 'debt' ? debtDirection : null,
+          iconTone,
+        },
+        { changed: isCreateMode || n !== baseAmount, expected: baseAmount },
+      );
       onClose();
-    } catch {
+    } catch (e) {
+      if (e instanceof BalanceChangedError) {
+        setBaseAmount(e.currentAmount);
+        setError(
+          t('accountEditor', 'balanceChanged').replace(
+            '{amount}',
+            formatDenominationAmount(e.currentAmount, normalizeDenomination(initial.primaryCurrency), locale),
+          ),
+        );
+        return;
+      }
       setError(t('addTx', 'saveFailed'));
     } finally {
       setSaving(false);

@@ -86,6 +86,21 @@ const readMoney = (raw) => {
 
 const readCurrency = (raw) => (String(raw ?? '').toUpperCase() === 'PLN' ? 'PLN' : 'UAH');
 
+/**
+ * Чи була сума зміни добутком ставки на години, а не названою окремо.
+ *
+ * Така сума — не самостійне число, а наслідок ставки й тривалості. Доки її
+ * зберігали як є, правка годин лишала стару суму: зміна 8 год × 100 = 800,
+ * подовжена до 10 годин, і далі коштувала 800.
+ */
+export const amountFollowsRate = (entry) => {
+  const rate = readMoney(entry?.salaryRate);
+  if (rate <= 0) return false;
+  const amount = readMoney(entry?.salaryAmount);
+  if (amount <= 0) return true;
+  return Math.abs(amount - Number((rate * clampWorkedHours(entry?.workedHours)).toFixed(2))) < 0.01;
+};
+
 /** Підпис зміни — те саме «Назва • Символ», що вже лежить у нотатці дня. */
 export const buildShiftNote = (name, symbol) =>
   [String(name ?? '').trim(), String(symbol ?? '').trim()].filter(Boolean).join(' • ').slice(0, 120);
@@ -142,7 +157,14 @@ export const normalizeShiftInput = ({ body = {}, template = null, current = null
   const salaryCurrency = readCurrency(
     body.salaryCurrency ?? source.salaryCurrency ?? current?.salaryCurrency,
   );
-  let salaryAmount = readMoney(body.salaryAmount ?? source.salaryAmount ?? current?.salaryAmount);
+  // Сума, що була добутком ставки, не переноситься з наявної зміни як готове
+  // число: інакше вона застигла б на старих годинах (див. `amountFollowsRate`).
+  // Форма в такому разі шле нуль; тут той самий випадок, коли суми в тілі немає.
+  const inheritedAmount =
+    body.salaryAmount === undefined && current && deriveAmount && amountFollowsRate(current)
+      ? 0
+      : current?.salaryAmount;
+  let salaryAmount = readMoney(body.salaryAmount ?? source.salaryAmount ?? inheritedAmount);
   // Ставка × години — те, що людина інакше рахувала б на калькуляторі. Але
   // лише коли суми не назвали: названа сума завжди точніша за обчислену.
   if (deriveAmount && salaryAmount <= 0 && salaryRate > 0) {

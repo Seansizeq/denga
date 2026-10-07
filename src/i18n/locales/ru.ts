@@ -243,7 +243,7 @@ const dictionary: Dict = {
     reportHoursTotal: 'Отработано часов',
     totalShifts: 'Всего смен',
     shiftsShort: 'смен',
-    salaryForReportHint: 'Для отчёта укажите ставку за час или фиксированную сумму за смену. Валюта: гривна или злотый.',
+    salaryForReportHint: 'Для отчёта укажите ставку за час — сумма посчитается из длительности и будет меняться вместе с ней — или фиксированную сумму за смену. Валюта: гривна или злотый.',
     shiftPayment: 'Оплата за смену',
     shiftDurationTitle: 'Длительность',
     shiftModeRange: 'По времени',
@@ -604,6 +604,7 @@ const dictionary: Dict = {
     placeholderCrypto: 'Bitcoin, ETH-кошелёк...',
     placeholderStocks: 'Акции США, Monobank...',
     placeholderDebt: 'Михаил, Аренда...',
+    balanceChanged: 'Пока вы редактировали, баланс счёта изменился — сейчас {amount}. Проверьте сумму и сохраните ещё раз.',
   },
   feedback: {
     row: 'Сообщить об ошибке',

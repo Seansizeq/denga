@@ -32,6 +32,16 @@ const TRANSACTIONS_STORAGE_KEY = 'denga_transactions_v1';
 const SNAPSHOT_LIMIT = 500;
 const HISTORY_PAGE_SIZE = 500;
 const MAX_HISTORY_PAGES = 40;
+/**
+ * Скільки рядків одразу за знімком перечитується, коли знімок змінився.
+ *
+ * Знімок — це завжди найновіші 500. Новий запис зсуває вікно, і найстаріший
+ * рядок знімка випадав із нього — а в дотягнутій історії його не було, бо на
+ * момент дотягування він лежав у знімку. Перечитаний відрізок закриває цю
+ * щілину. Щоб його не вистачило, між двома тактами мало б зʼявитися стільки
+ * записів — тоді історія просто дотягується наново.
+ */
+const BOUNDARY_PAGE_SIZE = 200;
 const ACCOUNTS_STORAGE_KEY = 'denga_accounts_v1';
 
 export type RawAccount = Record<string, unknown>;
@@ -65,6 +75,39 @@ type SyncPayload = {
   hasMoreTransactions?: boolean;
 };
 
+type HistoryPage = { transactions?: unknown; hasMore?: boolean };
+
+const readHistoryPage = async (limit: number, offset: number): Promise<{ rows: Transaction[]; hasMore: boolean } | null> => {
+  const res = await apiFetch(`/api/transactions?limit=${limit}&offset=${offset}`);
+  if (!res.ok) return null;
+  const body = (await res.json()) as HistoryPage;
+  return {
+    rows: Array.isArray(body.transactions) ? body.transactions.map(normalizeTransaction) : [],
+    hasMore: Boolean(body.hasMore),
+  };
+};
+
+/** Уся історія, старіша за знімок, сторінками. null — не вдалося або перервано. */
+const fetchOlderHistory = async (isCancelled: () => boolean): Promise<Transaction[] | null> => {
+  const collected: Transaction[] = [];
+  let offset = SNAPSHOT_LIMIT;
+  // Стеля на випадок, якщо сервер завжди каже «є ще»: краще неповна
+  // історія, ніж нескінченний цикл запитів.
+  for (let page = 0; page < MAX_HISTORY_PAGES; page += 1) {
+    try {
+      const result = await readHistoryPage(HISTORY_PAGE_SIZE, offset);
+      if (!result || isCancelled()) return null;
+      collected.push(...result.rows);
+      if (!result.hasMore || result.rows.length === 0) break;
+      offset += HISTORY_PAGE_SIZE;
+    } catch (error) {
+      console.error('Error loading older transactions:', error);
+      return null;
+    }
+  }
+  return isCancelled() ? null : collected;
+};
+
 interface SyncContextValue {
   transactions: Transaction[];
   accounts: RawAccount[];
@@ -85,6 +128,13 @@ interface SyncContextValue {
   /** Позачергове оновлення: після власного запису чекати такту немає сенсу. */
   refresh: () => Promise<void>;
   setTransactions: (next: Transaction[] | ((prev: Transaction[]) => Transaction[])) => void;
+  /**
+   * Правка, що має зачепити і знімок, і дотягнуту історію: редагування чи
+   * видалення операції, яка може бути старшою за знімок. Через
+   * `setTransactions` така правка лягала лише на знімок, і стара операція
+   * лишалася на екрані як була до перезапуску.
+   */
+  editTransactions: (edit: (list: Transaction[]) => Transaction[]) => void;
 }
 
 const SyncContext = createContext<SyncContextValue | undefined>(undefined);
@@ -122,6 +172,17 @@ export const SyncProvider: React.FC<{ children: React.ReactNode; onReady?: () =>
   const [olderTransactions, setOlderTransactions] = useState<Transaction[]>([]);
   const [historyComplete, setHistoryComplete] = useState(true);
   const backfillStartedRef = useRef(false);
+  /**
+   * Дотягнута історія як джерело правди для асинхронних кроків: зшивання
+   * читає її одразу після `await`, коли стан ще міг не перемалюватися.
+   * Стан — лише її відбиток для рендера.
+   */
+  const olderRef = useRef<Transaction[]>([]);
+  /** true, коли історію дотягнуто, — лише тоді є що зшивати. */
+  const olderLoadedRef = useRef(false);
+  /** Останній знімок, яким відповів сервер, — щоб зшивати лише після змін. */
+  const lastSnapshotRef = useRef<string | null>(null);
+  const restitchRef = useRef({ running: false, again: false });
 
   /**
    * ETag живе лише в памʼяті, не в localStorage. Збережений разом із кешем, він
@@ -149,6 +210,54 @@ export const SyncProvider: React.FC<{ children: React.ReactNode; onReady?: () =>
     readyNotifiedRef.current = true;
     onReady?.();
   }, [onReady]);
+
+  const replaceOlder = useCallback((next: Transaction[]) => {
+    olderRef.current = next;
+    setOlderTransactions(next);
+  }, []);
+
+  /**
+   * Перечитати відрізок одразу за знімком і пришити до дотягнутої історії.
+   *
+   * Свіжий відрізок замінює початок історії до свого останнього рядка, решта
+   * лишається як була. Так закривається щілина від записів, що зсунули вікно
+   * знімка, і заразом підтягуються правки й видалення на цій межі. Якщо
+   * останнього рядка відрізка в історії немає — зсув завеликий, історія
+   * дотягується наново.
+   */
+  const restitchOlderHistory = useCallback(async () => {
+    const state = restitchRef.current;
+    if (state.running) {
+      state.again = true;
+      return;
+    }
+    state.running = true;
+    try {
+      do {
+        state.again = false;
+        if (!olderLoadedRef.current) return;
+        const boundary = await readHistoryPage(BOUNDARY_PAGE_SIZE, SNAPSHOT_LIMIT);
+        if (!boundary || !mountedRef.current) return;
+        if (!boundary.hasMore) {
+          // Відрізок — це вся історія за знімком.
+          replaceOlder(boundary.rows);
+          continue;
+        }
+        const lastId = boundary.rows.at(-1)?.id;
+        const index = lastId ? olderRef.current.findIndex((tx) => tx.id === lastId) : -1;
+        if (index === -1) {
+          const all = await fetchOlderHistory(() => !mountedRef.current);
+          if (all) replaceOlder(all);
+          continue;
+        }
+        replaceOlder([...boundary.rows, ...olderRef.current.slice(index + 1)]);
+      } while (state.again);
+    } catch (error) {
+      console.error('Error re-syncing older transactions:', error);
+    } finally {
+      state.running = false;
+    }
+  }, [replaceOlder]);
 
   /** @returns чи вдався запит — від цього залежить пауза до наступного. */
   const fetchSnapshot = useCallback(async (): Promise<boolean> => {
@@ -184,13 +293,29 @@ export const SyncProvider: React.FC<{ children: React.ReactNode; onReady?: () =>
         ? data.transactions.map(normalizeTransaction)
         : [];
       const nextAccounts = isRawAccountArray(data.accounts) ? data.accounts : [];
+      const hasMore = Boolean(data.hasMoreTransactions);
+      // Повна відповідь приходить і тоді, коли змінились лише рахунки, тож
+      // зшивати історію варто тільки після зміни самих транзакцій.
+      const snapshotKey = JSON.stringify(nextTransactions);
+      const transactionsChanged = lastSnapshotRef.current !== null && lastSnapshotRef.current !== snapshotKey;
+      lastSnapshotRef.current = snapshotKey;
 
       failuresRef.current = 0;
       if (mountedRef.current) {
         setTransactions(nextTransactions);
         setAccounts(nextAccounts);
-        setHasMoreTransactions(Boolean(data.hasMoreTransactions));
+        setHasMoreTransactions(hasMore);
         setStale(false);
+        if (!hasMore) {
+          // Знімок і є вся історія: дотягнуте раніше могло лише застаріти. Якщо
+          // історія колись знову переросте знімок, вона дотягнеться наново.
+          olderLoadedRef.current = false;
+          backfillStartedRef.current = false;
+          replaceOlder([]);
+          setHistoryComplete(true);
+        } else if (transactionsChanged) {
+          void restitchOlderHistory();
+        }
       }
       return true;
     } catch (error) {
@@ -207,7 +332,7 @@ export const SyncProvider: React.FC<{ children: React.ReactNode; onReady?: () =>
       if (mountedRef.current) setLoaded(true);
       notifyReady();
     }
-  }, [notifyReady, setAccounts, setTransactions]);
+  }, [notifyReady, replaceOlder, restitchOlderHistory, setAccounts, setTransactions]);
 
   useEffect(() => {
     if (!hasMoreTransactions || backfillStartedRef.current) return;
@@ -217,27 +342,11 @@ export const SyncProvider: React.FC<{ children: React.ReactNode; onReady?: () =>
     let completed = false;
 
     void (async () => {
-      const collected: Transaction[] = [];
-      let offset = SNAPSHOT_LIMIT;
-      // Стеля на випадок, якщо сервер завжди каже «є ще»: краще неповна
-      // історія, ніж нескінченний цикл запитів.
-      for (let page = 0; page < MAX_HISTORY_PAGES; page += 1) {
-        try {
-          const res = await apiFetch(`/api/transactions?limit=${HISTORY_PAGE_SIZE}&offset=${offset}`);
-          if (!res.ok || cancelled) return;
-          const body = (await res.json()) as { transactions?: unknown; hasMore?: boolean };
-          const rows = Array.isArray(body.transactions) ? body.transactions.map(normalizeTransaction) : [];
-          collected.push(...rows);
-          if (!body.hasMore || rows.length === 0) break;
-          offset += HISTORY_PAGE_SIZE;
-        } catch (error) {
-          console.error('Error loading older transactions:', error);
-          return;
-        }
-      }
-      if (cancelled) return;
+      const collected = await fetchOlderHistory(() => cancelled);
+      if (!collected) return;
       completed = true;
-      setOlderTransactions(collected);
+      replaceOlder(collected);
+      olderLoadedRef.current = true;
       setHistoryComplete(true);
     })();
 
@@ -248,7 +357,7 @@ export const SyncProvider: React.FC<{ children: React.ReactNode; onReady?: () =>
       // React монтує ефекти двічі, тож перший пробіг обривається завжди.
       if (!completed) backfillStartedRef.current = false;
     };
-  }, [hasMoreTransactions]);
+  }, [hasMoreTransactions, replaceOlder]);
 
   /**
    * Знімок і дотягнута історія разом. Дедуплікація за id обовʼязкова: сторінки
@@ -264,6 +373,14 @@ export const SyncProvider: React.FC<{ children: React.ReactNode; onReady?: () =>
   const refresh = useCallback(async () => {
     await fetchSnapshot();
   }, [fetchSnapshot]);
+
+  const editTransactions = useCallback(
+    (edit: (list: Transaction[]) => Transaction[]) => {
+      setTransactions(edit);
+      replaceOlder(edit(olderRef.current));
+    },
+    [setTransactions, replaceOlder],
+  );
 
   /**
    * Такт опитування: засинає разом із застосунком і відступає, коли сервер
@@ -328,8 +445,20 @@ export const SyncProvider: React.FC<{ children: React.ReactNode; onReady?: () =>
       sessionExpired,
       refresh,
       setTransactions,
+      editTransactions,
     }),
-    [allTransactions, accounts, stale, loaded, hasMoreTransactions, historyComplete, sessionExpired, refresh, setTransactions],
+    [
+      allTransactions,
+      accounts,
+      stale,
+      loaded,
+      hasMoreTransactions,
+      historyComplete,
+      sessionExpired,
+      refresh,
+      setTransactions,
+      editTransactions,
+    ],
   );
 
   return <SyncContext.Provider value={value}>{children}</SyncContext.Provider>;

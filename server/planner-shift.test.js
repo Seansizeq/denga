@@ -137,6 +137,46 @@ describe('normalizeShiftInput', () => {
     });
   });
 
+  describe('сума зі ставки при редагуванні', () => {
+    const rateBased = {
+      mode: 'range',
+      startTime: '09:00',
+      endTime: '17:00',
+      workedHours: 8,
+      salaryRate: 100,
+      salaryAmount: 800,
+      salaryCurrency: 'UAH',
+      note: '',
+    };
+
+    it('подовжена зміна перераховує суму, а не лишає стару', () => {
+      // 8 год × 100 = 800; після правки на 10 годин має бути 1000, а не 800.
+      const result = normalizeShiftInput({ body: { endTime: '19:00' }, current: rateBased });
+      expect(result.value).toMatchObject({ workedHours: 10, salaryAmount: 1000 });
+    });
+
+    it('нуль у тілі — «рахуй зі ставки», так шле форма', () => {
+      const result = normalizeShiftInput({ body: { endTime: '13:00', salaryAmount: 0 }, current: rateBased });
+      expect(result.value.salaryAmount).toBe(400);
+    });
+
+    it('нова ставка теж перераховує суму', () => {
+      const result = normalizeShiftInput({ body: { salaryRate: 120 }, current: rateBased });
+      expect(result.value.salaryAmount).toBe(960);
+    });
+
+    it('названа окремо сума лишається, хоч би як змінились години', () => {
+      const fixed = { ...rateBased, salaryAmount: 1500 };
+      const result = normalizeShiftInput({ body: { endTime: '19:00' }, current: fixed });
+      expect(result.value.salaryAmount).toBe(1500);
+    });
+
+    it('сума, названа в тілі явно, перемагає', () => {
+      const result = normalizeShiftInput({ body: { endTime: '19:00', salaryAmount: 850 }, current: rateBased });
+      expect(result.value.salaryAmount).toBe(850);
+    });
+  });
+
   it('назва й символ складаються в підпис зміни', () => {
     const result = normalizeShiftInput({
       body: { mode: 'hours', workedHours: 8, name: 'Склад', symbol: '🌙' },

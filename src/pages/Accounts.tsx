@@ -2,7 +2,11 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus } from 'lucide-react';
 import AccountsSnapshot from '../components/ui/AccountsSnapshot';
-import AccountEditSheet, { type EditableAccount } from '../components/ui/AccountEditSheet';
+import AccountEditSheet, {
+  BalanceChangedError,
+  type BalanceEdit,
+  type EditableAccount,
+} from '../components/ui/AccountEditSheet';
 import DebtDetailSheet from '../components/ui/DebtDetailSheet';
 import SectionPickerSheet, { type PickableSection } from '../components/ui/SectionPickerSheet';
 import AssetRing from '../components/ui/AssetRing';
@@ -383,7 +387,7 @@ const Accounts: React.FC = () => {
   );
 
   const handleSaveAccount = useCallback(
-    async (next: EditableAccount) => {
+    async (next: EditableAccount, balance: BalanceEdit) => {
       const isCreate = !next.accountKey.trim();
       const url = isCreate
         ? '/api/accounts'
@@ -396,7 +400,11 @@ const Accounts: React.FC = () => {
           name: next.name,
           section: next.section,
           sortIndex: next.sortIndex,
-          primaryAmount: next.primaryAmount,
+          // Незмінений баланс не надсилається зовсім: інакше перейменування
+          // повертало б число, яке форма бачила при відкритті, і губило б
+          // операцію, що лягла на рахунок тим часом.
+          ...(isCreate || balance.changed ? { primaryAmount: next.primaryAmount } : {}),
+          ...(!isCreate && balance.changed ? { expectedPrimaryAmount: balance.expected } : {}),
           primaryCurrency: next.primaryCurrency,
           subText: next.subText,
           iconTone: next.iconTone,
@@ -405,6 +413,15 @@ const Accounts: React.FC = () => {
           debtDirection: next.section === 'debt' ? next.debtDirection : null,
         }),
       });
+      if (res.status === 409) {
+        const body = (await res.json().catch(() => null)) as { code?: string; currentAmount?: unknown } | null;
+        const currentAmount = Number(body?.currentAmount);
+        if (body?.code === 'ACCOUNT_BALANCE_CHANGED' && Number.isFinite(currentAmount)) {
+          // Список за формою теж має показати свіжий баланс.
+          await refreshAccounts();
+          throw new BalanceChangedError(currentAmount);
+        }
+      }
       if (!res.ok) {
         throw new Error('save failed');
       }

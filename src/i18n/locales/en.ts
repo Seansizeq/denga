@@ -243,7 +243,7 @@ const dictionary: Dict = {
     reportHoursTotal: 'Hours worked',
     totalShifts: 'Total shifts',
     shiftsShort: 'shifts',
-    salaryForReportHint: 'For the report: hourly rate or fixed amount per shift. Currency: hryvnia or zloty.',
+    salaryForReportHint: 'For the report: an hourly rate (the amount follows the shift length) or a fixed amount per shift. Currency: hryvnia or zloty.',
     shiftPayment: 'Pay for this shift',
     shiftDurationTitle: 'Duration',
     shiftModeRange: 'By time',
@@ -604,6 +604,7 @@ const dictionary: Dict = {
     placeholderCrypto: 'Bitcoin, ETH wallet...',
     placeholderStocks: 'US stocks, IBKR...',
     placeholderDebt: 'Michael, Rent...',
+    balanceChanged: 'The balance changed while you were editing — it is now {amount}. Check the amount and save again.',
   },
   feedback: {
     row: 'Report a problem',

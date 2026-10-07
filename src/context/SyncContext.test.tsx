@@ -276,6 +276,78 @@ describe('дотягування історії', () => {
     expect(pageCalls).toHaveLength(0);
   });
 
+  /** Сервер, у якого знімок можна змінювати посеред тесту. */
+  const serverWith = (state: { snapshot: string[]; hasMore: boolean; older: string[]; boundary: string[]; boundaryHasMore: boolean }) =>
+    apiFetch.mockImplementation((path: string) => {
+      if (path.startsWith('/api/sync')) {
+        return Promise.resolve(
+          response(200, {
+            transactions: state.snapshot.map((id) => ({ id, amount: 1, currency: 'UAH', type: 'expense', categoryId: 'food', date: '2026-09-06' })),
+            accounts: [],
+            hasMoreTransactions: state.hasMore,
+          }, { etag: `W/"${state.snapshot.join('-')}-${state.hasMore}"` }),
+        );
+      }
+      // Відрізок одразу за знімком, який перечитується після змін.
+      if (path.includes(`limit=200&offset=500`)) return Promise.resolve(page(state.boundary, state.boundaryHasMore));
+      if (path.includes('offset=500')) return Promise.resolve(page(state.older, false));
+      return Promise.resolve(response(404));
+    });
+
+  it('операція, яку новий запис витіснив зі знімка, не зникає', async () => {
+    const state = { snapshot: ['s1', 's2'], hasMore: true, older: ['o1', 'o2'], boundary: [] as string[], boundaryHasMore: true };
+    serverWith(state);
+    mount();
+    await waitFor(() => expect(screen.getByTestId('tx').textContent).toBe('s1,s2,o1,o2'));
+
+    // Новий запис зсунув вікно: s2 тепер старша за знімок. Раніше її не було
+    // ні в знімку, ні в дотягнутій історії — вона зникала до перезапуску.
+    state.snapshot = ['n', 's1'];
+    state.boundary = ['s2', 'o1'];
+    await act(async () => { await ctx().refresh(); });
+
+    await waitFor(() => expect(screen.getByTestId('tx').textContent).toBe('n,s1,s2,o1,o2'));
+  });
+
+  it('зсув, якого відрізок не накриває, дотягує історію наново', async () => {
+    const state = { snapshot: ['s1'], hasMore: true, older: ['o1', 'o2'], boundary: [] as string[], boundaryHasMore: true };
+    serverWith(state);
+    mount();
+    await waitFor(() => expect(screen.getByTestId('tx').textContent).toBe('s1,o1,o2'));
+
+    state.snapshot = ['n1'];
+    // Останнього рядка відрізка в дотягнутій історії немає — зшивати нема за що.
+    state.boundary = ['s1', 'x'];
+    state.older = ['s1', 'x', 'o1', 'o2'];
+    await act(async () => { await ctx().refresh(); });
+
+    await waitFor(() => expect(screen.getByTestId('tx').textContent).toBe('n1,s1,x,o1,o2'));
+  });
+
+  it('видалена стара операція зникає одразу, а не після перезапуску', async () => {
+    const state = { snapshot: ['s1'], hasMore: true, older: ['o1', 'o2'], boundary: [] as string[], boundaryHasMore: true };
+    serverWith(state);
+    mount();
+    await waitFor(() => expect(screen.getByTestId('tx').textContent).toBe('s1,o1,o2'));
+
+    act(() => ctx().editTransactions((list) => list.filter((tx) => tx.id !== 'o1')));
+
+    expect(screen.getByTestId('tx').textContent).toBe('s1,o2');
+  });
+
+  it('коли історія знову вміщається в знімок, дотягнуте прибирається', async () => {
+    const state = { snapshot: ['s1'], hasMore: true, older: ['o1'], boundary: [] as string[], boundaryHasMore: true };
+    serverWith(state);
+    mount();
+    await waitFor(() => expect(screen.getByTestId('tx').textContent).toBe('s1,o1'));
+
+    // o1 видалили на іншому пристрої — тепер уся історія в знімку.
+    state.hasMore = false;
+    await act(async () => { await ctx().refresh(); });
+
+    await waitFor(() => expect(screen.getByTestId('tx').textContent).toBe('s1'));
+  });
+
   it('збій на сторінці лишає те, що вже є, а не валить застосунок', async () => {
     apiFetch.mockImplementation((path: string) => {
       if (path.startsWith('/api/sync')) {

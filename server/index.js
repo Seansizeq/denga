@@ -69,6 +69,7 @@ import {
   syncGoalAccount,
 } from './goal-account.js';
 import { createAccountKey } from './account-key.js';
+import { planAccountBalanceEdit } from './account-edit.js';
 import { moveCategoryReferences, releaseCategoryReferences } from './category-references.js';
 import {
   addSubscriptionCycle,
@@ -6221,7 +6222,11 @@ app.put('/api/accounts/:key', async (req, res) => {
   }
 
   const name = typeof req.body?.name === 'string' ? req.body.name.trim().replace(/\s+/g, ' ') : '';
-  const primaryAmount = Number(req.body?.primaryAmount);
+  // Баланс необовʼязковий: форма надсилає його лише тоді, коли його змінили,
+  // разом із числом, від якого редагували (див. account-edit.js).
+  const primaryAmount = req.body?.primaryAmount === undefined ? undefined : Number(req.body.primaryAmount);
+  const expectedRaw = req.body?.expectedPrimaryAmount;
+  const expectedPrimaryAmount = expectedRaw === undefined || expectedRaw === null ? undefined : Number(expectedRaw);
   // The unit the balance is counted in: a fiat currency or a crypto asset.
   const primaryCurrency = normalizeDenomination(req.body?.primaryCurrency);
   const subText = typeof req.body?.subText === 'string' ? req.body.subText.trim() : '';
@@ -6237,8 +6242,12 @@ app.put('/api/accounts/:key', async (req, res) => {
     res.status(400).json({ error: 'name is required' });
     return;
   }
-  if (!Number.isFinite(primaryAmount)) {
+  if (primaryAmount !== undefined && !Number.isFinite(primaryAmount)) {
     res.status(400).json({ error: 'primaryAmount must be a number' });
+    return;
+  }
+  if (expectedPrimaryAmount !== undefined && !Number.isFinite(expectedPrimaryAmount)) {
+    res.status(400).json({ error: 'expectedPrimaryAmount must be a number' });
     return;
   }
   // `goal` тут навмисно немає: рахунок цілі створює й видаляє сама ціль, руками
@@ -6256,128 +6265,144 @@ app.put('/api/accounts/:key', async (req, res) => {
     return;
   }
 
-  const now = new Date().toISOString();
-  const existing = await db.get(
-    `SELECT account_key AS accountKey, section, primary_amount AS primaryAmount, primary_currency AS primaryCurrency
-     FROM account_portfolio
-     WHERE user_id = ? AND account_key = ?
-     LIMIT 1`,
-    [userId, accountKey]
-  );
-  // Назву, валюту й баланс рахунку цілі веде сама ціль. Правка руками
-  // розсинхронізувала б його з ціллю, чий прогрес — це саме цей баланс.
-  if (existing?.section === GOAL_SECTION) {
-    res.status(409).json({
-      error: 'a goal account is edited through its goal',
-      code: 'GOAL_ACCOUNT_READONLY',
-    });
-    return;
-  }
-  if (!existing) {
-    res.status(404).json({ error: 'Account not found' });
-    return;
-  }
-
-  const prevPrimaryAmount = Number(existing.primaryAmount);
-  const prevPrimaryCurrency = existing.primaryCurrency === 'PLN' ? 'PLN' : 'UAH';
-  await db.run(
-    `UPDATE account_portfolio
-     SET section = ?,
-         sort_index = ?,
-         name = ?,
-         primary_amount = ?,
-         primary_currency = ?,
-         sub_text = ?,
-         icon_tone = ?,
-         badge = ?,
-         debt_phrase = ?,
-         icon_key = ?,
-         debt_direction = ?,
-         updatedAt = ?
-     WHERE user_id = ? AND account_key = ?`,
-    [
+  const accountRowQuery = `
+    SELECT
+      account_key AS accountKey,
       section,
-      sortIndex,
+      sort_index AS sortIndex,
       name,
-      primaryAmount,
-      primaryCurrency,
-      subText ? subText : null,
-      iconTone,
-      badge ? badge : null,
-      section === 'debt' ? legacyDebtPhraseForDirection(debtDirection) : null,
-      iconKey,
-      debtDirection,
-      now,
-      userId,
-      accountKey,
-    ]
-  );
+      primary_amount AS primaryAmount,
+      primary_currency AS primaryCurrency,
+      sub_text AS subText,
+      icon_tone AS iconTone,
+      badge,
+      icon_key AS iconKey,
+      debt_direction AS debtDirection,
+      debt_initial_amount AS debtInitialAmount,
+      debt_created_at AS debtCreatedAt,
+      updatedAt
+    FROM account_portfolio
+    WHERE user_id = ? AND account_key = ?
+    LIMIT 1`;
 
-  // A direct amount edit on a debt row is a manual correction, not a real cash-flow event.
-  const delta = primaryAmount - prevPrimaryAmount;
-  if (section === 'debt' && existing.section !== 'debt') {
-    await db.run(
-      `UPDATE account_portfolio SET debt_initial_amount = ?, debt_created_at = ?
-       WHERE user_id = ? AND account_key = ?`,
-      [primaryAmount, now, userId, accountKey]
-    );
-    await db.run(
-      `INSERT INTO debt_events
-        (id, user_id, debt_account_key, event_type, amount, currency, date, note, created_at)
-       VALUES (?, ?, ?, 'created', ?, ?, ?, ?, ?)`,
-      [uuidv4(), userId, accountKey, primaryAmount, primaryCurrency, now, 'Opening balance', now]
-    );
-  } else if (section === 'debt' && Number.isFinite(delta) && Math.abs(delta) > 0.000001) {
-    await db.run(
-      `INSERT INTO debt_events
-        (id, user_id, debt_account_key, event_type, amount, currency, date, note, created_at)
-       VALUES (?, ?, ?, 'adjustment', ?, ?, ?, ?, ?)`,
-      [uuidv4(), userId, accountKey, delta, primaryCurrency, now, 'Manual balance correction', now]
-    );
-  } else if (section !== 'debt' && Number.isFinite(delta) && Math.abs(delta) > 0.000001) {
-    const txType = delta > 0 ? 'income' : 'expense';
-    const txAmount = Math.abs(delta);
-    const correctionCategoryId = resolveBalanceCorrectionCategoryId();
-    const txCurrency = primaryCurrency || prevPrimaryCurrency;
-    const txNote = mergeAccountIntoNote('Корекція балансу', accountKey);
-    await db.run(
-      `INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, note, telegram_user_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        uuidv4(),
-        userId,
-        txAmount,
-        txCurrency,
-        correctionCategoryId,
-        txType,
-        new Date().toISOString(),
-        txNote,
-        null,
-      ]
-    );
+  // Читання балансу, порівняння з тим, від якого редагували, і запис — під
+  // одним локом. Інакше операція, що лягла між ними, знову губилася б.
+  let row;
+  try {
+    row = await withTransaction(db, async (tx) => {
+      const now = new Date().toISOString();
+      const existing = await tx.get(
+        `SELECT account_key AS accountKey, section, primary_amount AS primaryAmount, primary_currency AS primaryCurrency
+         FROM account_portfolio
+         WHERE user_id = ? AND account_key = ?
+         LIMIT 1`,
+        [userId, accountKey]
+      );
+      if (!existing) {
+        throw new TransactionRefused({ status: 404, error: 'Account not found', code: 'ACCOUNT_NOT_FOUND' });
+      }
+      // Назву, валюту й баланс рахунку цілі веде сама ціль. Правка руками
+      // розсинхронізувала б його з ціллю, чий прогрес — це саме цей баланс.
+      if (existing.section === GOAL_SECTION) {
+        throw new TransactionRefused({
+          status: 409,
+          error: 'a goal account is edited through its goal',
+          code: 'GOAL_ACCOUNT_READONLY',
+        });
+      }
+
+      const plan = planAccountBalanceEdit({
+        stored: existing.primaryAmount,
+        requested: primaryAmount,
+        expected: expectedPrimaryAmount,
+        unitChanged: normalizeDenomination(existing.primaryCurrency) !== primaryCurrency,
+      });
+      if (!plan.ok) {
+        throw new TransactionRefused({
+          status: 409,
+          error: 'the balance changed while the account was being edited',
+          code: plan.code,
+          currentAmount: plan.currentAmount,
+        });
+      }
+
+      await tx.run(
+        `UPDATE account_portfolio
+         SET section = ?,
+             sort_index = ?,
+             name = ?,
+             primary_amount = ?,
+             primary_currency = ?,
+             sub_text = ?,
+             icon_tone = ?,
+             badge = ?,
+             debt_phrase = ?,
+             icon_key = ?,
+             debt_direction = ?,
+             updatedAt = ?
+         WHERE user_id = ? AND account_key = ?`,
+        [
+          section,
+          sortIndex,
+          name,
+          plan.nextAmount,
+          primaryCurrency,
+          subText ? subText : null,
+          iconTone,
+          badge ? badge : null,
+          section === 'debt' ? legacyDebtPhraseForDirection(debtDirection) : null,
+          iconKey,
+          debtDirection,
+          now,
+          userId,
+          accountKey,
+        ]
+      );
+
+      // A direct amount edit on a debt row is a manual correction, not a real cash-flow event.
+      if (section === 'debt' && existing.section !== 'debt') {
+        await tx.run(
+          `UPDATE account_portfolio SET debt_initial_amount = ?, debt_created_at = ?
+           WHERE user_id = ? AND account_key = ?`,
+          [plan.nextAmount, now, userId, accountKey]
+        );
+        await tx.run(
+          `INSERT INTO debt_events
+            (id, user_id, debt_account_key, event_type, amount, currency, date, note, created_at)
+           VALUES (?, ?, ?, 'created', ?, ?, ?, ?, ?)`,
+          [uuidv4(), userId, accountKey, plan.nextAmount, primaryCurrency, now, 'Opening balance', now]
+        );
+      } else if (section === 'debt' && plan.recordDelta) {
+        await tx.run(
+          `INSERT INTO debt_events
+            (id, user_id, debt_account_key, event_type, amount, currency, date, note, created_at)
+           VALUES (?, ?, ?, 'adjustment', ?, ?, ?, ?, ?)`,
+          [uuidv4(), userId, accountKey, plan.delta, primaryCurrency, now, 'Manual balance correction', now]
+        );
+      } else if (section !== 'debt' && plan.recordDelta) {
+        await tx.run(
+          `INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, note, telegram_user_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            uuidv4(),
+            userId,
+            Math.abs(plan.delta),
+            primaryCurrency,
+            resolveBalanceCorrectionCategoryId(),
+            plan.delta > 0 ? 'income' : 'expense',
+            now,
+            mergeAccountIntoNote('Корекція балансу', accountKey),
+            null,
+          ]
+        );
+      }
+
+      return tx.get(accountRowQuery, [userId, accountKey]);
+    });
+  } catch (error) {
+    if (sendIfRefused(res, error)) return;
+    throw error;
   }
-
-  const row = await db.get(
-    `SELECT
-       account_key AS accountKey,
-       section,
-       sort_index AS sortIndex,
-       name,
-       primary_amount AS primaryAmount,
-       primary_currency AS primaryCurrency,
-       sub_text AS subText,
-       icon_tone AS iconTone,
-       badge,
-       icon_key AS iconKey,
-       debt_direction AS debtDirection,
-       debt_initial_amount AS debtInitialAmount,
-       debt_created_at AS debtCreatedAt,
-       updatedAt
-     FROM account_portfolio
-     WHERE user_id = ? AND account_key = ?
-     LIMIT 1`,
-    [userId, accountKey]
-  );
 
   res.json(row);
 });

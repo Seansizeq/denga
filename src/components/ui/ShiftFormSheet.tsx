@@ -87,6 +87,20 @@ const parseMoney = (raw: string): number => {
 
 const moneyToInput = (value: number): string => (value > 0 ? String(value) : '');
 
+/**
+ * Чи сума зміни — добуток ставки на години, а не названа окремо. Та сама
+ * перевірка, що й на сервері (`amountFollowsRate` у planner-shift.js).
+ *
+ * Така сума не показується в полі як готове число: доки вона там стояла,
+ * зміна 8 год × 100 = 800, подовжена до 10 годин, зберігалася з тими самими
+ * 800. Поле лишається порожнім, а підказка в ньому рахує суму наживо.
+ */
+const amountFollowsRate = (value: Pick<ShiftFormValue, 'salaryRate' | 'salaryAmount' | 'workedHours'>): boolean => {
+  if (!(value.salaryRate > 0)) return false;
+  if (!(value.salaryAmount > 0)) return true;
+  return Math.abs(value.salaryAmount - Number((value.salaryRate * value.workedHours).toFixed(2))) < 0.01;
+};
+
 /** Ціле число в межах; порожнє поле — нуль, а не NaN. */
 const clampInt = (raw: string, max: number): number => {
   const value = Number.parseInt(raw.replace(/\D/g, ''), 10);
@@ -132,7 +146,11 @@ const ShiftFormSheet: React.FC<ShiftFormSheetProps> = ({
   const [symbol, setSymbol] = useState(value?.symbol ?? '');
   const [salaryCurrency, setSalaryCurrency] = useState<PlannerCurrency>(value?.salaryCurrency ?? 'UAH');
   const [rateInput, setRateInput] = useState(moneyToInput(value?.salaryRate ?? 0));
-  const [amountInput, setAmountInput] = useState(moneyToInput(value?.salaryAmount ?? 0));
+  // Шаблон зберігає суму як є: його ставка має лишатися ставкою, а не
+  // застигати добутком на типову тривалість (див. `deriveAmount` на сервері).
+  const [amountInput, setAmountInput] = useState(() =>
+    value && !isTemplate && amountFollowsRate(value) ? '' : moneyToInput(value?.salaryAmount ?? 0),
+  );
   const [saveAsTemplate, setSaveAsTemplate] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -143,6 +161,14 @@ const ShiftFormSheet: React.FC<ShiftFormSheetProps> = ({
     const minutes = clampInt(minutesPart, 59);
     return Math.min(24, hours + minutes / 60);
   }, [mode, startTime, endTime, hoursPart, minutesPart]);
+
+  // Порожнє поле суми — «рахуй зі ставки»: сервер отримає нуль і помножить
+  // ставку на години. Підказка показує, скільки вийде, і змінюється разом із часом.
+  const derivedAmount = useMemo(() => {
+    const rate = parseMoney(rateInput);
+    if (isTemplate || !(rate > 0) || workedHours === null || !(workedHours > 0)) return 0;
+    return Number((rate * workedHours).toFixed(2));
+  }, [isTemplate, rateInput, workedHours]);
 
   if (!value) return null;
 
@@ -374,7 +400,7 @@ const ShiftFormSheet: React.FC<ShiftFormSheetProps> = ({
             inputMode="decimal"
             value={amountInput}
             onChange={(e) => setAmountInput(e.target.value)}
-            placeholder="0"
+            placeholder={derivedAmount > 0 ? String(derivedAmount) : '0'}
           />
         </label>
       </div>
