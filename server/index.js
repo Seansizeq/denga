@@ -150,6 +150,7 @@ import {
   summarizeDayEntries,
 } from './planner-shift.js';
 import { merchantKey, resolveBankCategory } from './bank-category.js';
+import { parseBankNotification } from './bank-notification.js';
 import {
   BANK_CARD_CATEGORY_LIMIT,
   buildBankCardKeyboard,
@@ -4276,8 +4277,9 @@ app.get('/api/automation/options', async (req, res) => {
 
 /**
  * One quick-add transaction. Takes either picked fields (`amount` + `categoryId`
- * + optional `account`) or free `text` for a dictated entry, which goes through
- * the same parser as the bot.
+ * + optional `account`), free `text` for a dictated entry, which goes through
+ * the same parser as the bot, or a bank push forwarded verbatim as
+ * `notification` (see `bank-notification.js`).
  *
  * Every response carries `message`, including the failures: the automation
  * prints that one field in its notification, so an error with nothing to print
@@ -4296,20 +4298,39 @@ app.post('/api/automation/transaction', async (req, res) => {
   ]);
 
   let payload = req.body;
-  const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
-  const merchant = typeof req.body?.merchant === 'string' ? req.body.merchant.trim() : '';
+  const notification = typeof req.body?.notification === 'string' ? req.body.notification : '';
+  const text = !notification && typeof req.body?.text === 'string' ? req.body.text.trim() : '';
+  let merchant = typeof req.body?.merchant === 'string' ? req.body.merchant.trim() : '';
+  let provider = 'wallet';
+  let bankCategory = null;
+
+  // Пуш банку, пересланий ярликом як є. Не покупка — тихо пропускаємо:
+  // ярлик спрацьовує на кожне сповіщення застосунку, і зарахування чи код
+  // входу не мають ні ставати витратою, ні йти до моделі, яка «зрозуміла» б
+  // їх як-небудь. Відповідь 200, бо це не помилка ярлика.
+  if (notification) {
+    const purchase = parseBankNotification(notification);
+    if (!purchase) {
+      res.json({ ok: true, skipped: true, message: 'ℹ️ Не покупка — пропущено' });
+      return;
+    }
+    ({ merchant, provider, bankCategory } = purchase);
+    // Рахунок ярлик може назвати сам; суму й валюту — лише з тексту банку.
+    payload = { account: req.body?.account, amount: purchase.amount, currency: purchase.currency };
+  }
 
   /**
    * Звідки взялася категорія, коли її ніхто не обирав. Порожньо — обирали
    * руками, і тоді картка виправлення в чат не летить.
    */
   let guessedSource = '';
-  // Ярлик, що спрацював на дотик картки: Wallet передав суму й назву
-  // торговця, а обрати категорію не було кому — людина в цей момент забирає
-  // покупку з каси. Вгадуємо тут, а виправити дасть картка в Telegram.
+  // Ярлик, що спрацював на дотик картки чи на пуш банку: суму й назву
+  // торговця передано, а обрати категорію не було кому — людина в цей момент
+  // забирає покупку з каси. Вгадуємо тут, а виправити дасть картка в Telegram.
   if (merchant && !text && !payload?.categoryId) {
     const guess = resolveBankCategory({
       merchant,
+      bankCategory,
       type: 'expense',
       rules: await getBankMerchantRules(userId),
       categories,
@@ -4365,10 +4386,11 @@ app.post('/api/automation/transaction', async (req, res) => {
   if (guessedSource) {
     const outcome = await recordAutomaticTransaction({
       userId,
-      provider: 'wallet',
-      // Ярлик власного id операції не має: Wallet його не передає. Захист від
-      // повтору тут і не потрібен — дві однакові кави поспіль це дві покупки.
-      externalId: `wallet:${uuidv4()}`,
+      provider,
+      // Ярлик власного id операції не має: ні Wallet, ні пуш банку його не
+      // передають. Захист від повтору тут і не потрібен — дві однакові кави
+      // поспіль це дві покупки.
+      externalId: `${provider}:${uuidv4()}`,
       type: validated.type,
       amount: validated.amount,
       currency: validated.currency,
@@ -4377,7 +4399,12 @@ app.post('/api/automation/transaction', async (req, res) => {
       accountName: validated.accountName,
       categoryId: validated.categoryId,
       categorySource: guessedSource,
-      timeMs: Date.parse(`${validated.date}T12:00:00.000Z`) || Date.now(),
+      // Без явної дати — «зараз», а день з нього рахується в поясі людини.
+      // Дата за замовчуванням із валідації — сьогоднішня за UTC, і покупка о
+      // пів на першу ночі у Варшаві лягала б на вчора.
+      timeMs: String(payload?.date ?? '').trim()
+        ? Date.parse(`${validated.date}T12:00:00.000Z`) || Date.now()
+        : Date.now(),
     });
     if (!outcome.ok) {
       res.status(409).json({

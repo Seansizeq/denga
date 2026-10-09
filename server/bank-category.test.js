@@ -107,6 +107,16 @@ describe('resolveBankCategory', () => {
     expect(resolveBankCategory({ merchant: 'Apteka Dr.Max', categories: CATEGORIES }).categoryId).toBe('health');
   });
 
+  it('поповнення телефону — у власний «Мобільний звʼязок», а без нього — у «Житло»', () => {
+    const own = [
+      ...CATEGORIES,
+      { id: 'home', name: 'Житло', type: 'expense' },
+      { id: 'custom:%D0%9C%D0%BE%D0%B1|Phone|%23000', name: 'Мобільний звʼязок', type: 'expense' },
+    ];
+    expect(resolveBankCategory({ merchant: 'doladowania.play.pl', categories: own }).categoryId).toBe(own[7].id);
+    expect(resolveBankCategory({ merchant: 'doladowania.play.pl', categories: own.slice(0, 7) }).categoryId).toBe('home');
+  });
+
   it('доставку їжі не плутає з таксі тієї ж компанії', () => {
     expect(resolveBankCategory({ merchant: 'UBER *EATS', categories: CATEGORIES }).categoryId).toBe('food');
     expect(resolveBankCategory({ merchant: 'UBER *TRIP', categories: CATEGORIES }).categoryId).toBe('transport');
@@ -147,6 +157,37 @@ describe('resolveBankCategory', () => {
     // вигадує категорію.
     expect(resolveBankCategory({ merchant: 'STARBUCKS 12', categories: CATEGORIES }).categoryId).toBe('food');
     expect(resolveBankCategory({ merchant: 'ZARA POLSKA', categories: CATEGORIES }).source).toBe('fallback');
+  });
+
+  it('бере категорію, яку назвав банк, коли мережа невідома', () => {
+    const withAliases = [
+      { id: 'food', name: 'Продукти', type: 'expense', aliases: ['кафе', 'ресторан'] },
+      { id: 'health', name: 'Здоровʼя', type: 'expense', aliases: ['аптека'] },
+      ...CATEGORIES.slice(1),
+    ];
+    expect(resolveBankCategory({ merchant: 'Sklep u Ani', bankCategory: 'Транспорт', categories: withAliases }))
+      .toMatchObject({ categoryId: 'transport', source: 'bank' });
+    // Слово в іншій формі, ніж у назві чи синонімі.
+    expect(resolveBankCategory({ merchant: 'X', bankCategory: 'Аптеки', categories: withAliases }).categoryId).toBe('health');
+    expect(resolveBankCategory({ merchant: 'X', bankCategory: 'Кафе та ресторани', categories: withAliases }).categoryId)
+      .toBe('food');
+    expect(resolveBankCategory({ merchant: 'X', bankCategory: 'Щось зовсім інше', categories: withAliases }).source)
+      .toBe('fallback');
+  });
+
+  it('власна категорія людини перехоплює банківську раніше за вбудований синонім', () => {
+    const own = [
+      { id: 'food', name: 'Продукти', type: 'expense', aliases: ['кафе'] },
+      { id: 'custom:%D0%9A%D0%B0%D0%B2%D0%B0|Coffee|%23000', name: 'Кава', type: 'expense' },
+      ...CATEGORIES.slice(1),
+    ];
+    expect(resolveBankCategory({ merchant: 'X', bankCategory: 'Кафе та ресторани', categories: own }).categoryId)
+      .toBe(own[1].id);
+  });
+
+  it('відома мережа важить більше за категорію банку', () => {
+    const result = resolveBankCategory({ merchant: 'skycash.com', bankCategory: 'Продукти', categories: CATEGORIES });
+    expect(result).toMatchObject({ categoryId: 'transport', source: 'brand' });
   });
 
   it('у таблиці MCC немає кодів поза межами ISO 18245', () => {

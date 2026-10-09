@@ -15,8 +15,9 @@
  *
  *   1. правило, якому людина навчила сама, виправивши категорію на картці;
  *   2. відома мережа за назвою (Biedronka, Orlen, Netflix);
- *   3. MCC;
- *   4. «Інше».
+ *   3. категорія, яку банк назвав словами (Privat24: «Транспорт»);
+ *   4. MCC;
+ *   5. «Інше».
  *
  * Правило стоїть над MCC, бо MCC описує торговця, а не витрату. Заправка з
  * магазином має код пального, і той, хто щоразу купує там каву, має рацію
@@ -103,6 +104,7 @@ const CATEGORY_KINDS = {
   subscriptions: ['підпис', 'подпис', 'subscript', 'subskryp'],
   electronics: ['технік', 'техник', 'електрон', 'электрон', 'electron', 'gadget', 'elektron'],
   beauty: ['космет', 'краса', 'догляд', 'beauty', 'kosmet', 'drogeri'],
+  telecom: ['мобіл', 'телефон', 'інтернет', 'связ', 'mobile', 'phone', 'internet', 'telefon'],
   shopping: ['покуп', 'шопінг', 'shopping', 'zakup'],
 };
 
@@ -183,12 +185,19 @@ const BRAND_RULES = [
     ],
   },
   {
+    // Звʼязок у вбудованих — частина «Житла» (так само його кладе й MCC 4812).
+    to: ['kind:telecom', 'home'],
+    brands: [
+      'doladowania', 'play pl', 'orange', 't mobile', 'tmobile', 'plus pl', 'heyah', 'upc', 'vectra',
+      'netia', 'inea', 'kyivstar', 'vodafone', 'lifecell',
+    ],
+  },
+  {
     to: ['home'],
     brands: [
       'ikea', 'castorama', 'leroy merlin', 'obi', 'jysk', 'bricomarche', 'agata meble', 'black red white',
       'homla', 'epicentr', 'tauron', 'pge', 'enea', 'energa', 'pgnig', 'innogy', 'veolia', 'mpwik',
-      'orange', 't mobile', 'tmobile', 'upc', 'vectra', 'netia', 'inea',
-      'kyivstar', 'vodafone', 'lifecell', 'yasno', 'dtek', 'naftogaz',
+      'yasno', 'dtek', 'naftogaz',
     ],
   },
   {
@@ -280,19 +289,62 @@ export const merchantKey = (raw) => {
 };
 
 /**
+ * Категорія, яку назвав сам банк («Транспорт», «Кафе та ресторани»), у
+ * категоріях людини.
+ *
+ * Слова звіряються за основою — `аптеки` з `аптека`, `продукти` з `продукт`, —
+ * бо банк і людина рідко пишуть одне слово в одній формі. Порядок пошуку —
+ * від власного до загального: спершу назви категорій, тоді види (власна
+ * «Кава» для банківського «Кафе»), і аж потім вбудовані синоніми — інакше
+ * синонім `кафе` у вбудованих «Продуктах» перехоплював би власну категорію.
+ */
+const findBankCategory = (hint, categories, wantedType) => {
+  const words = foldName(hint).split(' ').filter(Boolean);
+  if (words.length === 0) return null;
+  const candidates = categories.filter(
+    (category) => category?.type === wantedType && !FALLBACK_IDS.has(String(category?.id ?? '')),
+  );
+  const stemMatches = (term) => {
+    const stem = term.slice(0, Math.max(4, term.length - 1));
+    return words.some((word) => word.startsWith(stem));
+  };
+  const matchesAny = (terms) =>
+    terms
+      .flatMap((term) => foldName(term).split(' '))
+      .filter((term) => term.length >= 4)
+      .some(stemMatches);
+
+  const byName = candidates.find((category) => matchesAny([category?.name]));
+  if (byName) return byName;
+
+  for (const [kind, markers] of Object.entries(FOLDED_KINDS)) {
+    if (!words.some((word) => markers.some((marker) => word.startsWith(marker)))) continue;
+    const own = findKindCategory(kind, candidates, wantedType);
+    if (own) return own;
+  }
+
+  return candidates.find((category) => matchesAny(category?.aliases ?? [])) ?? null;
+};
+
+/**
  * Категорія для однієї операції.
  *
  * @param merchant назва торговця так, як її передав банк або Wallet.
  * @param mcc код виду діяльності; у ярлика його немає — і це нормально.
+ * @param bankCategory категорія словами від самого банку (Privat24 пише її в
+ *   пуші); важить стільки ж, скільки MCC, і стоїть перед ним, бо вже
+ *   сказана людською мовою.
  * @param type 'expense' | 'income' — рахується за знаком суми, не вгадується.
  * @param rules `ключ торговця -> id категорії`, вивчене цією людиною.
  * @param categories власні й вбудовані категорії користувача: id звідси
  *   гарантовано існує, тож у транзакцію не потрапить категорія-привид.
- * @returns {{ categoryId: string, categoryName: string, source: 'rule'|'brand'|'mcc'|'fallback' }}
+ * @returns {{ categoryId: string, categoryName: string,
+ *   source: 'rule'|'brand'|'bank'|'mcc'|'fallback' }}
  */
 export const resolveBankCategory = ({
   merchant = '',
   mcc = null,
+  bankCategory = null,
   type = 'expense',
   rules = {},
   categories = [],
@@ -320,6 +372,10 @@ export const resolveBankCategory = ({
     const byBrand = id ? pick(id, 'brand') : null;
     if (byBrand) return byBrand;
   }
+
+  const fromBank = bankCategory ? findBankCategory(bankCategory, categories, wantedType) : null;
+  const byBank = fromBank ? pick(fromBank.id, 'bank') : null;
+  if (byBank) return byBank;
 
   const code = Number.parseInt(String(mcc ?? ''), 10);
   const byMcc = Number.isInteger(code) ? pick(MCC_CATEGORY[code], 'mcc') : null;
