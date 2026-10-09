@@ -153,6 +153,19 @@ describe('validateAutomationTransaction', () => {
     ).toMatchObject({ ok: true, categoryId: 'custom:x', account: 'usdt', currency: 'USDT' });
   });
 
+  it('accepts the account name as the app shows it, without the picker emoji', () => {
+    // A hand-built shortcut types the name, not the picker row.
+    expect(validateAutomationTransaction(valid({ account: 'Готівка' }), ctx)).toMatchObject({ ok: true, account: 'wallet' });
+    expect(validateAutomationTransaction(valid({ account: ' готівка ' }), ctx)).toMatchObject({ ok: true, account: 'wallet' });
+  });
+
+  it('refuses a bare name that two accounts share rather than guess', () => {
+    const twins = [...accounts, { accountKey: 'cash2', name: 'Готівка', section: 'cash', primaryCurrency: 'PLN' }];
+    expect(validateAutomationTransaction(valid({ account: 'Готівка' }), { ...ctx, accounts: twins })).toMatchObject({
+      code: 'INVALID_ACCOUNT',
+    });
+  });
+
   it('still refuses a label that belongs to no row', () => {
     expect(validateAutomationTransaction(valid({ categoryId: 'Чужа' }), ctx)).toMatchObject({
       code: 'INVALID_CATEGORY',

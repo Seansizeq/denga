@@ -156,6 +156,30 @@ const findByIdOrLabel = (raw, items, labels, matches) => {
   return id ? items.find((item) => matches(item, id)) ?? null : null;
 };
 
+const plainName = (value) =>
+  String(value ?? '')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim()
+    .toLocaleLowerCase('uk-UA');
+
+/**
+ * Рахунок за назвою так, як її видно в застосунку, — без емодзі з пікера.
+ *
+ * Ярлик, складений руками, а не через список вибору, пише саме так:
+ * «Банківська карта», а не «💳 Банківська карта». Відмовляти йому через
+ * картинку означало б губити кожну витрату, а ярлик на пуш банку працює, коли
+ * телефон у кишені, і помилку ніхто не побачить.
+ *
+ * Лише коли така назва одна: два рахунки «Картка» за назвою не розрізнити, і
+ * чесна помилка краща за списання не з того.
+ */
+const findAccountByName = (raw, accounts) => {
+  const wanted = plainName(raw);
+  if (!wanted) return null;
+  const found = accounts.filter((account) => plainName(account?.name) === wanted);
+  return found.length === 1 ? found[0] : null;
+};
+
 const matchesCategory = (category, value) => String(category?.id ?? '') === value;
 
 const matchesAccount = (account, value) =>
@@ -209,9 +233,12 @@ export const validateAutomationTransaction = (
   const rawAccount = String(body?.account ?? body?.accountKey ?? '').trim();
   let account = null;
   if (rawAccount) {
-    account = findByIdOrLabel(rawAccount, accounts, options.accounts, matchesAccount);
+    account =
+      findByIdOrLabel(rawAccount, accounts, options.accounts, matchesAccount) ??
+      findAccountByName(rawAccount, accounts);
     if (!account) {
-      return { ok: false, status: 400, code: 'INVALID_ACCOUNT', error: 'невідомий рахунок' };
+      // Назва в помилці — бо інакше не видно, що саме в ярлику не так.
+      return { ok: false, status: 400, code: 'INVALID_ACCOUNT', error: `невідомий рахунок «${rawAccount}»` };
     }
   }
 
