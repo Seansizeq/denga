@@ -152,6 +152,24 @@ const parseBybit = (text) => {
 };
 
 /**
+ * Текст сповіщення з того, що прислав ярлик.
+ *
+ * Команди iOS кладуть змінну «Сповіщення» в JSON то рядком, то словником
+ * (заголовок, текст, програма) — залежно від типу поля, який людина обрала.
+ * Словник розгортається в рядки, і далі розбір шукає покупку серед них так
+ * само, як у заголовку з текстом разом.
+ */
+export const notificationText = (raw, depth = 0) => {
+  if (typeof raw === 'string') return raw;
+  if (raw === null || typeof raw !== 'object' || depth > 3) return '';
+  const values = Array.isArray(raw) ? raw : Object.values(raw);
+  return values
+    .map((value) => notificationText(value, depth + 1))
+    .filter((value) => value.trim())
+    .join('\n');
+};
+
+/**
  * @returns {{ provider: string, type: 'expense', amount: number, currency: string,
  *   merchant: string, bankCategory: string|null } | null} `null` — це не покупка.
  */

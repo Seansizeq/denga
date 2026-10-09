@@ -1,5 +1,27 @@
 import { describe, expect, it } from 'vitest';
-import { parseBankNotification } from './bank-notification.js';
+import { notificationText, parseBankNotification } from './bank-notification.js';
+
+describe('notificationText', () => {
+  it('рядок лишається рядком', () => {
+    expect(notificationText('-5Zł(57.67₴) Транспорт. skycash.com')).toBe('-5Zł(57.67₴) Транспорт. skycash.com');
+  });
+
+  it('словник від Команд розгортається, і покупку в ньому видно', () => {
+    const shortcutsDictionary = {
+      title: 'Купівля',
+      body: '10.00PLN / 116.42UAH (курс 11.64)\ndoladowania.play.pl Poznan PL\n09-10-2026 23:16\nКартка: *7354',
+      app: { name: 'ПУМБ' },
+    };
+    expect(parseBankNotification(notificationText(shortcutsDictionary))).toMatchObject({ provider: 'pumb', amount: 116.42 });
+  });
+
+  it('нічого, крім тексту, — порожньо', () => {
+    expect(notificationText(null)).toBe('');
+    expect(notificationText(undefined)).toBe('');
+    expect(notificationText(42)).toBe('');
+    expect(notificationText({})).toBe('');
+  });
+});
 
 describe('parseBankNotification — Privat24', () => {
   it('покупка у злотих з гривневої картки записується сумою, що пішла з картки', () => {

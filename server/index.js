@@ -150,7 +150,7 @@ import {
   summarizeDayEntries,
 } from './planner-shift.js';
 import { merchantKey, resolveBankCategory } from './bank-category.js';
-import { parseBankNotification } from './bank-notification.js';
+import { notificationText, parseBankNotification } from './bank-notification.js';
 import {
   BANK_CARD_CATEGORY_LIMIT,
   buildBankCardKeyboard,
@@ -4298,8 +4298,9 @@ app.post('/api/automation/transaction', async (req, res) => {
   ]);
 
   let payload = req.body;
-  const notification = typeof req.body?.notification === 'string' ? req.body.notification : '';
-  const text = !notification && typeof req.body?.text === 'string' ? req.body.text.trim() : '';
+  const forwardsNotification = Object.prototype.hasOwnProperty.call(req.body ?? {}, 'notification');
+  const notification = notificationText(req.body?.notification);
+  const text = !forwardsNotification && typeof req.body?.text === 'string' ? req.body.text.trim() : '';
   let merchant = typeof req.body?.merchant === 'string' ? req.body.merchant.trim() : '';
   let provider = 'wallet';
   let bankCategory = null;
@@ -4308,9 +4309,28 @@ app.post('/api/automation/transaction', async (req, res) => {
   // ярлик спрацьовує на кожне сповіщення застосунку, і зарахування чи код
   // входу не мають ні ставати витратою, ні йти до моделі, яка «зрозуміла» б
   // їх як-небудь. Відповідь 200, бо це не помилка ярлика.
-  if (notification) {
+  if (forwardsNotification) {
+    // Порожньо буває при запуску ярлика вручну: без справжнього пуша змінні
+    // «Сповіщення» нема чого передати. Без цієї гілки людина бачила б «сума
+    // має бути більшою за 0» — і шукала б помилку в ярлику, якої там немає.
+    if (!notification.trim()) {
+      res.status(422).json({
+        error: 'notification is empty',
+        code: 'EMPTY_NOTIFICATION',
+        message: 'ℹ️ Сповіщення порожнє — так буває при запуску вручну. На справжній покупці ярлик передасть його сам.',
+      });
+      return;
+    }
     const purchase = parseBankNotification(notification);
     if (!purchase) {
+      // Лише форма, без змісту: у тексті пуша сума й торговець, і в журналі їм
+      // не місце. Одного рядка на кілька символів досить, щоб упізнати, що
+      // ярлик пересилає заголовок замість тексту.
+      console.info('[automation] notification skipped', {
+        lines: notification.split('\n').length,
+        length: notification.length,
+        shape: typeof req.body?.notification,
+      });
       res.json({ ok: true, skipped: true, message: 'ℹ️ Не покупка — пропущено' });
       return;
     }
