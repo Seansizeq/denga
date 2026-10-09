@@ -21,6 +21,39 @@ export const BALANCE_CORRECTION_CATEGORY_ID = 'balance_correction';
  */
 export const isBalanceCorrection = (tx) => tx?.categoryId === BALANCE_CORRECTION_CATEGORY_ID;
 
+/**
+ * На скільки операція вже зрушила свій рахунок — у валюті рахунку, на день
+ * запису (`accountAmount` / `accountCurrency`).
+ *
+ * Без цього витрата в злотих із гривневої картки відкочувалась би за курсом
+ * дня відкату: списали 100 zł по 11.47 (−1 147 ₴), а видалили через місяць по
+ * 11.80 (+1 180 ₴) — і на картці 33 ₴ нізвідки. З криптою різниця сягала б
+ * десятків відсотків. Тож відкат і правка знімають рівно записану суму, а
+ * перераховується лише те, що справді змінилося (див. `keepsBooking`).
+ *
+ * Переказу це не потрібно: обидві його суми вже у валютах своїх рахунків.
+ */
+const bookedAccountAmount = (tx) => {
+  if (isTransferType(tx?.type)) return null;
+  const amount = Number(tx?.accountAmount);
+  const currency = String(tx?.accountCurrency ?? '').trim().toUpperCase();
+  return Number.isFinite(amount) && amount > 0 && currency ? { amount, currency } : null;
+};
+
+/** Та сама операція без запамʼятованої суми — щоб її перерахувати наново. */
+export const withoutBooking = (tx) => ({ ...tx, accountAmount: null, accountCurrency: null });
+
+/**
+ * Чи правка лишає записану суму чинною: той самий рахунок, тип, сума й валюта.
+ * Зміна дати, примітки чи категорії баланс не чіпає й курсу не перераховує —
+ * інакше перейменування витрати через місяць зсувало б картку на різницю
+ * курсів.
+ */
+export const keepsBooking = (current, next) => {
+  const raw = (tx) => JSON.stringify(getTransactionAccountEffects(withoutBooking(tx)));
+  return raw(current) === raw(next);
+};
+
 export const getTransactionAccountEffects = (tx) => {
   const amount = Number(tx?.amount);
   if (!Number.isFinite(amount) || amount <= 0) return [];
@@ -44,15 +77,18 @@ export const getTransactionAccountEffects = (tx) => {
     ].filter(Boolean);
   }
 
+  const booked = bookedAccountAmount(tx);
+  const size = booked ? booked.amount : amount;
+  const currency = booked ? booked.currency : tx?.currency;
   const fromKey = normalizeAccountKey(tx?.fromAccountKey);
   // debt_return: payment reduces the debt balance (negative delta)
   if (tx?.categoryId === 'debt_return' && fromKey) {
-    return [{ accountKey: fromKey, delta: -amount, currency: tx?.currency }];
+    return [{ accountKey: fromKey, delta: -size, currency }];
   }
   const accountKey = fromKey || getAccountSlugFromNote(tx?.note);
   if (!accountKey) return [];
-  if (tx?.type === 'income') return [{ accountKey, delta: amount, currency: tx?.currency }];
-  if (tx?.type === 'expense') return [{ accountKey, delta: -amount, currency: tx?.currency }];
+  if (tx?.type === 'income') return [{ accountKey, delta: size, currency }];
+  if (tx?.type === 'expense') return [{ accountKey, delta: -size, currency }];
   return [];
 };
 

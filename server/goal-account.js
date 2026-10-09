@@ -216,10 +216,14 @@ export const shrinkContribution = (txRow, keepShare) => {
   const keep = Math.min(1, Math.max(0, Number(keepShare) || 0));
   const amount = roundMoney((Number(txRow.amount) || 0) * keep);
   const toAmount = Number(txRow.transferToAmount);
+  // Записана сума в одиниці рахунку зменшується в тій самій частці: інакше
+  // залишок внеску відкотився б колись на повну, ще не зменшену суму.
+  const booked = Number(txRow.accountAmount);
   return {
     ...txRow,
     amount,
     transferToAmount: Number.isFinite(toAmount) && toAmount > 0 ? roundMoney(toAmount * keep) : txRow.transferToAmount,
+    accountAmount: Number.isFinite(booked) && booked > 0 ? booked * keep : txRow.accountAmount,
   };
 };
 

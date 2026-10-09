@@ -111,6 +111,11 @@ describe('shrinkContribution', () => {
     const out = shrinkContribution({ id: 't', amount: 90, transferToAmount: null }, 1 / 3);
     expect(out).toMatchObject({ amount: 30, transferToAmount: null });
   });
+
+  it('записана в одиниці рахунку сума зменшується в тій самій частці', () => {
+    const out = shrinkContribution({ id: 't', type: 'income', amount: 100, accountAmount: 1147.48, accountCurrency: 'UAH' }, 0.5);
+    expect(out).toMatchObject({ amount: 50, accountAmount: 573.74, accountCurrency: 'UAH' });
+  });
 });
 
 /**

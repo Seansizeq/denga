@@ -46,9 +46,11 @@ import {
   BALANCE_CORRECTION_CATEGORY_ID,
   computeNetDeltas,
   getTransactionAccountEffects,
+  keepsBooking,
   resolveEffectDelta,
   resolveEffectDeltaInAccountUnit,
   validateTransferPayload,
+  withoutBooking,
 } from './transaction-effects.js';
 import { buildDebtRepaymentTransfer, validateDebtPayment } from './debt.js';
 import {
@@ -370,6 +372,12 @@ const parseAmount = (value) => {
   return Number.isFinite(n) ? n : NaN;
 };
 /**
+ * Чи облік знає цю одиницю. `normalizeDenomination` усе невідоме мовчки
+ * перетворює на гривню — і `EUR` записувався б як стільки ж гривень. Там, де
+ * валюту передають ззовні, невідому треба відкидати, а не перейменовувати.
+ */
+const isKnownDenomination = (value) => DENOMINATIONS.includes(String(value ?? '').trim().toUpperCase());
+/**
  * Fiat reporting currency. Use this only where a figure must land in UAH/PLN/USD
  * (reports, budgets, goals). For an account balance or a transaction amount use
  * `normalizeDenomination`, which keeps crypto assets intact.
@@ -406,6 +414,15 @@ const getCurrencyFromNote = (note) => {
   const m = note.match(/\bCurrency:\s*([A-Za-z]{3})\b/i);
   return m?.[1] ? normalizeCurrency(m[1]) : null;
 };
+/**
+ * Скільки знаків після коми тримає залишок. Девʼять — з запасом над найдрібнішою
+ * одиницею, яку облік знає (сатоші, 8 знаків), і достатньо, щоб прибрати хвости
+ * двійкового дробу: десять витрат по 0.1 і їхнє видалення лишали на рахунку
+ * `8.3e-17` замість нуля, і такий пил накопичувався б з кожною операцією.
+ * Округлення до сітки робить застосування й відкат точно оберненими.
+ */
+const BALANCE_DECIMALS = 9;
+
 const applyAccountDelta = async (dbConn, userId, accountKey, delta) => {
   if (!accountKey || !Number.isFinite(delta) || delta === 0) return;
   // Stored exactly, with no clamping. Clamping here used to make un-applying a
@@ -414,7 +431,7 @@ const applyAccountDelta = async (dbConn, userId, accountKey, delta) => {
   // instead — see collectDebtOverdrafts.
   await dbConn.run(
     `UPDATE account_portfolio
-     SET primary_amount = primary_amount + ?,
+     SET primary_amount = ROUND(primary_amount + ?, ${BALANCE_DECIMALS}),
          updatedAt = ?
      WHERE user_id = ? AND account_key = ?`,
     [delta, new Date().toISOString(), userId, accountKey]
@@ -556,6 +573,16 @@ const applyTransactionEffects = async (dbConn, userId, tx, multiplier = 1, provi
       effect.accountKey,
       resolveEffectDelta(tx, { ...effect, delta: inAccountUnit.delta }, multiplier, account),
     );
+    // Записуємо, на скільки операція зрушила рахунок, щоб відкат і правка
+    // зняли рівно це, а не перерахунок за курсом дня відкату. Рядок до цього
+    // моменту вже вставлено чи оновлено в усіх шляхах запису; якщо ні —
+    // оновлення просто нічого не зачепить і лишиться старий перерахунок.
+    if (multiplier > 0 && tx?.id && tx?.type !== 'transfer' && account?.primaryCurrency) {
+      await dbConn.run(
+        'UPDATE transactions SET accountAmount = ?, accountCurrency = ? WHERE user_id = ? AND id = ?',
+        [Math.abs(inAccountUnit.delta), String(account.primaryCurrency).toUpperCase(), userId, tx.id],
+      );
+    }
   }
 };
 const getAccountsByKeys = async (dbConn, userId, keys) => {
@@ -6704,8 +6731,13 @@ app.get('/api/transactions', async (req, res) => {
 app.post('/api/transactions', async (req, res) => {
   const userId = req.authUserId;
   const amount = parseAmount(req.body?.amount);
+  const currencyGiven = req.body?.currency !== undefined && String(req.body.currency ?? '').trim() !== '';
+  if (currencyGiven && !isKnownDenomination(req.body.currency)) {
+    res.status(400).json({ error: `currency must be one of ${DENOMINATIONS.join(', ')}`, code: 'INVALID_CURRENCY' });
+    return;
+  }
   // Denomination, so an amount can be counted in the asset its account holds.
-  const currency = normalizeDenomination(req.body?.currency);
+  let currency = normalizeDenomination(req.body?.currency);
   const categoryId = typeof req.body?.categoryId === 'string' ? req.body.categoryId.trim() : '';
   const type =
     req.body?.type === 'income' || req.body?.type === 'expense' || req.body?.type === 'transfer'
@@ -6744,7 +6776,10 @@ app.post('/api/transactions', async (req, res) => {
     const accountsByKey = await getAccountsByKeys(db, userId, [req.body?.fromAccountKey, req.body?.toAccountKey]);
     const validated = validateTransferPayload({
       amount,
-      currency,
+      // Без валюти переказ іде у валюті рахунку, з якого списується, — а не в
+      // гривні за замовчуванням, через яку переказ із злотого рахунку
+      // відкидався б як «валюта не та».
+      currency: currencyGiven ? currency : '',
       fromAccountKey: req.body?.fromAccountKey,
       toAccountKey: req.body?.toAccountKey,
       transferToAmount: req.body?.transferToAmount,
@@ -6755,6 +6790,7 @@ app.post('/api/transactions', async (req, res) => {
       res.status(validated.status).json({ error: validated.error, code: validated.code });
       return;
     }
+    currency = validated.currency;
     transferFields = {
       fromAccountKey: validated.fromAccountKey,
       toAccountKey: validated.toAccountKey,
@@ -6829,14 +6865,22 @@ app.patch('/api/transactions/:id', async (req, res) => {
     res.status(409).json({ error: 'Debt repayments cannot be edited directly', code: 'DEBT_EVENT_MANAGED' });
     return;
   }
+  if (req.body?.currency !== undefined && !isKnownDenomination(req.body.currency)) {
+    res.status(400).json({ error: `currency must be one of ${DENOMINATIONS.join(', ')}`, code: 'INVALID_CURRENCY' });
+    return;
+  }
   const currency = req.body?.currency === undefined
     ? normalizeDenomination(current.currency)
     : normalizeDenomination(req.body.currency);
-  const categoryId = typeof req.body?.categoryId === 'string' ? req.body.categoryId : current.categoryId;
   const type =
     req.body?.type === 'income' || req.body?.type === 'expense' || req.body?.type === 'transfer'
       ? req.body.type
       : current.type;
+  // Переказ, що став витратою чи доходом, без нової категорії лишився б під
+  // службовою «transfer» — і в статистиці виглядав би категорією, якої немає.
+  const requestedCategoryId = typeof req.body?.categoryId === 'string' ? req.body.categoryId.trim() : '';
+  const categoryId = requestedCategoryId
+    || (type !== 'transfer' && current.categoryId === 'transfer' ? '' : current.categoryId);
   const parsedTxDate = req.body?.date === undefined ? new Date(current.date) : parseIsoDate(req.body.date);
   const note = req.body?.note === undefined
     ? (current.note ?? '')
@@ -6896,7 +6940,7 @@ app.patch('/api/transactions/:id', async (req, res) => {
     };
   }
 
-  const nextTransaction = {
+  const draft = {
     ...current,
     amount,
     currency,
@@ -6906,6 +6950,9 @@ app.patch('/api/transactions/:id', async (req, res) => {
     note: note || undefined,
     ...nextTransferFields,
   };
+  // Записана сума лишається, поки правка не чіпає рахунку, суми, валюти й
+  // типу; інакше нова операція рахується наново за курсом дня.
+  const nextTransaction = keepsBooking(current, draft) ? draft : withoutBooking(draft);
 
   const convert = await buildAccountUnitConverter();
 
@@ -6934,7 +6981,9 @@ app.patch('/api/transactions/:id', async (req, res) => {
              date = ?,
              note = ?,
              fromAccountKey = ?,
-             toAccountKey = ?
+             toAccountKey = ?,
+             accountAmount = ?,
+             accountCurrency = ?
          WHERE user_id = ? AND id = ?`,
         [
           nextTransaction.amount,
@@ -6947,6 +6996,8 @@ app.patch('/api/transactions/:id', async (req, res) => {
           nextTransaction.note ?? null,
           nextTransaction.fromAccountKey,
           nextTransaction.toAccountKey,
+          nextTransaction.accountAmount ?? null,
+          nextTransaction.accountCurrency ?? null,
           userId,
           id,
         ]

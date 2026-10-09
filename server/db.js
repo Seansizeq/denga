@@ -573,6 +573,19 @@ export async function initDb() {
   } catch {
     /* already exists */
   }
+  // На скільки операція зрушила свій рахунок, у валюті рахунку на день запису:
+  // відкат і правка знімають рівно це, а не перерахунок за курсом дня (див.
+  // `transaction-effects.js`). Порожньо в старих записах і там, де рахунку немає.
+  try {
+    await db.exec(`ALTER TABLE transactions ADD COLUMN accountAmount REAL`);
+  } catch {
+    /* already exists */
+  }
+  try {
+    await db.exec(`ALTER TABLE transactions ADD COLUMN accountCurrency TEXT`);
+  } catch {
+    /* already exists */
+  }
   await db.run(
     `UPDATE account_portfolio
      SET debt_initial_amount = primary_amount + COALESCE((
