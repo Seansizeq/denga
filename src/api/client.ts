@@ -223,6 +223,38 @@ export const unlinkMonobankAccount = async (bankAccountId: string): Promise<Bank
   return (await res.json()).links ?? [];
 };
 
+/** Чого людина навчила бота: «цей магазин — ця категорія». */
+export type MerchantRule = {
+  merchantKey: string;
+  /** Назва так, як її передав банк; `null`, коли прикладу вже не лишилось. */
+  label: string | null;
+  categoryId: string;
+  categoryName: string | null;
+  updatedAt: string;
+};
+
+export const getMerchantRules = async (): Promise<MerchantRule[]> => {
+  const res = await apiFetch('/api/bank/merchant-rules');
+  if (!res.ok) throw new Error('failed to load merchant rules');
+  return (await res.json()).rules ?? [];
+};
+
+export const updateMerchantRule = async (merchantKey: string, categoryId: string): Promise<MerchantRule[]> => {
+  const res = await apiFetch(`/api/bank/merchant-rules/${encodeURIComponent(merchantKey)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ categoryId }),
+  });
+  if (!res.ok) throw new Error('failed to update merchant rule');
+  return (await res.json()).rules ?? [];
+};
+
+export const deleteMerchantRule = async (merchantKey: string): Promise<MerchantRule[]> => {
+  const res = await apiFetch(`/api/bank/merchant-rules/${encodeURIComponent(merchantKey)}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('failed to delete merchant rule');
+  return (await res.json()).rules ?? [];
+};
+
 export const updatePlannerSettings = async (
   patch: Partial<PlannerSettings>
 ): Promise<PlannerSettings> => {

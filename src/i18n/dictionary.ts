@@ -412,6 +412,14 @@ export type Dict = {
     bankUnsupportedCurrency: string;
     bankNoWalletAccount: string;
     bankHowTo: string;
+    merchantRulesTitle: string;
+    merchantRulesDescription: string;
+    merchantRulesEmpty: string;
+    merchantRulesDelete: string;
+    merchantRulesSaved: string;
+    merchantRulesDeleted: string;
+    merchantRulesIncomeGroup: string;
+    merchantRulesExpenseGroup: string;
     weeklyAutoReport: string;
     monthlyAutoReport: string;
     dailyReminder: string;

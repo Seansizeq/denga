@@ -409,6 +409,15 @@ const dictionary: Dict = {
       'No account in this currency. Create one on the Accounts screen — that is where the operations will land.',
     bankHowTo:
       'If the same card also runs the Apple Pay automation, turn one of them off: otherwise every purchase is recorded twice.',
+    merchantRulesTitle: 'Remembered shops',
+    merchantRulesDescription:
+      'What you taught the bot by fixing a category on a Telegram card: every next purchase at that shop goes straight to the chosen category. Change the category or remove the row, and the shop will be guessed automatically again.',
+    merchantRulesEmpty: 'Nothing yet. Fix a category on an operation card in Telegram and the shop shows up here.',
+    merchantRulesDelete: 'Forget this shop',
+    merchantRulesSaved: 'Shop category changed',
+    merchantRulesDeleted: 'Shop forgotten',
+    merchantRulesIncomeGroup: 'Income',
+    merchantRulesExpenseGroup: 'Expenses',
     weeklyAutoReport: 'Weekly report',
     monthlyAutoReport: 'Monthly report',
     dailyReminder: 'Daily reminder',

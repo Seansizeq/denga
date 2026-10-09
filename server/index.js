@@ -3289,7 +3289,7 @@ const handleBankCardCallback = async (callbackQuery, chatId, userId) => {
           'rule',
           card.id,
         ]);
-        await rememberBankMerchantRule(tx, userId, card.merchantKey, next.categoryId);
+        await rememberBankMerchantRule(tx, userId, card.merchantKey, next.categoryId, card.merchant);
       });
     } catch (error) {
       if (error instanceof TransactionRefused) {
@@ -4904,16 +4904,50 @@ const getBankMerchantRules = async (userId) => {
   return rules;
 };
 
-const rememberBankMerchantRule = async (dbConn, userId, key, categoryId) => {
+const rememberBankMerchantRule = async (dbConn, userId, key, categoryId, label = null) => {
   if (!key || !categoryId) return;
+  const cleanLabel = String(label ?? '').trim().slice(0, 120) || null;
   await dbConn.run(
-    `INSERT INTO bank_merchant_rules (user_id, merchant_key, category_id, updated_at)
-     VALUES (?, ?, ?, ?)
+    `INSERT INTO bank_merchant_rules (user_id, merchant_key, category_id, updated_at, merchant_label)
+     VALUES (?, ?, ?, ?, ?)
      ON CONFLICT(user_id, merchant_key) DO UPDATE SET
        category_id = excluded.category_id,
-       updated_at = excluded.updated_at`,
-    [userId, key, categoryId, new Date().toISOString()],
+       updated_at = excluded.updated_at,
+       merchant_label = COALESCE(excluded.merchant_label, bank_merchant_rules.merchant_label)`,
+    [userId, key, categoryId, new Date().toISOString(), cleanLabel],
   );
+};
+
+/**
+ * Чого людина навчила бота, виправляючи категорію на картці: «цей магазин —
+ * ця категорія». Досі побачити це чи прибрати не було де: випадковий тап по
+ * «Транспорт» для Żabka лишався з людиною назавжди, і виправити його можна
+ * було лише наступною покупкою там же.
+ */
+const listMerchantRules = async (userId) => {
+  const [rows, categories] = await Promise.all([
+    db.all(
+      `SELECT r.merchant_key AS merchantKey, r.category_id AS categoryId, r.updated_at AS updatedAt,
+              COALESCE(NULLIF(r.merchant_label, ''), (
+                SELECT b.merchant FROM bank_inbox b
+                WHERE b.user_id = r.user_id AND b.merchant_key = r.merchant_key AND b.merchant <> ''
+                ORDER BY b.created_at DESC LIMIT 1
+              )) AS label
+       FROM bank_merchant_rules r
+       WHERE r.user_id = ?
+       ORDER BY r.updated_at DESC`,
+      [userId],
+    ),
+    getAutomationCategories(userId),
+  ]);
+  const byId = new Map(categories.map((c) => [String(c.id), c]));
+  return (rows ?? []).map((row) => ({
+    merchantKey: String(row.merchantKey),
+    label: row.label ? String(row.label) : null,
+    categoryId: String(row.categoryId),
+    categoryName: byId.get(String(row.categoryId))?.name ?? null,
+    updatedAt: String(row.updatedAt),
+  }));
 };
 
 /** Куди слати картку. Немає рядка в `users` — людина ще не писала боту. */
@@ -8504,6 +8538,44 @@ const readBankToken = (value) => {
 
 app.get('/api/bank/links', async (req, res) => {
   res.json({ links: await listBankLinks(req.authUserId) });
+});
+
+// --- Вивчені категорії магазинів (див. listMerchantRules) ---
+
+app.get('/api/bank/merchant-rules', async (req, res) => {
+  res.json({ rules: await listMerchantRules(req.authUserId) });
+});
+
+app.put('/api/bank/merchant-rules/:key', async (req, res) => {
+  const userId = req.authUserId;
+  const key = String(req.params.key ?? '').trim();
+  const categoryId = String(req.body?.categoryId ?? '').trim();
+  const existing = await db.get(
+    'SELECT 1 FROM bank_merchant_rules WHERE user_id = ? AND merchant_key = ? LIMIT 1',
+    [userId, key],
+  );
+  if (!existing) {
+    res.status(404).json({ error: 'rule not found', code: 'RULE_NOT_FOUND' });
+    return;
+  }
+  // Категорія має бути цієї людини: правило з чужою чи видаленою категорією
+  // лише відправляло б покупки в нікуди (див. `resolveBankCategory`).
+  const categories = await getAutomationCategories(userId);
+  if (!categories.some((c) => String(c.id) === categoryId)) {
+    res.status(400).json({ error: 'unknown category', code: 'INVALID_CATEGORY' });
+    return;
+  }
+  await rememberBankMerchantRule(db, userId, key, categoryId);
+  res.json({ rules: await listMerchantRules(userId) });
+});
+
+app.delete('/api/bank/merchant-rules/:key', async (req, res) => {
+  const userId = req.authUserId;
+  const key = String(req.params.key ?? '').trim();
+  await db.run('DELETE FROM bank_merchant_rules WHERE user_id = ? AND merchant_key = ?', [userId, key]);
+  // Без правила магазин знову розпізнається списком мереж чи MCC, а наступна
+  // картка в чаті дасть навчити його заново.
+  res.json({ rules: await listMerchantRules(userId) });
 });
 
 /**

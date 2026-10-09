@@ -876,6 +876,14 @@ export async function initDb() {
       PRIMARY KEY (user_id, merchant_key)
     )
   `);
+  // Назва магазину так, як її бачила людина: ключ правила зведений до
+  // порівнюваного вигляду («jmp s a biedronka»), а показувати в налаштуваннях
+  // треба впізнаване «JMP S.A. BIEDRONKA 468».
+  try {
+    await db.exec(`ALTER TABLE bank_merchant_rules ADD COLUMN merchant_label TEXT`);
+  } catch {
+    /* already exists */
+  }
 
   await removeRetiredBybitIntegration(db);
 

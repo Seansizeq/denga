@@ -3,6 +3,7 @@ import { useTranslation } from '../i18n/LanguageContext';
 import PlannerTemplateSection from '../components/settings/PlannerTemplateSection';
 import PlannerAutomationSection from '../components/settings/PlannerAutomationSection';
 import BankLinkSection from '../components/settings/BankLinkSection';
+import MerchantRulesSection from '../components/settings/MerchantRulesSection';
 import styles from './AutomationSettings.module.css';
 
 /**
@@ -19,6 +20,7 @@ const AutomationSettings: React.FC = () => {
         <h1 className={styles.title}>{t('settings', 'automationTitle')}</h1>
       </header>
       <BankLinkSection />
+      <MerchantRulesSection />
       <PlannerTemplateSection />
       <PlannerAutomationSection />
     </div>
