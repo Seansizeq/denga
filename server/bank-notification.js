@@ -12,6 +12,7 @@
  * входу, акція), має бути пропущений, а не «зрозумілий» як-небудь.
  */
 import { FIAT_DENOMINATIONS } from './denomination.js';
+import { isTransferLike } from './own-transfer.js';
 
 const CURRENCY_SIGNS = {
   'zł': 'PLN',
@@ -65,15 +66,16 @@ const SIGN = String.raw`(zł|pln|₴|грн|uah|\$|usd|€|eur)`;
  * `-5Zł(57.67₴) Транспорт. skycash.com, Warszawa` — і `-120.50₴ Продукти. Silpo, Kyiv`
  * для покупки у валюті картки, де дужок немає.
  *
- * Лише рядок, що **починається** мінусом: зарахування йде з плюсом, відмова й
- * скасування — словом, і жодне з них витратою не є. Прапорець `m` — бо ярлик
- * може переслати заголовок і текст разом, і тоді покупка стоїть другим рядком.
+ * Лише рядок, що **починається** знаком: мінус — списання, плюс — зарахування.
+ * Відмова й скасування пишуться словом і не підходять жодному. Прапорець `m` —
+ * бо ярлик може переслати заголовок і текст разом, і тоді операція стоїть
+ * другим рядком.
  *
  * Категорія банку — до першої «крапки з пробілом», тож `skycash.com` і
  * `JMP S.A.` у назві торговця її не обривають.
  */
 const PRIVAT24 = new RegExp(
-  String.raw`^[ \t]*-[ \t]*${AMOUNT}[ \t]*${SIGN}` +
+  String.raw`^[ \t]*([-+])[ \t]*${AMOUNT}[ \t]*${SIGN}` +
     String.raw`(?:[ \t]*\([ \t]*${AMOUNT}[ \t]*${SIGN}[ \t]*\))?` +
     String.raw`[ \t]*(?:([^.\n]+?)\.[ \t]+)?([^,\n]+)`,
   'imu',
@@ -95,19 +97,21 @@ const pickCharged = (shown, charged) => {
 const parsePrivat24 = (text) => {
   const match = PRIVAT24.exec(text);
   if (!match) return null;
-  const [, shownAmount, shownSign, chargedAmount, chargedSign, bankCategory, merchant] = match;
+  const [, direction, shownAmount, shownSign, chargedAmount, chargedSign, bankCategory, merchant] = match;
   const shown = { amount: toAmount(shownAmount), currency: toCurrency(shownSign) };
   const charged = chargedAmount ? { amount: toAmount(chargedAmount), currency: toCurrency(chargedSign) } : null;
   const { amount, currency } = pickCharged(shown, charged);
   const name = String(merchant ?? '').trim();
   if (!amount || !currency || !name) return null;
+  const category = String(bankCategory ?? '').trim() || null;
   return {
     provider: 'privat24',
-    type: 'expense',
+    type: direction === '+' ? 'income' : 'expense',
     amount,
     currency,
     merchant: name,
-    bankCategory: String(bankCategory ?? '').trim() || null,
+    bankCategory: category,
+    transferHint: isTransferLike({ merchant: name, bankCategory: category }),
   };
 };
 
@@ -119,10 +123,11 @@ const parsePrivat24 = (text) => {
  *   09-10-2026 23:16
  *   Картка: *7354
  *
- * Знака в сумі немає, і витрату від зарахування відрізняє лише заголовок. Тому
- * в ярлику фільтр «Купівля» стоїть на заголовку, а тут — запобіжник для
- * випадку, коли заголовок приїхав разом із текстом: тоді зарахування чи
- * повернення видно за словом і пропускаємо.
+ * Знака в сумі немає, і витрату від зарахування відрізняє лише заголовок
+ * («Купівля», «Переказ», «Зарахування», «Поповнення»). Коли він приїхав разом
+ * із текстом, напрямок читається з нього; коли ні — ярлик може назвати його
+ * сам полем `type` (окрема автоматизація з фільтром на заголовку). Повернення
+ * й відмови пропускаються: це не рух власних грошей.
  */
 const PUMB = new RegExp(
   String.raw`^[ \t]*${AMOUNT}[ \t]*${SIGN}` +
@@ -131,7 +136,9 @@ const PUMB = new RegExp(
   'imu',
 );
 
-const PUMB_NOT_PURCHASE = /зарахуван|поповнен|повернен|відмов|відхилен|скасуван|переказ/i;
+const PUMB_SKIP = /повернен|відмов|відхилен|скасуван/i;
+const PUMB_INCOMING = /зарахуван|поповнен|надходжен/i;
+const PUMB_TRANSFER = /переказ|поповнен/i;
 
 /**
  * `doladowania.play.pl Poznan PL` → `doladowania.play.pl`. Місто й код країни
@@ -145,7 +152,7 @@ const stripPlace = (line) => {
 };
 
 const parsePumb = (text) => {
-  if (PUMB_NOT_PURCHASE.test(text)) return null;
+  if (PUMB_SKIP.test(text)) return null;
   const match = PUMB.exec(text);
   if (!match) return null;
   const [, shownAmount, shownSign, chargedAmount, chargedSign, merchantLine] = match;
@@ -154,7 +161,16 @@ const parsePumb = (text) => {
   const { amount, currency } = pickCharged(shown, charged);
   const merchant = stripPlace(merchantLine);
   if (!amount || !currency || !merchant) return null;
-  return { provider: 'pumb', type: 'expense', amount, currency, merchant, bankCategory: null };
+  return {
+    provider: 'pumb',
+    type: PUMB_INCOMING.test(text) ? 'income' : 'expense',
+    amount,
+    currency,
+    merchant,
+    bankCategory: null,
+    // Заголовок «Переказ»/«Поповнення» — у тексті, а не в торговці.
+    transferHint: PUMB_TRANSFER.test(text) || isTransferLike({ merchant }),
+  };
 };
 
 const parseBybit = (text) => {
@@ -164,7 +180,15 @@ const parseBybit = (text) => {
   const currency = String(match[2]).toUpperCase();
   const merchant = String(match[3]).trim();
   if (!amount || !merchant) return null;
-  return { provider: 'bybit', type: 'expense', amount, currency, merchant, bankCategory: null };
+  return {
+    provider: 'bybit',
+    type: 'expense',
+    amount,
+    currency,
+    merchant,
+    bankCategory: null,
+    transferHint: isTransferLike({ merchant }),
+  };
 };
 
 /**
@@ -186,8 +210,9 @@ export const notificationText = (raw, depth = 0) => {
 };
 
 /**
- * @returns {{ provider: string, type: 'expense', amount: number, currency: string,
- *   merchant: string, bankCategory: string|null } | null} `null` — це не покупка.
+ * @returns {{ provider: string, type: 'expense'|'income', amount: number, currency: string,
+ *   merchant: string, bankCategory: string|null, transferHint: boolean } | null}
+ *   `null` — це не рух грошей (код входу, акція, відмова, повернення).
  */
 export const parseBankNotification = (raw) => {
   const text = String(raw ?? '').replace(/\r\n?/g, '\n');

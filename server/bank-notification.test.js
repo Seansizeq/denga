@@ -34,6 +34,7 @@ describe('parseBankNotification — Privat24', () => {
       currency: 'UAH',
       merchant: 'skycash.com',
       bankCategory: 'Транспорт',
+      transferHint: false,
     });
   });
 
@@ -57,8 +58,12 @@ describe('parseBankNotification — Privat24', () => {
     expect(result).toMatchObject({ amount: 57.67, merchant: 'skycash.com' });
   });
 
-  it('зарахування, відмова й службові пуші покупкою не є', () => {
-    expect(parseBankNotification('+500.00₴ Зарахування переказу. Від Іван І., Kyiv')).toBeNull();
+  it('зарахування — надходження, а відмова й службові пуші — нічого', () => {
+    expect(parseBankNotification('+500.00₴ Зарахування переказу. Від Іван І., Kyiv')).toMatchObject({
+      type: 'income',
+      amount: 500,
+      currency: 'UAH',
+    });
     expect(parseBankNotification('Відмова. -5Zł Транспорт. skycash.com: недостатньо коштів')).toBeNull();
     expect(parseBankNotification('Код для входу в Приват24: 1234')).toBeNull();
     expect(parseBankNotification('')).toBeNull();
@@ -77,6 +82,7 @@ describe('parseBankNotification — ПУМБ', () => {
       currency: 'UAH',
       merchant: 'doladowania.play.pl',
       bankCategory: null,
+      transferHint: false,
     });
   });
 
@@ -89,9 +95,24 @@ describe('parseBankNotification — ПУМБ', () => {
     expect(parseBankNotification(`Купівля\n${PURCHASE}`)).toMatchObject({ amount: 116.42, provider: 'pumb' });
   });
 
-  it('зарахування того самого вигляду пропускається, якщо заголовок приїхав разом із текстом', () => {
+  it('зарахування того самого вигляду — надходження, коли заголовок приїхав разом із текстом', () => {
     const income = 'Зарахування\n500.00UAH\nIvan I. Kyiv UA\n09-10-2026 12:00\nКартка: *7354';
-    expect(parseBankNotification(income)).toBeNull();
+    expect(parseBankNotification(income)).toMatchObject({ type: 'income', amount: 500, provider: 'pumb' });
+  });
+
+  it('заголовок «Переказ» позначає списання як схоже на переказ', () => {
+    const out = 'Переказ\n1000.00UAH\nP2P Privat Kyiv UA\n09-10-2026 12:00\nКартка: *7354';
+    expect(parseBankNotification(out)).toMatchObject({ type: 'expense', transferHint: true });
+  });
+});
+
+describe('parseBankNotification — схожість на переказ', () => {
+  it('Privat: категорія «Перекази» чи назва банку — переказ, покупка — ні', () => {
+    expect(parseBankNotification('-1000.00₴ Перекази. На картку ПУМБ, Kyiv').transferHint).toBe(true);
+    expect(parseBankNotification('-500.00₴ Поповнення картки. Monobank, Kyiv').transferHint).toBe(true);
+    expect(parseBankNotification('-57.67₴ Транспорт. skycash.com, Warszawa').transferHint).toBe(false);
+    // «Приватна клініка» — не ПриватБанк.
+    expect(parseBankNotification('-300.00₴ Здоровʼя. Приватна клініка, Kyiv').transferHint).toBe(false);
   });
 });
 
@@ -167,6 +188,7 @@ describe('parseBankNotification — Bybit', () => {
       currency: 'USD',
       merchant: 'JMP S.A. BIEDRONKA 468',
       bankCategory: null,
+      transferHint: false,
     });
   });
 

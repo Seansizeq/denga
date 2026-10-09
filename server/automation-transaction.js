@@ -31,6 +31,9 @@ const AUTOMATION_FIELDS = [
   'text',
   'merchant',
   'notification',
+  // Напрямок пуша, коли банк пише його лише в заголовку (ПУМБ: «Зарахування»),
+  // а ярлик знає його з фільтра автоматизації.
+  'type',
 ];
 
 /** `Account`, ` account `, `category_id` → один вигляд для звірки. */
@@ -241,6 +244,17 @@ const findAccountByName = (raw, accounts) => {
 };
 
 const matchesCategory = (category, value) => String(category?.id ?? '') === value;
+
+/**
+ * Рахунок, як його назвав ярлик: ключ, рядок пікера з емодзі або просто
+ * назва з застосунку. `null` — такого рахунку немає (або назва неоднозначна).
+ */
+export const resolveAutomationAccount = (raw, accounts = []) => {
+  const value = String(raw ?? '').trim();
+  if (!value) return null;
+  const options = buildOptionMaps({ categories: [], accounts, type: 'all' });
+  return findByIdOrLabel(value, accounts, options.accounts, matchesAccount) ?? findAccountByName(value, accounts);
+};
 
 const matchesAccount = (account, value) =>
   String(account?.accountKey ?? '').trim().toLowerCase() === value.toLowerCase();

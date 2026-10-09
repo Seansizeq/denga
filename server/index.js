@@ -122,7 +122,9 @@ import {
   buildSmartConfirmationPayload,
   buildSmartSavedPayload,
   buildSmartTransactionKeyboard,
+  formatSmartAmount,
 } from './smart-transaction-message.js';
+import { PAIR_WINDOW_MS, findTransferPair, isTransferLike } from './own-transfer.js';
 import {
   extractCustomEmojiReferences,
   formatSmartTransactionEmojiSetup,
@@ -144,6 +146,7 @@ import {
   buildOptionsPayload,
   buildResultMessage,
   normalizeAutomationBody,
+  resolveAutomationAccount,
   unknownFieldsWarning,
   validateAutomationTransaction,
 } from './automation-transaction.js';
@@ -860,13 +863,30 @@ const parseCryptoJson = (raw) => {
 };
 
 /**
+ * На скільки днів назад можна взяти курс, якщо точного дня немає. Покриває
+ * межу доби (операція датується днем людини, а курс записується днем за UTC —
+ * після півночі у Варшаві це ще «вчора») і вихідні, коли курс не змінюється.
+ */
+const FX_DAY_LOOKBACK = 4;
+
+/**
  * Курси дня. Ціни крипти за минулі дні часто невідомі (знімки почалися
  * пізніше), тож для них береться найближчий відомий день, а без жодного — ціни
- * з кешу. Курс гривні й злотого так не підміняється: без нього день лишається
- * незаповненим, доки його не добере НБУ.
+ * з кешу.
+ *
+ * @param exact лише точний день — для добору, який краще спитає НБУ саме про
+ *   цей день, ніж візьме сусідній.
  */
-const readFxDay = async (dbConn, day) => {
-  const row = await dbConn.get('SELECT usd_uah, usd_pln, crypto_json FROM fx_daily WHERE day = ? LIMIT 1', [day]);
+const readFxDay = async (dbConn, day, { exact = false } = {}) => {
+  const row = exact
+    ? await dbConn.get('SELECT day, usd_uah, usd_pln, crypto_json FROM fx_daily WHERE day = ? LIMIT 1', [day])
+    : await dbConn.get(
+        `SELECT day, usd_uah, usd_pln, crypto_json FROM fx_daily
+         WHERE day <= ? AND usd_uah > 0 AND usd_pln > 0
+           AND julianday(?) - julianday(day) <= ?
+         ORDER BY day DESC LIMIT 1`,
+        [day, day, FX_DAY_LOOKBACK],
+      );
   if (!(Number(row?.usd_uah) > 0) || !(Number(row?.usd_pln) > 0)) return null;
   let crypto = parseCryptoJson(row.crypto_json);
   if (!crypto) {
@@ -933,17 +953,19 @@ const backfillFiatAmounts = async () => {
     );
     for (const { day } of days ?? []) {
       if (!transactionDay(day)) continue;
-      let rates = await readFxDay(db, day);
+      // Точний день — з НБУ; сусідній — лише якщо НБУ не відповів.
+      let rates = await readFxDay(db, day, { exact: true });
       if (!rates) {
         const nbu = await fetchNbuDayRates(day);
-        if (!nbu) continue;
-        await db.run(
-          `INSERT INTO fx_daily (day, usd_uah, usd_pln, source, updated_at) VALUES (?, ?, ?, 'nbu', ?)
-           ON CONFLICT(day) DO UPDATE SET
-             usd_uah = COALESCE(fx_daily.usd_uah, excluded.usd_uah),
-             usd_pln = COALESCE(fx_daily.usd_pln, excluded.usd_pln)`,
-          [day, nbu.usdUah, nbu.usdPln, new Date().toISOString()],
-        );
+        if (nbu) {
+          await db.run(
+            `INSERT INTO fx_daily (day, usd_uah, usd_pln, source, updated_at) VALUES (?, ?, ?, 'nbu', ?)
+             ON CONFLICT(day) DO UPDATE SET
+               usd_uah = COALESCE(fx_daily.usd_uah, excluded.usd_uah),
+               usd_pln = COALESCE(fx_daily.usd_pln, excluded.usd_pln)`,
+            [day, nbu.usdUah, nbu.usdPln, new Date().toISOString()],
+          );
+        }
         rates = await readFxDay(db, day);
         if (!rates) continue;
       }
@@ -3198,6 +3220,20 @@ const handleBankCardCallback = async (callbackQuery, chatId, userId) => {
     return;
   }
 
+  // Витрату могло звести з зарахуванням на іншу твою картку — тоді це вже
+  // переказ, і категорія йому не потрібна. «Видалити» лишається: воно знімає
+  // переказ цілком, з обох рахунків.
+  if (parsed.action === 'categories' || parsed.action === 'pick') {
+    const linked = await db.get('SELECT type FROM transactions WHERE user_id = ? AND id = ? LIMIT 1', [
+      userId,
+      card.transactionId,
+    ]);
+    if (linked?.type === 'transfer') {
+      await answer('Це переказ між твоїми рахунками — категорії в нього немає');
+      return;
+    }
+  }
+
   if (parsed.action === 'categories') {
     const options = await bankCardOptions(userId, card);
     if (options.length === 0) {
@@ -4559,6 +4595,7 @@ app.post('/api/automation/transaction', async (req, res) => {
   let merchant = typeof body.merchant === 'string' ? body.merchant.trim() : '';
   let provider = 'wallet';
   let bankCategory = null;
+  let transferHint = null;
 
   // Пуш банку, пересланий ярликом як є. Не покупка — тихо пропускаємо:
   // ярлик спрацьовує на кожне сповіщення застосунку, і зарахування чи код
@@ -4590,6 +4627,44 @@ app.post('/api/automation/transaction', async (req, res) => {
       return;
     }
     ({ merchant, provider, bankCategory } = purchase);
+    transferHint = purchase.transferHint;
+
+    // Напрямок: з тексту банку, а коли банк пише його лише в заголовку —
+    // з поля `type`, яке знає автоматизація з фільтром на заголовку.
+    const direction = body.type === 'income' || body.type === 'expense' ? body.type : purchase.type;
+    if (direction === 'income') {
+      // Зарахування окремим доходом не записується: воно потрібне, щоб звести
+      // переказ між своїми картками з його другою половиною.
+      const account = resolveAutomationAccount(body.account ?? body.accountKey, accounts);
+      if (!account) {
+        reply(200, {
+          ok: true,
+          skipped: true,
+          message: 'ℹ️ Зарахування не записується. Щоб розпізнавати перекази між своїми картками, додай у ярлик поле account.',
+        });
+        return;
+      }
+      const paired = await recordIncomingForPairing({
+        userId,
+        provider,
+        amount: purchase.amount,
+        currency: purchase.currency,
+        merchant,
+        accountKey: String(account.accountKey).toLowerCase(),
+      });
+      if (paired) {
+        reply(201, { ok: true, paired: true, message: paired.message });
+        return;
+      }
+      reply(200, {
+        ok: true,
+        skipped: true,
+        pending: true,
+        message: 'ℹ️ Зарахування окремо не записується; якщо це переказ між твоїми картками, його зведе з другою половиною.',
+      });
+      return;
+    }
+
     // Рахунок ярлик може назвати сам; суму й валюту — лише з тексту банку.
     payload = { account: body.account ?? body.accountKey, amount: purchase.amount, currency: purchase.currency };
   }
@@ -4683,6 +4758,8 @@ app.post('/api/automation/transaction', async (req, res) => {
         accountName,
         categoryId: validated.categoryId,
         categorySource: guessedSource,
+        bankCategory,
+        transferHint,
         // Без явної дати — «зараз», а день з нього рахується в поясі людини.
         // Дата за замовчуванням із валідації — сьогоднішня за UTC, і покупка о
         // пів на першу ночі у Варшаві лягала б на вчора.
@@ -4715,12 +4792,15 @@ app.post('/api/automation/transaction', async (req, res) => {
       });
       return;
     }
-    reply(201, { ok: true, message: outcome.message, transaction: outcome.transaction });
+    reply(201, {
+      ok: true,
+      message: outcome.message,
+      transaction: outcome.transaction,
+      ...(outcome.paired ? { paired: true } : {}),
+    });
     return;
   }
 
-  // The account rides in the note, which is where every other path stores it
-  // and the only place the balance effects look for it.
   const transaction = {
     id: uuidv4(),
     user_id: userId,
@@ -4885,9 +4965,12 @@ const recordAutomaticTransaction = async ({
   timeMs = Date.now(),
   categoryId: explicitCategoryId = null,
   categorySource = 'explicit',
+  bankCategory = null,
+  transferHint = null,
 }) => {
   const cardId = createBankCardId();
   const nowIso = new Date().toISOString();
+  const looksLikeTransfer = transferHint ?? isTransferLike({ merchant, bankCategory });
 
   // Заявка на зовнішній id ставиться до будь-якої роботи. Банк повторює
   // доставку, доки не побачить 200, а ще той самий рядок виписки прилітає
@@ -4917,7 +5000,7 @@ const recordAutomaticTransaction = async ({
           categoryName: String(explicit.name ?? explicit.id),
           source: categorySource,
         }
-      : resolveBankCategory({ merchant, mcc, type, rules, categories });
+      : resolveBankCategory({ merchant, mcc, bankCategory, type, rules, categories });
 
     // День рахується в поясі людини, а не в UTC: покупка о 01:30 у Варшаві —
     // це сьогодні, і в місячному звіті вона має бути там, де її зробили.
@@ -4964,7 +5047,8 @@ const recordAutomaticTransaction = async ({
       await tx.run(
         `UPDATE bank_inbox SET
            transaction_id = ?, merchant = ?, merchant_key = ?, amount = ?, currency = ?,
-           type = ?, account_key = ?, account_name = ?, category_id = ?, category_source = ?, picker_ids = ?
+           type = ?, account_key = ?, account_name = ?, category_id = ?, category_source = ?, picker_ids = ?,
+           transfer_hint = ?
          WHERE id = ?`,
         [
           transaction.id,
@@ -4978,6 +5062,7 @@ const recordAutomaticTransaction = async ({
           resolved.categoryId,
           resolved.source,
           JSON.stringify(pickerIds),
+          looksLikeTransfer ? 1 : 0,
           cardId,
         ],
       );
@@ -4987,6 +5072,15 @@ const recordAutomaticTransaction = async ({
         new Date(Date.now() - BANK_INBOX_TTL_MS).toISOString(),
       ]);
     });
+
+    // Переказ між своїми картками: якщо друга половина вже прийшла, обидві
+    // зводяться в один переказ — і людина отримує одне повідомлення про
+    // переказ, а не картку витрати, якої насправді не було.
+    const paired = resolvedAccountKey ? await tryPairOwnTransfer(userId, cardId) : null;
+    if (paired) {
+      await notifyOwnTransfer(userId, paired);
+      return { ok: true, cardId, transaction, paired, message: paired.message };
+    }
 
     if (type === 'expense') {
       await checkBudgetThresholdsAfterExpense(userId, resolved.categoryId);
@@ -5039,6 +5133,241 @@ const recordAutomaticTransaction = async ({
     await db.run('DELETE FROM bank_inbox WHERE id = ?', [cardId]).catch(() => {});
     throw error;
   }
+};
+
+// --- Перекази між своїми картками (див. own-transfer.js) ---
+
+const accountNamesByKey = async (dbConn, userId, keys) => {
+  const names = new Map();
+  for (const key of new Set(keys.filter(Boolean))) {
+    const row = await dbConn.get('SELECT name FROM account_portfolio WHERE user_id = ? AND account_key = ? LIMIT 1', [
+      userId,
+      key,
+    ]);
+    names.set(key, String(row?.name ?? key));
+  }
+  return names;
+};
+
+/**
+ * Зарахування з пуша банку. Окремим доходом воно не записується — лише
+ * чекає, чи не виявиться другою половиною переказу між своїми картками.
+ * Якщо пара вже тут, зводить одразу.
+ *
+ * @returns {Promise<object|null>} підсумок зведення або `null`, коли пари ще немає.
+ */
+const recordIncomingForPairing = async ({ userId, provider, amount, currency, merchant, accountKey }) => {
+  const id = createBankCardId();
+  await db.run(
+    `INSERT INTO bank_inbox (id, user_id, provider, external_id, created_at, merchant, merchant_key,
+       amount, currency, type, account_key, transfer_hint)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'income', ?, 0)`,
+    [
+      id,
+      userId,
+      provider,
+      `${provider}:in:${uuidv4()}`,
+      new Date().toISOString(),
+      String(merchant ?? '').slice(0, 120),
+      merchantKey(merchant),
+      amount,
+      currency,
+      accountKey,
+    ],
+  );
+  const paired = await tryPairOwnTransfer(userId, id);
+  if (paired) await notifyOwnTransfer(userId, paired);
+  return paired;
+};
+
+/**
+ * Шукає другу половину переказу для запису `inboxId` і, якщо знаходить,
+ * зводить обидві. Відмова (борг пішов би в мінус, немає курсу) лишає все як
+ * було: краще зайва витрата, яку видно й можна прибрати, ніж зламаний баланс.
+ */
+const tryPairOwnTransfer = async (userId, inboxId) => {
+  const row = await db.get('SELECT * FROM bank_inbox WHERE id = ? AND user_id = ? LIMIT 1', [inboxId, userId]);
+  if (!row || row.paired_with || !row.account_key) return null;
+  const createdMs = Date.parse(row.created_at);
+  if (!Number.isFinite(createdMs)) return null;
+
+  const candidates = await db.all(
+    `SELECT * FROM bank_inbox
+     WHERE user_id = ? AND id <> ? AND paired_with IS NULL AND account_key IS NOT NULL
+       AND type <> ? AND created_at >= ? AND created_at <= ?`,
+    [
+      userId,
+      inboxId,
+      row.type,
+      new Date(createdMs - PAIR_WINDOW_MS).toISOString(),
+      new Date(createdMs + PAIR_WINDOW_MS).toISOString(),
+    ],
+  );
+  if (!candidates?.length) return null;
+
+  const convert = await buildAccountUnitConverter();
+  const toRecord = (r) => ({
+    id: r.id,
+    type: r.type,
+    amountUsd: convert(Number(r.amount) || 0, r.currency, 'USD'),
+    accountKey: r.account_key,
+    createdAtMs: Date.parse(r.created_at),
+    transferHint: Boolean(r.transfer_hint),
+    pairedWith: r.paired_with,
+  });
+  const match = findTransferPair(toRecord(row), candidates.map(toRecord));
+  if (!match) return null;
+  const other = candidates.find((c) => c.id === match.id);
+  const [outRow, inRow] = row.type === 'expense' ? [row, other] : [other, row];
+
+  try {
+    return await settleOwnTransfer(userId, outRow, inRow, convert);
+  } catch (error) {
+    if (error instanceof TransactionRefused) return null;
+    throw error;
+  }
+};
+
+/**
+ * Зведення двох половин переказу.
+ *
+ * Той самий рахунок з обох боків (дві картки ведуться в Denga одним
+ * рахунком) — переказ нічого не рухає: витрата прибирається. Різні рахунки —
+ * витрата перетворюється на переказ, тим самим рядком, щоб історія й картка
+ * в чаті лишились при ньому. Суми беруться в одиницях рахунків: з боку
+ * списання — те, що вже списалося, з боку зарахування — те, що прийшло.
+ */
+const settleOwnTransfer = async (userId, outRow, inRow, convert) =>
+  withTransaction(db, async (tx) => {
+    // Інший процес міг звести ці рядки, поки ми шукали пару.
+    const fresh = await tx.all('SELECT id, paired_with FROM bank_inbox WHERE id IN (?, ?)', [outRow.id, inRow.id]);
+    if (fresh.length !== 2 || fresh.some((r) => r.paired_with)) return null;
+
+    const outTx = outRow.transaction_id
+      ? await tx.get('SELECT * FROM transactions WHERE user_id = ? AND id = ? LIMIT 1', [userId, outRow.transaction_id])
+      : null;
+    if (!outTx || outTx.type !== 'expense') return null;
+    const inTx = inRow.transaction_id
+      ? await tx.get('SELECT * FROM transactions WHERE user_id = ? AND id = ? LIMIT 1', [userId, inRow.transaction_id])
+      : null;
+
+    const fromKey = String(outRow.account_key);
+    const toKey = String(inRow.account_key);
+    const accounts = await getAccountRowsForEffects(tx, userId, [fromKey, toKey]);
+    const fromAccount = accounts.get(fromKey);
+    const toAccount = accounts.get(toKey);
+    if (!fromAccount || !toAccount) return null;
+    const names = await accountNamesByKey(tx, userId, [fromKey, toKey]);
+
+    const markPaired = async (transactionId) => {
+      await tx.run('UPDATE bank_inbox SET paired_with = ?, transaction_id = ? WHERE id = ?', [
+        inRow.id,
+        transactionId,
+        outRow.id,
+      ]);
+      await tx.run('UPDATE bank_inbox SET paired_with = ?, transaction_id = ? WHERE id = ?', [
+        outRow.id,
+        transactionId,
+        inRow.id,
+      ]);
+    };
+    const removeIncome = async () => {
+      if (!inTx) return;
+      await applyTransactionEffects(tx, userId, inTx, -1, convert);
+      await tx.run('DELETE FROM transactions WHERE user_id = ? AND id = ?', [userId, inTx.id]);
+    };
+
+    if (fromKey === toKey) {
+      await assertTransactionPreconditions(
+        tx,
+        userId,
+        [{ tx: outTx, multiplier: -1 }, ...(inTx ? [{ tx: inTx, multiplier: -1 }] : [])],
+        convert,
+      );
+      await applyTransactionEffects(tx, userId, outTx, -1, convert);
+      await tx.run('DELETE FROM transactions WHERE user_id = ? AND id = ?', [userId, outTx.id]);
+      await removeIncome();
+      await markPaired(null);
+      const name = names.get(fromKey);
+      return {
+        kind: 'same-account',
+        accountName: name,
+        message: `🔁 Переказ між твоїми картками на рахунку «${name}» — він нічого не змінює, тож витрату прибрано`,
+      };
+    }
+
+    const fromUnit = String(fromAccount.primaryCurrency).toUpperCase();
+    const toUnit = String(toAccount.primaryCurrency).toUpperCase();
+    const inAccountUnit = (amount, currency, unit, booked) => {
+      if (booked && String(booked.currency).toUpperCase() === unit && booked.amount > 0) return booked.amount;
+      if (String(currency).toUpperCase() === unit) return Number(amount);
+      return convert(Number(amount), currency, unit);
+    };
+    const fromAmount = inAccountUnit(outTx.amount, outTx.currency, fromUnit, {
+      amount: Number(outTx.accountAmount),
+      currency: outTx.accountCurrency,
+    });
+    const toAmount = inAccountUnit(
+      inRow.amount,
+      inRow.currency,
+      toUnit,
+      inTx ? { amount: Number(inTx.accountAmount), currency: inTx.accountCurrency } : null,
+    );
+    if (!(fromAmount > 0) || !(toAmount > 0)) return null;
+
+    const transfer = {
+      ...outTx,
+      type: 'transfer',
+      categoryId: 'transfer',
+      amount: fromAmount,
+      currency: fromUnit,
+      fromAccountKey: fromKey,
+      toAccountKey: toKey,
+      transferToAmount: toAmount,
+      transferToCurrency: toUnit,
+      accountKey: null,
+      accountAmount: null,
+      accountCurrency: null,
+      amountUah: null,
+      amountPln: null,
+      amountUsd: null,
+    };
+    await assertTransactionPreconditions(
+      tx,
+      userId,
+      [
+        { tx: outTx, multiplier: -1 },
+        ...(inTx ? [{ tx: inTx, multiplier: -1 }] : []),
+        { tx: transfer, multiplier: 1 },
+      ],
+      convert,
+    );
+    await applyTransactionEffects(tx, userId, outTx, -1, convert);
+    await removeIncome();
+    await tx.run(
+      `UPDATE transactions SET type = 'transfer', categoryId = 'transfer', amount = ?, currency = ?,
+         fromAccountKey = ?, toAccountKey = ?, transferToAmount = ?, transferToCurrency = ?,
+         accountKey = NULL, accountAmount = NULL, accountCurrency = NULL,
+         amountUah = NULL, amountPln = NULL, amountUsd = NULL
+       WHERE user_id = ? AND id = ?`,
+      [fromAmount, fromUnit, fromKey, toKey, toAmount, toUnit, userId, outTx.id],
+    );
+    await applyTransactionEffects(tx, userId, transfer, 1, convert);
+    await markPaired(outTx.id);
+    return {
+      kind: 'transfer',
+      transactionId: outTx.id,
+      message:
+        `🔁 Переказ між твоїми рахунками: ${formatSmartAmount(fromAmount, fromUnit)} з «${names.get(fromKey)}»` +
+        ` → ${formatSmartAmount(toAmount, toUnit)} на «${names.get(toKey)}»`,
+    };
+  });
+
+/** Одне повідомлення в чат замість картки витрати, якої насправді не було. */
+const notifyOwnTransfer = async (userId, paired) => {
+  const chatId = await getBotChatId(userId);
+  if (!chatId) return;
+  await enqueueOutbox(db, { chatId, lane: 'interactive', text: paired.message });
 };
 
 // --- Вебхук банку ---

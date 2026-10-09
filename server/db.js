@@ -846,6 +846,18 @@ export async function initDb() {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_bank_inbox_external
     ON bank_inbox(user_id, provider, external_id)
   `);
+  // Перекази між своїми картками (див. `own-transfer.js`): чи списання схоже
+  // на переказ і з яким зарахуванням його вже зведено.
+  try {
+    await db.exec(`ALTER TABLE bank_inbox ADD COLUMN transfer_hint INTEGER NOT NULL DEFAULT 0`);
+  } catch {
+    /* already exists */
+  }
+  try {
+    await db.exec(`ALTER TABLE bank_inbox ADD COLUMN paired_with TEXT`);
+  } catch {
+    /* already exists */
+  }
   // Старі картки прибираються за строком, а не живуть вічно: після натискання
   // кнопки рядок уже нічого не вирішує, крім захисту від повтору доставки.
   await db.exec(`
