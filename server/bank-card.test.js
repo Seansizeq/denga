@@ -107,6 +107,8 @@ describe('buildBankCardText', () => {
   it('каже, що категорію вгадано, коли її ніхто не підтверджував', () => {
     const text = buildBankCardText({ merchant: 'Silpo', amount: 1, currency: 'UAH', categoryName: 'Продукти', source: 'mcc' });
     expect(text).toContain('↪️');
+    const byBrand = buildBankCardText({ merchant: 'Biedronka', amount: 1, currency: 'USD', categoryName: 'Продукти', source: 'brand' });
+    expect(byBrand).toContain('за назвою магазину');
   });
 
   it('надходження не підписане як витрата', () => {

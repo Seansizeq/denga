@@ -39,7 +39,7 @@ describe('merchantKey', () => {
 
 describe('resolveBankCategory', () => {
   it('бере MCC, коли про торговця ще нічого не відомо', () => {
-    const result = resolveBankCategory({ merchant: 'ATB', mcc: 5411, categories: CATEGORIES });
+    const result = resolveBankCategory({ merchant: 'Магазин біля дому', mcc: 5411, categories: CATEGORIES });
     expect(result).toMatchObject({ categoryId: 'food', source: 'mcc' });
   });
 
@@ -94,6 +94,59 @@ describe('resolveBankCategory', () => {
   it('порожній список категорій не губить операцію', () => {
     const result = resolveBankCategory({ merchant: 'Sklep', categories: [] });
     expect(result.categoryId).toBe('other_expense');
+  });
+
+  it('впізнає мережу з назви, коли MCC немає зовсім', () => {
+    // Саме так приходить сповіщення Bybit: назва є, коду немає.
+    expect(resolveBankCategory({ merchant: 'JMP S.A. BIEDRONKA 468', categories: CATEGORIES }))
+      .toMatchObject({ categoryId: 'food', source: 'brand' });
+    expect(resolveBankCategory({ merchant: 'ZABKA Z6914 K.1', categories: CATEGORIES }).categoryId).toBe('food');
+    expect(resolveBankCategory({ merchant: 'ŻABKA', categories: CATEGORIES }).categoryId).toBe('food');
+    expect(resolveBankCategory({ merchant: 'BIEDRONKA1234', categories: CATEGORIES }).categoryId).toBe('food');
+    expect(resolveBankCategory({ merchant: 'PKN ORLEN STACJA 4123', categories: CATEGORIES }).categoryId).toBe('transport');
+    expect(resolveBankCategory({ merchant: 'Apteka Dr.Max', categories: CATEGORIES }).categoryId).toBe('health');
+  });
+
+  it('доставку їжі не плутає з таксі тієї ж компанії', () => {
+    expect(resolveBankCategory({ merchant: 'UBER *EATS', categories: CATEGORIES }).categoryId).toBe('food');
+    expect(resolveBankCategory({ merchant: 'UBER *TRIP', categories: CATEGORIES }).categoryId).toBe('transport');
+    expect(resolveBankCategory({ merchant: 'BOLT FOOD', categories: CATEGORIES }).categoryId).toBe('food');
+    expect(resolveBankCategory({ merchant: 'BOLT.EU/O/2410', categories: CATEGORIES }).categoryId).toBe('transport');
+  });
+
+  it('не впізнає мережу в шматку чужого слова', () => {
+    expect(resolveBankCategory({ merchant: 'BOLTEX SP Z O O', categories: CATEGORIES }).source).toBe('fallback');
+    expect(resolveBankCategory({ merchant: 'DINOZAUR PARK', categories: CATEGORIES }).source).toBe('fallback');
+  });
+
+  it('правило людини важить більше за мережу', () => {
+    const result = resolveBankCategory({
+      merchant: 'ZABKA Z6914',
+      rules: { [merchantKey('ZABKA Z6914')]: 'transport' },
+      categories: CATEGORIES,
+    });
+    expect(result).toMatchObject({ categoryId: 'transport', source: 'rule' });
+  });
+
+  it('кладе мережу у власну категорію людини, коли така є', () => {
+    const own = [
+      ...CATEGORIES,
+      { id: 'custom:%D0%9E%D0%B4%D1%8F%D0%B3|Shirt|%23000', name: 'Одяг і взуття', type: 'expense' },
+      { id: 'custom:%D0%9F%D1%96%D0%B4%D0%BF%D0%B8%D1%81%D0%BA%D0%B8|Tv|%23000', name: 'Підписки', type: 'expense' },
+      { id: 'custom:%D0%9A%D0%B0%D0%B2%D0%B0|Coffee|%23000', name: 'Кава', type: 'expense' },
+    ];
+    expect(resolveBankCategory({ merchant: 'ZARA POLSKA', categories: own }).categoryId).toBe(own[6].id);
+    // Код кабельного ТБ сказав би «Житло» — назва точніша.
+    expect(resolveBankCategory({ merchant: 'NETFLIX.COM', mcc: 4899, categories: own }).categoryId).toBe(own[7].id);
+    expect(resolveBankCategory({ merchant: 'STARBUCKS 12', categories: own }).categoryId).toBe(own[8].id);
+  });
+
+  it('без власної категорії бере вбудовану, а якщо й такої нема — мовчить', () => {
+    expect(resolveBankCategory({ merchant: 'NETFLIX.COM', categories: CATEGORIES }).categoryId).toBe('other_expense');
+    // У тестовому списку немає «Розваг», тож Netflix іде далі по ланцюжку, а не
+    // вигадує категорію.
+    expect(resolveBankCategory({ merchant: 'STARBUCKS 12', categories: CATEGORIES }).categoryId).toBe('food');
+    expect(resolveBankCategory({ merchant: 'ZARA POLSKA', categories: CATEGORIES }).source).toBe('fallback');
   });
 
   it('у таблиці MCC немає кодів поза межами ISO 18245', () => {
