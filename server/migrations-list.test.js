@@ -10,6 +10,7 @@ import {
   customCategoriesUserScopedKey,
   legacyTransactionCurrencyFromNote,
   plannerDaysToShiftEntries,
+  transactionAccountColumn,
   userDataVersionCounters,
 } from './migrations-list.js';
 
@@ -328,5 +329,43 @@ describe('004 — ручні зміни переїжджають у записи
 
     expect(second.applied).toEqual([]);
     expect(await entriesOf('111', '2026-05-10')).toHaveLength(1);
+  });
+});
+
+describe('005 — рахунок з примітки в колонку', () => {
+  const addTx = (id, type, note, extra = {}) =>
+    db.run(
+      `INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, note, fromAccountKey, toAccountKey)
+       VALUES (?, '111', 100, 'UAH', ?, ?, ?, ?, ?, ?)`,
+      [id, type === 'transfer' ? 'transfer' : 'food', type, now(), note, extra.from ?? null, extra.to ?? null],
+    );
+  const row = (id) => db.get('SELECT accountKey, note FROM transactions WHERE id = ?', [id]);
+  const runStep = async () => {
+    await db.run('DELETE FROM app_cache');
+    await runMigrations(db, [transactionAccountColumn], silent);
+  };
+
+  it('переносить рахунок у колонку й прибирає маркер з примітки', async () => {
+    await addTx('a', 'expense', 'Хліб Account: u1_card_abc123');
+    await runStep();
+    expect(await row('a')).toEqual({ accountKey: 'u1_card_abc123', note: 'Хліб' });
+  });
+
+  it('примітка, від якої нічого не лишилось, стає порожньою', async () => {
+    await addTx('b', 'income', 'Account: usdt');
+    await runStep();
+    expect(await row('b')).toEqual({ accountKey: 'usdt', note: null });
+  });
+
+  it('перекази не чіпає — їхні рахунки й так у власних колонках', async () => {
+    await addTx('c', 'transfer', 'Account: x', { from: 'a', to: 'b' });
+    await runStep();
+    expect(await row('c')).toEqual({ accountKey: null, note: 'Account: x' });
+  });
+
+  it('примітку без маркера лишає як є', async () => {
+    await addTx('d', 'expense', 'Account у назві магазину немає');
+    await runStep();
+    expect(await row('d')).toEqual({ accountKey: null, note: 'Account у назві магазину немає' });
   });
 });

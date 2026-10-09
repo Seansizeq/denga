@@ -387,22 +387,33 @@ const normalizeCurrency = (value) => {
   if (code === 'PLN' || code === 'USD' || code === 'UAH') return code;
   return 'UAH';
 };
+/**
+ * Маркер `Account: <ключ>`, яким рахунок колись їхав у примітці. Тепер рахунок
+ * живе в колонці `accountKey`; маркер лише читається — від старого клієнта, що
+ * ще відкритий на телефоні, — і одразу прибирається з тексту.
+ */
 const getAccountSlugFromNote = (note) => {
   if (typeof note !== 'string' || !note.trim()) return null;
   const m = note.match(/\bAccount:\s*([a-z0-9_]{1,48})\b/i);
   if (!m?.[1]) return null;
   return m[1].toLowerCase();
 };
-const mergeAccountIntoNote = (note, accountKey) => {
-  const key = String(accountKey ?? '').trim().toLowerCase();
-  const raw = typeof note === 'string' ? note : '';
-  const withoutAccount = raw
+const stripAccountMarker = (note) =>
+  (typeof note === 'string' ? note : '')
     .replace(/\bAccount:\s*[a-z0-9_]{1,48}\b/ig, '')
     .replace(/\s+/g, ' ')
     .trim();
-  if (!key) return withoutAccount;
-  return `${withoutAccount ? `${withoutAccount} ` : ''}Account: ${key}`.trim();
+const normalizeTxAccountKey = (value) => {
+  const key = String(value ?? '').trim().toLowerCase();
+  return key || null;
 };
+const accountExists = async (dbConn, userId, accountKey) =>
+  Boolean(
+    await dbConn.get('SELECT 1 FROM account_portfolio WHERE user_id = ? AND account_key = ? LIMIT 1', [
+      userId,
+      accountKey,
+    ]),
+  );
 /**
  * Корекція завжди пишеться під вбудованою категорією. Раніше вона могла
  * потрапити в однойменну користувацьку категорію — і тоді жоден підрахунок не
@@ -960,11 +971,8 @@ const runSubscriptionAutopayForUser = async (userId) => {
         const subCategoryId = typeof sub.categoryId === 'string' && sub.categoryId.trim()
           ? sub.categoryId
           : 'other_expense';
-        // Рахунок їде в примітці, як і в усіх інших витрат: саме там його шукає
-        // перерахунок балансу. Без рахунку списання лише записується.
-        const note = sub.accountKey
-          ? mergeAccountIntoNote(buildSubscriptionChargeNote(sub), sub.accountKey)
-          : buildSubscriptionChargeNote(sub);
+        // Без рахунку списання лише записується, баланс не рухає.
+        const note = buildSubscriptionChargeNote(sub);
         const charge = {
           id: uuidv4(),
           user_id: userId,
@@ -974,10 +982,11 @@ const runSubscriptionAutopayForUser = async (userId) => {
           type: 'expense',
           date: `${chargeDay}T12:00:00.000Z`,
           note: note || undefined,
+          accountKey: normalizeTxAccountKey(sub.accountKey),
         };
         await tx.run(
-          'INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-          [charge.id, charge.user_id, charge.amount, charge.currency, charge.categoryId, charge.type, charge.date, charge.note ?? null]
+          'INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, note, accountKey) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [charge.id, charge.user_id, charge.amount, charge.currency, charge.categoryId, charge.type, charge.date, charge.note ?? null, charge.accountKey]
         );
         try {
           await applyTransactionEffects(tx, userId, charge);
@@ -2684,7 +2693,7 @@ const saveBotTransaction = async (transaction) => {
     await withTransaction(db, async (tx, afterCommit) => {
       await assertTransactionPreconditions(tx, transaction.user_id, [{ tx: transaction, multiplier: 1 }], convert);
       await tx.run(
-        'INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, note, telegram_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, note, telegram_user_id, accountKey) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         [
           transaction.id,
           transaction.user_id,
@@ -2695,6 +2704,7 @@ const saveBotTransaction = async (transaction) => {
           transaction.date,
           transaction.note,
           transaction.telegram_user_id,
+          normalizeTxAccountKey(transaction.accountKey),
         ]
       );
       await applyTransactionEffects(tx, transaction.user_id, transaction, 1, convert);
@@ -3649,9 +3659,9 @@ if (bot) {
       const accountKey = pendingSmart.accountKey
         ? String(pendingSmart.accountKey).trim().toLowerCase()
         : null;
-      const baseNote = pendingSmart.note ? String(pendingSmart.note) : 'Added via Telegram Bot';
-      const note = accountKey ? mergeAccountIntoNote(baseNote, accountKey) : baseNote;
+      const note = pendingSmart.note ? stripAccountMarker(String(pendingSmart.note)) : 'Added via Telegram Bot';
       const transaction = {
+        accountKey,
         id: uuidv4(),
         user_id: pendingSmart.userId,
         amount: pendingSmart.amount,
@@ -3806,10 +3816,9 @@ if (bot) {
       pendingTransactions.delete(chatId);
       const picked = callbackQuery.data.replace('acc_', '');
       const accountKey = picked === 'none' ? null : String(picked).trim().toLowerCase();
-      const note = accountKey
-        ? mergeAccountIntoNote('Added via Telegram Bot', accountKey)
-        : 'Added via Telegram Bot';
+      const note = 'Added via Telegram Bot';
       const transaction = {
+        accountKey,
         id: uuidv4(),
         user_id: pending.userId,
         amount: pending.amount,
@@ -4529,7 +4538,8 @@ app.post('/api/automation/transaction', async (req, res) => {
     categoryId: validated.categoryId,
     type: validated.type,
     date: `${validated.date}T12:00:00.000Z`,
-    note: validated.account ? mergeAccountIntoNote(validated.note, validated.account) : validated.note,
+    note: validated.note,
+    accountKey: normalizeTxAccountKey(validated.account),
   };
 
   // One converter for the whole request, so the check, the write and the
@@ -4564,8 +4574,8 @@ app.post('/api/automation/transaction', async (req, res) => {
   }
 
   await db.run(
-    `INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, note)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, note, accountKey)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       transaction.id,
       transaction.user_id,
@@ -4575,6 +4585,7 @@ app.post('/api/automation/transaction', async (req, res) => {
       transaction.type,
       transaction.date,
       transaction.note,
+      transaction.accountKey,
     ]
   );
   await applyTransactionEffects(db, userId, transaction, 1, convertToAccountUnit);
@@ -4732,7 +4743,8 @@ const recordAutomaticTransaction = async ({
       categoryId: resolved.categoryId,
       type,
       date: `${day}T12:00:00.000Z`,
-      note: resolvedAccountKey ? mergeAccountIntoNote(label, resolvedAccountKey) : label,
+      note: label,
+      accountKey: resolvedAccountKey,
     };
 
     // Курс береться до входу в транзакцію: усередині `buildAccountUnitConverter`
@@ -4743,8 +4755,8 @@ const recordAutomaticTransaction = async ({
     await withTransaction(db, async (tx) => {
       await assertTransactionPreconditions(tx, userId, [{ tx: transaction, multiplier: 1 }], convert);
       await tx.run(
-        `INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, note)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, note, accountKey)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           transaction.id,
           transaction.user_id,
@@ -4754,6 +4766,7 @@ const recordAutomaticTransaction = async ({
           transaction.type,
           transaction.date,
           transaction.note,
+          transaction.accountKey,
         ],
       );
       await applyTransactionEffects(tx, userId, transaction, 1, convert);
@@ -5931,7 +5944,9 @@ app.post('/api/goals/:id/contributions', async (req, res) => {
     }
     const acctCur = normalizeCurrency(acctDenom);
     const acctConversion = freezeConversion(acctCur);
-    let txNote = mergeAccountIntoNote(baseNote, acctKey);
+    // Рахунки переказу — у `fromAccountKey`/`toAccountKey`; маркер у примітці
+    // йому ніколи не був потрібен.
+    let txNote = stripAccountMarker(baseNote);
     if (txNote.length > 120) txNote = txNote.slice(0, 120);
     // Putting money aside is not spending it - the money moved from one of your
     // accounts into the goal's own account. A two-sided transfer says exactly
@@ -5939,6 +5954,7 @@ app.post('/api/goals/:id/contributions', async (req, res) => {
     // not move. Recorded as an expense (as it once was) the money vanished from
     // net worth, ate the "other" budget and inflated expense stats.
     const goalTransfer = {
+      id: txId,
       amount,
       currency: acctCur,
       type: 'transfer',
@@ -6014,9 +6030,13 @@ app.post('/api/goals/:id/contributions', async (req, res) => {
   // outside the app. Recorded as income into the goal's account, so it shows up
   // both in the goal and in total capital.
   const manualConversion = freezeConversion(enteredCurrency);
-  let incomeNote = mergeAccountIntoNote(baseNote, goalAccount);
+  let incomeNote = stripAccountMarker(baseNote);
   if (incomeNote.length > 120) incomeNote = incomeNote.slice(0, 120);
   const goalIncome = {
+    // З id відкат знатиме, скільки саме лягло на рахунок цілі у її валюті
+    // (див. `accountAmount`), навіть якщо внесок був в іншій.
+    id: txId,
+    accountKey: goalAccount,
     amount,
     currency: enteredCurrency,
     type: 'income',
@@ -6028,9 +6048,9 @@ app.post('/api/goals/:id/contributions', async (req, res) => {
   try {
     await withTransaction(db, async (tx) => {
       await tx.run(
-        `INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, note, fromAccountKey)
-         VALUES (?, ?, ?, ?, 'other_income', 'income', ?, ?, ?)`,
-        [txId, userId, amount, enteredCurrency, txDate, incomeNote, goalAccount]
+        `INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, note, fromAccountKey, accountKey)
+         VALUES (?, ?, ?, ?, 'other_income', 'income', ?, ?, ?, ?)`,
+        [txId, userId, amount, enteredCurrency, txDate, incomeNote, goalAccount, goalAccount]
       );
       await applyTransactionEffects(tx, userId, goalIncome);
       await tx.run(
@@ -6509,8 +6529,8 @@ app.put('/api/accounts/:key', async (req, res) => {
         );
       } else if (section !== 'debt' && plan.recordDelta) {
         await tx.run(
-          `INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, note, telegram_user_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, note, telegram_user_id, accountKey)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             uuidv4(),
             userId,
@@ -6519,8 +6539,9 @@ app.put('/api/accounts/:key', async (req, res) => {
             resolveBalanceCorrectionCategoryId(),
             plan.delta > 0 ? 'income' : 'expense',
             now,
-            mergeAccountIntoNote('Корекція балансу', accountKey),
+            'Корекція балансу',
             null,
+            normalizeTxAccountKey(accountKey),
           ]
         );
       }
@@ -6743,7 +6764,12 @@ app.post('/api/transactions', async (req, res) => {
     req.body?.type === 'income' || req.body?.type === 'expense' || req.body?.type === 'transfer'
       ? req.body.type
       : '';
-  const note = typeof req.body?.note === 'string' ? req.body.note.trim() : '';
+  const rawNote = typeof req.body?.note === 'string' ? req.body.note.trim() : '';
+  const note = stripAccountMarker(rawNote);
+  const explicitAccountKey = normalizeTxAccountKey(req.body?.accountKey);
+  // Рахунок доходу чи витрати — у власному полі. Маркер у примітці ще
+  // приходить від старого клієнта, відкритого на телефоні до оновлення.
+  const accountKey = type === 'transfer' ? null : explicitAccountKey ?? getAccountSlugFromNote(rawNote);
   const parsedTxDate = req.body?.date === undefined ? new Date() : parseIsoDate(req.body.date);
   if (!Number.isFinite(amount) || amount <= 0) {
     res.status(400).json({ error: 'amount must be > 0', code: 'INVALID_AMOUNT' });
@@ -6763,6 +6789,12 @@ app.post('/api/transactions', async (req, res) => {
   }
   if (!parsedTxDate) {
     res.status(400).json({ error: 'date must be YYYY-MM-DD', code: 'INVALID_DATE' });
+    return;
+  }
+  // Рахунок, названий полем, має бути цієї людини. Маркер старого клієнта не
+  // перевіряється, як і раніше: невідомий рахунок просто нічого не рухає.
+  if (type !== 'transfer' && explicitAccountKey && !(await accountExists(db, userId, explicitAccountKey))) {
+    res.status(400).json({ error: 'account not found', code: 'ACCOUNT_NOT_FOUND' });
     return;
   }
 
@@ -6808,6 +6840,7 @@ app.post('/api/transactions', async (req, res) => {
     type,
     date: parsedTxDate.toISOString(),
     note: note || undefined,
+    accountKey,
     ...transferFields,
   };
 
@@ -6819,8 +6852,8 @@ app.post('/api/transactions', async (req, res) => {
       await assertTransactionPreconditions(tx, userId, [{ tx: transaction, multiplier: 1 }], convert);
       await tx.run(
         `INSERT INTO transactions
-          (id, user_id, amount, currency, transferToAmount, transferToCurrency, categoryId, type, date, note, fromAccountKey, toAccountKey)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (id, user_id, amount, currency, transferToAmount, transferToCurrency, categoryId, type, date, note, fromAccountKey, toAccountKey, accountKey)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           transaction.id,
           transaction.user_id,
@@ -6834,6 +6867,7 @@ app.post('/api/transactions', async (req, res) => {
           transaction.note ?? null,
           transaction.fromAccountKey,
           transaction.toAccountKey,
+          transaction.accountKey,
         ]
       );
       await applyTransactionEffects(tx, userId, transaction, 1, convert);
@@ -6882,9 +6916,29 @@ app.patch('/api/transactions/:id', async (req, res) => {
   const categoryId = requestedCategoryId
     || (type !== 'transfer' && current.categoryId === 'transfer' ? '' : current.categoryId);
   const parsedTxDate = req.body?.date === undefined ? new Date(current.date) : parseIsoDate(req.body.date);
-  const note = req.body?.note === undefined
+  const rawNote = req.body?.note === undefined
     ? (current.note ?? '')
     : (typeof req.body.note === 'string' ? req.body.note.trim() : '');
+  const note = stripAccountMarker(rawNote);
+  // Рахунок: явне поле → маркер у новій примітці від старого клієнта (там
+  // примітка без маркера й означала «без рахунку») → той, що вже був.
+  const currentAccountKey =
+    normalizeTxAccountKey(current.accountKey) ?? getAccountSlugFromNote(current.note);
+  const nextAccountKey =
+    req.body?.accountKey !== undefined
+      ? normalizeTxAccountKey(req.body.accountKey)
+      : req.body?.note !== undefined
+        ? getAccountSlugFromNote(rawNote)
+        : currentAccountKey;
+  if (
+    type !== 'transfer' &&
+    nextAccountKey &&
+    nextAccountKey !== currentAccountKey &&
+    !(await accountExists(db, userId, nextAccountKey))
+  ) {
+    res.status(400).json({ error: 'account not found', code: 'ACCOUNT_NOT_FOUND' });
+    return;
+  }
   const fromAccountKey = req.body?.fromAccountKey === undefined ? current.fromAccountKey : req.body.fromAccountKey;
   const toAccountKey = req.body?.toAccountKey === undefined ? current.toAccountKey : req.body.toAccountKey;
   const transferToAmount = req.body?.transferToAmount === undefined ? current.transferToAmount : req.body.transferToAmount;
@@ -6948,6 +7002,7 @@ app.patch('/api/transactions/:id', async (req, res) => {
     type,
     date: parsedTxDate.toISOString(),
     note: note || undefined,
+    accountKey: type === 'transfer' ? null : nextAccountKey,
     ...nextTransferFields,
   };
   // Записана сума лишається, поки правка не чіпає рахунку, суми, валюти й
@@ -6982,6 +7037,7 @@ app.patch('/api/transactions/:id', async (req, res) => {
              note = ?,
              fromAccountKey = ?,
              toAccountKey = ?,
+             accountKey = ?,
              accountAmount = ?,
              accountCurrency = ?
          WHERE user_id = ? AND id = ?`,
@@ -6996,6 +7052,7 @@ app.patch('/api/transactions/:id', async (req, res) => {
           nextTransaction.note ?? null,
           nextTransaction.fromAccountKey,
           nextTransaction.toAccountKey,
+          nextTransaction.accountKey ?? null,
           nextTransaction.accountAmount ?? null,
           nextTransaction.accountCurrency ?? null,
           userId,

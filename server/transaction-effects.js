@@ -85,7 +85,9 @@ export const getTransactionAccountEffects = (tx) => {
   if (tx?.categoryId === 'debt_return' && fromKey) {
     return [{ accountKey: fromKey, delta: -size, currency }];
   }
-  const accountKey = fromKey || getAccountSlugFromNote(tx?.note);
+  // Колонка — основне місце рахунку. Маркер у примітці лишився запасним для
+  // рядків, яких ще не торкнулася міграція 005, і для старого клієнта.
+  const accountKey = normalizeAccountKey(tx?.accountKey) || fromKey || getAccountSlugFromNote(tx?.note);
   if (!accountKey) return [];
   if (tx?.type === 'income') return [{ accountKey, delta: size, currency }];
   if (tx?.type === 'expense') return [{ accountKey, delta: -size, currency }];

@@ -6,7 +6,7 @@ import { getCategoryIcon } from '../../constants/categoryIcons';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { useTranslation } from '../../i18n/LanguageContext';
 import type { CategoryKey } from '../../i18n/translations';
-import { getAccountSlugFromNote, stripAccountFromNote } from '../../utils/transactionAccount';
+import { getTransactionAccountKey, stripAccountFromNote } from '../../utils/transactionAccount';
 import { getTransferSummaryLabel } from '../../utils/transactionUtils';
 import { useDenominationRates } from '../../hooks/useDenominationRates';
 import { useAccountNames } from '../../hooks/useAccountNames';
@@ -68,7 +68,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
   // там, де список не згрупований по днях.
   const accountSummary = isTransfer
     ? getTransferSummaryLabel(transaction, resolveAccountName)
-    : resolveAccountName(getAccountSlugFromNote(transaction.note));
+    : resolveAccountName(getTransactionAccountKey(transaction));
   const subtitle =
     [accountSummary, cleanNote, showDate ? formatDate(transaction.date, locale) : '']
       .filter(Boolean)

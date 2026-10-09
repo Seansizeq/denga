@@ -249,6 +249,9 @@ describe('AddTransaction', () => {
       // Sent as typed; the server debits the hryvnia card by the converted sum.
       await vi.waitFor(() => expect(mocks.addTransaction).toHaveBeenCalled());
       expect(mocks.addTransaction.mock.calls[0][0]).toMatchObject({ amount: 20, currency: 'PLN' });
+      // The account travels in its own field, not as a marker inside the note.
+      expect(mocks.addTransaction.mock.calls[0][0]).toMatchObject({ accountKey: 'privat24' });
+      expect(String(mocks.addTransaction.mock.calls[0][0].note ?? '')).not.toContain('Account:');
     });
 
     it('says what the card will be debited when the units differ', async () => {

@@ -10,7 +10,6 @@ import type { CategoryKey } from '../i18n/translations';
 import { compressImage } from '../utils/imageCompress';
 import { scanReceipt, type ScanReceiptError, type ScannedReceipt } from '../api/receipts';
 import { formatCurrency } from '../utils/formatters';
-import { mergeAccountIntoNoteLimited } from '../utils/transactionAccount';
 import { usePaymentAccountOptions } from '../hooks/usePaymentAccountOptions';
 import { useDenominationRates } from '../hooks/useDenominationRates';
 import { formatDenominationAmount, normalizeDenomination, type Denomination } from '../utils/denomination';
@@ -212,7 +211,7 @@ const ScanReceipt: React.FC = () => {
     if (!paymentAccount) return;
     setSaving(true);
     setSaveErrorMessage('');
-    const note = mergeAccountIntoNoteLimited(buildScannedNote(receipt), paymentAccount, allowedPaymentKeys);
+    const note = buildScannedNote(receipt).slice(0, 120);
     const ok = await addTransaction({
       amount: parsedDraftTotal,
       currency: receiptDenomination,
@@ -220,6 +219,7 @@ const ScanReceipt: React.FC = () => {
       categoryId: selectedCategoryId,
       date: draftDate || undefined,
       note: note || undefined,
+      accountKey: allowedPaymentKeys.has(paymentAccount) ? paymentAccount : null,
     });
     setSaving(false);
     if (!ok) {
@@ -238,9 +238,10 @@ const ScanReceipt: React.FC = () => {
     if (draftDate) params.set('date', draftDate);
     if (selectedCategoryId) params.set('categoryId', selectedCategoryId);
     else if (receipt.categoryId) params.set('categoryId', receipt.categoryId);
-    const note = mergeAccountIntoNoteLimited(buildScannedNote(receipt), paymentAccount, allowedPaymentKeys);
+    // Рахунок їде окремим параметром, а не маркером у примітці.
+    const note = buildScannedNote(receipt).slice(0, 120);
     if (note) params.set('note', note);
-    if (paymentAccount) params.set('account', paymentAccount);
+    if (paymentAccount && allowedPaymentKeys.has(paymentAccount)) params.set('account', paymentAccount);
     navigate(`/add?${params.toString()}`);
   };
 

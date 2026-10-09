@@ -1,5 +1,5 @@
 import type { Transaction } from '../types';
-import { formatAccountLabel, getAccountSlugFromNote, stripAccountFromNote } from './transactionAccount';
+import { formatAccountLabel, getTransactionAccountKey, stripAccountFromNote } from './transactionAccount';
 
 export const isIncomeTransaction = (tx: Pick<Transaction, 'type'>): boolean => tx.type === 'income';
 
@@ -59,13 +59,21 @@ export const getTransactionAccountEffects = (tx: Transaction): TransactionAccoun
     ].filter((row): row is TransactionAccountEffect => Boolean(row));
   }
 
-  const accountKey = getAccountSlugFromNote(tx.note);
+  const accountKey = getTransactionAccountKey(tx);
   if (!accountKey) return [];
+  // Те саме правило, що й на сервері (`transaction-effects.js`): операція, що
+  // вже зрушила рахунок, рахується тією сумою, на яку зрушила, а не
+  // перерахунком за курсом дня.
+  const booked = Number(tx.accountAmount);
+  const bookedCurrency = String(tx.accountCurrency ?? '').trim().toUpperCase();
+  const useBooked = Number.isFinite(booked) && booked > 0 && Boolean(bookedCurrency);
+  const size = useBooked ? booked : amount;
+  const currency = (useBooked ? bookedCurrency : tx.currency) as Transaction['currency'];
   if (isIncomeTransaction(tx)) {
-    return [{ accountKey, delta: amount, currency: tx.currency }];
+    return [{ accountKey, delta: size, currency }];
   }
   if (isExpenseTransaction(tx)) {
-    return [{ accountKey, delta: -amount, currency: tx.currency }];
+    return [{ accountKey, delta: -size, currency }];
   }
   return [];
 };

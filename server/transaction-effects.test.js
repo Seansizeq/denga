@@ -130,3 +130,23 @@ describe('записана сума в одиниці рахунку', () => {
     expect(withoutBooking(booked)).toMatchObject({ accountAmount: null, accountCurrency: null, amount: 100 });
   });
 });
+
+describe('рахунок у власній колонці', () => {
+  it('колонка важить більше за маркер у примітці', () => {
+    expect(
+      getTransactionAccountEffects({ type: 'expense', amount: 5, currency: 'UAH', accountKey: 'card', note: 'Account: old' }),
+    ).toEqual([{ accountKey: 'card', delta: -5, currency: 'UAH' }]);
+  });
+
+  it('маркер старого клієнта ще читається, коли колонки немає', () => {
+    expect(getTransactionAccountEffects({ type: 'income', amount: 5, currency: 'UAH', note: 'Account: card' })).toEqual([
+      { accountKey: 'card', delta: 5, currency: 'UAH' },
+    ]);
+  });
+
+  it('перенесення рахунку з примітки в колонку не вважається зміною рахунку', () => {
+    const before = { type: 'expense', amount: 5, currency: 'PLN', note: 'Хліб Account: card', accountAmount: 57.4, accountCurrency: 'UAH' };
+    const after = { ...before, note: 'Хліб', accountKey: 'card' };
+    expect(keepsBooking(before, after)).toBe(true);
+  });
+});

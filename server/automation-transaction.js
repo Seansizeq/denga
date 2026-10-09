@@ -77,9 +77,9 @@ export const unknownFieldsWarning = (unknownFields = []) => {
 };
 
 /**
- * The note travels to the same 120-char column as every other transaction, and
- * the account is appended to it as ` Account: <key>` (up to 50 more chars).
- * Sixty leaves room for both, and matches what the smart parser already keeps.
+ * Matches what the smart parser keeps, so a dictated entry and a picked one
+ * read the same in the history. (The account used to be appended to the note
+ * as well; it now has its own `accountKey` column.)
  */
 export const AUTOMATION_NOTE_MAX = 60;
 

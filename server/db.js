@@ -586,6 +586,13 @@ export async function initDb() {
   } catch {
     /* already exists */
   }
+  // Рахунок доходу чи витрати. Раніше він жив у тексті примітки маркером
+  // `Account: <ключ>` і ділив із описом 120 символів; переносить міграція 005.
+  try {
+    await db.exec(`ALTER TABLE transactions ADD COLUMN accountKey TEXT`);
+  } catch {
+    /* already exists */
+  }
   await db.run(
     `UPDATE account_portfolio
      SET debt_initial_amount = primary_amount + COALESCE((

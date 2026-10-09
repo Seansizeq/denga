@@ -13,7 +13,7 @@ import type { CategoryKey } from '../i18n/translations';
 import type { TransactionType } from '../types';
 import {
   getAccountSlugFromNote,
-  mergeAccountIntoNoteLimited,
+  getTransactionAccountKey,
   stripAccountFromNote,
 } from '../utils/transactionAccount';
 import { SUPPORTED_CURRENCIES } from '../utils/currency';
@@ -80,7 +80,7 @@ const AddTransaction: React.FC = () => {
   const prefillAccountRaw = !isEditing ? searchParams.get('account')?.trim().toLowerCase() ?? '' : '';
 
   const initialPaymentAccount = (() => {
-    if (editingTransaction) return getAccountSlugFromNote(editingTransaction.note) ?? '';
+    if (editingTransaction) return getTransactionAccountKey(editingTransaction) ?? '';
     if (prefillAccountRaw) return prefillAccountRaw;
     return getAccountSlugFromNote(prefillNoteRaw) ?? '';
   })();
@@ -313,7 +313,7 @@ const AddTransaction: React.FC = () => {
     setType(tx.type);
     setDate(tx.date.slice(0, 10));
     setCategoryId(tx.categoryId);
-    setPaymentAccount(getAccountSlugFromNote(tx.note) ?? '');
+    setPaymentAccount(getTransactionAccountKey(tx) ?? '');
     setTransferFromAccountKey(tx.fromAccountKey ?? '');
     setTransferToAccountKey(tx.toAccountKey ?? '');
     setTransferToAmount(
@@ -442,7 +442,9 @@ const AddTransaction: React.FC = () => {
     const numAmount = parseFloat(amount.replace(',', '.'));
     if (!numAmount || numAmount <= 0) return;
     const transferDestinationAmount = parseFloat(transferToAmount.replace(',', '.'));
-    const mergedNote = mergeAccountIntoNoteLimited(note.trim(), paymentAccount, allowedPaymentKeys);
+    // Рахунок їде власним полем, а примітка лишається тим, що людина написала.
+    const accountKey = paymentAccount && allowedPaymentKeys.has(paymentAccount) ? paymentAccount : null;
+    const cleanNote = stripAccountFromNote(note.trim()).slice(0, 120);
     const payload = type === 'transfer'
       ? {
           amount: numAmount,
@@ -467,7 +469,8 @@ const AddTransaction: React.FC = () => {
           type,
           categoryId,
           date,
-          note: mergedNote || undefined,
+          note: cleanNote || undefined,
+          accountKey,
         };
     const ok = isEditing && editId ? await updateTransaction(editId, payload) : await addTransaction(payload);
     if (!ok) {

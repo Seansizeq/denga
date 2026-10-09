@@ -329,9 +329,49 @@ export const plannerDaysToShiftEntries = {
   },
 };
 
+/**
+ * Рахунок доходу чи витрати переїжджає з примітки в колонку `accountKey`.
+ *
+ * Досі він жив у тексті маркером `Account: <ключ>`. Це працювало, але
+ * крихко: маркер ділив із описом 120 символів примітки, і довгий опис
+ * обрізав рахунок; ключ, довший за 48 символів, регулярка просто не
+ * впізнавала; а будь-яке місце, що переписувало примітку, могло тихо
+ * відвʼязати операцію від рахунку — і її відкат більше нічого б не повернув.
+ *
+ * Маркер прибирається з примітки, щойно рахунок записано в колонку: два
+ * джерела однієї правди розійшлися б з першою ж правкою. Примітка, від якої
+ * нічого не лишилось, стає порожньою.
+ *
+ * Перекази не чіпаються: їхні рахунки й так у `fromAccountKey`/`toAccountKey`.
+ */
+export const transactionAccountColumn = {
+  id: '005-transaction-account-column',
+  run: async (tx) => {
+    // Розбір повторений тут навмисно — див. міграцію 002.
+    const MARKER = /\bAccount:\s*([a-z0-9_]{1,48})\b/i;
+    const MARKER_ALL = /\bAccount:\s*[a-z0-9_]{1,48}\b/gi;
+    const rows = await tx.all(
+      `SELECT id, note FROM transactions
+       WHERE type <> 'transfer' AND accountKey IS NULL AND note LIKE '%Account:%'`,
+    );
+    for (const row of rows ?? []) {
+      const note = String(row.note ?? '');
+      const match = MARKER.exec(note);
+      if (!match) continue;
+      const cleanNote = note.replace(MARKER_ALL, ' ').replace(/\s+/g, ' ').trim();
+      await tx.run('UPDATE transactions SET accountKey = ?, note = ? WHERE id = ?', [
+        match[1].toLowerCase(),
+        cleanNote || null,
+        row.id,
+      ]);
+    }
+  },
+};
+
 export const MIGRATIONS = [
   customCategoriesUserScopedKey,
   legacyTransactionCurrencyFromNote,
   userDataVersionCounters,
   plannerDaysToShiftEntries,
+  transactionAccountColumn,
 ];

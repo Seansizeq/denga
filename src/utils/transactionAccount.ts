@@ -36,39 +36,15 @@ export const getAccountSlugFromNote = (note?: string): string | null => {
 export const stripAccountFromNote = (note: string): string =>
   note.replace(ACCOUNT_RE, ' ').replace(/\s+/g, ' ').trim();
 
-/** `allowedKeys` — усі рахунки, з яких дозволено списання (API + базові). */
-const mergeAccountIntoNote = (
-  note: string,
-  accountKey: string,
-  allowedKeys: ReadonlySet<string>
-): string => {
-  const base = stripAccountFromNote(note);
-  const key = accountKey.trim().toLowerCase();
-  if (!key || !allowedKeys.has(key)) {
-    return base;
-  }
-  return base ? `${base} Account: ${key}` : `Account: ${key}`;
-};
-
-export const mergeAccountIntoNoteLimited = (
-  note: string,
-  accountKey: string,
-  allowedKeys: ReadonlySet<string>,
-  maxLength = 120
-): string => {
-  const merged = mergeAccountIntoNote(note, accountKey, allowedKeys);
-  if (merged.length <= maxLength) return merged;
-
-  const key = accountKey.trim().toLowerCase();
-  if (!key || !allowedKeys.has(key)) return merged.slice(0, maxLength).trim();
-
-  const base = stripAccountFromNote(note).trim();
-  const suffix = base ? ` Account: ${key}` : `Account: ${key}`;
-  if (suffix.length >= maxLength) return suffix.slice(0, maxLength).trim();
-
-  const available = maxLength - suffix.length;
-  const trimmedBase = base.slice(0, available).trim();
-  return trimmedBase ? `${trimmedBase}${suffix}` : suffix;
+/**
+ * Рахунок доходу чи витрати. Живе у власному полі; маркер у примітці лишився
+ * лише в записах, створених до перенесення, і читається як запасний.
+ */
+export const getTransactionAccountKey = (
+  tx: { accountKey?: string | null; note?: string } | null | undefined,
+): string | null => {
+  const own = String(tx?.accountKey ?? '').trim().toLowerCase();
+  return own || getAccountSlugFromNote(tx?.note);
 };
 
 export const formatAccountLabel = (accountKey?: string | null): string => {
