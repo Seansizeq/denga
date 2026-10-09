@@ -28,13 +28,28 @@ const CURRENCY_SIGNS = {
 const toCurrency = (sign) => CURRENCY_SIGNS[String(sign ?? '').trim().toLocaleLowerCase('pl-PL')] ?? null;
 
 /**
- * `1 234.56`, `1,234.56`, `57,67`, `5` → число. Кома без крапки — десяткова
- * (так пишуть суму українські банки), поряд із крапкою — розділювач тисяч
- * (так пише Bybit).
+ * `1 234.56`, `1,234.56`, `1.234,56`, `57,67`, `5` → число.
+ *
+ * Коли є і крапка, і кома, десятковий — той знак, що стоїть **останнім**:
+ * `1,234.56` (Bybit) і `1.234,56` (європейський запис) — це одна сума. Лише
+ * кома — десяткова, якщо вона одна й за нею одна-дві цифри (`57,67`, так
+ * пишуть українські банки), і розділювач тисяч інакше (`1,234`, `1,234,567`).
+ * Кілька крапок без коми — теж розділювачі тисяч.
  */
 const toAmount = (raw) => {
   let value = String(raw ?? '').replace(/[\s ]/g, '');
-  value = value.includes('.') ? value.replace(/,/g, '') : value.replace(',', '.');
+  const lastDot = value.lastIndexOf('.');
+  const lastComma = value.lastIndexOf(',');
+  const count = (sign) => value.split(sign).length - 1;
+  if (lastDot !== -1 && lastComma !== -1) {
+    const decimal = lastDot > lastComma ? '.' : ',';
+    const thousands = decimal === '.' ? ',' : '.';
+    value = value.split(thousands).join('').replace(decimal, '.');
+  } else if (lastComma !== -1) {
+    value = count(',') > 1 || /,\d{3}$/.test(value) ? value.split(',').join('') : value.replace(',', '.');
+  } else if (count('.') > 1) {
+    value = value.split('.').join('');
+  }
   const amount = Number(value);
   return Number.isFinite(amount) && amount > 0 ? amount : null;
 };
@@ -42,7 +57,8 @@ const toAmount = (raw) => {
 /** `Authorization of 5.23 USD at JMP S.A. BIEDRONKA 468 was made on 2026-10-06 18:45:20.` */
 const BYBIT = /Authorization of\s+([\d.,]+)\s*([A-Z]{3})\s+at\s+(.+?)\s+was made on/i;
 
-const AMOUNT = String.raw`(\d[\d  ]*(?:[.,]\d+)?)`;
+/** Цифри з розділювачами будь-якого запису; що з них що — вирішує `toAmount`. */
+const AMOUNT = String.raw`(\d(?:[\d  .,]*\d)?)`;
 const SIGN = String.raw`(zł|pln|₴|грн|uah|\$|usd|€|eur)`;
 
 /**
@@ -174,7 +190,7 @@ export const notificationText = (raw, depth = 0) => {
  *   merchant: string, bankCategory: string|null } | null} `null` — це не покупка.
  */
 export const parseBankNotification = (raw) => {
-  const text = String(raw ?? '');
+  const text = String(raw ?? '').replace(/\r\n?/g, '\n');
   if (!text.trim()) return null;
   return parseBybit(text) ?? parsePrivat24(text) ?? parsePumb(text);
 };

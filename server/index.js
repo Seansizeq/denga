@@ -141,6 +141,8 @@ import {
   AUTOMATION_NOTE_MAX,
   buildOptionsPayload,
   buildResultMessage,
+  normalizeAutomationBody,
+  unknownFieldsWarning,
   validateAutomationTransaction,
 } from './automation-transaction.js';
 import {
@@ -4291,17 +4293,43 @@ app.post('/api/automation/transaction', async (req, res) => {
     res.status(401).json({ error: 'Invalid or missing token', message: '⚠️ Невірний токен' });
     return;
   }
+  const { body, unknownFields, isObject } = normalizeAutomationBody(req.body);
+
+  /**
+   * Попередження, що їдуть у `message` кожної відповіді, успішної чи ні. Саме
+   * це поле ярлик показує в сповіщенні, і саме з нього людина дізнається, що
+   * назву й значення в рядку JSON переставлено місцями або що покупку
+   * записано без рахунку. Без них у неї лишалося б «сума має бути більшою за
+   * 0» — і жодного натяку, що не так.
+   */
+  const warnings = [unknownFieldsWarning(unknownFields)].filter(Boolean);
+  const reply = (status, payload) => {
+    const message = [payload.message, ...warnings].filter(Boolean).join('\n');
+    res.status(status).json(unknownFields.length > 0 ? { ...payload, message, unknownFields } : { ...payload, message });
+  };
+
+  // Тіло у вигляді форми чи порожнє: Express його не розбирає, і далі кожне
+  // поле виглядало б відсутнім. Краще сказати, де в ярлику перемикач.
+  if (!isObject) {
+    reply(400, {
+      error: 'request body must be a JSON object',
+      code: 'INVALID_BODY',
+      message: '⚠️ Тіло запиту порожнє або не JSON: у дії «Отримати вміст URL» оберіть «Тіло запиту» → JSON.',
+    });
+    return;
+  }
+
   const [categories, accounts, reportSettings] = await Promise.all([
     getAutomationCategories(userId),
     getAutomationAccounts(userId),
     getReportSettings(db, userId),
   ]);
 
-  let payload = req.body;
-  const forwardsNotification = Object.prototype.hasOwnProperty.call(req.body ?? {}, 'notification');
-  const notification = notificationText(req.body?.notification);
-  const text = !forwardsNotification && typeof req.body?.text === 'string' ? req.body.text.trim() : '';
-  let merchant = typeof req.body?.merchant === 'string' ? req.body.merchant.trim() : '';
+  let payload = body;
+  const forwardsNotification = Object.prototype.hasOwnProperty.call(body, 'notification');
+  const notification = notificationText(body.notification);
+  const text = !forwardsNotification && typeof body.text === 'string' ? body.text.trim() : '';
+  let merchant = typeof body.merchant === 'string' ? body.merchant.trim() : '';
   let provider = 'wallet';
   let bankCategory = null;
 
@@ -4314,7 +4342,7 @@ app.post('/api/automation/transaction', async (req, res) => {
     // «Сповіщення» нема чого передати. Без цієї гілки людина бачила б «сума
     // має бути більшою за 0» — і шукала б помилку в ярлику, якої там немає.
     if (!notification.trim()) {
-      res.status(422).json({
+      reply(422, {
         error: 'notification is empty',
         code: 'EMPTY_NOTIFICATION',
         message: 'ℹ️ Сповіщення порожнє — так буває при запуску вручну. На справжній покупці ярлик передасть його сам.',
@@ -4329,14 +4357,14 @@ app.post('/api/automation/transaction', async (req, res) => {
       console.info('[automation] notification skipped', {
         lines: notification.split('\n').length,
         length: notification.length,
-        shape: typeof req.body?.notification,
+        shape: typeof body.notification,
       });
-      res.json({ ok: true, skipped: true, message: 'ℹ️ Не покупка — пропущено' });
+      reply(200, { ok: true, skipped: true, message: 'ℹ️ Не покупка — пропущено' });
       return;
     }
     ({ merchant, provider, bankCategory } = purchase);
     // Рахунок ярлик може назвати сам; суму й валюту — лише з тексту банку.
-    payload = { account: req.body?.account, amount: purchase.amount, currency: purchase.currency };
+    payload = { account: body.account ?? body.accountKey, amount: purchase.amount, currency: purchase.currency };
   }
 
   /**
@@ -4367,7 +4395,7 @@ app.post('/api/automation/transaction', async (req, res) => {
       defaultCurrency: reportSettings.reportCurrency,
     });
     if (!parsed?.isTransaction) {
-      res.status(422).json({
+      reply(422, {
         error: 'could not parse the text',
         code: 'NOT_RECOGNIZED',
         message: '🤷 Не зрозумів. Спробуйте: «кава 55 карткою»',
@@ -4386,13 +4414,20 @@ app.post('/api/automation/transaction', async (req, res) => {
 
   // The wallet's own currency, not the card's, is what an unstated amount is
   // counted in — see `quickAddCurrency`.
-  const validated = validateAutomationTransaction(payload, {
-    categories,
-    accounts,
-    defaultCurrency: reportSettings.reportCurrency,
-  });
+  const validationContext = { categories, accounts, defaultCurrency: reportSettings.reportCurrency };
+  let validated = validateAutomationTransaction(payload, validationContext);
+
+  // Фоновий запис — пуш банку чи дотик картки — не губить покупку через
+  // рахунок. Ярлик працює, коли телефон у кишені, тож відмова тут означала б
+  // витрату, якої немає в обліку і про яку ніхто не дізнається. Помилка в
+  // назві рахунку — привід записати без нього й сказати про це, а не відкинути.
+  if (!validated.ok && validated.code === 'INVALID_ACCOUNT' && guessedSource) {
+    warnings.push(`⚠️ ${validated.error} — записано без рахунку`);
+    payload = { ...payload, account: undefined, accountKey: undefined };
+    validated = validateAutomationTransaction(payload, validationContext);
+  }
   if (!validated.ok) {
-    res.status(validated.status).json({
+    reply(validated.status, {
       error: validated.error,
       code: validated.code,
       message: `⚠️ ${validated.error}`,
@@ -4404,37 +4439,56 @@ app.post('/api/automation/transaction', async (req, res) => {
   // запис, і картка виправлення, і памʼять про торговця. Дублювати це тут
   // означало б два місця, де категорія вчиться по-різному.
   if (guessedSource) {
-    const outcome = await recordAutomaticTransaction({
-      userId,
-      provider,
-      // Ярлик власного id операції не має: ні Wallet, ні пуш банку його не
-      // передають. Захист від повтору тут і не потрібен — дві однакові кави
-      // поспіль це дві покупки.
-      externalId: `${provider}:${uuidv4()}`,
-      type: validated.type,
-      amount: validated.amount,
-      currency: validated.currency,
-      merchant,
-      accountKey: validated.account,
-      accountName: validated.accountName,
-      categoryId: validated.categoryId,
-      categorySource: guessedSource,
-      // Без явної дати — «зараз», а день з нього рахується в поясі людини.
-      // Дата за замовчуванням із валідації — сьогоднішня за UTC, і покупка о
-      // пів на першу ночі у Варшаві лягала б на вчора.
-      timeMs: String(payload?.date ?? '').trim()
-        ? Date.parse(`${validated.date}T12:00:00.000Z`) || Date.now()
-        : Date.now(),
-    });
+    const record = (accountKey, accountName) =>
+      recordAutomaticTransaction({
+        userId,
+        provider,
+        // Ярлик власного id операції не має: ні Wallet, ні пуш банку його не
+        // передають. Захист від повтору тут і не потрібен — дві однакові кави
+        // поспіль це дві покупки, а зайвий запис видно й легко прибрати, тоді
+        // як загубленої витрати не видно ніколи.
+        externalId: `${provider}:${uuidv4()}`,
+        type: validated.type,
+        amount: validated.amount,
+        currency: validated.currency,
+        merchant,
+        accountKey,
+        accountName,
+        categoryId: validated.categoryId,
+        categorySource: guessedSource,
+        // Без явної дати — «зараз», а день з нього рахується в поясі людини.
+        // Дата за замовчуванням із валідації — сьогоднішня за UTC, і покупка о
+        // пів на першу ночі у Варшаві лягала б на вчора.
+        timeMs: String(payload?.date ?? '').trim()
+          ? Date.parse(`${validated.date}T12:00:00.000Z`) || Date.now()
+          : Date.now(),
+      });
+
+    let outcome;
+    try {
+      outcome = await record(validated.account, validated.accountName);
+    } catch (error) {
+      // Рахунок не прийняв суму: немає курсу (ціну USDT ще не отримано) або
+      // борг пішов би в мінус. Покупка від цього не зникає — вона лягає без
+      // рахунку, а баланс людина поправить сама, побачивши попередження.
+      if (!(error instanceof TransactionRefused) || !validated.account) throw error;
+      const name = validated.accountName ?? validated.account;
+      warnings.push(
+        error.payload?.code === 'DEBT_BALANCE_NEGATIVE'
+          ? `⚠️ «${name}» пішов би в мінус — записано без рахунку`
+          : `⚠️ Немає курсу, щоб списати з «${name}», — записано без рахунку`,
+      );
+      outcome = await record(null, null);
+    }
     if (!outcome.ok) {
-      res.status(409).json({
+      reply(409, {
         error: 'this run was already recorded',
         code: outcome.code,
         message: '⚠️ Цю операцію вже записано',
       });
       return;
     }
-    res.status(201).json({ ok: true, message: outcome.message, transaction: outcome.transaction });
+    reply(201, { ok: true, message: outcome.message, transaction: outcome.transaction });
     return;
   }
 
@@ -4464,7 +4518,7 @@ app.post('/api/automation/transaction', async (req, res) => {
     // Any two units convert, so what is missing here is the rate itself — a
     // token price CoinGecko has not handed us yet. Saying so beats blaming the
     // account, which is holding nothing against us.
-    res.status(409).json({
+    reply(409, {
       error: 'no rate to express this amount in the account balance unit',
       code: 'ACCOUNT_DENOMINATION_MISMATCH',
       accounts: mismatches,
@@ -4473,7 +4527,7 @@ app.post('/api/automation/transaction', async (req, res) => {
     return;
   }
   if (overdrafts.length > 0) {
-    res.status(409).json({
+    reply(409, {
       error: 'this would push a debt balance below zero',
       code: 'DEBT_BALANCE_NEGATIVE',
       accounts: overdrafts,
@@ -4509,7 +4563,7 @@ app.post('/api/automation/transaction', async (req, res) => {
       ? convertToAccountUnit(validated.amount, validated.currency, validated.accountCurrency)
       : null;
 
-  res.status(201).json({
+  reply(201, {
     ok: true,
     message: buildResultMessage({ ...validated, convertedAmount }),
     transaction,

@@ -95,6 +95,68 @@ describe('parseBankNotification — ПУМБ', () => {
   });
 });
 
+describe('parseBankNotification — запис суми', () => {
+  const privat = (amount) => parseBankNotification(`-${amount}₴ Продукти. Silpo, Kyiv`)?.amount;
+
+  it('розуміє всі звичні розділювачі', () => {
+    expect(privat('57.67')).toBe(57.67);
+    expect(privat('57,67')).toBe(57.67);
+    expect(privat('1 234.56')).toBe(1234.56);
+    expect(privat('1 234,56')).toBe(1234.56);
+    expect(privat('1,234.56')).toBe(1234.56);
+    expect(privat('1.234,56')).toBe(1234.56);
+    expect(privat('1,234')).toBe(1234);
+    expect(privat('1.234.567')).toBe(1234567);
+    expect(privat('5')).toBe(5);
+  });
+
+  it('нульова сума — не покупка (так банк перевіряє картку)', () => {
+    expect(parseBankNotification('-0.00₴ Інше. Apple, Cork')).toBeNull();
+    expect(parseBankNotification('Authorization of 0.00 USD at APPLE.COM/BILL was made on 2026-10-06 18:45:20.')).toBeNull();
+  });
+});
+
+describe('parseBankNotification — нетипові пуші', () => {
+  it('Privat24 з кодом валюти чи «грн» замість символу', () => {
+    expect(parseBankNotification('-20.00 PLN Транспорт. Bolt, Warszawa')).toMatchObject({ amount: 20, currency: 'PLN' });
+    expect(parseBankNotification('-120.50 грн Продукти. Silpo, Kyiv')).toMatchObject({ amount: 120.5, currency: 'UAH' });
+  });
+
+  it('Privat24 без міста й без категорії', () => {
+    expect(parseBankNotification('-50.00₴ Поповнення мобільного. Kyivstar')).toMatchObject({
+      merchant: 'Kyivstar',
+      bankCategory: 'Поповнення мобільного',
+    });
+    expect(parseBankNotification('-50.00₴ Kyivstar, Kyiv')).toMatchObject({ merchant: 'Kyivstar', bankCategory: null });
+  });
+
+  it('рядки з Windows-кінцями не ламають розбір', () => {
+    const pumb = '10.00PLN / 116.42UAH (курс 11.64)\r\ndoladowania.play.pl Poznan PL\r\n09-10-2026 23:16\r\nКартка: *7354';
+    expect(parseBankNotification(pumb)).toMatchObject({ amount: 116.42, merchant: 'doladowania.play.pl' });
+  });
+
+  it('повернення й відмови ПУМБ з заголовком пропускаються', () => {
+    const body = '10.00PLN / 116.42UAH (курс 11.64)\nZABKA Krakow PL\n09-10-2026 23:16\nКартка: *7354';
+    expect(parseBankNotification(`Повернення коштів\n${body}`)).toBeNull();
+    expect(parseBankNotification(`Відхилено\n${body}`)).toBeNull();
+  });
+
+  it('Bybit: відмова й повернення покупкою не є', () => {
+    expect(parseBankNotification('Authorization of 5.00 USD at ZABKA was declined. Insufficient balance.')).toBeNull();
+    expect(parseBankNotification('Refund of 5.00 USD from ZABKA has been credited to your account.')).toBeNull();
+  });
+
+  it('Bybit із заголовком в одному тексті', () => {
+    const text = 'Bybit Card - Authorization Success\nAuthorization of 3.52 USD at ZABKA Z6914 K.1 was made on 2026-10-06 16:49:01.';
+    expect(parseBankNotification(text)).toMatchObject({ amount: 3.52, merchant: 'ZABKA Z6914 K.1' });
+  });
+
+  it('пуш іншого застосунку нічого не записує', () => {
+    expect(parseBankNotification('Twoje konto SkyCash właśnie zostało zasilone kwotą: 5,00 PLN.')).toBeNull();
+    expect(parseBankNotification('Uwaga! Za 3 minuty Twój bilet traci ważność.')).toBeNull();
+  });
+});
+
 describe('parseBankNotification — Bybit', () => {
   it('розбирає авторизацію картки', () => {
     const text = 'Authorization of 5.23 USD at JMP S.A. BIEDRONKA 468 was made on 2026-10-06 18:45:20.';

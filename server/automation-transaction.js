@@ -17,6 +17,66 @@ import {
 } from './denomination.js';
 
 /**
+ * Поля, які розуміє `/api/automation/transaction`. Ключ — як його пише код,
+ * значення — для звірки з тим, що набрала людина.
+ */
+const AUTOMATION_FIELDS = [
+  'amount',
+  'currency',
+  'categoryId',
+  'account',
+  'accountKey',
+  'note',
+  'date',
+  'text',
+  'merchant',
+  'notification',
+];
+
+/** `Account`, ` account `, `category_id` → один вигляд для звірки. */
+const fieldShape = (key) => String(key ?? '').trim().toLowerCase().replace(/[\s_-]+/g, '');
+
+const FIELD_BY_SHAPE = new Map(AUTOMATION_FIELDS.map((field) => [fieldShape(field), field]));
+
+/**
+ * Тіло запиту ярлика — до того вигляду, на який розраховує сервер.
+ *
+ * Назву поля в Командах iOS набирають на телефонній клавіатурі, а вона сама
+ * робить першу літеру великою: `Account` замість `account`. Сервер, що
+ * розрізняв регістр, просто не бачив такого поля — і покупка тихо
+ * записувалася без рахунку. Тепер регістр, пробіли й підкреслення не важать.
+ *
+ * Чого впізнати не вдалося, повертається окремо: найчастіше це рядок, де
+ * назву й значення переставлено місцями (`usdt` ліворуч, `account` праворуч),
+ * і людині треба про це сказати, а не мовчки ігнорувати.
+ *
+ * @returns {{ body: object, unknownFields: string[], isObject: boolean }}
+ */
+export const normalizeAutomationBody = (raw) => {
+  const isObject = raw !== null && typeof raw === 'object' && !Array.isArray(raw);
+  if (!isObject) return { body: {}, unknownFields: [], isObject: false };
+  const body = {};
+  const unknownFields = [];
+  for (const [key, value] of Object.entries(raw)) {
+    const field = FIELD_BY_SHAPE.get(fieldShape(key));
+    if (!field) {
+      if (fieldShape(key)) unknownFields.push(String(key).trim());
+      continue;
+    }
+    // Точне написання має перевагу над схожим, якщо прийшли обидва.
+    if (key === field || !(field in body)) body[field] = value;
+  }
+  return { body, unknownFields, isObject: true };
+};
+
+/** Один рядок, який ярлик покаже в сповіщенні, коли в тілі є зайве. */
+export const unknownFieldsWarning = (unknownFields = []) => {
+  if (unknownFields.length === 0) return '';
+  const names = unknownFields.slice(0, 3).map((name) => `«${name.slice(0, 30)}»`).join(', ');
+  return `⚠️ Невідоме поле ${names}: ліворуч пишеться назва поля (account, notification…), праворуч — значення.`;
+};
+
+/**
  * The note travels to the same 120-char column as every other transaction, and
  * the account is appended to it as ` Account: <key>` (up to 50 more chars).
  * Sixty leaves room for both, and matches what the smart parser already keeps.

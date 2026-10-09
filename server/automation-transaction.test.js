@@ -3,8 +3,47 @@ import {
   buildOptionMaps,
   buildOptionsPayload,
   buildResultMessage,
+  normalizeAutomationBody,
+  unknownFieldsWarning,
   validateAutomationTransaction,
 } from './automation-transaction.js';
+
+describe('normalizeAutomationBody', () => {
+  it('field names typed on a phone keyboard still land', () => {
+    // iOS capitalises the first letter on its own: «Account», «Notification».
+    const { body, unknownFields } = normalizeAutomationBody({
+      Account: 'usdt',
+      ' notification ': 'text',
+      category_id: 'food',
+      AMOUNT: '5',
+    });
+    expect(body).toEqual({ account: 'usdt', notification: 'text', categoryId: 'food', amount: '5' });
+    expect(unknownFields).toEqual([]);
+  });
+
+  it('reports a row whose name and value were swapped instead of dropping it silently', () => {
+    const { body, unknownFields } = normalizeAutomationBody({ usdt: 'account', notification: 'x' });
+    expect(body).toEqual({ notification: 'x' });
+    expect(unknownFields).toEqual(['usdt']);
+    expect(unknownFieldsWarning(unknownFields)).toContain('«usdt»');
+  });
+
+  it('the exact spelling wins when both forms arrive', () => {
+    expect(normalizeAutomationBody({ Account: 'wrong', account: 'right' }).body.account).toBe('right');
+    expect(normalizeAutomationBody({ account: 'right', Account: 'wrong' }).body.account).toBe('right');
+  });
+
+  it('a form or empty body is flagged, not read as an empty quick add', () => {
+    expect(normalizeAutomationBody(undefined).isObject).toBe(false);
+    expect(normalizeAutomationBody('amount=5').isObject).toBe(false);
+    expect(normalizeAutomationBody([1, 2]).isObject).toBe(false);
+    expect(normalizeAutomationBody({}).isObject).toBe(true);
+  });
+
+  it('says nothing when every field is known', () => {
+    expect(unknownFieldsWarning([])).toBe('');
+  });
+});
 
 const categories = [
   { id: 'food', name: 'Продукти', type: 'expense' },
