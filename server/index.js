@@ -4631,7 +4631,12 @@ app.post('/api/automation/transaction', async (req, res) => {
 
     // Напрямок: з тексту банку, а коли банк пише його лише в заголовку —
     // з поля `type`, яке знає автоматизація з фільтром на заголовку.
-    const direction = body.type === 'income' || body.type === 'expense' ? body.type : purchase.type;
+    // `transfer` — списання, про яке ярлик знає, що це переказ (ПУМБ пише
+    // «Переказ» тільки в заголовку, і з тексту цього не видно).
+    const requestedType = String(body.type ?? '').trim().toLowerCase();
+    if (requestedType === 'transfer') transferHint = true;
+    const direction =
+      requestedType === 'income' ? 'income' : requestedType === 'expense' || requestedType === 'transfer' ? 'expense' : purchase.type;
     if (direction === 'income') {
       // Зарахування окремим доходом не записується: воно потрібне, щоб звести
       // переказ між своїми картками з його другою половиною.
