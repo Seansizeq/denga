@@ -155,6 +155,7 @@ import {
 } from './planner-shift.js';
 import { merchantKey, resolveBankCategory } from './bank-category.js';
 import { notificationText, parseBankNotification } from './bank-notification.js';
+import { fiatAmountsAt, nbuDayRates, nbuRatesUrl, stampedAmount, transactionDay } from './fx-history.js';
 import {
   BANK_CARD_CATEGORY_LIMIT,
   buildBankCardKeyboard,
@@ -595,6 +596,9 @@ const applyTransactionEffects = async (dbConn, userId, tx, multiplier = 1, provi
       );
     }
   }
+  // Суми у валютах звіту — тут же, бо сюди приходить кожен запис, з рахунком
+  // чи без. Ті, що не знайшли курсу дня, добере `backfillFiatAmounts`.
+  if (multiplier > 0) await stampFiatAmounts(dbConn, userId, tx);
 };
 const getAccountsByKeys = async (dbConn, userId, keys) => {
   const unique = Array.from(
@@ -743,6 +747,7 @@ const fetchFxRates = async () => {
   if (shared?.rates && Number.isFinite(sharedAt) && now - sharedAt < FX_CACHE_TTL_MS) {
     fxCache = { ...shared, source: 'cache' };
     fxCacheFetchedAt = now;
+    void recordTodayRates({ fiat: fxCache.rates });
     return fxCache;
   }
 
@@ -768,6 +773,7 @@ const fetchFxRates = async () => {
     // Ділимося з рештою процесів. Збій запису тут нічого не ламає: у себе курс
     // уже є, сусіди просто сходять по нього самі.
     await writeAppCache(FX_CACHE_KEY, fxCache);
+    void recordTodayRates({ fiat: rates });
     return fxCache;
   } catch {
     if (fxCache) return { ...fxCache, source: 'cache' };
@@ -799,6 +805,178 @@ const writeAppCache = async (key, value) => {
   }
 };
 
+// --- Курс дня для статистики (див. fx-history.js) ---
+
+const todayUtcDay = () => new Date().toISOString().slice(0, 10);
+
+/** Що вже записано за сьогодні цим процесом — щоб не писати на кожен запит. */
+const recordedRatesDay = { fiat: '', crypto: '' };
+
+/**
+ * Сьогоднішній курс у `fx_daily`. Перший знімок дня лишається: курс дня має
+ * бути одним, а не «останнім, який хтось побачив», інакше операції одного дня
+ * отримували б різні суми залежно від години.
+ */
+const recordTodayRates = async ({ fiat = null, crypto = null } = {}) => {
+  const day = todayUtcDay();
+  const now = new Date().toISOString();
+  try {
+    if (fiat && recordedRatesDay.fiat !== day) {
+      const usdUah = Number(fiat.UAH);
+      const usdPln = Number(fiat.PLN);
+      if (usdUah > 0 && usdPln > 0) {
+        await db.run(
+          `INSERT INTO fx_daily (day, usd_uah, usd_pln, source, updated_at) VALUES (?, ?, ?, 'live', ?)
+           ON CONFLICT(day) DO UPDATE SET
+             usd_uah = COALESCE(fx_daily.usd_uah, excluded.usd_uah),
+             usd_pln = COALESCE(fx_daily.usd_pln, excluded.usd_pln)`,
+          [day, usdUah, usdPln, now],
+        );
+        recordedRatesDay.fiat = day;
+      }
+    }
+    if (crypto && recordedRatesDay.crypto !== day) {
+      await db.run(
+        `INSERT INTO fx_daily (day, crypto_json, source, updated_at) VALUES (?, ?, 'live', ?)
+         ON CONFLICT(day) DO UPDATE SET crypto_json = COALESCE(fx_daily.crypto_json, excluded.crypto_json)`,
+        [day, JSON.stringify(crypto), now],
+      );
+      recordedRatesDay.crypto = day;
+    }
+  } catch (error) {
+    // Без знімка операція лишиться без сум дня й перерахується на льоту, а
+    // добір нижче дозаповнить її пізніше. Ламати через це запис не можна.
+    console.error('[fx-daily] could not record today rates:', error?.message ?? error);
+  }
+};
+
+const parseCryptoJson = (raw) => {
+  try {
+    const parsed = JSON.parse(String(raw ?? ''));
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Курси дня. Ціни крипти за минулі дні часто невідомі (знімки почалися
+ * пізніше), тож для них береться найближчий відомий день, а без жодного — ціни
+ * з кешу. Курс гривні й злотого так не підміняється: без нього день лишається
+ * незаповненим, доки його не добере НБУ.
+ */
+const readFxDay = async (dbConn, day) => {
+  const row = await dbConn.get('SELECT usd_uah, usd_pln, crypto_json FROM fx_daily WHERE day = ? LIMIT 1', [day]);
+  if (!(Number(row?.usd_uah) > 0) || !(Number(row?.usd_pln) > 0)) return null;
+  let crypto = parseCryptoJson(row.crypto_json);
+  if (!crypto) {
+    const nearest = await dbConn.get(
+      `SELECT crypto_json FROM fx_daily WHERE crypto_json IS NOT NULL
+       ORDER BY ABS(julianday(day) - julianday(?)) LIMIT 1`,
+      [day],
+    );
+    crypto = parseCryptoJson(nearest?.crypto_json) ?? getCachedCryptoUsdPrices();
+  }
+  return { usdUah: Number(row.usd_uah), usdPln: Number(row.usd_pln), crypto };
+};
+
+/**
+ * Суми операції в UAH/PLN/USD за курсом її дня — один раз, при записі. Рядок
+ * з уже заповненими сумами не чіпається: правка, що змінює суму, валюту чи
+ * дату, спершу їх очищає (див. PATCH).
+ */
+const stampFiatAmounts = async (dbConn, userId, tx) => {
+  const day = transactionDay(tx?.date);
+  if (!tx?.id || !day) return;
+  const rates = await readFxDay(dbConn, day);
+  const amounts = rates ? fiatAmountsAt(tx.amount, tx.currency, rates) : null;
+  if (!amounts) return;
+  await dbConn.run(
+    `UPDATE transactions SET amountUah = ?, amountPln = ?, amountUsd = ?
+     WHERE user_id = ? AND id = ? AND amountUsd IS NULL`,
+    [amounts.amountUah, amounts.amountPln, amounts.amountUsd, userId, tx.id],
+  );
+};
+
+/** Курс НБУ на минулий день; `null` — мережа чи НБУ не відповіли. */
+const fetchNbuDayRates = async (day) => {
+  try {
+    const res = await fetch(nbuRatesUrl(day), { headers: { accept: 'application/json' } });
+    if (!res.ok) return null;
+    return nbuDayRates(await res.json());
+  } catch {
+    return null;
+  }
+};
+
+const FIAT_BACKFILL_DAYS_PER_TICK = 40;
+let fiatBackfillRunning = false;
+
+/**
+ * Дозаповнення сум дня для операцій, які їх не мають: старих, записаних до
+ * цієї зміни, і тих, що записалися, коли курсу дня ще не було. Курс минулого
+ * дня береться з НБУ й лишається в `fx_daily`, тож кожен день питається один
+ * раз. Майбутні дати не чіпаються — курсу на них ще немає.
+ */
+const backfillFiatAmounts = async () => {
+  if (fiatBackfillRunning) return { days: 0, stamped: 0 };
+  fiatBackfillRunning = true;
+  let stamped = 0;
+  let daysDone = 0;
+  try {
+    const today = todayUtcDay();
+    const days = await db.all(
+      `SELECT DISTINCT substr(date, 1, 10) AS day FROM transactions
+       WHERE amountUsd IS NULL AND substr(date, 1, 10) <= ?
+       ORDER BY day DESC LIMIT ?`,
+      [today, FIAT_BACKFILL_DAYS_PER_TICK],
+    );
+    for (const { day } of days ?? []) {
+      if (!transactionDay(day)) continue;
+      let rates = await readFxDay(db, day);
+      if (!rates) {
+        const nbu = await fetchNbuDayRates(day);
+        if (!nbu) continue;
+        await db.run(
+          `INSERT INTO fx_daily (day, usd_uah, usd_pln, source, updated_at) VALUES (?, ?, ?, 'nbu', ?)
+           ON CONFLICT(day) DO UPDATE SET
+             usd_uah = COALESCE(fx_daily.usd_uah, excluded.usd_uah),
+             usd_pln = COALESCE(fx_daily.usd_pln, excluded.usd_pln)`,
+          [day, nbu.usdUah, nbu.usdPln, new Date().toISOString()],
+        );
+        rates = await readFxDay(db, day);
+        if (!rates) continue;
+      }
+      const rows = await db.all(
+        `SELECT id, amount, currency FROM transactions
+         WHERE amountUsd IS NULL AND substr(date, 1, 10) = ?`,
+        [day],
+      );
+      for (const row of rows ?? []) {
+        const amounts = fiatAmountsAt(row.amount, row.currency, rates);
+        if (!amounts) continue;
+        const result = await db.run(
+          'UPDATE transactions SET amountUah = ?, amountPln = ?, amountUsd = ? WHERE id = ? AND amountUsd IS NULL',
+          [amounts.amountUah, amounts.amountPln, amounts.amountUsd, row.id],
+        );
+        stamped += result?.changes ?? 0;
+      }
+      daysDone += 1;
+    }
+  } finally {
+    fiatBackfillRunning = false;
+  }
+  return { days: daysDone, stamped };
+};
+
+/**
+ * Сума операції у фіатній валюті звіту: записана за курсом її дня, а якщо її
+ * ще немає — перерахунок за сьогоднішнім курсом, як було досі.
+ */
+const transactionAmountIn = (tx, fiat, fxPayload, cryptoUsd) =>
+  stampedAmount(tx, normalizeCurrency(fiat))
+  ?? convertAmountServer(Number(tx?.amount) || 0, tx?.currency, fiat, fxPayload, cryptoUsd);
+
 const CRYPTO_PRICES_CACHE_KEY = 'crypto_usd_prices';
 
 const fetchCryptoUsdPrices = async () => {
@@ -815,6 +993,7 @@ const fetchCryptoUsdPrices = async () => {
   if (shared?.prices && Number.isFinite(sharedAt) && now - sharedAt < CRYPTO_CACHE_TTL_MS) {
     cryptoCache = { ...shared, source: 'cache' };
     cryptoCacheFetchedAt = now;
+    void recordTodayRates({ crypto: cryptoCache.prices });
     return cryptoCache;
   }
 
@@ -842,6 +1021,7 @@ const fetchCryptoUsdPrices = async () => {
     };
     cryptoCacheFetchedAt = now;
     void writeAppCache(CRYPTO_PRICES_CACHE_KEY, cryptoCache);
+    void recordTodayRates({ crypto: prices });
     return cryptoCache;
   } catch {
     if (cryptoCache) return { ...cryptoCache, source: 'cache' };
@@ -1619,7 +1799,7 @@ const checkBudgetThresholdsAfterExpense = async (userId, categoryId) => {
   // визначити. Межі беруться з запасом, тож жоден рядок не губиться.
   const { from, to } = monthQueryBounds(ym);
   const txs = await db.all(
-    `SELECT amount, currency, date FROM transactions
+    `SELECT amount, currency, date, amountUah, amountPln, amountUsd FROM transactions
      WHERE user_id = ? AND type = 'expense' AND categoryId = ? AND date >= ? AND date < ?`,
     [userId, categoryId, from, to]
   );
@@ -1627,7 +1807,7 @@ const checkBudgetThresholdsAfterExpense = async (userId, categoryId) => {
   for (const tx of txs) {
     const d = dayFromIsoInZone(String(tx.date), tz);
     if (!String(d).startsWith(ym)) continue;
-    sum += convertAmountServer(Number(tx.amount), tx.currency, budgetCur, fx);
+    sum += transactionAmountIn(tx, budgetCur, fx);
   }
   const limit = Number(budget.monthlyLimit);
   if (!(limit > 0)) return;
@@ -1684,7 +1864,7 @@ const summarizeTransactions = (txs, targetCurrency = 'UAH', fxPayload = FX_FALLB
     // Корекція балансу виправляє облік, а не описує рух грошей: у звіті вона
     // роздувала б доходи або витрати на розмір розбіжності.
     if (isBalanceCorrection(tx)) continue;
-    const amount = convertAmountServer(Number(tx.amount) || 0, tx.currency, reportCurrency, fxPayload);
+    const amount = transactionAmountIn(tx, reportCurrency, fxPayload);
     if (tx.type === 'income') {
       income += amount;
       incomeCount += 1;
@@ -1777,7 +1957,7 @@ const sumExpenseByCategory = (txs, targetCurrency = 'UAH', fxPayload = FX_FALLBA
     if (tx?.type !== 'expense') continue;
     const amount = Math.max(
       0,
-      convertAmountServer(Number(tx.amount) || 0, tx.currency, targetCurrency, fxPayload)
+      transactionAmountIn(tx, targetCurrency, fxPayload)
     );
     if (!(amount > 0)) continue;
     map.set(tx.categoryId, (map.get(tx.categoryId) ?? 0) + amount);
@@ -1810,7 +1990,7 @@ const collectBudgetRisks = async (dbConn, userId, txs, today, tz, fxPayload) => 
       if (tx?.type !== 'expense' || tx?.categoryId !== row.categoryId) continue;
       const txDay = dayFromIsoInZone(String(tx.date), tz);
       if (!String(txDay).startsWith(ym)) continue;
-      spent += convertAmountServer(Number(tx.amount) || 0, tx.currency, budgetCurrency, fxPayload);
+      spent += transactionAmountIn(tx, budgetCurrency, fxPayload);
     }
     const ratio = spent / limit;
     if (ratio >= 0.8) {
@@ -2009,7 +2189,7 @@ const sendUserReport = async (dbConn, userId, chatId, reportType, timeZone) => {
   const bounds = daySetQueryBounds(rangeSet, previousRangeSet);
   const txs = bounds
     ? await dbConn.all(
-        `SELECT amount, currency, categoryId, type, date FROM transactions
+        `SELECT amount, currency, categoryId, type, date, amountUah, amountPln, amountUsd FROM transactions
          WHERE user_id = ? AND date >= ? AND date < ? ORDER BY date DESC`,
         [userId, bounds.from, bounds.to],
       )
@@ -2082,7 +2262,7 @@ const sendFinancialAdvice = async (dbConn, userId, chatId, periodDaysRaw, timeZo
   const bounds = daySetQueryBounds(currentSet, previousSet, [`${String(today).slice(0, 7)}-01`, today]);
   const txs = bounds
     ? await dbConn.all(
-        `SELECT amount, currency, categoryId, type, date FROM transactions
+        `SELECT amount, currency, categoryId, type, date, amountUah, amountPln, amountUsd FROM transactions
          WHERE user_id = ? AND date >= ? AND date < ? ORDER BY date DESC`,
         [userId, bounds.from, bounds.to],
       )
@@ -4107,6 +4287,17 @@ if (RUNS_BOT) {
       .catch((e) => console.error('[quota] prune failed', e));
   setTimeout(pruneTick, 30_000);
   setInterval(pruneTick, 24 * 60 * 60 * 1000);
+
+  // Суми операцій за курсом їхнього дня (див. fx-history.js). Перший прохід
+  // невдовзі після старту доганяє все записане до цієї зміни.
+  const fiatBackfillTick = () =>
+    backfillFiatAmounts()
+      .then(({ stamped }) => {
+        if (stamped > 0) console.log('[fx-daily] операціям додано суми за курсом дня:', stamped);
+      })
+      .catch((e) => console.error('[fx-daily] backfill failed', e));
+  setTimeout(fiatBackfillTick, 45_000);
+  setInterval(fiatBackfillTick, 10 * 60 * 1000);
 }
 
 /**
@@ -5721,7 +5912,8 @@ app.delete('/api/goals/:id', async (req, res) => {
         // У транзакції лишається та частка внеску, що пішла з цілі раніше.
         await applyTransactionEffects(tx, userId, partialRow, -1, convert);
         await applyTransactionEffects(tx, userId, shrunk, 1, convert);
-        await tx.run('UPDATE transactions SET amount = ?, transferToAmount = ? WHERE user_id = ? AND id = ?', [
+        // Суми дня скидаються разом із сумою; їх добере фоновий такт.
+        await tx.run('UPDATE transactions SET amount = ?, transferToAmount = ?, amountUah = NULL, amountPln = NULL, amountUsd = NULL WHERE user_id = ? AND id = ?', [
           shrunk.amount,
           shrunk.transferToAmount ?? null,
           userId,
@@ -7039,7 +7231,10 @@ app.patch('/api/transactions/:id', async (req, res) => {
              toAccountKey = ?,
              accountKey = ?,
              accountAmount = ?,
-             accountCurrency = ?
+             accountCurrency = ?,
+             amountUah = NULL,
+             amountPln = NULL,
+             amountUsd = NULL
          WHERE user_id = ? AND id = ?`,
         [
           nextTransaction.amount,

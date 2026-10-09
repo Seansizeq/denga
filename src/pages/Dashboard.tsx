@@ -10,7 +10,7 @@ import QuickActions from '../components/ui/QuickActions';
 import RecentTransactions from '../components/ui/RecentTransactions';
 import type { RangeFilter } from '../components/ui/RecentTransactions';
 import { isWithinLastDays } from '../utils/dateRanges';
-import { isBalanceCorrection } from '../utils/transactionUtils';
+import { isBalanceCorrection, transactionAmountIn } from '../utils/transactionUtils';
 import {
   computePortfolioMonthStartUahPln,
   computeWealthMonthChangePercent,
@@ -78,9 +78,10 @@ const Dashboard: React.FC = () => {
       (acc, tx) => {
         // Корекція балансу не є ні доходом, ні витратою.
         if (isBalanceCorrection(tx)) return acc;
-        // Crypto-denominated rows are skipped when unpriced rather than
-        // counted as if one token were one hryvnia.
-        const amountInDisplay = convert(tx.amount, tx.currency) ?? 0;
+        // За курсом дня операції, а не сьогоднішнім. Crypto-denominated rows
+        // are skipped when unpriced rather than counted as if one token were
+        // one hryvnia.
+        const amountInDisplay = transactionAmountIn(tx, displayCurrency, convert) ?? 0;
         if (tx.type === 'income') acc.income += amountInDisplay;
         else if (tx.type === 'expense') acc.expense += amountInDisplay;
         return acc;
@@ -93,7 +94,7 @@ const Dashboard: React.FC = () => {
       totalExpense: totals.expense,
       totalNet: totals.income - totals.expense,
     };
-  }, [filtered, convert]);
+  }, [filtered, convert, displayCurrency]);
 
   const portfolioRows = useMemo<PortfolioRowInput[]>(() => {
     const rows: PortfolioRowInput[] = [];

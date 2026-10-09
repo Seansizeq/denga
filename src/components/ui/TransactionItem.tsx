@@ -7,7 +7,7 @@ import { formatCurrency, formatDate } from '../../utils/formatters';
 import { useTranslation } from '../../i18n/LanguageContext';
 import type { CategoryKey } from '../../i18n/translations';
 import { getTransactionAccountKey, stripAccountFromNote } from '../../utils/transactionAccount';
-import { getTransferSummaryLabel } from '../../utils/transactionUtils';
+import { getTransferSummaryLabel, transactionAmountIn } from '../../utils/transactionUtils';
 import { useDenominationRates } from '../../hooks/useDenominationRates';
 import { useAccountNames } from '../../hooks/useAccountNames';
 import { hapticResult, showAppConfirm } from '../../utils/notify';
@@ -74,9 +74,10 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
       .filter(Boolean)
       .join(' · ');
   const txCurrency = transaction.currency;
-  // Null when a crypto price is missing: the equivalent line is hidden rather
-  // than showing a figure the app cannot actually stand behind.
-  const displayAmount = convert(transaction.amount, txCurrency);
+  // За курсом дня операції — той самий, яким її рахує статистика. Null when a
+  // crypto price is missing: the equivalent line is hidden rather than showing
+  // a figure the app cannot actually stand behind.
+  const displayAmount = transactionAmountIn(transaction, displayCurrency, convert);
   const showEquivalent = txCurrency !== displayCurrency && displayAmount !== null;
   const destinationAmount =
     transaction.transferToAmount && transaction.transferToAmount > 0

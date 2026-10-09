@@ -18,7 +18,7 @@ const RANGE_OPTIONS: StatsRange[] = ['today', 'week', 'month', 'year'];
 
 const Stats: React.FC = () => {
   const navigate = useNavigate();
-  const { t } = useTranslation();
+  const { t, displayCurrency } = useTranslation();
   const { convert } = useDenominationRates();
   const { transactions } = useTransactions();
 
@@ -45,6 +45,7 @@ const Stats: React.FC = () => {
   const aggregates = useStatsAggregates({
     transactions,
     convertAmount: convert,
+    displayCurrency,
     bounds,
     previousBounds,
     chartType,

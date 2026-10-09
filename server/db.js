@@ -593,6 +593,25 @@ export async function initDb() {
   } catch {
     /* already exists */
   }
+  // Суми у валютах звіту за курсом дня операції — див. `fx-history.js`.
+  for (const column of ['amountUah', 'amountPln', 'amountUsd']) {
+    try {
+      await db.exec(`ALTER TABLE transactions ADD COLUMN ${column} REAL`);
+    } catch {
+      /* already exists */
+    }
+  }
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS fx_daily (
+      day TEXT PRIMARY KEY,
+      usd_uah REAL,
+      usd_pln REAL,
+      crypto_json TEXT,
+      source TEXT,
+      updated_at TEXT NOT NULL
+    )
+  `);
+  await db.exec(`CREATE INDEX IF NOT EXISTS idx_transactions_unstamped ON transactions(amountUsd) WHERE amountUsd IS NULL`);
   await db.run(
     `UPDATE account_portfolio
      SET debt_initial_amount = primary_amount + COALESCE((

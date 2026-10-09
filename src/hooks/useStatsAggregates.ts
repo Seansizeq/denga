@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import type { Transaction } from '../types';
 import type { Denomination } from '../utils/denomination';
 import { isInPeriod, type PeriodBounds } from '../utils/statsPeriod';
-import { isBalanceCorrection } from '../utils/transactionUtils';
+import { isBalanceCorrection, transactionAmountIn } from '../utils/transactionUtils';
 
 export interface CategoryTotal {
   id: string;
@@ -32,7 +32,7 @@ type ConvertAmount = (amount: number, from: Denomination) => number | null;
 const sumByType = (
   transactions: readonly Transaction[],
   bounds: PeriodBounds,
-  convertAmount: ConvertAmount,
+  amountOf: (tx: Transaction) => number | null,
 ): { income: number; expense: number } => {
   let income = 0;
   let expense = 0;
@@ -40,7 +40,7 @@ const sumByType = (
     if (!isInPeriod(tx.date, bounds)) continue;
     // Корекція балансу — не рух грошей, а виправлення обліку.
     if (isBalanceCorrection(tx)) continue;
-    const amount = convertAmount(tx.amount, tx.currency);
+    const amount = amountOf(tx);
     if (amount === null) continue;
     if (tx.type === 'income') income += amount;
     else if (tx.type === 'expense') expense += amount;
@@ -51,13 +51,20 @@ const sumByType = (
 export const useStatsAggregates = (params: {
   transactions: readonly Transaction[];
   convertAmount: ConvertAmount;
+  /**
+   * Валюта показу. Коли передана, кожна операція рахується за курсом свого дня
+   * (сума, яку записав сервер), і минулі періоди не «пливуть» разом із курсом.
+   */
+  displayCurrency?: string;
   bounds: PeriodBounds;
   previousBounds: PeriodBounds;
   chartType: 'expense' | 'income';
 }): StatsAggregates => {
-  const { transactions, convertAmount, bounds, previousBounds, chartType } = params;
+  const { transactions, convertAmount, displayCurrency, bounds, previousBounds, chartType } = params;
 
   return useMemo(() => {
+    const amountOf = (tx: Transaction) =>
+      displayCurrency ? transactionAmountIn(tx, displayCurrency, convertAmount) : convertAmount(tx.amount, tx.currency);
     const filtered = transactions.filter((tx) => isInPeriod(tx.date, bounds));
 
     let income = 0;
@@ -67,7 +74,7 @@ export const useStatsAggregates = (params: {
 
     for (const tx of filtered) {
       if (isBalanceCorrection(tx)) continue;
-      const amount = convertAmount(tx.amount, tx.currency);
+      const amount = amountOf(tx);
       if (amount === null) continue;
       if (tx.type === 'income') income += amount;
       else if (tx.type === 'expense') expense += amount;
@@ -82,7 +89,7 @@ export const useStatsAggregates = (params: {
     }
 
     const byCategory = Array.from(categoryMap.values()).sort((a, b) => b.total - a.total);
-    const previous = sumByType(transactions, previousBounds, convertAmount);
+    const previous = sumByType(transactions, previousBounds, amountOf);
 
     return {
       filtered,
@@ -95,5 +102,5 @@ export const useStatsAggregates = (params: {
       byCategory,
       transactionCount,
     };
-  }, [transactions, convertAmount, bounds, previousBounds, chartType]);
+  }, [transactions, convertAmount, displayCurrency, bounds, previousBounds, chartType]);
 };

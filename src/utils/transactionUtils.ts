@@ -81,6 +81,26 @@ export const getTransactionAccountEffects = (tx: Transaction): TransactionAccoun
 export const getTransactionNotePreview = (tx: Pick<Transaction, 'note'>): string => stripAccountFromNote(tx.note?.trim() ?? '');
 
 /**
+ * Сума операції у валюті показу — за курсом **її** дня, який сервер записав
+ * разом з нею. Без цього вересень у злотих сьогодні був один, а через тиждень
+ * інший: гривнева покупка «дешевшала» разом із гривнею. Поки сервер суму ще
+ * не порахував (стара операція, курсу дня ще немає), — перерахунок за
+ * сьогоднішнім курсом, як було досі.
+ *
+ * @param fallback перерахунок у валюту показу; `null` — курсу немає.
+ */
+export const transactionAmountIn = (
+  tx: Pick<Transaction, 'amount' | 'currency' | 'amountUah' | 'amountPln' | 'amountUsd'>,
+  currency: string,
+  fallback: (amount: number, from: Transaction['currency']) => number | null,
+): number | null => {
+  const stamped =
+    currency === 'UAH' ? tx.amountUah : currency === 'PLN' ? tx.amountPln : currency === 'USD' ? tx.amountUsd : null;
+  if (typeof stamped === 'number' && Number.isFinite(stamped)) return stamped;
+  return fallback(tx.amount, tx.currency);
+};
+
+/**
  * `resolveName` дає назви такі, як у гаманці. Без нього лишається розкладений
  * ключ — годиться лише там, де портфель недоступний.
  */

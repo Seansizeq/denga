@@ -23,6 +23,10 @@ export interface Transaction {
   /** На скільки операція зрушила рахунок, у його валюті на день запису. */
   accountAmount?: number | null;
   accountCurrency?: Denomination | null;
+  /** Суми у валютах показу за курсом дня операції; порожньо — ще не пораховано. */
+  amountUah?: number | null;
+  amountPln?: number | null;
+  amountUsd?: number | null;
   fromAccountKey?: string;
   toAccountKey?: string;
   debtEventId?: string;
