@@ -2,12 +2,16 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiFetch, deleteBudget, getBudgets, setBudget, type CategoryBudget } from '../api/client';
 import { CATEGORIES, getCustomCategoryData, inferCustomCategoryColor, inferCustomCategoryIcon } from '../constants/categories';
 import { getCategoryIcon } from '../constants/categoryIcons';
+import { useToast } from '../components/ui/Toast';
 import { useTranslation } from '../i18n/LanguageContext';
 import type { CategoryKey } from '../i18n/translations';
 import type { DisplayCurrency } from '../utils/formatters';
 import styles from './Budgets.module.css';
 
 type CustomRow = { id: string; name: string };
+
+const currencySymbol = (currency: CategoryBudget['currency']) =>
+  currency === 'PLN' ? 'zł' : currency === 'USD' ? '$' : '₴';
 
 /** Іконка й колір категорії — ті самі, що в списку операцій і в підписках. */
 const categoryVisual = (categoryId: string) => {
@@ -24,6 +28,7 @@ const categoryVisual = (categoryId: string) => {
 
 const Budgets: React.FC = () => {
   const { t, displayCurrency } = useTranslation();
+  const toast = useToast();
   const [budgets, setBudgets] = useState<CategoryBudget[]>([]);
   const [customExpense, setCustomExpense] = useState<CustomRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -75,30 +80,47 @@ const Budgets: React.FC = () => {
     return built;
   }, [expenseCategories, customExpense, t]);
 
+  const savedBudget = (categoryId: string) =>
+    budgets.find((x) => x.categoryId === categoryId && Number(x.monthlyLimit) > 0) ?? null;
+
+  /**
+   * Збережений ліміт лишається у своїй валюті, і лише новий бере валюту з
+   * налаштувань. Раніше рядок підписувався поточною валютою показу: після
+   * перемикання на злоті ліміт 5000 ₴ виглядав як «5000 zł» і саме так
+   * зберігався, щойно людина торкалася поля, — ліміт мовчки ріс у десятки разів.
+   */
+  const currencyFor = (categoryId: string): CategoryBudget['currency'] =>
+    savedBudget(categoryId)?.currency ?? (displayCurrency as DisplayCurrency);
+
   const getLimitFor = (categoryId: string) => {
-    const fromState = budgets.find((x) => x.categoryId === categoryId);
     if (localLimits[categoryId] !== undefined) return localLimits[categoryId];
-    if (fromState && Number(fromState.monthlyLimit) > 0) return String(fromState.monthlyLimit);
-    return '';
+    const saved = savedBudget(categoryId);
+    return saved ? String(saved.monthlyLimit) : '';
+  };
+
+  const revertLimit = (categoryId: string) => {
+    const saved = savedBudget(categoryId);
+    setLocalLimits((prev) => ({ ...prev, [categoryId]: saved ? String(saved.monthlyLimit) : '' }));
   };
 
   const persist = async (categoryId: string, raw: string) => {
-    const cur = displayCurrency as DisplayCurrency;
+    const saved = savedBudget(categoryId);
     const trimmed = String(raw).trim();
-    if (trimmed === '') {
-      try {
+    const n = trimmed === '' ? 0 : parseFloat(trimmed.replace(',', '.'));
+    if (!Number.isFinite(n) || n < 0) {
+      revertLimit(categoryId);
+      return;
+    }
+    // Дотик без правки нічого не надсилає.
+    if (n === (saved ? Number(saved.monthlyLimit) : 0)) return;
+    try {
+      if (n === 0) {
         await deleteBudget(categoryId);
         setBudgets((prev) => prev.filter((x) => x.categoryId !== categoryId));
         setLocalLimits((prev) => ({ ...prev, [categoryId]: '' }));
-      } catch {
-        /* ignore */
+        return;
       }
-      return;
-    }
-    const n = parseFloat(trimmed.replace(',', '.'));
-    if (!Number.isFinite(n) || n < 0) return;
-    try {
-      const next = await setBudget(categoryId, n, cur);
+      const next = await setBudget(categoryId, n, currencyFor(categoryId));
       setBudgets((prev) => {
         const rest = prev.filter((x) => x.categoryId !== categoryId);
         if (next.monthlyLimit <= 0) return rest;
@@ -106,7 +128,9 @@ const Budgets: React.FC = () => {
       });
       setLocalLimits((prev) => ({ ...prev, [categoryId]: next.monthlyLimit > 0 ? String(next.monthlyLimit) : '' }));
     } catch {
-      /* ignore */
+      // Поле не має вдавати, що число збережене.
+      revertLimit(categoryId);
+      toast.show(t('budgets', 'saveFailed'), { variant: 'error' });
     }
   };
 
@@ -158,7 +182,7 @@ const Budgets: React.FC = () => {
                   }
                   onBlur={() => void persist(row.id, getLimitFor(row.id))}
                 />
-                <span className={styles.currency}>{displayCurrency === 'PLN' ? 'zł' : displayCurrency === 'USD' ? '$' : '₴'}</span>
+                <span className={styles.currency}>{currencySymbol(currencyFor(row.id))}</span>
               </label>
             );
           })

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pencil, Trash2 } from 'lucide-react';
+import { AlertCircle, Pencil, Trash2 } from 'lucide-react';
 import type { Transaction } from '../../types';
 import { findCategory, getCustomCategoryData, inferCustomCategoryIcon } from '../../constants/categories';
 import { getCategoryIcon } from '../../constants/categoryIcons';
@@ -10,6 +10,7 @@ import { getTransactionAccountKey, stripAccountFromNote } from '../../utils/tran
 import { getTransferSummaryLabel, transactionAmountIn } from '../../utils/transactionUtils';
 import { useDenominationRates } from '../../hooks/useDenominationRates';
 import { useAccountNames } from '../../hooks/useAccountNames';
+import { useMissingFields } from '../../hooks/useMissingFields';
 import { hapticResult, showAppConfirm } from '../../utils/notify';
 import styles from './TransactionItem.module.css';
 
@@ -36,10 +37,11 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
   const { t, locale, displayCurrency } = useTranslation();
   const { convert } = useDenominationRates();
   const resolveAccountName = useAccountNames();
+  const checkMissing = useMissingFields();
   const customCategory = getCustomCategoryData(transaction.categoryId);
   const category = customCategory
     ? findCategory(transaction.type === 'income' ? 'other_income' : 'other_expense')
-    : findCategory(transaction.categoryId);
+    : findCategory(transaction.categoryId, transaction.type);
   const resolvedCustomIcon = customCategory ? inferCustomCategoryIcon(customCategory.name, customCategory.icon) : null;
   const IconComponent = customCategory
     ? getCategoryIcon(resolvedCustomIcon, 'Tag')
@@ -94,12 +96,25 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
       : formatCurrency(transaction.amount, locale, txCurrency)
     : `${isIncome ? '+' : '−'}${formatCurrency(transaction.amount, locale, txCurrency)}`;
 
+  // Мітка лише там, де рядок відкривається на правку: інакше вона просила б
+  // заповнити те, до чого звідси не дістатися.
+  const missing = onEdit ? checkMissing(transaction) : null;
+  const missingLabel = !missing
+    ? ''
+    : missing.account && missing.category
+      ? t('history', 'missingBoth')
+      : missing.account
+        ? t('history', 'missingAccount')
+        : missing.category
+          ? t('history', 'missingCategory')
+          : '';
+
   return (
     <div
       // Каскад лише для перших рядків: анімувати всю історію одночасно —
       // це десятки шарів на кожен кадр, з чого й береться смикання. Далі за
       // межами першого екрана анімація нічого не додає.
-      className={`${styles.row} ${index < ANIMATED_ROWS ? 'motion-list-item' : ''} ${onEdit ? styles.rowTappable : ''}`}
+      className={`${styles.row} ${index < ANIMATED_ROWS ? 'motion-list-item' : ''} ${onEdit ? styles.rowTappable : ''} ${missingLabel ? styles.rowIncomplete : ''}`}
       style={index < ANIMATED_ROWS ? { ['--i' as string]: index } : undefined}
       {...(onEdit
         ? {
@@ -124,7 +139,13 @@ const TransactionItem: React.FC<TransactionItemProps> = ({
 
       <div className={styles.info}>
         <span className={styles.name}>{categoryName}</span>
-        <span className={styles.subtitle}>{subtitle}</span>
+        {subtitle ? <span className={styles.subtitle}>{subtitle}</span> : null}
+        {missingLabel ? (
+          <span className={styles.missing}>
+            <AlertCircle size={13} strokeWidth={2.4} aria-hidden="true" />
+            {missingLabel}
+          </span>
+        ) : null}
       </div>
 
       <div className={styles.right}>

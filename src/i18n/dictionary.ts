@@ -28,6 +28,8 @@ export type Dict = {
     recentTitle: string;
     seeAll: string;
     empty: string;
+    emptyToday: string;
+    missingNotice: string;
     addTransaction: string;
     searchPlaceholder: string;
     noResults: string;
@@ -143,6 +145,9 @@ export type Dict = {
     hintTransferAccounts: string;
     hintTransferDifferent: string;
     hintTransferDestination: string;
+    missingAccountHint: string;
+    missingCategoryHint: string;
+    missingBothHint: string;
     transferRateUnavailable: string;
     transferRateEditable: string;
     dateToday: string;
@@ -164,6 +169,10 @@ export type Dict = {
     calendar: string;
     calendarHint: string;
     clearDay: string;
+    missingAccount: string;
+    missingCategory: string;
+    missingBoth: string;
+    missingFilter: string;
     prevMonth: string;
     nextMonth: string;
   };
@@ -262,6 +271,7 @@ export type Dict = {
     customRangeFrom: string;
     customRangeTo: string;
     reportHoursTotal: string;
+    plannedSuffix: string;
     totalShifts: string;
     shiftsShort: string;
     salaryForReportHint: string;
@@ -297,7 +307,7 @@ export type Dict = {
     monthly: string;
     yearly: string;
     yearlyForItem: string;
-    startPrefix: string;
+    chargePrefix: string;
     nextChargeDate: string;
     active: string;
     account: string;
@@ -457,6 +467,7 @@ export type Dict = {
     monthlyLimit: string;
     currencyNote: string;
     noBudgetHint: string;
+    saveFailed: string;
   };
   goals: {
     title: string;
@@ -507,6 +518,7 @@ export type Dict = {
     baselineSavingsHint: string;
     baselineSourceLabel: string;
     incomeNoWalletHint: string;
+    noAccountIncomeHint: string;
     accountNotForIncome: string;
     goalState: string;
     stateActive: string;

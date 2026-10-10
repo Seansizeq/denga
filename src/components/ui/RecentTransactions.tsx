@@ -19,6 +19,8 @@ interface Props {
   title?: string;
   showSeeAll?: boolean;
   onTitleClick?: () => void;
+  /** Текст порожнього списку; за замовчуванням — «ще немає операцій». */
+  emptyText?: string;
 }
 
 const RecentTransactions: React.FC<Props> = ({
@@ -32,6 +34,7 @@ const RecentTransactions: React.FC<Props> = ({
   title,
   showSeeAll = true,
   onTitleClick,
+  emptyText,
 }) => {
   const { t } = useTranslation();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -106,7 +109,7 @@ const RecentTransactions: React.FC<Props> = ({
       {visible.length === 0 ? (
         <div className={styles.emptyState}>
           <span role="img" aria-label="empty" className={styles.emptyIcon}>📒</span>
-          <p className={styles.emptyText}>{t('dashboard', 'empty')}</p>
+          <p className={styles.emptyText}>{emptyText ?? t('dashboard', 'empty')}</p>
         </div>
       ) : (
         <div className={styles.list}>

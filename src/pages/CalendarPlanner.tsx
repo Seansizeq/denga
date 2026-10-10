@@ -86,9 +86,10 @@ const parseIsoLocal = (iso: string): Date => {
 };
 
 const todayIso = (): string => toIsoLocal(new Date());
+/** «жовтень 2026» без «р.» — його `capitalize` у стилях робив «Р.». */
 const monthLabel = (value: string, locale: string): string => {
   const [year, month] = value.split('-').map(Number);
-  return new Date(year, month - 1, 1).toLocaleDateString(locale, { month: 'long', year: 'numeric' });
+  return `${new Date(year, month - 1, 1).toLocaleDateString(locale, { month: 'long' })} ${year}`;
 };
 
 const openNativeDatePicker = (input: (HTMLInputElement & { showPicker?: () => void }) | null): void => {
@@ -444,7 +445,12 @@ const CalendarPlanner: React.FC = () => {
 
   const monthReport = useMemo(() => {
     const days = reportDaysKey ? reportDaysKey.split('|') : [];
+    // «Відпрацьовано» — лише по сьогодні включно. Заплановані наперед зміни
+    // йдуть окремим числом: інакше звіт 10-го показував години за зміну 12-го
+    // як уже відпрацьовані. Очікувана зарплата рахує обидва — вона й так прогноз.
+    const today = todayIso();
     let totalHours = 0;
+    let plannedHours = 0;
     let totalSalaryUah = 0;
     let totalSalaryPln = 0;
     let filledDays = 0;
@@ -454,13 +460,14 @@ const CalendarPlanner: React.FC = () => {
       if (!p?.hasShift) continue;
       filledDays += 1;
       totalShifts += Math.max(1, Math.floor(toNumber(p.shiftsCount)));
-      totalHours += p.workedHours || 0;
+      if (day > today) plannedHours += p.workedHours || 0;
+      else totalHours += p.workedHours || 0;
       const payUah = p.salaryAmountUah ?? (p.salaryCurrency === 'UAH' ? expectedPayForDay(p) : 0);
       const payPln = p.salaryAmountPln ?? (p.salaryCurrency === 'PLN' ? expectedPayForDay(p) : 0);
       totalSalaryUah += payUah;
       totalSalaryPln += payPln;
     }
-    return { totalHours, totalSalaryUah, totalSalaryPln, filledDays, totalShifts };
+    return { totalHours, plannedHours, totalSalaryUah, totalSalaryPln, filledDays, totalShifts };
   }, [store, reportDaysKey]);
 
   /**
@@ -1162,6 +1169,15 @@ const CalendarPlanner: React.FC = () => {
                   minutes: t('planner', 'minutesShort'),
                 })}
               </strong>
+              {monthReport.plannedHours > 0 ? (
+                <span className={styles.reportValueSub}>
+                  +{formatHoursMinutes(monthReport.plannedHours, {
+                    hours: t('planner', 'hoursShort'),
+                    minutes: t('planner', 'minutesShort'),
+                  })}{' '}
+                  {t('planner', 'plannedSuffix')}
+                </span>
+              ) : null}
             </div>
           </div>
 

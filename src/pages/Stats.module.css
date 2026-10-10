@@ -98,7 +98,11 @@
   font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
-  text-transform: capitalize;
+}
+
+/* Велика лише перша літера: `capitalize` робив «10 Жовтня 2026 Р.». */
+.periodNavLabel::first-letter {
+  text-transform: uppercase;
 }
 
 /* Summary */
@@ -156,6 +160,8 @@
   font-size: 20px;
   font-weight: 700;
   letter-spacing: -0.4px;
+  /* Сума з символом валюти — одне ціле: інакше «₴» падав на окремий рядок. */
+  white-space: nowrap;
 }
 
 .summaryChange {

@@ -17,6 +17,16 @@ const LOCAL_STORAGE_KEYS = [
   'denga_subscriptions_v1',
   'denga_fx_rates_v1',
   'category_overrides_v1',
+  'category_overrides_imported_v1',
+  // Шаблони витрат тримають суми й рахунки, останній вибір форми — рахунок.
+  'expense_templates_cache_v1',
+  'expense_templates_v1',
+  'expense_templates_imported_v1',
+  'add_tx_defaults_v1',
+  'denga.stats.hiddenCategories.v1',
+  'denga.accounts.hiddenSections.v1',
+  // Інакше новий акаунт на цьому пристрої так і не отримав би валюту звітів.
+  'denga_currency_synced',
   'denga_dev',
 ];
 

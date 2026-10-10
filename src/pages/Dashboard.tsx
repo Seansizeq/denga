@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus } from 'lucide-react';
+import { AlertCircle, ChevronRight, Plus } from 'lucide-react';
 import { useTransactions } from '../context/TransactionContext';
 import { useTranslation } from '../i18n/LanguageContext';
 import { showAppAlert } from '../utils/notify';
@@ -9,7 +9,9 @@ import HeroBalance from '../components/ui/HeroBalance';
 import QuickActions from '../components/ui/QuickActions';
 import RecentTransactions from '../components/ui/RecentTransactions';
 import type { RangeFilter } from '../components/ui/RecentTransactions';
-import { isWithinLastDays } from '../utils/dateRanges';
+import { isWithinLastDays, localIsoDate } from '../utils/dateRanges';
+import { useMissingFields } from '../hooks/useMissingFields';
+import { isIncomplete } from '../utils/transactionCompleteness';
 import { isBalanceCorrection, transactionAmountIn } from '../utils/transactionUtils';
 import {
   computePortfolioMonthStartUahPln,
@@ -70,6 +72,25 @@ const Dashboard: React.FC = () => {
     () => transactions.filter((tx) => inRange(tx.date)),
     [transactions, inRange],
   );
+
+  /**
+   * Свіжі операції без рахунку чи з «Іншим». Головна показує лише сьогодні,
+   * а бот і банк пишуть і вночі — без цього рядка такі записи помітно хіба
+   * тоді, коли хтось сам відкриє історію. Старіші за місяць не рахуються:
+   * давні «Інше» тут лише шуміли б, а в історії вони й так позначені.
+   */
+  const checkMissing = useMissingFields();
+  const recentIncomplete = useMemo(() => {
+    const since = new Date();
+    since.setDate(since.getDate() - 30);
+    const fromIso = localIsoDate(since);
+    // Та сама межа, що й у фільтрі історії, куди веде цей рядок.
+    const fromTime = new Date(`${fromIso}T00:00:00`).getTime();
+    const count = transactions.filter(
+      (tx) => new Date(tx.date).getTime() >= fromTime && isIncomplete(checkMissing(tx)),
+    ).length;
+    return { count, fromIso };
+  }, [transactions, checkMissing]);
 
   // Підсумок рахується за той самий період, що показує фільтр під ним.
   // Раніше зверху була сума за весь час, а список — за «сьогодні».
@@ -207,6 +228,20 @@ const Dashboard: React.FC = () => {
 
         <QuickActions />
 
+        {recentIncomplete.count > 0 ? (
+          <button
+            type="button"
+            className={styles.missingNotice}
+            onClick={() => navigate(`/history?missing=1&from=${recentIncomplete.fromIso}`)}
+          >
+            <AlertCircle size={18} strokeWidth={2.2} aria-hidden="true" />
+            <span className={styles.missingNoticeText}>
+              {t('dashboard', 'missingNotice').replace('{count}', String(recentIncomplete.count))}
+            </span>
+            <ChevronRight size={18} strokeWidth={2.2} aria-hidden="true" />
+          </button>
+        ) : null}
+
         <RecentTransactions
           transactions={filtered}
           onDelete={async (id) => {
@@ -219,6 +254,11 @@ const Dashboard: React.FC = () => {
           showFilter={false}
           showSeeAll={false}
           onTitleClick={() => navigate('/history')}
+          // Порожньо лише сьогодні, а не взагалі: «додайте першу» тут звучало
+          // як «у вас нічого немає» навіть для людини з роками історії.
+          emptyText={
+            range === 'today' && transactions.length > 0 ? t('dashboard', 'emptyToday') : undefined
+          }
         />
 
         <div className={styles.spacer} />

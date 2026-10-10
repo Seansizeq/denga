@@ -19,6 +19,23 @@
   transform: scale(0.995);
 }
 
+/* Операція без рахунку чи з «Іншим»: видно з першого погляду, що її треба дозаповнити. */
+.rowIncomplete {
+  border-color: rgba(255, 159, 10, 0.45);
+}
+
+.missing {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-orange);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .iconCircle {
   width: 44px;
   height: 44px;

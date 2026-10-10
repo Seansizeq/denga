@@ -34,6 +34,43 @@
   margin: 0;
 }
 
+/* Фільтр «незаповнені» — помаранчевий, як і мітка на самих рядках. */
+.missingChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 0 13px;
+  margin-bottom: 10px;
+  border: 1px solid rgba(255, 159, 10, 0.45);
+  border-radius: var(--radius-full);
+  background: rgba(255, 159, 10, 0.08);
+  color: var(--accent-orange);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.missingChipActive {
+  background: var(--accent-orange);
+  border-color: var(--accent-orange);
+  color: #1a1200;
+}
+
+.missingChipCount {
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 159, 10, 0.18);
+  font-size: 12px;
+  text-align: center;
+}
+
+.missingChipActive .missingChipCount {
+  background: rgba(0, 0, 0, 0.15);
+}
+
 .groups {
   display: flex;
   flex-direction: column;

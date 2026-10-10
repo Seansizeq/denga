@@ -157,6 +157,24 @@
   background-color: var(--bg-card-light);
 }
 
+/* Поле, яке варто дозаповнити: той самий помаранчевий, що й мітка в списку. */
+.metaRowMissing {
+  border-color: rgba(255, 159, 10, 0.55);
+}
+
+.metaRowMissing .metaValue {
+  color: var(--accent-orange);
+}
+
+.missingHint {
+  /* Стоїть упритул до полів (тим самим кроком, що між рядками), а відступ
+     до примітки лишається тим самим, що й без підказки. */
+  margin: -18px 4px 28px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--accent-orange);
+}
+
 .metaLabel {
   font-size: 13px;
   font-weight: 600;

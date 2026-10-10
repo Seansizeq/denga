@@ -1,12 +1,15 @@
 import { useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { AlertCircle } from 'lucide-react';
 import { useTransactions } from '../context/TransactionContext';
 import TransactionItem from '../components/ui/TransactionItem';
 import RowSkeleton from '../components/ui/RowSkeleton';
 import HistoryCalendar from '../components/ui/HistoryCalendar';
 import { useTranslation } from '../i18n/LanguageContext';
+import { useMissingFields } from '../hooks/useMissingFields';
 import { showAppAlert } from '../utils/notify';
 import { localIsoDate } from '../utils/dateRanges';
+import { isIncomplete } from '../utils/transactionCompleteness';
 import styles from './History.module.css';
 
 const History: React.FC = () => {
@@ -14,12 +17,21 @@ const History: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { transactions, deleteTransaction, isBootstrapping } = useTransactions();
   const { t, locale } = useTranslation();
+  const checkMissing = useMissingFields();
 
   const categoryId = searchParams.get('categoryId');
   const typeParam = searchParams.get('type');
   const fromParam = searchParams.get('from');
   const toParam = searchParams.get('to');
-  const hasFilter = Boolean(categoryId || typeParam || fromParam || toParam);
+  const missingOnly = searchParams.get('missing') === '1';
+  const hasFilter = Boolean(categoryId || typeParam || fromParam || toParam || missingOnly);
+
+  const toggleMissingOnly = () => {
+    const next = new URLSearchParams(searchParams);
+    if (missingOnly) next.delete('missing');
+    else next.set('missing', '1');
+    setSearchParams(next);
+  };
 
   /** Дні, у яких є операції — календар підсвічує саме їх. */
   const activeDays = useMemo(() => {
@@ -58,8 +70,9 @@ const History: React.FC = () => {
     if (!ok) showAppAlert(t('addTx', 'saveFailed'));
   };
 
-  const visible = useMemo(() => {
-    if (!hasFilter) return transactions;
+  /** Усі фільтри, крім «незаповнених»: від них рахується і лічильник кнопки. */
+  const scoped = useMemo(() => {
+    if (!categoryId && !typeParam && !fromParam && !toParam) return transactions;
     const fromTime = fromParam ? new Date(`${fromParam}T00:00:00`).getTime() : null;
     const toTime = toParam ? new Date(`${toParam}T00:00:00`).getTime() : null;
     return transactions.filter((tx) => {
@@ -70,7 +83,17 @@ const History: React.FC = () => {
       if (toTime !== null && time >= toTime) return false;
       return true;
     });
-  }, [transactions, hasFilter, categoryId, typeParam, fromParam, toParam]);
+  }, [transactions, categoryId, typeParam, fromParam, toParam]);
+
+  // Скільки операцій чекає на рахунок чи категорію — у межах тих самих
+  // фільтрів, щоб число на кнопці збігалося зі списком після натискання.
+  const incomplete = useMemo(
+    () => scoped.filter((tx) => isIncomplete(checkMissing(tx))),
+    [scoped, checkMissing],
+  );
+  const incompleteCount = incomplete.length;
+
+  const visible = missingOnly ? incomplete : scoped;
 
   const grouped = useMemo(() => {
     const map = new Map<string, { label: string; items: typeof transactions }>();
@@ -98,6 +121,22 @@ const History: React.FC = () => {
           </button>
         )}
       </header>
+
+      {/* Швидкий шлях до всього, що бот чи банк записали без рахунку або з
+          «Іншим». Кнопка лишається й з порожнім лічильником, поки фільтр
+          увімкнено, — інакше його не було б чим вимкнути. */}
+      {incompleteCount > 0 || missingOnly ? (
+        <button
+          type="button"
+          className={`${styles.missingChip} ${missingOnly ? styles.missingChipActive : ''}`}
+          onClick={toggleMissingOnly}
+          aria-pressed={missingOnly}
+        >
+          <AlertCircle size={15} strokeWidth={2.4} aria-hidden="true" />
+          {t('history', 'missingFilter')}
+          <span className={styles.missingChipCount}>{incompleteCount}</span>
+        </button>
+      ) : null}
 
       <HistoryCalendar activeDays={activeDays} selectedDay={selectedDay} onSelectDay={handleSelectDay} />
 

@@ -72,9 +72,9 @@ const GoalDetail: React.FC = () => {
   const { accounts: rawAccounts } = usePortfolio();
   const { transactions } = useTransactions();
   const { convert } = useDenominationRates();
-  const portfolioAccounts = useMemo<Array<{ key: string; name: string; currency: GoalCurrency }>>(
+  const portfolioAccounts = useMemo<Array<{ key: string; name: string; currency: GoalCurrency; section: string }>>(
     () => {
-      const list: Array<{ key: string; name: string; currency: GoalCurrency }> = [];
+      const list: Array<{ key: string; name: string; currency: GoalCurrency; section: string }> = [];
       for (const row of rawAccounts) {
         if (!row || typeof row !== 'object') continue;
         const r = row as Record<string, unknown>;
@@ -84,7 +84,7 @@ const GoalDetail: React.FC = () => {
         if (isCryptoDenomination(r.primaryCurrency)) continue;
         const name = String(r.name ?? r.accountKey ?? '').trim().slice(0, 40);
         const cur = normalizeCurrency(String(r.primaryCurrency ?? 'UAH')) as GoalCurrency;
-        list.push({ key, name: name || key, currency: cur });
+        list.push({ key, name: name || key, currency: cur, section: String(r.section ?? '').trim() });
       }
       list.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
       return list;
@@ -94,8 +94,13 @@ const GoalDetail: React.FC = () => {
   const [actionError, setActionError] = useState('');
 
   // Кожен рахунок можна списати в будь-яку ціль незалежно від валюти —
-  // сервер конвертує суму за поточним курсом.
-  const accountPayOptions = portfolioAccounts;
+  // сервер конвертує суму за поточним курсом. Окрім рахунку самої цілі:
+  // внесок «із себе в себе» сервер однаково відхиляє.
+  const goalAccountKey = goal?.accountKey?.toLowerCase() ?? '';
+  const accountPayOptions = useMemo(
+    () => portfolioAccounts.filter((p) => p.key !== goalAccountKey),
+    [portfolioAccounts, goalAccountKey],
+  );
 
   useEffect(() => {
     if (!contribAccountKey) return;
@@ -234,13 +239,39 @@ const GoalDetail: React.FC = () => {
     [locale]
   );
 
+  /**
+   * Рахунок, з якого відкладати, обраний наперед. Без рахунку сервер пише
+   * внесок доходом — як гроші, що прийшли ззовні, — і «відклав 5000 на
+   * відпустку» зʼявлялося у статистиці заробітком лише тому, що поле стояло
+   * на «Не вказано». Для цілі-доходу рахунку немає взагалі.
+   */
+  const defaultContribAccount = (): string => {
+    if (!goal || goal.type !== 'savings') return '';
+    const available = new Set(accountPayOptions.map((p) => p.key));
+    // Той, з якого відкладали востаннє. Лише переказ: внесок без рахунку —
+    // це дохід, і його `fromAccountKey` вказує на рахунок самої цілі.
+    const recent = contributions
+      .filter((c) => c.transactionId)
+      .slice()
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));
+    for (const c of recent) {
+      const tx = transactions.find((x) => x.id === c.transactionId);
+      if (tx?.type !== 'transfer') continue;
+      const from = tx.fromAccountKey?.toLowerCase();
+      if (from && available.has(from)) return from;
+    }
+    // Інакше — картка чи готівка, спершу у валюті цілі.
+    const spendable = accountPayOptions.filter((p) => p.section === 'bank' || p.section === 'cash');
+    return (spendable.find((p) => p.currency === goal.currency) ?? spendable[0])?.key ?? '';
+  };
+
   const openContribute = () => {
     if (!goal) return;
     setActionError('');
     setContribAmount('');
     setContribNote('');
     setContribSource('');
-    setContribAccountKey('');
+    setContribAccountKey(defaultContribAccount());
     setContribCurrency(goal.currency);
     setContributeOpen(true);
   };
@@ -694,7 +725,11 @@ const GoalDetail: React.FC = () => {
             </label>
           </div>
           <p className={sheet.groupCaption}>
-            {goal.type === 'income' ? t('goals', 'incomeNoWalletHint') : t('goals', 'payFromHint')}
+            {goal.type === 'income'
+              ? t('goals', 'incomeNoWalletHint')
+              : contribAccountKey
+                ? t('goals', 'payFromHint')
+                : t('goals', 'noAccountIncomeHint')}
           </p>
 
           {goal.type === 'income' ? (

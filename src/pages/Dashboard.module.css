@@ -48,3 +48,31 @@
 .spacer {
   height: 60px;
 }
+
+/* Нагадування про незаповнені операції — помаранчеве, як мітки в історії. */
+.missingNotice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin: 0 0 18px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 159, 10, 0.45);
+  border-radius: 14px;
+  background: rgba(255, 159, 10, 0.08);
+  color: var(--accent-orange);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.missingNotice:active {
+  transform: scale(0.99);
+}
+
+.missingNoticeText {
+  flex: 1;
+  min-width: 0;
+}

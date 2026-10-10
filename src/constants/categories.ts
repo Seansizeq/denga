@@ -203,6 +203,14 @@ export const inferCustomCategoryColor = (name: string, currentColor?: string): s
   return pickColorByNameHash(name);
 };
 
-export const findCategory = (id: string): CategoryDef => {
-  return CATEGORIES.find((c) => c.id === id) ?? CATEGORIES[CATEGORIES.length - 1];
+/**
+ * Невідомий id стає «Іншим» свого типу. Раніше запасним був останній рядок
+ * таблиці — «Корекція балансу», тож невідома витрата підписувалась корекцією,
+ * хоча статистика рахувала її звичайною витратою.
+ */
+export const findCategory = (id: string, type?: 'income' | 'expense' | 'transfer'): CategoryDef => {
+  const found = CATEGORIES.find((c) => c.id === id);
+  if (found) return found;
+  const fallbackId = type === 'income' ? 'other_income' : 'other_expense';
+  return CATEGORIES.find((c) => c.id === fallbackId) ?? CATEGORIES[0];
 };

@@ -138,7 +138,9 @@ export const formatPeriodLabel = (
       return `${startStr} – ${endStr}`;
     }
     case 'month':
-      return anchors.selectedMonth.toLocaleDateString(locale, { month: 'long', year: 'numeric' });
+      // Назва й рік окремо: повний формат дає «жовтень 2026 р.», і велика
+      // літера на кожному слові робила з цього «Жовтень 2026 Р.».
+      return `${anchors.selectedMonth.toLocaleDateString(locale, { month: 'long' })} ${anchors.selectedMonth.getFullYear()}`;
     case 'year':
     default:
       return String(anchors.selectedYear);

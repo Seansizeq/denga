@@ -30,7 +30,9 @@ import { useDenominationRates } from '../hooks/useDenominationRates';
 import { useCategoryCatalog } from '../hooks/useCategoryCatalog';
 import { useExpenseTemplates, type ExpenseTemplate } from '../hooks/useExpenseTemplates';
 import { usePaymentAccountOptions } from '../hooks/usePaymentAccountOptions';
+import { useMissingFields } from '../hooks/useMissingFields';
 import { hapticResult } from '../utils/notify';
+import { localIsoDate } from '../utils/dateRanges';
 import { useGoBack } from '../hooks/useGoBack';
 import {
   hasPrefillParams,
@@ -48,12 +50,24 @@ import {
 } from '../utils/accountPicker';
 import styles from './AddTransaction.module.css';
 
+/**
+ * День операції за годинником людини — той самий, під яким її показує історія.
+ * `slice(0, 10)` брав день за UTC: покупка з банку о 01:30 за Києвом
+ * відкривалась у формі вчорашньою і при збереженні туди й переїжджала.
+ */
+const localDayOf = (iso: string | undefined): string | null => {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : localIsoDate(d);
+};
+
 const AddTransaction: React.FC = () => {
   const navigate = useNavigate();
   const goBack = useGoBack('/');
   const { transactions, addTransaction, updateTransaction, isBootstrapping } = useTransactions();
   const { t, language, locale, displayCurrency } = useTranslation();
   const [searchParams] = useSearchParams();
+  const checkMissing = useMissingFields();
   const {
     templates,
     saveTemplate,
@@ -102,10 +116,10 @@ const AddTransaction: React.FC = () => {
   });
   const [type, setType] = useState<TransactionType>(initialType);
   const [date, setDate] = useState(() => {
-    const fromEdit = editingTransaction?.date?.slice(0, 10);
-    if (fromEdit && /^\d{4}-\d{2}-\d{2}$/.test(fromEdit)) return fromEdit;
+    const fromEdit = localDayOf(editingTransaction?.date);
+    if (fromEdit) return fromEdit;
     if (prefillDateRaw && /^\d{4}-\d{2}-\d{2}$/.test(prefillDateRaw)) return prefillDateRaw;
-    return new Date().toISOString().slice(0, 10);
+    return localIsoDate();
   });
   const [categoryId, setCategoryId] = useState(() => {
     if (editingTransaction) return editingTransaction.categoryId;
@@ -311,7 +325,7 @@ const AddTransaction: React.FC = () => {
     setAmount(String(tx.amount));
     setCurrency(normalizeDenomination(tx.currency));
     setType(tx.type);
-    setDate(tx.date.slice(0, 10));
+    setDate(localDayOf(tx.date) ?? tx.date.slice(0, 10));
     setCategoryId(tx.categoryId);
     setPaymentAccount(getTransactionAccountKey(tx) ?? '');
     setTransferFromAccountKey(tx.fromAccountKey ?? '');
@@ -436,6 +450,17 @@ const AddTransaction: React.FC = () => {
     return paymentChipOptions.find((o) => o.key === paymentAccount)?.label ?? paymentAccount;
   }, [paymentAccount, paymentChipOptions, t]);
 
+  // Те саме правило, що позначає рядок у списку: форма показує, що саме
+  // лишилось дозаповнити. Зберегти можна й так — це підказка, а не замок.
+  const missing = checkMissing({
+    type,
+    categoryId,
+    accountKey: paymentAccount,
+    note: '',
+    fromAccountKey: transferFromAccountKey,
+    toAccountKey: transferToAccountKey,
+  });
+
   const handleSave = async () => {
     if (editNotFound) return;
     setSaveError('');
@@ -445,6 +470,9 @@ const AddTransaction: React.FC = () => {
     // Рахунок їде власним полем, а примітка лишається тим, що людина написала.
     const accountKey = paymentAccount && allowedPaymentKeys.has(paymentAccount) ? paymentAccount : null;
     const cleanNote = stripAccountFromNote(note.trim()).slice(0, 120);
+    // Незмінений день при правці не надсилається: сервер замінив би точний час
+    // операції північчю, а так лишає його як є.
+    const txDate = isEditing && date === localDayOf(editingTransaction?.date) ? undefined : date;
     const payload = type === 'transfer'
       ? {
           amount: numAmount,
@@ -453,7 +481,7 @@ const AddTransaction: React.FC = () => {
           currency: transferFromDenomination,
           type,
           categoryId: 'transfer',
-          date,
+          date: txDate,
           note: note.trim() || undefined,
           fromAccountKey: transferFromAccountKey || undefined,
           toAccountKey: transferToAccountKey || undefined,
@@ -468,7 +496,7 @@ const AddTransaction: React.FC = () => {
           currency,
           type,
           categoryId,
-          date,
+          date: txDate,
           note: cleanNote || undefined,
           accountKey,
         };
@@ -620,7 +648,7 @@ const AddTransaction: React.FC = () => {
           <div className={styles.metaList}>
             <button
               type="button"
-              className={styles.metaRow}
+              className={`${styles.metaRow} ${missing.account && !transferFromAccountKey ? styles.metaRowMissing : ''}`}
               onClick={() => setTransferAccountSheet('from')}
             >
               <span className={styles.metaLabel}>{t('addTx', 'transferFrom')}</span>
@@ -633,7 +661,7 @@ const AddTransaction: React.FC = () => {
             </button>
             <button
               type="button"
-              className={styles.metaRow}
+              className={`${styles.metaRow} ${missing.account && !transferToAccountKey ? styles.metaRowMissing : ''}`}
               onClick={() => setTransferAccountSheet('to')}
             >
               <span className={styles.metaLabel}>{t('addTx', 'transferTo')}</span>
@@ -784,7 +812,7 @@ const AddTransaction: React.FC = () => {
           <div className={styles.metaList}>
             <button
               type="button"
-              className={styles.metaRow}
+              className={`${styles.metaRow} ${missing.account ? styles.metaRowMissing : ''}`}
               onClick={() => setAccountSheetOpen(true)}
             >
               <span className={styles.metaLabel}>{t('addTx', 'paymentAccount')}</span>
@@ -795,7 +823,7 @@ const AddTransaction: React.FC = () => {
             </button>
             <button
               type="button"
-              className={styles.metaRow}
+              className={`${styles.metaRow} ${missing.category ? styles.metaRowMissing : ''}`}
               onClick={() => setCategorySheetOpen(true)}
             >
               <span className={styles.metaLabel}>{t('addTx', 'category')}</span>
@@ -805,6 +833,15 @@ const AddTransaction: React.FC = () => {
               </span>
             </button>
           </div>
+          {missing.account || missing.category ? (
+            <p className={styles.missingHint}>
+              {missing.account && missing.category
+                ? t('addTx', 'missingBothHint')
+                : missing.account
+                  ? t('addTx', 'missingAccountHint')
+                  : t('addTx', 'missingCategoryHint')}
+            </p>
+          ) : null}
         </>
       )}
 

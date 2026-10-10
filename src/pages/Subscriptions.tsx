@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ChevronRight, Pencil, Plus, Repeat } from 'lucide-react';
 import { formatCurrency, type PlannerCurrency } from '../utils/formatters';
+import { localIsoDate } from '../utils/dateRanges';
 import { useTranslation } from '../i18n/LanguageContext';
 import { useCategoryCatalog } from '../hooks/useCategoryCatalog';
 import { hapticLight, showAppConfirm } from '../utils/notify';
@@ -102,7 +103,8 @@ const Subscriptions: React.FC = () => {
   const [currency, setCurrency] = useState<SubscriptionCurrency>('UAH');
   const [categoryId, setCategoryId] = useState<string>(DEFAULT_CATEGORY_ID);
   const [cycle, setCycle] = useState<BillingCycle>('monthly');
-  const [nextChargeDate, setNextChargeDate] = useState(() => new Date().toISOString().slice(0, 10));
+  // Сьогодні за годинником людини: `toISOString()` до 03:00 за Києвом дає вчора.
+  const [nextChargeDate, setNextChargeDate] = useState(() => localIsoDate());
   const [active, setActive] = useState(true);
   const [note, setNote] = useState('');
   const [accountKey, setAccountKey] = useState('');
@@ -186,7 +188,7 @@ const Subscriptions: React.FC = () => {
     setCurrency('UAH');
     setCategoryId(DEFAULT_CATEGORY_ID);
     setCycle('monthly');
-    setNextChargeDate(new Date().toISOString().slice(0, 10));
+    setNextChargeDate(localIsoDate());
     setActive(true);
     setNote('');
     setAccountKey('');
@@ -358,7 +360,8 @@ const Subscriptions: React.FC = () => {
 
   const renderCard = (sub: Subscription, opts: { muted?: boolean }) => {
     const subCurrency = normalizeSubCurrency(sub.currency);
-    const startDate = formatShortDate(sub.nextChargeDate, locale);
+    // Це дата наступного списання, а не день, коли підписку завели.
+    const chargeDate = formatShortDate(sub.nextChargeDate, locale);
 
     return (
       <button
@@ -377,7 +380,7 @@ const Subscriptions: React.FC = () => {
         <div className={styles.itemInfo}>
           <span className={styles.itemName}>{sub.name}</span>
           <span className={styles.itemDate}>
-            {t('subscriptions', 'startPrefix')} {startDate}
+            {t('subscriptions', 'chargePrefix')} {chargeDate}
           </span>
         </div>
         <div className={styles.itemRight}>
@@ -505,7 +508,7 @@ const Subscriptions: React.FC = () => {
                 <div className={styles.heroInfo}>
                   <span className={styles.heroName}>{name.trim() || t('subscriptions', 'addTitle')}</span>
                   <span className={styles.heroDate}>
-                    {t('subscriptions', 'startPrefix')} {nextChargeDate ? formatShortDate(nextChargeDate, locale) : ''}
+                    {t('subscriptions', 'chargePrefix')} {nextChargeDate ? formatShortDate(nextChargeDate, locale) : ''}
                   </span>
                 </div>
               </div>
@@ -823,7 +826,7 @@ const Subscriptions: React.FC = () => {
             setCurrency('UAH');
             setCategoryId(DEFAULT_CATEGORY_ID);
             setCycle('monthly');
-            setNextChargeDate(new Date().toISOString().slice(0, 10));
+            setNextChargeDate(localIsoDate());
             setActive(true);
             setNote('');
             setAccountKey('');
