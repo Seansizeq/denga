@@ -823,26 +823,37 @@ const recordedRatesDay = { fiat: '', crypto: '' };
 const recordTodayRates = async ({ fiat = null, crypto = null } = {}) => {
   const day = todayUtcDay();
   const now = new Date().toISOString();
+  // Кожен запис — у черзі транзакцій, і позначка «записано» ставиться лише
+  // після її COMMIT. Голий `db.run` посеред чужого `BEGIN` зникав би з його
+  // відкатом, а позначка лишалась би — і до перезапуску процес більше не
+  // пробував би, а сьогоднішні операції брали б курс сусіднього дня.
+  //
+  // Сюди не чекають (`void` у викликачів), тож навіть виклик зсередини чиєїсь
+  // транзакції просто стане в чергу за нею, а не заблокує її.
   try {
     if (fiat && recordedRatesDay.fiat !== day) {
       const usdUah = Number(fiat.UAH);
       const usdPln = Number(fiat.PLN);
       if (usdUah > 0 && usdPln > 0) {
-        await db.run(
-          `INSERT INTO fx_daily (day, usd_uah, usd_pln, source, updated_at) VALUES (?, ?, ?, 'live', ?)
-           ON CONFLICT(day) DO UPDATE SET
-             usd_uah = COALESCE(fx_daily.usd_uah, excluded.usd_uah),
-             usd_pln = COALESCE(fx_daily.usd_pln, excluded.usd_pln)`,
-          [day, usdUah, usdPln, now],
+        await withTransaction(db, (tx) =>
+          tx.run(
+            `INSERT INTO fx_daily (day, usd_uah, usd_pln, source, updated_at) VALUES (?, ?, ?, 'live', ?)
+             ON CONFLICT(day) DO UPDATE SET
+               usd_uah = COALESCE(fx_daily.usd_uah, excluded.usd_uah),
+               usd_pln = COALESCE(fx_daily.usd_pln, excluded.usd_pln)`,
+            [day, usdUah, usdPln, now],
+          ),
         );
         recordedRatesDay.fiat = day;
       }
     }
     if (crypto && recordedRatesDay.crypto !== day) {
-      await db.run(
-        `INSERT INTO fx_daily (day, crypto_json, source, updated_at) VALUES (?, ?, 'live', ?)
-         ON CONFLICT(day) DO UPDATE SET crypto_json = COALESCE(fx_daily.crypto_json, excluded.crypto_json)`,
-        [day, JSON.stringify(crypto), now],
+      await withTransaction(db, (tx) =>
+        tx.run(
+          `INSERT INTO fx_daily (day, crypto_json, source, updated_at) VALUES (?, ?, 'live', ?)
+           ON CONFLICT(day) DO UPDATE SET crypto_json = COALESCE(fx_daily.crypto_json, excluded.crypto_json)`,
+          [day, JSON.stringify(crypto), now],
+        ),
       );
       recordedRatesDay.crypto = day;
     }
@@ -954,11 +965,14 @@ const backfillFiatAmounts = async () => {
     for (const { day } of days ?? []) {
       if (!transactionDay(day)) continue;
       // Точний день — з НБУ; сусідній — лише якщо НБУ не відповів.
-      let rates = await readFxDay(db, day, { exact: true });
-      if (!rates) {
-        const nbu = await fetchNbuDayRates(day);
+      // Мережа — до транзакції: тримати лок запису на відповіді НБУ не можна.
+      const exact = await readFxDay(db, day, { exact: true });
+      const nbu = exact ? null : await fetchNbuDayRates(day);
+      // Курс дня й суми операцій цього дня — одним кроком у черзі транзакцій:
+      // голий запис посеред чужого `BEGIN` зник би з його відкатом.
+      stamped += await withTransaction(db, async (tx) => {
         if (nbu) {
-          await db.run(
+          await tx.run(
             `INSERT INTO fx_daily (day, usd_uah, usd_pln, source, updated_at) VALUES (?, ?, ?, 'nbu', ?)
              ON CONFLICT(day) DO UPDATE SET
                usd_uah = COALESCE(fx_daily.usd_uah, excluded.usd_uah),
@@ -966,23 +980,25 @@ const backfillFiatAmounts = async () => {
             [day, nbu.usdUah, nbu.usdPln, new Date().toISOString()],
           );
         }
-        rates = await readFxDay(db, day);
-        if (!rates) continue;
-      }
-      const rows = await db.all(
-        `SELECT id, amount, currency FROM transactions
-         WHERE amountUsd IS NULL AND substr(date, 1, 10) = ?`,
-        [day],
-      );
-      for (const row of rows ?? []) {
-        const amounts = fiatAmountsAt(row.amount, row.currency, rates);
-        if (!amounts) continue;
-        const result = await db.run(
-          'UPDATE transactions SET amountUah = ?, amountPln = ?, amountUsd = ? WHERE id = ? AND amountUsd IS NULL',
-          [amounts.amountUah, amounts.amountPln, amounts.amountUsd, row.id],
+        const rates = exact ?? (await readFxDay(tx, day));
+        if (!rates) return 0;
+        const rows = await tx.all(
+          `SELECT id, amount, currency FROM transactions
+           WHERE amountUsd IS NULL AND substr(date, 1, 10) = ?`,
+          [day],
         );
-        stamped += result?.changes ?? 0;
-      }
+        let changed = 0;
+        for (const row of rows ?? []) {
+          const amounts = fiatAmountsAt(row.amount, row.currency, rates);
+          if (!amounts) continue;
+          const result = await tx.run(
+            'UPDATE transactions SET amountUah = ?, amountPln = ?, amountUsd = ? WHERE id = ? AND amountUsd IS NULL',
+            [amounts.amountUah, amounts.amountPln, amounts.amountUsd, row.id],
+          );
+          changed += result?.changes ?? 0;
+        }
+        return changed;
+      });
       daysDone += 1;
     }
   } finally {
@@ -4590,7 +4606,11 @@ app.post('/api/automation/transaction', async (req, res) => {
 
   let payload = body;
   const forwardsNotification = Object.prototype.hasOwnProperty.call(body, 'notification');
-  const notification = notificationText(body.notification);
+  // Заголовок, якщо ярлик передав його окремо, стає першим рядком тексту — так
+  // само, як коли Команди пересилають сповіщення цілим.
+  const notification = [notificationText(body.title), notificationText(body.notification)]
+    .filter((part) => part.trim())
+    .join('\n');
   const text = !forwardsNotification && typeof body.text === 'string' ? body.text.trim() : '';
   let merchant = typeof body.merchant === 'string' ? body.merchant.trim() : '';
   let provider = 'wallet';
@@ -5015,10 +5035,17 @@ const recordAutomaticTransaction = async ({
   // доставку, доки не побачить 200, а ще той самий рядок виписки прилітає
   // вдруге, коли блокування суми перетворюється на списання: обидва випадки
   // мають зупинитися тут, на унікальному індексі, а не стати другою витратою.
-  const claim = await db.run(
-    `INSERT OR IGNORE INTO bank_inbox (id, user_id, provider, external_id, created_at)
-     VALUES (?, ?, ?, ?, ?)`,
-    [cardId, userId, provider, String(externalId), nowIso],
+  //
+  // Власною транзакцією, а не голим `db.run`: зʼєднання одне на процес, і запис
+  // повз чергу, що трапився посеред чужого `BEGIN`, зникав би з його
+  // `ROLLBACK`. Тоді операція записалась би без рядка картки — без кнопок у
+  // чаті й без шансу звести її з другою половиною переказу.
+  const claim = await withTransaction(db, (tx) =>
+    tx.run(
+      `INSERT OR IGNORE INTO bank_inbox (id, user_id, provider, external_id, created_at)
+       VALUES (?, ?, ?, ?, ?)`,
+      [cardId, userId, provider, String(externalId), nowIso],
+    ),
   );
   if (!claim?.changes) return { ok: false, code: 'DUPLICATE' };
 
@@ -5169,7 +5196,7 @@ const recordAutomaticTransaction = async ({
     // Заявку треба відпустити: інакше операція, що не записалася через курс
     // або мінусовий борг, більше ніколи не повториться — унікальний індекс
     // мовчки відкидатиме кожну наступну доставку як дубль.
-    await db.run('DELETE FROM bank_inbox WHERE id = ?', [cardId]).catch(() => {});
+    await withTransaction(db, (tx) => tx.run('DELETE FROM bank_inbox WHERE id = ?', [cardId])).catch(() => {});
     throw error;
   }
 };
@@ -5197,22 +5224,26 @@ const accountNamesByKey = async (dbConn, userId, keys) => {
  */
 const recordIncomingForPairing = async ({ userId, provider, amount, currency, merchant, accountKey }) => {
   const id = createBankCardId();
-  await db.run(
-    `INSERT INTO bank_inbox (id, user_id, provider, external_id, created_at, merchant, merchant_key,
-       amount, currency, type, account_key, transfer_hint)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'income', ?, 0)`,
-    [
-      id,
-      userId,
-      provider,
-      `${provider}:in:${uuidv4()}`,
-      new Date().toISOString(),
-      String(merchant ?? '').slice(0, 120),
-      merchantKey(merchant),
-      amount,
-      currency,
-      accountKey,
-    ],
+  // У черзі транзакцій: голий запис посеред чужого `BEGIN` зник би з його
+  // відкатом, і друга половина переказу вже не знайшла б пари.
+  await withTransaction(db, (tx) =>
+    tx.run(
+      `INSERT INTO bank_inbox (id, user_id, provider, external_id, created_at, merchant, merchant_key,
+         amount, currency, type, account_key, transfer_hint)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'income', ?, 0)`,
+      [
+        id,
+        userId,
+        provider,
+        `${provider}:in:${uuidv4()}`,
+        new Date().toISOString(),
+        String(merchant ?? '').slice(0, 120),
+        merchantKey(merchant),
+        amount,
+        currency,
+        accountKey,
+      ],
+    ),
   );
   const paired = await tryPairOwnTransfer(userId, id);
   if (paired) await notifyOwnTransfer(userId, paired);
@@ -8555,14 +8586,6 @@ app.put('/api/bank/merchant-rules/:key', async (req, res) => {
   const userId = req.authUserId;
   const key = String(req.params.key ?? '').trim();
   const categoryId = String(req.body?.categoryId ?? '').trim();
-  const existing = await db.get(
-    'SELECT 1 FROM bank_merchant_rules WHERE user_id = ? AND merchant_key = ? LIMIT 1',
-    [userId, key],
-  );
-  if (!existing) {
-    res.status(404).json({ error: 'rule not found', code: 'RULE_NOT_FOUND' });
-    return;
-  }
   // Категорія має бути цієї людини: правило з чужою чи видаленою категорією
   // лише відправляло б покупки в нікуди (див. `resolveBankCategory`).
   const categories = await getAutomationCategories(userId);
@@ -8570,14 +8593,30 @@ app.put('/api/bank/merchant-rules/:key', async (req, res) => {
     res.status(400).json({ error: 'unknown category', code: 'INVALID_CATEGORY' });
     return;
   }
-  await rememberBankMerchantRule(db, userId, key, categoryId);
+  // У черзі транзакцій: голий запис посеред чужого `BEGIN` зник би з його
+  // відкатом, а людина вже побачила б «збережено».
+  const found = await withTransaction(db, async (tx) => {
+    const existing = await tx.get(
+      'SELECT 1 FROM bank_merchant_rules WHERE user_id = ? AND merchant_key = ? LIMIT 1',
+      [userId, key],
+    );
+    if (!existing) return false;
+    await rememberBankMerchantRule(tx, userId, key, categoryId);
+    return true;
+  });
+  if (!found) {
+    res.status(404).json({ error: 'rule not found', code: 'RULE_NOT_FOUND' });
+    return;
+  }
   res.json({ rules: await listMerchantRules(userId) });
 });
 
 app.delete('/api/bank/merchant-rules/:key', async (req, res) => {
   const userId = req.authUserId;
   const key = String(req.params.key ?? '').trim();
-  await db.run('DELETE FROM bank_merchant_rules WHERE user_id = ? AND merchant_key = ?', [userId, key]);
+  await withTransaction(db, (tx) =>
+    tx.run('DELETE FROM bank_merchant_rules WHERE user_id = ? AND merchant_key = ?', [userId, key]),
+  );
   // Без правила магазин знову розпізнається списком мереж чи MCC, а наступна
   // картка в чаті дасть навчити його заново.
   res.json({ rules: await listMerchantRules(userId) });

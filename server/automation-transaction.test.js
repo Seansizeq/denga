@@ -43,6 +43,14 @@ describe('normalizeAutomationBody', () => {
   it('says nothing when every field is known', () => {
     expect(unknownFieldsWarning([])).toBe('');
   });
+
+  it('knows the push title and direction a single bank automation sends', () => {
+    // One automation per bank: the trigger allows «Назва» only once, so the
+    // title travels as its own field and the server reads the direction from it.
+    const { body, unknownFields } = normalizeAutomationBody({ Title: 'Зарахування', notification: 'x', Type: 'transfer' });
+    expect(body).toEqual({ title: 'Зарахування', notification: 'x', type: 'transfer' });
+    expect(unknownFields).toEqual([]);
+  });
 });
 
 const categories = [
