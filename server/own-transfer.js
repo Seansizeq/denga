@@ -8,9 +8,9 @@
  *
  * Тому обидва боки зводяться в один переказ. Зводяться лише тоді, коли:
  *
- *   - списання **схоже на переказ** (слово «переказ», «поповнення картки»,
- *     назва банку чи біржі). Звичайна покупка на 100 zł і випадкове
- *     зарахування 100 zł за пʼять хвилин — не переказ;
+ *   - хоч один бік **схожий на переказ** (слово «переказ», «поповнення
+ *     картки», назва банку чи біржі, код переказу від банку). Звичайна
+ *     покупка на 100 zł і зарплата 100 zł за пʼять хвилин — не переказ;
  *   - обидва боки мають рахунок у Denga — інакше нема між чим переказувати;
  *   - суми збігаються з точністю до комісії й різниці курсів (3 %);
  *   - між ними не більше 20 хвилин.
@@ -38,7 +38,8 @@ const TRANSFER_HINT = new RegExp(
     'top[\\s-]?up',
     '\\bbybit\\b',
     '\\bbinance\\b',
-    '\\bmonobank\\b',
+    // «MONODirect» — так ПУМБ підписує зарахування з картки monobank.
+    '\\bmono(?:bank|direct)?\\b',
     '\\bprivat(?:24|bank)?\\b',
     // `\b` у JS бачить межі лише латинських слів, тож кирилиця — з явною
     // перевіркою, що поруч немає літери.
@@ -51,8 +52,20 @@ const TRANSFER_HINT = new RegExp(
   'iu',
 );
 
-/** Чи схоже списання на переказ, а не на покупку. */
-export const isTransferLike = ({ merchant = '', bankCategory = '' } = {}) =>
+/**
+ * Коди виду діяльності (ISO 18245), якими банк сам позначає переказ, а не
+ * покупку. Опис тут нічого не скаже: monobank у переказі на картку пише лише
+ * імʼя одержувача («Богдан С.»), а код — 4829.
+ *
+ *   4829 — грошовий переказ; 6012 — фінустанова (поповнення картки, P2P);
+ *   6050, 6051 — квазі-готівка (поповнення гаманців, біржі);
+ *   6538 — зарахування на картку (MoneySend/Visa Direct); 6540 — поповнення.
+ */
+const TRANSFER_MCC = new Set([4829, 6012, 6050, 6051, 6538, 6540]);
+
+/** Чи схожий рух грошей на переказ, а не на покупку чи зарплату. */
+export const isTransferLike = ({ merchant = '', bankCategory = '', mcc = null } = {}) =>
+  TRANSFER_MCC.has(Number.parseInt(String(mcc ?? ''), 10)) ||
   TRANSFER_HINT.test(`${bankCategory ?? ''} ${merchant ?? ''}`);
 
 /**
@@ -71,9 +84,11 @@ export const findTransferPair = (record, candidates = []) => {
     if (candidate.pairedWith) return false;
     if (!candidate.accountKey || !(candidate.amountUsd > 0)) return false;
     if (candidate.type === record.type) return false;
-    // Переказом має виглядати саме списання.
-    const out = isOut ? record : candidate;
-    if (!out.transferHint) return false;
+    // Переказом має виглядати хоч один бік. Буває, що лише один і може це
+    // сказати: monobank пише в списанні тільки імʼя одержувача, зате ПУМБ
+    // підписує зарахування «MONODirect».
+    const [out, incoming] = isOut ? [record, candidate] : [candidate, record];
+    if (!out.transferHint && !incoming.transferHint) return false;
     if (Math.abs(candidate.createdAtMs - record.createdAtMs) > PAIR_WINDOW_MS) return false;
     const bigger = Math.max(candidate.amountUsd, record.amountUsd);
     return Math.abs(candidate.amountUsd - record.amountUsd) / bigger <= PAIR_TOLERANCE;

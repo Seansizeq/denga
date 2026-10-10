@@ -30,6 +30,20 @@ describe('isTransferLike', () => {
     expect(isTransferLike({ merchant: 'ПУМБ' })).toBe(true);
   });
 
+  it('впізнає переказ за кодом банку, коли опис — лише імʼя одержувача', () => {
+    expect(isTransferLike({ merchant: 'Богдан С.', mcc: 4829 })).toBe(true);
+    expect(isTransferLike({ merchant: 'Богдан С.', mcc: '6538' })).toBe(true);
+    expect(isTransferLike({ merchant: 'Богдан С.', mcc: 5411 })).toBe(false);
+    expect(isTransferLike({ merchant: 'Богдан С.' })).toBe(false);
+  });
+
+  it('«MONODirect» у зарахуванні ПУМБ — переказ із monobank', () => {
+    expect(isTransferLike({ merchant: 'MONODirect' })).toBe(true);
+    expect(isTransferLike({ merchant: 'Monobank' })).toBe(true);
+    // А «Monolith Cafe» — ні.
+    expect(isTransferLike({ merchant: 'Monolith Cafe' })).toBe(false);
+  });
+
   it('звичайна покупка переказом не є', () => {
     expect(isTransferLike({ bankCategory: 'Продукти', merchant: 'JMP S.A. BIEDRONKA' })).toBe(false);
     expect(isTransferLike({ merchant: 'PRIVATE CLINIC' })).toBe(false);
@@ -50,6 +64,12 @@ describe('findTransferPair', () => {
 
   it('звичайна покупка не зводиться з випадковим зарахуванням тієї ж суми', () => {
     expect(findTransferPair(inc(), [out({ transferHint: false })])).toBeNull();
+  });
+
+  it('досить, щоб переказом виглядав бік зарахування', () => {
+    // monobank у списанні пише лише імʼя одержувача, ПУМБ у зарахуванні — «MONODirect».
+    expect(findTransferPair(inc({ transferHint: true }), [out({ transferHint: false })])?.id).toBe('out');
+    expect(findTransferPair(out({ transferHint: false }), [inc({ transferHint: true })])?.id).toBe('in');
   });
 
   it('не зводить через 20 хвилин', () => {

@@ -4350,6 +4350,16 @@ if (RUNS_BOT) {
       .catch((e) => console.error('[fx-daily] backfill failed', e));
   setTimeout(fiatBackfillTick, 45_000);
   setInterval(fiatBackfillTick, 10 * 60 * 1000);
+
+  // Незведені половини переказів між своїми картками (див. retryOwnTransferPairs).
+  const ownTransferTick = () =>
+    retryOwnTransferPairs()
+      .then((paired) => {
+        if (paired > 0) console.log('[own-transfer] зведено переказів при повторній спробі:', paired);
+      })
+      .catch((e) => console.error('[own-transfer] retry failed', e));
+  setTimeout(ownTransferTick, 60_000);
+  setInterval(ownTransferTick, 10 * 60 * 1000);
 }
 
 /**
@@ -4676,6 +4686,7 @@ app.post('/api/automation/transaction', async (req, res) => {
         currency: purchase.currency,
         merchant,
         accountKey: String(account.accountKey).toLowerCase(),
+        transferHint: Boolean(transferHint),
       });
       if (paired) {
         reply(201, { ok: true, paired: true, message: paired.message });
@@ -5029,7 +5040,7 @@ const recordAutomaticTransaction = async ({
 }) => {
   const cardId = createBankCardId();
   const nowIso = new Date().toISOString();
-  const looksLikeTransfer = transferHint ?? isTransferLike({ merchant, bankCategory });
+  const looksLikeTransfer = transferHint ?? isTransferLike({ merchant, bankCategory, mcc });
 
   // Заявка на зовнішній id ставиться до будь-якої роботи. Банк повторює
   // доставку, доки не побачить 200, а ще той самий рядок виписки прилітає
@@ -5222,7 +5233,7 @@ const accountNamesByKey = async (dbConn, userId, keys) => {
  *
  * @returns {Promise<object|null>} підсумок зведення або `null`, коли пари ще немає.
  */
-const recordIncomingForPairing = async ({ userId, provider, amount, currency, merchant, accountKey }) => {
+const recordIncomingForPairing = async ({ userId, provider, amount, currency, merchant, accountKey, transferHint = false }) => {
   const id = createBankCardId();
   // У черзі транзакцій: голий запис посеред чужого `BEGIN` зник би з його
   // відкатом, і друга половина переказу вже не знайшла б пари.
@@ -5230,7 +5241,7 @@ const recordIncomingForPairing = async ({ userId, provider, amount, currency, me
     tx.run(
       `INSERT INTO bank_inbox (id, user_id, provider, external_id, created_at, merchant, merchant_key,
          amount, currency, type, account_key, transfer_hint)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'income', ?, 0)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'income', ?, ?)`,
       [
         id,
         userId,
@@ -5242,6 +5253,7 @@ const recordIncomingForPairing = async ({ userId, provider, amount, currency, me
         amount,
         currency,
         accountKey,
+        transferHint ? 1 : 0,
       ],
     ),
   );
@@ -5282,7 +5294,10 @@ const tryPairOwnTransfer = async (userId, inboxId) => {
     amountUsd: convert(Number(r.amount) || 0, r.currency, 'USD'),
     accountKey: r.account_key,
     createdAtMs: Date.parse(r.created_at),
-    transferHint: Boolean(r.transfer_hint),
+    // Позначка з моменту запису — плюс перерахунок з назви: правила
+    // розпізнавання з часом доповнюються, а рядок, записаний раніше, мав би
+    // інакше лишитися зі старою, хибною відповіддю.
+    transferHint: Boolean(r.transfer_hint) || isTransferLike({ merchant: r.merchant }),
     pairedWith: r.paired_with,
   });
   const match = findTransferPair(toRecord(row), candidates.map(toRecord));
@@ -5438,6 +5453,43 @@ const notifyOwnTransfer = async (userId, paired) => {
   const chatId = await getBotChatId(userId);
   if (!chatId) return;
   await enqueueOutbox(db, { chatId, lane: 'interactive', text: paired.message });
+};
+
+/** Як далеко назад повторна спроба шукає незведені половини переказів. */
+const OWN_TRANSFER_RETRY_MS = 48 * 60 * 60 * 1000;
+let ownTransferRetryRunning = false;
+
+/**
+ * Повторна спроба звести недавні половини переказів.
+ *
+ * Зведення пробується, щойно приходить друга половина. Але буває, що в ту
+ * мить не вийшло: не було курсу, процес перезапускався, або правило
+ * розпізнавання навчилося впізнавати переказ уже після того, як обидві
+ * половини лягли в базу. Пара визначається часом між самими половинами, а не
+ * часом спроби, тож пізніший прохід зведе їх так само.
+ */
+const retryOwnTransferPairs = async () => {
+  if (ownTransferRetryRunning) return 0;
+  ownTransferRetryRunning = true;
+  let paired = 0;
+  try {
+    const rows = await db.all(
+      `SELECT id, user_id AS userId FROM bank_inbox
+       WHERE type = 'income' AND paired_with IS NULL AND account_key IS NOT NULL AND created_at >= ?
+       ORDER BY created_at`,
+      [new Date(Date.now() - OWN_TRANSFER_RETRY_MS).toISOString()],
+    );
+    for (const row of rows ?? []) {
+      const userId = String(row.userId);
+      const result = await tryPairOwnTransfer(userId, row.id);
+      if (!result) continue;
+      paired += 1;
+      await notifyOwnTransfer(userId, result);
+    }
+  } finally {
+    ownTransferRetryRunning = false;
+  }
+  return paired;
 };
 
 // --- Вебхук банку ---
