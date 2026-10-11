@@ -135,6 +135,14 @@ import {
   formatSmartAmount,
   parseSmartDebtCallback,
 } from './smart-transaction-message.js';
+import {
+  applySmartFillChoice,
+  buildSmartAccountOptions,
+  buildSmartCategoryOptions,
+  guessSmartAccount,
+  nextSmartQuestion,
+  parseSmartFillCallback,
+} from './smart-transaction-fill.js';
 import { PAIR_WINDOW_MS, findTransferPair, isTransferLike } from './own-transfer.js';
 import {
   extractCustomEmojiReferences,
@@ -3139,12 +3147,66 @@ async function loadSmartDebtChoice(userId, parsed, text) {
   return { debtOptions, debtAccountKey: mentioned?.key ?? null };
 }
 
+/** Без вибору боргу картка все одно має зʼявитися: повернення збережеться доходом. */
+async function loadSmartDebtChoiceSafe(card) {
+  return loadSmartDebtChoice(card.userId, card, card.sourceText).catch((error) => {
+    console.warn('[smart-transaction] debt choice unavailable:', error?.message || error);
+    return {};
+  });
+}
+
+/**
+ * Перемальовує картку на місці після вибору на ній. Той самий вибір удруге
+ * Telegram відхиляє як «нічого не змінилось» — і це не біда. Інша відмова —
+ * найімовірніше преміум-емодзі: тоді без них.
+ */
+async function renderSmartCard(chatId, messageId, card) {
+  const confirmation = buildSmartConfirmationPayload(card, {
+    today: card.today,
+    emojiIds: smartTransactionEmojiIds,
+  });
+  try {
+    await bot.editMessageText(confirmation.text, {
+      chat_id: chatId,
+      message_id: messageId,
+      ...(confirmation.entities.length > 0 ? { entities: confirmation.entities } : {}),
+      reply_markup: buildSmartTransactionKeyboard(smartTransactionEmojiIds, card),
+    });
+  } catch (error) {
+    if (!isTelegramBadRequest(error)) throw error;
+    if (confirmation.entities.length > 0) {
+      await bot
+        .editMessageText(buildSmartConfirmationPayload(card, { today: card.today }).text, {
+          chat_id: chatId,
+          message_id: messageId,
+          reply_markup: buildSmartTransactionKeyboard({}, card),
+        })
+        .catch(() => undefined);
+    }
+  }
+}
+
 async function sendSmartTransactionConfirmation(msg, parsed, today) {
   const userId = String(msg.from.id);
   const chatId = msg.chat.id;
   if (!parsed?.isTransaction) return false;
 
-  const pending = {
+  const sourceText = String(msg.text ?? msg.caption ?? '');
+  const [accountRows, categories] = await Promise.all([
+    db
+      .all(
+        `SELECT account_key AS accountKey, name, section, sort_index AS sortIndex, primary_currency AS currency
+         FROM account_portfolio WHERE user_id = ?`,
+        [userId]
+      )
+      .catch(() => []),
+    getSmartCategoriesForUser(userId, { includeOther: true }).catch(() => []),
+  ]);
+  const accountOptions = buildSmartAccountOptions(accountRows);
+  // Рахунок, якого в тексті не назвали, бот ставить сам лише тоді, коли вибір
+  // очевидний; інакше картка спитає.
+  const guessed = parsed.accountKey ? null : guessSmartAccount(accountOptions, parsed.currency);
+  const card = {
     userId,
     amount: parsed.amount,
     currency: parsed.currency,
@@ -3152,17 +3214,16 @@ async function sendSmartTransactionConfirmation(msg, parsed, today) {
     categoryId: parsed.categoryId,
     categoryName: parsed.categoryName,
     type: parsed.type,
-    accountKey: parsed.accountKey,
-    accountName: parsed.accountName,
+    accountKey: parsed.accountKey ?? guessed?.key ?? null,
+    accountName: parsed.accountName ?? guessed?.name ?? null,
     note: parsed.note,
     createdAt: Date.now(),
     today,
-    ...(await loadSmartDebtChoice(userId, parsed, msg.text).catch((error) => {
-      // Без вибору боргу картка все одно має зʼявитися: повернення збережеться доходом.
-      console.warn('[smart-transaction] debt choice unavailable:', error?.message || error);
-      return {};
-    })),
+    sourceText,
+    accountOptions,
+    categoryOptions: buildSmartCategoryOptions(categories, parsed.type),
   };
+  const pending = { ...card, ...(await loadSmartDebtChoiceSafe(card)) };
   const confirmation = buildSmartConfirmationPayload(pending, {
     today,
     emojiIds: smartTransactionEmojiIds,
@@ -4021,31 +4082,35 @@ if (bot) {
       };
       pendingSmartTransactions.set(chatId, next);
       await bot.answerCallbackQuery(callbackQuery.id);
-      const confirmation = buildSmartConfirmationPayload(next, {
-        today: next.today,
-        emojiIds: smartTransactionEmojiIds,
-      });
-      try {
-        await bot.editMessageText(confirmation.text, {
-          chat_id: chatId,
-          message_id: callbackMessageId,
-          ...(confirmation.entities.length > 0 ? { entities: confirmation.entities } : {}),
-          reply_markup: buildSmartTransactionKeyboard(smartTransactionEmojiIds, next),
-        });
-      } catch (error) {
-        if (!isTelegramBadRequest(error)) throw error;
-        // Той самий вибір удруге Telegram відхиляє як «нічого не змінилось» — і це
-        // не біда. Інша відмова — найімовірніше преміум-емодзі: тоді без них.
-        if (confirmation.entities.length > 0) {
-          await bot
-            .editMessageText(buildSmartConfirmationPayload(next, { today: next.today }).text, {
-              chat_id: chatId,
-              message_id: callbackMessageId,
-              reply_markup: buildSmartTransactionKeyboard({}, next),
-            })
-            .catch(() => undefined);
-        }
+      await renderSmartCard(chatId, callbackMessageId, next);
+      return;
+    }
+
+    // Рахунок і категорія на картці: питання, коли їх бракує, і зміна вгаданого.
+    const fillChoice = parseSmartFillCallback(callbackQuery.data);
+    if (fillChoice) {
+      const pendingSmart = pendingSmartTransactions.get(chatId);
+      const callbackMessageId = Number(callbackQuery.message?.message_id);
+      let next =
+        pendingSmart
+        && pendingSmart.userId === cbUserId
+        && Number(pendingSmart.messageId) === callbackMessageId
+        && Date.now() - Number(pendingSmart.createdAt ?? 0) <= 10 * 60 * 1000
+          ? applySmartFillChoice(pendingSmart, fillChoice)
+          : null;
+      if (!next) {
+        await bot.answerCallbackQuery(callbackQuery.id, { text: 'Запит застарів. Надішліть ще раз.' });
+        return;
       }
+      // Борг залежить від рахунку й категорії: повернення списує борг лише на
+      // банк чи готівку. Тож після нового вибору кнопки боргів рахуються наново.
+      if (fillChoice.action === 'choose') {
+        const { debtOptions, debtAccountKey, debtHint, ...rest } = next;
+        next = { ...rest, ...(await loadSmartDebtChoiceSafe(rest)) };
+      }
+      pendingSmartTransactions.set(chatId, next);
+      await bot.answerCallbackQuery(callbackQuery.id);
+      await renderSmartCard(chatId, callbackMessageId, next);
       return;
     }
 
@@ -4073,6 +4138,17 @@ if (bot) {
           callbackMessageId,
           '⌛ Підтвердження застаріло. Надішліть транзакцію ще раз.',
         );
+        return;
+      }
+      // Кнопки «Зберегти» на картці з питанням немає, але стара картка чи
+      // подвійний тап можуть її натиснути: недозаповнене не зберігається.
+      // Відкритий власноруч список — не порожнє поле, тож `picking` тут не рахується.
+      const openQuestion =
+        callbackQuery.data === 'smart_save' ? nextSmartQuestion({ ...pendingSmart, picking: null }) : null;
+      if (openQuestion) {
+        await bot.answerCallbackQuery(callbackQuery.id, {
+          text: openQuestion === 'account' ? 'Спершу оберіть рахунок' : 'Спершу оберіть категорію',
+        });
         return;
       }
       pendingSmartTransactions.delete(chatId);

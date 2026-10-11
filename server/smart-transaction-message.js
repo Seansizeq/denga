@@ -1,3 +1,5 @@
+import { PLACEHOLDER_CATEGORY_IDS, accountOptionLabel, nextSmartQuestion } from './smart-transaction-fill.js';
+
 const CURRENCY_SYMBOLS = {
   UAH: '₴',
   PLN: 'zł',
@@ -73,9 +75,26 @@ export const buildSmartConfirmationMessage = (transaction, { today } = {}) => {
   if (note) lines.push(note);
   const date = formatSmartDate(transaction.date, today);
   if (date) lines.push(date);
+  const question = buildSmartQuestionLine(transaction);
+  if (question) {
+    // Поки картка питає рахунок чи категорію, рядок про борг лише заважав би:
+    // кнопки боргів зʼявляться, коли питань не лишиться.
+    lines.push(question);
+    return lines.join('\n');
+  }
   const debtLine = buildSmartDebtLine(transaction);
   if (debtLine) lines.push(debtLine);
   return lines.join('\n');
+};
+
+/** Питання внизу картки, коли без відповіді зберегти не можна. */
+export const buildSmartQuestionLine = (transaction) => {
+  const question = nextSmartQuestion(transaction);
+  if (question === 'account') {
+    return transaction.type === 'income' ? '💳 На який рахунок? Оберіть нижче.' : '💳 З якого рахунку? Оберіть нижче.';
+  }
+  if (question === 'category') return '🏷 Яка категорія? Оберіть нижче.';
+  return '';
 };
 
 /**
@@ -184,16 +203,57 @@ const debtRows = (options, selectedKey) => {
   return rows;
 };
 
-export const buildSmartTransactionKeyboard = (emojiIds = {}, { debtOptions = [], debtAccountKey = null } = {}) => ({
-  inline_keyboard: [
-    ...debtRows(debtOptions, debtAccountKey),
-    [
-      premiumButton('Зберегти', '✅', emojiIds.save, 'smart_save'),
-      premiumButton('Змінити', '✏️', emojiIds.edit, 'smart_edit'),
+const inPairs = (buttons) => {
+  const rows = [];
+  for (let i = 0; i < buttons.length; i += 2) rows.push(buttons.slice(i, i + 2));
+  return rows;
+};
+
+/**
+ * Кнопки вибору замість «Зберегти»: зберегти напівзаповнену операцію з картки
+ * не можна. «Назад» — лише коли список відкрили самі на вже готовій картці.
+ */
+const pickerKeyboard = (emojiIds, card, question) => {
+  const options = question === 'account' ? card.accountOptions : card.categoryOptions;
+  const buttons = (Array.isArray(options) ? options : []).map((option, index) => {
+    if (question === 'account') {
+      const selected = option.key === card.accountKey;
+      return { text: `${selected ? '✓ ' : ''}${accountOptionLabel(option)}`, callback_data: `smart_acc:${index}` };
+    }
+    // Не підтверджене «Інше» — заглушка, а не вибір, тож галочки не має.
+    const selected = option.id === card.categoryId
+      && !(PLACEHOLDER_CATEGORY_IDS.includes(option.id) && !card.categoryConfirmed);
+    return { text: `${selected ? '✓ ' : ''}${String(option.name).slice(0, 28)}`, callback_data: `smart_cat:${index}` };
+  });
+  const cancel = premiumButton('Скасувати', '', emojiIds.cancel, 'smart_cancel');
+  return {
+    inline_keyboard: [
+      ...inPairs(buttons),
+      card.picking ? [{ text: '← Назад', callback_data: 'smart_back' }, cancel] : [cancel],
     ],
-    [premiumButton('Скасувати', '', emojiIds.cancel, 'smart_cancel')],
-  ],
-});
+  };
+};
+
+export const buildSmartTransactionKeyboard = (emojiIds = {}, card = {}) => {
+  const question = nextSmartQuestion(card);
+  if (question) return pickerKeyboard(emojiIds, card, question);
+  // Вгадане ботом можна поміняти, не переписуючи повідомлення.
+  const changeRow = [
+    ...(card.accountOptions?.length > 0 ? [{ text: '💳 Рахунок', callback_data: 'smart_pick:account' }] : []),
+    ...(card.categoryOptions?.length > 0 ? [{ text: '🏷 Категорія', callback_data: 'smart_pick:category' }] : []),
+  ];
+  return {
+    inline_keyboard: [
+      ...debtRows(card.debtOptions, card.debtAccountKey ?? null),
+      [
+        premiumButton('Зберегти', '✅', emojiIds.save, 'smart_save'),
+        premiumButton('Змінити', '✏️', emojiIds.edit, 'smart_edit'),
+      ],
+      ...(changeRow.length > 0 ? [changeRow] : []),
+      [premiumButton('Скасувати', '', emojiIds.cancel, 'smart_cancel')],
+    ],
+  };
+};
 
 /** `smart_debt:<номер>` або `smart_debt:none`; що інше — `null`. */
 export const parseSmartDebtCallback = (data) => {
