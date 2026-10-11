@@ -1,10 +1,23 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 
 import { useTranslation } from '../../i18n/LanguageContext';
-import { formatDate } from '../../utils/formatters';
-import { MONEY_MASK, isMoneyHidden } from '../../utils/moneyPrivacy';
-import type { Transaction } from '../../types';
+import type { CategoryKey } from '../../i18n/translations';
+import { findCategory, getCustomCategoryData } from '../../constants/categories';
+import { formatCurrency, formatDate } from '../../utils/formatters';
+import { isMoneyHidden } from '../../utils/moneyPrivacy';
+import { localIsoDate } from '../../utils/dateRanges';
+import { debtMovementDrainsAccount } from '../../utils/debtMovement';
 import type { Denomination } from '../../utils/denomination';
+import { useDenominationRates } from '../../hooks/useDenominationRates';
+import { useAccountNames } from '../../hooks/useAccountNames';
+import {
+  DebtRequestError,
+  fetchDebtHistory,
+  type DebtHistory,
+  type DebtHistoryEntry,
+  type DebtMovementInput,
+  type DebtMovementKind,
+} from '../../api/debts';
 import { AccountRowAvatar } from './AccountRowAvatar';
 import sheetStyles from './FormSheet.module.css';
 import styles from './DebtDetailSheet.module.css';
@@ -15,8 +28,6 @@ type DebtAccount = {
   primaryAmount: number;
   primaryCurrency: Denomination;
   debtDirection: 'owed_to_me' | 'owed_by_me' | null;
-  debtInitialAmount: number | null;
-  debtCreatedAt: string | null;
   iconTone: 'bank' | 'cash' | 'crypto' | 'stocks' | 'debt' | 'goal' | 'neutral';
   iconKey: string | null;
 };
@@ -29,10 +40,10 @@ type PaymentAccount = {
 
 interface DebtDetailSheetProps {
   account: DebtAccount;
-  repayments: Transaction[];
+  /** Банк і готівка в будь-якій валюті: іншу сервер перерахує за курсом. */
   paymentAccounts: PaymentAccount[];
   onClose: () => void;
-  onPayment: (accountKey: string, amount: number, note: string, paymentAccountKey: string) => Promise<void>;
+  onMovement: (accountKey: string, input: DebtMovementInput) => Promise<void>;
   onEdit: () => void;
 }
 
@@ -43,66 +54,156 @@ const parseMoney = (raw: string): number | null => {
   return Number.isFinite(n) && n > 0 ? n : null;
 };
 
-const formatAmount = (amount: number, currency: string) => {
-  const abs = isMoneyHidden()
-    ? MONEY_MASK
-    : Math.abs(amount).toLocaleString('ru-RU', {
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 2,
-      });
-  const suffix = currency === 'PLN' ? 'zł' : currency;
-  return `${abs} ${suffix}`;
-};
+/** Історія, прочитана для конкретного стану боргу; інший стан — читати наново. */
+type LoadedHistory = { stamp: string; data: DebtHistory | null; failed: boolean };
 
 const DebtDetailSheet: React.FC<DebtDetailSheetProps> = ({
   account,
-  repayments,
   paymentAccounts,
   onClose,
-  onPayment,
+  onMovement,
   onEdit,
 }) => {
   const { t, locale } = useTranslation();
-  const [mode, setMode] = useState<'view' | 'pay'>('view');
-  const [payAmount, setPayAmount] = useState('');
-  const [payNote, setPayNote] = useState('');
-  const [paymentAccountKey, setPaymentAccountKey] = useState(() => paymentAccounts[0]?.accountKey ?? '');
+  const { convert } = useDenominationRates();
+  const resolveAccountName = useAccountNames();
+  const owedByMe = account.debtDirection === 'owed_by_me';
+  const currency = account.primaryCurrency;
+
+  const [mode, setMode] = useState<'view' | DebtMovementKind>('view');
+  const [amount, setAmount] = useState('');
+  const [accountSideAmount, setAccountSideAmount] = useState('');
+  const [date, setDate] = useState(() => localIsoDate());
+  const [note, setNote] = useState('');
+  const [paymentAccountKey, setPaymentAccountKey] = useState(
+    () =>
+      paymentAccounts.find((row) => row.primaryCurrency === currency)?.accountKey
+      ?? paymentAccounts[0]?.accountKey
+      ?? '',
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [history, setHistory] = useState<LoadedHistory | null>(null);
 
-  const phrase = t('balance', account.debtDirection === 'owed_by_me' ? 'debtPhraseOwedByMe' : 'debtPhraseOwedToMe');
-  const formattedBalance = formatAmount(account.primaryAmount, account.primaryCurrency);
-  const initialAmount = Math.max(account.primaryAmount, account.debtInitialAmount ?? account.primaryAmount);
-  const paidAmount = Math.max(0, initialAmount - account.primaryAmount);
-  const progress = initialAmount > 0 ? Math.min(100, Math.round((paidAmount / initialAmount) * 100)) : 0;
-  const parsedPayment = useMemo(() => parseMoney(payAmount), [payAmount]);
-  const canSubmit = Boolean(
-    parsedPayment && parsedPayment <= account.primaryAmount && paymentAccountKey && paymentAccounts.length > 0,
-  );
+  // Баланс у ключі: щойно рахунок оновився (запис тут чи деінде), історія
+  // перечитується, і підсумки сходяться з тим, що видно в картці. Кожен рух
+  // боргу міняє баланс, тож окремого «перечитай» не потрібно.
+  const historyStamp = `${account.accountKey}|${account.primaryAmount}`;
+  useEffect(() => {
+    let cancelled = false;
+    fetchDebtHistory(account.accountKey)
+      .then((data) => {
+        if (!cancelled) setHistory({ stamp: historyStamp, data, failed: false });
+      })
+      .catch(() => {
+        if (!cancelled) setHistory({ stamp: historyStamp, data: null, failed: true });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [account.accountKey, historyStamp]);
+  // Поки свіжа відповідь не прийшла, показуємо попередню — так підсумки не блимають.
+  const historyData = history?.data ?? null;
+  const historyLoading = !history || (history.stamp !== historyStamp && !history.data);
+  const historyFailed = Boolean(history?.failed) && history?.stamp === historyStamp;
 
-  const handleConfirmPayment = async () => {
-    if (!parsedPayment) return;
-    if (parsedPayment > account.primaryAmount) {
-      setError(t('balance', 'debtPaymentExceedsBalance'));
-      return;
-    }
-    if (!paymentAccountKey) {
-      setError(t('balance', 'debtPaymentAccountRequired'));
+  const money = (value: number, unit: Denomination = currency) => formatCurrency(value, locale, unit);
+  const phrase = t('balance', owedByMe ? 'debtPhraseOwedByMe' : 'debtPhraseOwedToMe');
+  const progress = historyData ? Math.round(historyData.progress * 100) : 0;
+
+  const selectedPayment = paymentAccounts.find((row) => row.accountKey === paymentAccountKey) ?? null;
+  const parsedAmount = useMemo(() => parseMoney(amount), [amount]);
+  const parsedAccountSide = useMemo(() => parseMoney(accountSideAmount), [accountSideAmount]);
+  const crossCurrency = Boolean(selectedPayment && selectedPayment.primaryCurrency !== currency);
+  const accountSideEstimate =
+    crossCurrency && parsedAmount && selectedPayment
+      ? convert(parsedAmount, currency, selectedPayment.primaryCurrency)
+      : null;
+  const exceedsBalance = mode === 'repayment' && parsedAmount !== null && parsedAmount > account.primaryAmount + 1e-9;
+  const canSubmit = Boolean(parsedAmount && selectedPayment && !exceedsBalance && !saving && date);
+
+  const resetForm = () => {
+    setMode('view');
+    setAmount('');
+    setAccountSideAmount('');
+    setNote('');
+    setDate(localIsoDate());
+    setError('');
+  };
+
+  const openForm = (kind: DebtMovementKind) => {
+    resetForm();
+    setSuccess(false);
+    setMode(kind);
+  };
+
+  const handleSubmit = async () => {
+    if (mode === 'view' || !parsedAmount || !selectedPayment) return;
+    if (exceedsBalance) {
+      setError(t('balance', 'debtPaymentExceedsBalance').replace('{amount}', money(account.primaryAmount)));
       return;
     }
     setError('');
     setSaving(true);
     try {
-      await onPayment(account.accountKey, parsedPayment, payNote.trim(), paymentAccountKey);
+      await onMovement(account.accountKey, {
+        kind: mode,
+        amount: parsedAmount,
+        paymentAccountKey: selectedPayment.accountKey,
+        ...(crossCurrency && parsedAccountSide ? { paymentAmount: parsedAccountSide } : {}),
+        // Сьогоднішній день не надсилається: сервер поставить точний час, і
+        // кілька записів за день стануть у тому порядку, в якому їх зробили.
+        ...(date !== localIsoDate() ? { date } : {}),
+        ...(note.trim() ? { note: note.trim() } : {}),
+      });
+      resetForm();
       setSuccess(true);
-      window.setTimeout(() => onClose(), 900);
-    } catch {
-      setError(t('balance', 'debtPaymentFailed'));
+      window.setTimeout(() => setSuccess(false), 1500);
+    } catch (e) {
+      const code = e instanceof DebtRequestError ? e.code : '';
+      if (code === 'DEBT_PAYMENT_EXCEEDS_BALANCE') {
+        const available = e instanceof DebtRequestError && e.available !== null ? e.available : account.primaryAmount;
+        setError(t('balance', 'debtPaymentExceedsBalance').replace('{amount}', money(available)));
+      } else if (code === 'PAYMENT_RATE_UNAVAILABLE' || code === 'ACCOUNT_DENOMINATION_MISMATCH') {
+        setError(t('balance', 'debtPaymentRateUnavailable'));
+      } else if (code === 'PAYMENT_ACCOUNT_REQUIRED') {
+        setError(t('balance', 'debtPaymentAccountRequired'));
+      } else {
+        setError(t('balance', 'debtPaymentFailed'));
+      }
     } finally {
       setSaving(false);
     }
   };
+
+  const entryTitle = (entry: DebtHistoryEntry): string => {
+    switch (entry.kind) {
+      case 'opening':
+        return t('balance', 'debtEntryOpening');
+      case 'adjustment':
+        return t('balance', 'debtEntryAdjustment');
+      case 'repayment':
+        return t('balance', owedByMe ? 'debtEntryRepaidByMe' : 'debtEntryRepaidToMe');
+      case 'increase':
+        return t('balance', owedByMe ? 'debtEntryBorrowed' : 'debtEntryLent');
+      default: {
+        const id = entry.categoryId ?? '';
+        const custom = getCustomCategoryData(id);
+        if (custom) return custom.name;
+        return t('categories', findCategory(id, entry.kind).id as CategoryKey);
+      }
+    }
+  };
+
+  const amountLabel =
+    mode === 'repayment'
+      ? t('balance', 'debtPaymentAmountLabel')
+      : t('balance', owedByMe ? 'debtBorrowAmountLabel' : 'debtLendAmountLabel');
+  const accountLabel =
+    mode !== 'view' && debtMovementDrainsAccount(mode, account.debtDirection)
+      ? t('balance', 'debtAccountFromLabel')
+      : t('balance', 'debtAccountToLabel');
 
   return (
     <div className={sheetStyles.overlay} role="presentation" onClick={onClose}>
@@ -145,23 +246,29 @@ const DebtDetailSheet: React.FC<DebtDetailSheetProps> = ({
             <div className={styles.debtInfo}>
               <span className={styles.debtName}>{account.name}</span>
               <span className={styles.debtPhrase}>{phrase}</span>
-              <span className={styles.debtBalance}>{formattedBalance}</span>
+              <span className={styles.debtBalance}>{money(account.primaryAmount)}</span>
             </div>
           </div>
 
           <div className={styles.summaryGrid}>
             <div className={styles.summaryItem}>
-              <span>{t('balance', 'debtInitialAmount')}</span>
-              <strong>{formatAmount(initialAmount, account.primaryCurrency)}</strong>
+              <span>{t('balance', owedByMe ? 'debtTotalOwedByMe' : 'debtTotalOwedToMe')}</span>
+              <strong>{historyData ? money(historyData.total) : '—'}</strong>
             </div>
             <div className={styles.summaryItem}>
               <span>{t('balance', 'debtPaidAmount')}</span>
-              <strong>{formatAmount(paidAmount, account.primaryCurrency)}</strong>
+              <strong>{historyData ? money(historyData.repaid) : '—'}</strong>
             </div>
+            {historyData && historyData.writtenOff > 0 ? (
+              <div className={`${styles.summaryItem} ${styles.summaryWide}`}>
+                <span>{t('balance', 'debtWrittenOff')}</span>
+                <strong>{money(historyData.writtenOff)}</strong>
+              </div>
+            ) : null}
             <div className={styles.progressItem}>
               <div className={styles.progressHeader}>
                 <span>{t('balance', 'debtRemainingAmount')}</span>
-                <strong>{progress}%</strong>
+                <strong>{historyData ? `${progress}%` : '—'}</strong>
               </div>
               <div className={styles.progressTrack} aria-label={`${progress}%`}>
                 <span className={styles.progressFill} style={{ width: `${progress}%` }} />
@@ -169,39 +276,47 @@ const DebtDetailSheet: React.FC<DebtDetailSheetProps> = ({
             </div>
           </div>
 
-          {success ? (
-            <div className={styles.successMsg}>✓ {t('balance', 'debtPaymentRecorded')}</div>
-          ) : mode === 'view' ? (
-            <button
-              type="button"
-              className={styles.payBtn}
-              onClick={() => setMode('pay')}
-              disabled={account.primaryAmount <= 0}
-            >
-              {t('balance', 'debtRecordPayment')}
-            </button>
+          {success ? <div className={styles.successMsg}>✓ {t('balance', 'debtPaymentRecorded')}</div> : null}
+
+          {mode === 'view' ? (
+            <div className={styles.actionRow}>
+              <button
+                type="button"
+                className={styles.payBtn}
+                onClick={() => openForm('repayment')}
+                disabled={account.primaryAmount <= 0}
+              >
+                {t('balance', 'debtActionRepay')}
+              </button>
+              <button type="button" className={styles.moreBtn} onClick={() => openForm('increase')}>
+                {t('balance', owedByMe ? 'debtActionBorrowMore' : 'debtActionLendMore')}
+              </button>
+            </div>
           ) : (
             <div className={styles.payForm}>
               <div className={sheetStyles.group}>
                 <label className={sheetStyles.row}>
-                  <span className={sheetStyles.rowLabel}>{t('balance', 'debtPaymentAmountLabel')}</span>
+                  <span className={sheetStyles.rowLabel}>{amountLabel}</span>
                   <input
                     className={sheetStyles.rowField}
-                    value={payAmount}
-                    onChange={(e) => { setPayAmount(e.target.value); setError(''); }}
+                    value={amount}
+                    onChange={(e) => { setAmount(e.target.value); setError(''); }}
                     inputMode="decimal"
-                    placeholder={t('balance', 'debtPaymentAmountPlaceholder').replace('{amount}', formattedBalance)}
+                    placeholder={
+                      mode === 'repayment'
+                        ? t('balance', 'debtPaymentAmountPlaceholder').replace('{amount}', money(account.primaryAmount))
+                        : currency
+                    }
                     autoFocus
                   />
                 </label>
                 <label className={sheetStyles.row}>
-                  <span className={sheetStyles.rowLabel}>{t('addTx', 'paymentAccount')}</span>
+                  <span className={sheetStyles.rowLabel}>{accountLabel}</span>
                   <select
                     className={`${sheetStyles.rowField} ${sheetStyles.rowSelect}`}
                     value={paymentAccountKey}
-                    onChange={(e) => { setPaymentAccountKey(e.target.value); setError(''); }}
+                    onChange={(e) => { setPaymentAccountKey(e.target.value); setAccountSideAmount(''); setError(''); }}
                   >
-                    <option value="">{t('addTx', 'paymentAccountNone')}</option>
                     {paymentAccounts.map((paymentAccount) => (
                       <option key={paymentAccount.accountKey} value={paymentAccount.accountKey}>
                         {paymentAccount.name} · {paymentAccount.primaryCurrency}
@@ -209,13 +324,44 @@ const DebtDetailSheet: React.FC<DebtDetailSheetProps> = ({
                     ))}
                   </select>
                 </label>
+                {crossCurrency && selectedPayment ? (
+                  <label className={sheetStyles.row}>
+                    <span className={sheetStyles.rowLabel}>
+                      {t('balance', 'debtAccountSideAmountLabel').replace('{currency}', selectedPayment.primaryCurrency)}
+                    </span>
+                    <input
+                      className={sheetStyles.rowField}
+                      value={accountSideAmount}
+                      onChange={(e) => { setAccountSideAmount(e.target.value); setError(''); }}
+                      inputMode="decimal"
+                      placeholder={
+                        accountSideEstimate !== null && !isMoneyHidden()
+                          ? `≈ ${money(accountSideEstimate, selectedPayment.primaryCurrency)}`
+                          : ''
+                      }
+                    />
+                  </label>
+                ) : null}
+                <label className={sheetStyles.row}>
+                  <span className={sheetStyles.rowLabel}>{t('balance', 'debtDateLabel')}</span>
+                  <input
+                    type="date"
+                    className={sheetStyles.rowDatePill}
+                    value={date}
+                    max={localIsoDate()}
+                    onChange={(e) => setDate(e.target.value)}
+                  />
+                </label>
                 <label className={sheetStyles.row}>
                   <span className={sheetStyles.rowLabel}>{t('balance', 'debtPaymentNoteLabel')}</span>
                   <input
                     className={sheetStyles.rowField}
-                    value={payNote}
-                    onChange={(e) => setPayNote(e.target.value)}
-                    placeholder={t('balance', 'debtPaymentNotePlaceholder')}
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    placeholder={t(
+                      'balance',
+                      mode === 'repayment' ? 'debtPaymentNotePlaceholder' : 'debtIncreaseNotePlaceholder',
+                    )}
                     maxLength={80}
                   />
                 </label>
@@ -223,19 +369,14 @@ const DebtDetailSheet: React.FC<DebtDetailSheetProps> = ({
               {paymentAccounts.length === 0 ? <p className={sheetStyles.error}>{t('balance', 'debtPaymentAccountRequired')}</p> : null}
               {error ? <p className={sheetStyles.error}>{error}</p> : null}
               <div className={styles.payActions}>
-                <button
-                  type="button"
-                  className={styles.secondary}
-                  onClick={() => { setMode('view'); setPayAmount(''); setPayNote(''); setError(''); }}
-                  disabled={saving}
-                >
+                <button type="button" className={styles.secondary} onClick={resetForm} disabled={saving}>
                   {t('addTx', 'cancel')}
                 </button>
                 <button
                   type="button"
                   className={styles.primary}
-                  onClick={handleConfirmPayment}
-                  disabled={saving || !canSubmit}
+                  onClick={() => void handleSubmit()}
+                  disabled={!canSubmit}
                 >
                   {saving ? `${t('addTx', 'save')}...` : t('balance', 'confirm')}
                 </button>
@@ -243,20 +384,43 @@ const DebtDetailSheet: React.FC<DebtDetailSheetProps> = ({
             </div>
           )}
 
-          {repayments.length > 0 ? (
-            <div className={styles.historySection}>
-              <p className={styles.historyTitle}>{t('balance', 'debtRepaymentHistoryTitle')}</p>
+          <div className={styles.historySection}>
+            <p className={styles.historyTitle}>{t('balance', 'debtHistoryTitle')}</p>
+            {historyFailed ? (
+              <p className={styles.historyHint}>{t('balance', 'debtHistoryLoadFailed')}</p>
+            ) : historyLoading ? (
+              <p className={styles.historyHint}>…</p>
+            ) : !historyData || historyData.entries.length === 0 ? (
+              <p className={styles.historyHint}>{t('balance', 'debtHistoryEmpty')}</p>
+            ) : (
               <ul className={styles.historyList} role="list">
-                {repayments.map((tx) => (
-                  <li key={tx.id} className={styles.historyItem}>
-                    <span className={styles.historyDate}>{formatDate(tx.date, locale)}</span>
-                    <span className={styles.historyAmount}>{formatAmount(tx.amount, account.primaryCurrency)}</span>
-                    {tx.note ? <span className={styles.historyNote}>{tx.note}</span> : null}
-                  </li>
-                ))}
+                {historyData.entries.map((entry) => {
+                  const detail = [
+                    entry.counterpartAccountKey ? resolveAccountName(entry.counterpartAccountKey) : '',
+                    entry.note ?? '',
+                  ]
+                    .filter(Boolean)
+                    .join(' · ');
+                  return (
+                    <li key={entry.id} className={styles.historyItem}>
+                      <div className={styles.historyMain}>
+                        <span className={styles.historyLabel}>{entryTitle(entry)}</span>
+                        <span className={styles.historyNote}>
+                          {[formatDate(entry.date, locale), detail].filter(Boolean).join(' · ')}
+                        </span>
+                      </div>
+                      <span
+                        className={`${styles.historyAmount} ${entry.delta < 0 ? styles.historyDown : styles.historyUp}`}
+                      >
+                        {isMoneyHidden() ? '' : entry.delta < 0 ? '−' : '+'}
+                        {money(Math.abs(entry.delta))}
+                      </span>
+                    </li>
+                  );
+                })}
               </ul>
-            </div>
-          ) : null}
+            )}
+          </div>
         </div>
       </section>
     </div>

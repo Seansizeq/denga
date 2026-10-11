@@ -155,6 +155,38 @@ describe('debt balances stay reversible', () => {
     expect(collectDebtOverdrafts(net, debtAccounts)).toHaveLength(1);
   });
 
+  it('an expense paid from a debt I owe grows it — a friend paid for me', () => {
+    const expense = { type: 'expense', amount: 40, currency: 'PLN', accountKey: 'debt', categoryId: 'food' };
+    const net = computeNetDeltas([{ tx: expense, multiplier: 1 }], debtAccounts);
+    expect(net.get('debt')).toBe(40);
+    expect(collectDebtOverdrafts(net, debtAccounts)).toEqual([]);
+  });
+
+  it('income onto a debt I owe shrinks it, and cannot overshoot it', () => {
+    const income = { type: 'income', amount: 100, currency: 'PLN', accountKey: 'debt', categoryId: 'salary' };
+    expect(computeNetDeltas([{ tx: income, multiplier: 1 }], debtAccounts).get('debt')).toBe(-100);
+    const tooMuch = { ...income, amount: 301 };
+    const net = computeNetDeltas([{ tx: tooMuch, multiplier: 1 }], debtAccounts);
+    expect(collectDebtOverdrafts(net, debtAccounts)).toHaveLength(1);
+  });
+
+  it('an operation booked under the old rule rolls back exactly as it was applied', () => {
+    // Колись витрата «з боргу» зменшувала його. Відкат за новим правилом
+    // зсунув би борг ще на стільки ж — подвійна сума.
+    const legacy = { type: 'expense', amount: 40, currency: 'PLN', accountKey: 'debt', categoryId: 'food', legacyDebtSign: 1 };
+    expect(computeNetDeltas([{ tx: legacy, multiplier: -1 }], debtAccounts).get('debt')).toBe(40);
+    // Правка, що перераховує операцію, знімає стару дію й кладе нову вже за новим правилом.
+    const rebooked = { ...legacy, amount: 50, legacyDebtSign: null };
+    const net = computeNetDeltas(
+      [
+        { tx: legacy, multiplier: -1 },
+        { tx: rebooked, multiplier: 1 },
+      ],
+      debtAccounts,
+    );
+    expect(net.get('debt')).toBe(90);
+  });
+
   it('only guards debt accounts — an ordinary account may go negative', () => {
     // Drains the card far past zero while paying just 1 into the debt.
     const bigSpend = transfer({

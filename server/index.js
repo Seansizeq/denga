@@ -46,13 +46,22 @@ import {
   BALANCE_CORRECTION_CATEGORY_ID,
   computeNetDeltas,
   getTransactionAccountEffects,
+  isLiabilityAccount,
   keepsBooking,
   resolveEffectDelta,
   resolveEffectDeltaInAccountUnit,
   validateTransferPayload,
   withoutBooking,
 } from './transaction-effects.js';
-import { buildDebtRepaymentTransfer, validateDebtPayment } from './debt.js';
+import {
+  buildDebtHistory,
+  buildDebtMovementTransfer,
+  DEBT_MOVEMENT_KINDS,
+  debtTransferCategoryId,
+  pickDebtMentioned,
+  resolveDebtMovementAmounts,
+  validateDebtMovement,
+} from './debt.js';
 import {
   contributionInGoalCurrency as contributionInGoalCurrencyPure,
   freezeContributionConversion,
@@ -123,6 +132,7 @@ import {
   buildSmartSavedPayload,
   buildSmartTransactionKeyboard,
   formatSmartAmount,
+  parseSmartDebtCallback,
 } from './smart-transaction-message.js';
 import { PAIR_WINDOW_MS, findTransferPair, isTransferLike } from './own-transfer.js';
 import {
@@ -614,7 +624,8 @@ const getAccountsByKeys = async (dbConn, userId, keys) => {
   if (unique.length === 0) return new Map();
   const placeholders = unique.map(() => '?').join(', ');
   const rows = await dbConn.all(
-    `SELECT account_key AS accountKey, primary_currency AS primaryCurrency
+    `SELECT account_key AS accountKey, primary_currency AS primaryCurrency,
+            section, debt_direction AS debtDirection
      FROM account_portfolio
      WHERE user_id = ? AND account_key IN (${placeholders})`,
     [userId, ...unique]
@@ -626,6 +637,9 @@ const getAccountsByKeys = async (dbConn, userId, keys) => {
         accountKey: String(row.accountKey ?? '').trim().toLowerCase(),
         // Denomination, not fiat currency: a crypto account is counted in its asset.
         primaryCurrency: normalizeDenomination(row.primaryCurrency),
+        // Потрібні, щоб назвати переказ із боргом поверненням чи позикою.
+        section: row.section,
+        debtDirection: row.debtDirection,
       },
     ])
   );
@@ -2937,6 +2951,95 @@ const saveBotTransaction = async (transaction) => {
   return { ok: true };
 };
 
+const SMART_DEBT_REFUSALS = {
+  DEBT_NOT_FOUND: '⚠️ Не збережено: цього боргу вже немає.',
+  PAYMENT_ACCOUNT_REQUIRED: '⚠️ Не збережено: повернення має прийти на банк чи готівку.',
+  PAYMENT_RATE_UNAVAILABLE: '⚠️ Не збережено: немає курсу, щоб перерахувати суму.',
+  ACCOUNT_DENOMINATION_MISMATCH: '⚠️ Не збережено: немає курсу, щоб перерахувати суму.',
+};
+
+/**
+ * «Зберегти» на картці повернення боргу з вибраним боргом: переказ із боргу
+ * на рахунок через ту саму дорогу, що й кнопка в застосунку. Сума в чаті могла
+ * бути в іншій валюті, ніж борг чи рахунок, — її перераховує
+ * `resolveDebtMovementAmounts`.
+ */
+async function saveSmartDebtRepayment(callbackQuery, chatId, messageId, pendingSmart, accountKey) {
+  const userId = pendingSmart.userId;
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(String(pendingSmart.date ?? ''))
+    ? `${pendingSmart.date}T12:00:00.000Z`
+    : new Date().toISOString();
+  const note = pendingSmart.note ? stripAccountMarker(String(pendingSmart.note)).slice(0, 80) : null;
+  const convert = await buildAccountUnitConverter();
+  let outcome;
+  try {
+    outcome = await withTransaction(db, async (tx) => {
+      const debt = await tx.get(
+        `SELECT name, primary_currency AS primaryCurrency FROM account_portfolio
+         WHERE user_id = ? AND account_key = ? AND section = 'debt' LIMIT 1`,
+        [userId, pendingSmart.debtAccountKey]
+      );
+      const payment = await tx.get(
+        'SELECT primary_currency AS primaryCurrency FROM account_portfolio WHERE user_id = ? AND account_key = ? LIMIT 1',
+        [userId, accountKey]
+      );
+      if (!debt) throw new TransactionRefused({ status: 404, code: 'DEBT_NOT_FOUND', error: 'debt account not found' });
+      if (!payment) {
+        throw new TransactionRefused({ status: 400, code: 'PAYMENT_ACCOUNT_REQUIRED', error: 'payment account not found' });
+      }
+      const amounts = resolveDebtMovementAmounts({
+        amount: pendingSmart.amount,
+        currency: normalizeCurrency(pendingSmart.currency) || 'UAH',
+        debtCurrency: debt.primaryCurrency,
+        paymentCurrency: payment.primaryCurrency,
+        convert,
+      });
+      if (!amounts) {
+        throw new TransactionRefused({ status: 409, code: 'PAYMENT_RATE_UNAVAILABLE', error: 'no rate' });
+      }
+      const recorded = await recordDebtMovement(
+        tx,
+        userId,
+        {
+          debtAccountKey: pendingSmart.debtAccountKey,
+          paymentAccountKey: accountKey,
+          kind: 'repayment',
+          ...amounts,
+          date,
+          note,
+        },
+        convert,
+      );
+      return { ...recorded, debtName: debt.name, debtCurrency: normalizeDenomination(debt.primaryCurrency) };
+    });
+  } catch (error) {
+    if (!(error instanceof TransactionRefused)) {
+      console.error('[smart-transaction] could not save debt repayment:', error);
+      await bot.answerCallbackQuery(callbackQuery.id, { text: 'Не вдалося зберегти' });
+      await replaceSmartTransactionMessage(chatId, messageId, '⚠️ Транзакцію не збережено. Спробуйте ще раз.');
+      return;
+    }
+    const { code, available } = error.payload;
+    const option = (pendingSmart.debtOptions ?? []).find((o) => o.key === pendingSmart.debtAccountKey);
+    const text =
+      code === 'DEBT_PAYMENT_EXCEEDS_BALANCE'
+        ? `⚠️ Не збережено: повернення більше за борг${
+            option ? ` (${formatSmartAmount(available ?? option.balance, option.currency)})` : ''
+          }.`
+        : SMART_DEBT_REFUSALS[code] ?? '⚠️ Транзакцію не збережено. Спробуйте ще раз.';
+    await bot.answerCallbackQuery(callbackQuery.id, { text: 'Не збережено' });
+    await replaceSmartTransactionMessage(chatId, messageId, text);
+    return;
+  }
+
+  await bot.answerCallbackQuery(callbackQuery.id, { text: 'Збережено ✅' });
+  const saved = buildSmartSavedPayload(pendingSmart, { emojiIds: smartTransactionEmojiIds });
+  await replaceSmartTransactionMessage(chatId, messageId, {
+    ...saved,
+    text: `${saved.text}\n🤝 ${outcome.debtName}: лишилось ${formatSmartAmount(outcome.newAmount, outcome.debtCurrency)}`,
+  });
+}
+
 /**
  * Build the category list (built-in + user's custom) passed to the smart parser.
  *
@@ -2998,6 +3101,43 @@ async function getSmartTransactionContext(userId) {
   };
 }
 
+/**
+ * Повернення боргу, розпізнане в чаті, має зменшити конкретний борг — інакше
+ * воно лягало простим доходом і роздувало статистику, а борг стояв на місці.
+ *
+ * Кнопки боргів зʼявляються, коли гроші прийшли на банк чи готівку: повернення
+ * — це переказ із боргу на рахунок, і без рахунку його не провести. Борг,
+ * названий у тексті, вибирається сам; «Без боргу» лишає старий простий дохід.
+ */
+async function loadSmartDebtChoice(userId, parsed, text) {
+  if (parsed?.type !== 'income' || parsed?.categoryId !== 'debt_return') return {};
+  const debts = await db.all(
+    `SELECT account_key AS accountKey, name, primary_amount AS primaryAmount, primary_currency AS primaryCurrency
+     FROM account_portfolio
+     WHERE user_id = ? AND section = 'debt' AND debt_direction = 'owed_to_me' AND primary_amount > 0
+     ORDER BY primary_amount DESC
+     LIMIT 6`,
+    [userId]
+  );
+  if (!Array.isArray(debts) || debts.length === 0) return {};
+  const accountKey = parsed.accountKey ? String(parsed.accountKey).trim().toLowerCase() : '';
+  const account = accountKey
+    ? await db.get('SELECT section FROM account_portfolio WHERE user_id = ? AND account_key = ? LIMIT 1', [
+        userId,
+        accountKey,
+      ])
+    : null;
+  if (!account || !['bank', 'cash'].includes(account.section)) return { debtHint: true };
+  const debtOptions = debts.map((debt) => ({
+    key: String(debt.accountKey).toLowerCase(),
+    name: String(debt.name ?? '').slice(0, 32),
+    balance: Number(debt.primaryAmount) || 0,
+    currency: normalizeDenomination(debt.primaryCurrency),
+  }));
+  const mentioned = pickDebtMentioned(text, debtOptions) ?? (debtOptions.length === 1 ? debtOptions[0] : null);
+  return { debtOptions, debtAccountKey: mentioned?.key ?? null };
+}
+
 async function sendSmartTransactionConfirmation(msg, parsed, today) {
   const userId = String(msg.from.id);
   const chatId = msg.chat.id;
@@ -3016,6 +3156,11 @@ async function sendSmartTransactionConfirmation(msg, parsed, today) {
     note: parsed.note,
     createdAt: Date.now(),
     today,
+    ...(await loadSmartDebtChoice(userId, parsed, msg.text).catch((error) => {
+      // Без вибору боргу картка все одно має зʼявитися: повернення збережеться доходом.
+      console.warn('[smart-transaction] debt choice unavailable:', error?.message || error);
+      return {};
+    })),
   };
   const confirmation = buildSmartConfirmationPayload(pending, {
     today,
@@ -3025,13 +3170,13 @@ async function sendSmartTransactionConfirmation(msg, parsed, today) {
   try {
     sent = await bot.sendMessage(chatId, confirmation.text, {
       ...(confirmation.entities.length > 0 ? { entities: confirmation.entities } : {}),
-      reply_markup: buildSmartTransactionKeyboard(smartTransactionEmojiIds),
+      reply_markup: buildSmartTransactionKeyboard(smartTransactionEmojiIds, pending),
     });
   } catch (error) {
     if (!hasSmartTransactionPremiumEmoji || !isTelegramBadRequest(error)) throw error;
     console.warn('[smart-transaction] premium emoji rejected; using regular emoji:', error?.message || error);
     sent = await bot.sendMessage(chatId, buildSmartConfirmationPayload(pending, { today }).text, {
-      reply_markup: buildSmartTransactionKeyboard(),
+      reply_markup: buildSmartTransactionKeyboard({}, pending),
     });
   }
   pendingSmartTransactions.set(chatId, { ...pending, messageId: sent.message_id });
@@ -3847,6 +3992,55 @@ if (bot) {
       return;
     }
 
+    const debtChoice = parseSmartDebtCallback(callbackQuery.data);
+    if (debtChoice) {
+      const pendingSmart = pendingSmartTransactions.get(chatId);
+      const callbackMessageId = Number(callbackQuery.message?.message_id);
+      const options = Array.isArray(pendingSmart?.debtOptions) ? pendingSmart.debtOptions : [];
+      if (
+        !pendingSmart
+        || pendingSmart.userId !== cbUserId
+        || Number(pendingSmart.messageId) !== callbackMessageId
+        || (debtChoice.index !== null && !options[debtChoice.index])
+      ) {
+        await bot.answerCallbackQuery(callbackQuery.id, { text: 'Запит застарів. Надішліть ще раз.' });
+        return;
+      }
+      // Вибір лише міняє картку; записується все тільки після «Зберегти».
+      const next = {
+        ...pendingSmart,
+        debtAccountKey: debtChoice.index === null ? null : options[debtChoice.index].key,
+      };
+      pendingSmartTransactions.set(chatId, next);
+      await bot.answerCallbackQuery(callbackQuery.id);
+      const confirmation = buildSmartConfirmationPayload(next, {
+        today: next.today,
+        emojiIds: smartTransactionEmojiIds,
+      });
+      try {
+        await bot.editMessageText(confirmation.text, {
+          chat_id: chatId,
+          message_id: callbackMessageId,
+          ...(confirmation.entities.length > 0 ? { entities: confirmation.entities } : {}),
+          reply_markup: buildSmartTransactionKeyboard(smartTransactionEmojiIds, next),
+        });
+      } catch (error) {
+        if (!isTelegramBadRequest(error)) throw error;
+        // Той самий вибір удруге Telegram відхиляє як «нічого не змінилось» — і це
+        // не біда. Інша відмова — найімовірніше преміум-емодзі: тоді без них.
+        if (confirmation.entities.length > 0) {
+          await bot
+            .editMessageText(buildSmartConfirmationPayload(next, { today: next.today }).text, {
+              chat_id: chatId,
+              message_id: callbackMessageId,
+              reply_markup: buildSmartTransactionKeyboard({}, next),
+            })
+            .catch(() => undefined);
+        }
+      }
+      return;
+    }
+
     if (
       callbackQuery.data === 'smart_save'
       || callbackQuery.data === 'smart_edit'
@@ -3891,6 +4085,10 @@ if (bot) {
       const accountKey = pendingSmart.accountKey
         ? String(pendingSmart.accountKey).trim().toLowerCase()
         : null;
+      if (pendingSmart.debtAccountKey && accountKey) {
+        await saveSmartDebtRepayment(callbackQuery, chatId, callbackMessageId, pendingSmart, accountKey);
+        return;
+      }
       const note = pendingSmart.note ? stripAccountMarker(String(pendingSmart.note)) : 'Added via Telegram Bot';
       const transaction = {
         accountKey,
@@ -6901,6 +7099,108 @@ app.get('/api/sync', async (req, res) => {
   });
 });
 
+/**
+ * Рух боргу: повернення (`repayment`) або добір (`increase`) — переказ між
+ * боргом і банківським чи готівковим рахунком, разом із подією в
+ * `debt_events`. Викликається вже під `withTransaction`: перевірка й запис —
+ * один крок. Відмову кидає як `TransactionRefused`.
+ *
+ * Це єдина дорога, якою картка боргу, форма операції, бот і створення боргу
+ * записують рух грошей боргу, тож правило в них одне.
+ */
+const recordDebtMovement = async (
+  dbConn,
+  userId,
+  { debtAccountKey, paymentAccountKey, kind, amount, paymentAmount, date, note },
+  convert,
+) => {
+  const debtKey = String(debtAccountKey ?? '').trim().toLowerCase();
+  const paymentKey = String(paymentAccountKey ?? '').trim().toLowerCase();
+  const debtAccount = debtKey
+    ? await dbConn.get(
+        `SELECT account_key AS accountKey, section, primary_amount AS primaryAmount,
+                primary_currency AS primaryCurrency, debt_direction AS debtDirection, name
+         FROM account_portfolio
+         WHERE user_id = ? AND account_key = ? AND section = 'debt'
+         LIMIT 1`,
+        [userId, debtKey]
+      )
+    : null;
+  const paymentAccount = paymentKey
+    ? await dbConn.get(
+        `SELECT account_key AS accountKey, section, primary_currency AS primaryCurrency
+         FROM account_portfolio
+         WHERE user_id = ? AND account_key = ?
+         LIMIT 1`,
+        [userId, paymentKey]
+      )
+    : null;
+  const validated = validateDebtMovement({ debtAccount, paymentAccount, kind, amount, paymentAmount, convert });
+  if (!validated.ok) {
+    const { ok: _ok, status, ...payload } = validated;
+    throw new TransactionRefused({ status, ...payload });
+  }
+
+  const now = new Date().toISOString();
+  const eventId = uuidv4();
+  const transaction = {
+    id: uuidv4(),
+    user_id: userId,
+    date: date ?? now,
+    note: note || null,
+    debtEventId: eventId,
+    ...buildDebtMovementTransfer(validated),
+  };
+  await assertTransactionPreconditions(dbConn, userId, [{ tx: transaction, multiplier: 1 }], convert);
+
+  await dbConn.run(
+    `INSERT INTO debt_events
+      (id, user_id, debt_account_key, event_type, amount, currency,
+       payment_account_key, transaction_id, date, note, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      eventId,
+      userId,
+      validated.debtAccountKey,
+      validated.kind,
+      validated.amount,
+      validated.currency,
+      validated.paymentAccountKey,
+      transaction.id,
+      transaction.date,
+      transaction.note,
+      now,
+    ]
+  );
+  await dbConn.run(
+    `INSERT INTO transactions
+      (id, user_id, type, amount, currency, transferToAmount, transferToCurrency,
+       categoryId, date, note, fromAccountKey, toAccountKey, debtEventId)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      transaction.id,
+      userId,
+      transaction.type,
+      transaction.amount,
+      transaction.currency,
+      transaction.transferToAmount,
+      transaction.transferToCurrency,
+      transaction.categoryId,
+      transaction.date,
+      transaction.note,
+      transaction.fromAccountKey,
+      transaction.toAccountKey,
+      transaction.debtEventId,
+    ]
+  );
+  await applyTransactionEffects(dbConn, userId, transaction, 1, convert);
+  const updated = await dbConn.get(
+    'SELECT primary_amount AS primaryAmount FROM account_portfolio WHERE user_id = ? AND account_key = ?',
+    [userId, validated.debtAccountKey]
+  );
+  return { newAmount: Number(updated?.primaryAmount) || 0, transaction };
+};
+
 app.post('/api/accounts', async (req, res) => {
   const userId = req.authUserId;
   const name = typeof req.body?.name === 'string' ? req.body.name.trim().replace(/\s+/g, ' ') : '';
@@ -6915,6 +7215,12 @@ app.post('/api/accounts', async (req, res) => {
   const debtDirectionRaw = typeof req.body?.debtDirection === 'string' ? req.body.debtDirection.trim() : '';
   const debtDirection = section === 'debt' ? (debtDirectionRaw === 'owed_by_me' ? 'owed_by_me' : 'owed_to_me') : null;
   const sortIndex = req.body?.sortIndex === undefined ? undefined : Number(req.body.sortIndex);
+  // Рахунок, з якого пішли (чи на який прийшли) гроші боргу. Без нього борг
+  // заводиться, як і раніше, просто числом — без руху на картці.
+  const fundingAccountKey =
+    section === 'debt' && typeof req.body?.fundingAccountKey === 'string'
+      ? req.body.fundingAccountKey.trim().toLowerCase()
+      : '';
 
   if (!name) {
     res.status(400).json({ error: 'name is required' });
@@ -6930,6 +7236,13 @@ app.post('/api/accounts', async (req, res) => {
     res.status(400).json({ error: `section must be one of ${USER_CREATABLE_SECTIONS.join(', ')}` });
     return;
   }
+  // Борг — це скільки винні, без знака: напрямок задає `debtDirection`.
+  // Відʼємного боргу перевірка «не нижче нуля» не пропустила б потім жодною
+  // операцією.
+  if (section === 'debt' && primaryAmount < 0) {
+    res.status(400).json({ error: 'a debt cannot be negative', code: 'DEBT_AMOUNT_NEGATIVE' });
+    return;
+  }
   if (!Number.isFinite(sortIndex)) {
     res.status(400).json({ error: 'sortIndex must be a number' });
     return;
@@ -6939,67 +7252,98 @@ app.post('/api/accounts', async (req, res) => {
     return;
   }
 
-  // Ключ із випадковим хвостом: звільнений видаленим рахунком ключ не
-  // дістається новому разом з усіма посиланнями на старий (див. account-key.js).
-  let accountKey = createAccountKey(userId, name);
-  while (await db.get('SELECT 1 FROM account_portfolio WHERE account_key = ? LIMIT 1', [accountKey])) {
-    accountKey = createAccountKey(userId, name);
-  }
+  const funded = Boolean(fundingAccountKey) && primaryAmount > 0;
+  // Курс — до транзакції: усередині неї мережі бути не має.
+  const convert = funded ? await buildAccountUnitConverter() : null;
 
-  const now = new Date().toISOString();
-  await db.run(
-    `INSERT INTO account_portfolio
-     (account_key, user_id, section, sort_index, name, primary_amount, primary_currency, sub_text, icon_tone, badge, debt_phrase, icon_key, debt_direction, debt_initial_amount, debt_created_at, updatedAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      accountKey,
-      userId,
-      section,
-      sortIndex,
-      name,
-      primaryAmount,
-      primaryCurrency,
-      subText ? subText : null,
-      iconTone,
-      badge ? badge : null,
-      section === 'debt' ? legacyDebtPhraseForDirection(debtDirection) : null,
-      iconKey,
-      debtDirection,
-      section === 'debt' ? primaryAmount : null,
-      section === 'debt' ? now : null,
-      now,
-    ]
-  );
-  if (section === 'debt') {
-    await db.run(
-      `INSERT INTO debt_events
-        (id, user_id, debt_account_key, event_type, amount, currency, date, note, created_at)
-       VALUES (?, ?, ?, 'created', ?, ?, ?, ?, ?)`,
-      [uuidv4(), userId, accountKey, primaryAmount, primaryCurrency, now, 'Opening balance', now]
-    );
-  }
+  // Рахунок, подія боргу й переказ з картки — один крок. Доки рахунок писався
+  // повз чергу транзакцій, чужий відкат міг забрати його з собою.
+  let row;
+  try {
+    row = await withTransaction(db, async (tx) => {
+      // Ключ із випадковим хвостом: звільнений видаленим рахунком ключ не
+      // дістається новому разом з усіма посиланнями на старий (див. account-key.js).
+      let accountKey = createAccountKey(userId, name);
+      while (await tx.get('SELECT 1 FROM account_portfolio WHERE account_key = ? LIMIT 1', [accountKey])) {
+        accountKey = createAccountKey(userId, name);
+      }
 
-  const row = await db.get(
-    `SELECT
-       account_key AS accountKey,
-       section,
-       sort_index AS sortIndex,
-       name,
-       primary_amount AS primaryAmount,
-       primary_currency AS primaryCurrency,
-       sub_text AS subText,
-       icon_tone AS iconTone,
-       badge,
-       icon_key AS iconKey,
-       debt_direction AS debtDirection,
-       debt_initial_amount AS debtInitialAmount,
-       debt_created_at AS debtCreatedAt,
-       updatedAt
-     FROM account_portfolio
-     WHERE user_id = ? AND account_key = ?
-     LIMIT 1`,
-    [userId, accountKey]
-  );
+      // Борг із рахунком грошей стартує з нуля, а суму приносить сам переказ:
+      // картка й борг рухаються разом, і в історії видно, звідки гроші.
+      const openingAmount = funded ? 0 : primaryAmount;
+      const now = new Date().toISOString();
+      await tx.run(
+        `INSERT INTO account_portfolio
+         (account_key, user_id, section, sort_index, name, primary_amount, primary_currency, sub_text, icon_tone, badge, debt_phrase, icon_key, debt_direction, debt_initial_amount, debt_created_at, updatedAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          accountKey,
+          userId,
+          section,
+          sortIndex,
+          name,
+          openingAmount,
+          primaryCurrency,
+          subText ? subText : null,
+          iconTone,
+          badge ? badge : null,
+          section === 'debt' ? legacyDebtPhraseForDirection(debtDirection) : null,
+          iconKey,
+          debtDirection,
+          section === 'debt' ? primaryAmount : null,
+          section === 'debt' ? now : null,
+          now,
+        ]
+      );
+      if (section === 'debt') {
+        await tx.run(
+          `INSERT INTO debt_events
+            (id, user_id, debt_account_key, event_type, amount, currency, date, note, created_at)
+           VALUES (?, ?, ?, 'created', ?, ?, ?, ?, ?)`,
+          [uuidv4(), userId, accountKey, openingAmount, primaryCurrency, now, 'Opening balance', now]
+        );
+      }
+      if (funded) {
+        await recordDebtMovement(
+          tx,
+          userId,
+          {
+            debtAccountKey: accountKey,
+            paymentAccountKey: fundingAccountKey,
+            kind: 'increase',
+            amount: primaryAmount,
+            paymentAmount: req.body?.fundingAmount,
+          },
+          convert,
+        );
+      }
+
+      return tx.get(
+        `SELECT
+           account_key AS accountKey,
+           section,
+           sort_index AS sortIndex,
+           name,
+           primary_amount AS primaryAmount,
+           primary_currency AS primaryCurrency,
+           sub_text AS subText,
+           icon_tone AS iconTone,
+           badge,
+           icon_key AS iconKey,
+           debt_direction AS debtDirection,
+           debt_initial_amount AS debtInitialAmount,
+           debt_created_at AS debtCreatedAt,
+           updatedAt
+         FROM account_portfolio
+         WHERE user_id = ? AND account_key = ?
+         LIMIT 1`,
+        [userId, accountKey]
+      );
+    });
+  } catch (error) {
+    if (sendIfRefused(res, error)) return;
+    throw error;
+  }
 
   res.status(201).json(row);
 });
@@ -7083,7 +7427,8 @@ app.put('/api/accounts/:key', async (req, res) => {
     row = await withTransaction(db, async (tx) => {
       const now = new Date().toISOString();
       const existing = await tx.get(
-        `SELECT account_key AS accountKey, section, primary_amount AS primaryAmount, primary_currency AS primaryCurrency
+        `SELECT account_key AS accountKey, section, primary_amount AS primaryAmount, primary_currency AS primaryCurrency,
+                debt_direction AS debtDirection
          FROM account_portfolio
          WHERE user_id = ? AND account_key = ?
          LIMIT 1`,
@@ -7114,6 +7459,29 @@ app.put('/api/accounts/:key', async (req, res) => {
           error: 'the balance changed while the account was being edited',
           code: plan.code,
           currentAmount: plan.currentAmount,
+        });
+      }
+      if (section === 'debt' && plan.nextAmount < 0) {
+        throw new TransactionRefused({ status: 400, error: 'a debt cannot be negative', code: 'DEBT_AMOUNT_NEGATIVE' });
+      }
+      // Операції цього рахунку вже зрушили баланс за знаком «актив» чи
+      // «зобовʼязання». Перемкнути знак — і відкат кожної з них піде в інший бік:
+      // повернення 300 по боргу «мені винні» після перемикання на «я винен» і
+      // видалення зсувало борг з 700 на 400 замість 1000.
+      if (
+        isLiabilityAccount(existing) !== isLiabilityAccount({ section, debtDirection }) &&
+        (await tx.get(
+          `SELECT 1 FROM transactions
+           WHERE user_id = ?
+             AND (lower(accountKey) = ? OR lower(fromAccountKey) = ? OR lower(toAccountKey) = ?)
+           LIMIT 1`,
+          [userId, accountKey.toLowerCase(), accountKey.toLowerCase(), accountKey.toLowerCase()]
+        ))
+      ) {
+        throw new TransactionRefused({
+          status: 409,
+          error: 'the debt direction cannot change once operations reference this account',
+          code: 'DEBT_DIRECTION_LOCKED',
         });
       }
 
@@ -7199,113 +7567,115 @@ app.put('/api/accounts/:key', async (req, res) => {
   res.json(row);
 });
 
-app.post('/api/accounts/:key/payment', async (req, res) => {
+/**
+ * Рух боргу з його картки, форми операції чи будь-якого іншого клієнта.
+ *
+ * Тіло: `kind` (`repayment` — за замовчуванням, як у старого маршруту;
+ * `increase` — позичив ще / взяв ще), `amount` у валюті боргу,
+ * `paymentAccountKey` — банк чи готівка, `paymentAmount` — скільки пройшло
+ * через рахунок, коли його валюта інша (без нього — за курсом дня), `date`
+ * (`YYYY-MM-DD`, без нього — зараз) і `note`.
+ *
+ * Старий шлях `/payment` лишається: застосунок, відкритий на телефоні до
+ * оновлення, ходить саме туди.
+ */
+const handleDebtMovement = async (req, res) => {
   const userId = req.authUserId;
   const accountKey = String(req.params.key ?? '').trim().toLowerCase();
-  const paymentAccountKey = String(req.body?.paymentAccountKey ?? '').trim().toLowerCase();
-  const amount = Number(req.body?.amount);
   const note = typeof req.body?.note === 'string' ? req.body.note.trim() : '';
+  const kind = req.body?.kind === undefined ? 'repayment' : String(req.body.kind);
+  const parsedDate = req.body?.date === undefined || req.body?.date === null || req.body?.date === ''
+    ? null
+    : parseIsoDate(req.body.date);
 
   if (!accountKey) { res.status(400).json({ error: 'invalid key', code: 'INVALID_DEBT_KEY' }); return; }
   if (note.length > 80) { res.status(400).json({ error: 'note must be <= 80 chars', code: 'INVALID_NOTE' }); return; }
+  if (!DEBT_MOVEMENT_KINDS.includes(kind)) {
+    res.status(400).json({ error: 'kind must be repayment or increase', code: 'INVALID_DEBT_MOVEMENT' });
+    return;
+  }
+  if (req.body?.date !== undefined && req.body?.date !== null && req.body?.date !== '' && !parsedDate) {
+    res.status(400).json({ error: 'date must be YYYY-MM-DD', code: 'INVALID_DATE' });
+    return;
+  }
 
   // Курс — до транзакції: усередині неї мережі бути не має.
   const convert = await buildAccountUnitConverter();
 
   let outcome;
   try {
-    outcome = await withTransaction(db, async (tx) => {
-      const debtAccount = await tx.get(
-        `SELECT account_key AS accountKey, section, primary_amount AS primaryAmount,
-                primary_currency AS primaryCurrency, debt_direction AS debtDirection, name
-         FROM account_portfolio
-         WHERE user_id = ? AND account_key = ? AND section = 'debt'
-         LIMIT 1`,
-        [userId, accountKey]
-      );
-      const paymentAccount = paymentAccountKey
-        ? await tx.get(
-            `SELECT account_key AS accountKey, section, primary_currency AS primaryCurrency
-             FROM account_portfolio
-             WHERE user_id = ? AND account_key = ?
-             LIMIT 1`,
-            [userId, paymentAccountKey]
-          )
-        : null;
-      const validated = validateDebtPayment({ debtAccount, paymentAccount, amount });
-      if (!validated.ok) {
-        // Відмова кидається, а не відповідається на місці: так транзакція
-        // гарантовано відкочується, а відповідь іде вже поза локом.
-        throw new TransactionRefused({
-          status: validated.status,
-          error: validated.error,
-          code: validated.code,
-        });
-      }
-
-      const now = new Date().toISOString();
-      const eventId = uuidv4();
-      const transaction = {
-        id: uuidv4(),
-        user_id: userId,
-        date: now,
-        note: note || `Debt repayment: ${debtAccount.name}`,
-        debtEventId: eventId,
-        ...buildDebtRepaymentTransfer(validated),
-      };
-
-      await tx.run(
-        `INSERT INTO debt_events
-          (id, user_id, debt_account_key, event_type, amount, currency,
-           payment_account_key, transaction_id, date, note, created_at)
-         VALUES (?, ?, ?, 'repayment', ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          eventId,
-          userId,
-          validated.debtAccountKey,
-          validated.amount,
-          validated.currency,
-          validated.paymentAccountKey,
-          transaction.id,
-          now,
-          transaction.note,
-          now,
-        ]
-      );
-      await tx.run(
-        `INSERT INTO transactions
-          (id, user_id, type, amount, currency, transferToAmount, transferToCurrency,
-           categoryId, date, note, fromAccountKey, toAccountKey, debtEventId)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          transaction.id,
-          userId,
-          transaction.type,
-          transaction.amount,
-          transaction.currency,
-          transaction.transferToAmount,
-          transaction.transferToCurrency,
-          transaction.categoryId,
-          transaction.date,
-          transaction.note,
-          transaction.fromAccountKey,
-          transaction.toAccountKey,
-          transaction.debtEventId,
-        ]
-      );
-      await applyTransactionEffects(tx, userId, transaction, 1, convert);
-      const updated = await tx.get(
-        'SELECT primary_amount AS primaryAmount FROM account_portfolio WHERE user_id = ? AND account_key = ?',
-        [userId, accountKey]
-      );
-      return { newAmount: Number(updated?.primaryAmount) || 0, transaction };
-    });
+    outcome = await withTransaction(db, (tx) =>
+      recordDebtMovement(
+        tx,
+        userId,
+        {
+          debtAccountKey: accountKey,
+          paymentAccountKey: req.body?.paymentAccountKey,
+          kind,
+          amount: req.body?.amount,
+          paymentAmount: req.body?.paymentAmount,
+          date: parsedDate ? parsedDate.toISOString() : undefined,
+          note,
+        },
+        convert,
+      ),
+    );
   } catch (error) {
     if (sendIfRefused(res, error)) return;
     throw error;
   }
 
   res.json(outcome);
+};
+
+app.post('/api/accounts/:key/debt-movement', handleDebtMovement);
+app.post('/api/accounts/:key/payment', handleDebtMovement);
+
+/**
+ * Історія боргу для його картки: усе, що рухало баланс, і підсумки
+ * (див. `buildDebtHistory`). Читається з бази цілком, а не з того, що
+ * клієнт уже має: синхронізація віддає лише останні операції, і в старого
+ * боргу історія обривалася б.
+ */
+app.get('/api/accounts/:key/debt-history', async (req, res) => {
+  const userId = req.authUserId;
+  const accountKey = String(req.params.key ?? '').trim().toLowerCase();
+  const account = accountKey
+    ? await db.get(
+        `SELECT account_key AS accountKey, section, primary_amount AS primaryAmount,
+                primary_currency AS primaryCurrency, debt_direction AS debtDirection
+         FROM account_portfolio
+         WHERE user_id = ? AND account_key = ? AND section = 'debt'
+         LIMIT 1`,
+        [userId, accountKey]
+      )
+    : null;
+  if (!account) {
+    res.status(404).json({ error: 'debt account not found', code: 'DEBT_NOT_FOUND' });
+    return;
+  }
+
+  const [events, transactions, convert] = await Promise.all([
+    db.all(
+      `SELECT id, event_type AS eventType, amount, date
+       FROM debt_events
+       WHERE user_id = ? AND debt_account_key = ?`,
+      [userId, account.accountKey]
+    ),
+    db.all(
+      `SELECT * FROM transactions
+       WHERE user_id = ?
+         AND (lower(accountKey) = ? OR lower(fromAccountKey) = ? OR lower(toAccountKey) = ?)
+       ${TRANSACTIONS_ORDER}`,
+      [userId, accountKey, accountKey, accountKey]
+    ),
+    buildAccountUnitConverter(),
+  ]);
+
+  res.json({
+    accountKey: account.accountKey,
+    ...buildDebtHistory({ account, events, transactions, convert }),
+  });
 });
 
 app.delete('/api/accounts/:key', async (req, res) => {
@@ -7447,6 +7817,7 @@ app.post('/api/transactions', async (req, res) => {
     transferToAmount: null,
     transferToCurrency: null,
   };
+  let transferCategoryId = 'transfer';
   if (type === 'transfer') {
     const accountsByKey = await getAccountsByKeys(db, userId, [req.body?.fromAccountKey, req.body?.toAccountKey]);
     const validated = validateTransferPayload({
@@ -7472,6 +7843,7 @@ app.post('/api/transactions', async (req, res) => {
       transferToAmount: validated.transferToAmount,
       transferToCurrency: validated.transferToCurrency,
     };
+    transferCategoryId = debtTransferCategoryId({ type, amount, currency, ...transferFields }, accountsByKey);
   }
 
   const transaction = {
@@ -7479,7 +7851,7 @@ app.post('/api/transactions', async (req, res) => {
     user_id: userId,
     amount,
     currency,
-    categoryId: type === 'transfer' ? 'transfer' : categoryId,
+    categoryId: type === 'transfer' ? transferCategoryId : categoryId,
     type,
     date: parsedTxDate.toISOString(),
     note: note || undefined,
@@ -7554,10 +7926,11 @@ app.patch('/api/transactions/:id', async (req, res) => {
       ? req.body.type
       : current.type;
   // Переказ, що став витратою чи доходом, без нової категорії лишився б під
-  // службовою «transfer» — і в статистиці виглядав би категорією, якої немає.
+  // службовою «transfer» (чи «позикою», яка теж буває лише в переказів) — і в
+  // статистиці виглядав би категорією, якої немає.
   const requestedCategoryId = typeof req.body?.categoryId === 'string' ? req.body.categoryId.trim() : '';
   const categoryId = requestedCategoryId
-    || (type !== 'transfer' && current.categoryId === 'transfer' ? '' : current.categoryId);
+    || (type !== 'transfer' && ['transfer', 'debt_lend'].includes(current.categoryId) ? '' : current.categoryId);
   const parsedTxDate = req.body?.date === undefined ? new Date(current.date) : parseIsoDate(req.body.date);
   const rawNote = req.body?.note === undefined
     ? (current.note ?? '')
@@ -7614,6 +7987,7 @@ app.patch('/api/transactions/:id', async (req, res) => {
     transferToAmount: null,
     transferToCurrency: null,
   };
+  let nextTransferCategoryId = 'transfer';
   if (type === 'transfer') {
     const accountsByKey = await getAccountsByKeys(db, userId, [fromAccountKey, toAccountKey]);
     const validated = validateTransferPayload({
@@ -7635,13 +8009,17 @@ app.patch('/api/transactions/:id', async (req, res) => {
       transferToAmount: validated.transferToAmount,
       transferToCurrency: validated.transferToCurrency,
     };
+    nextTransferCategoryId = debtTransferCategoryId(
+      { type, amount, currency, ...nextTransferFields },
+      accountsByKey,
+    );
   }
 
   const draft = {
     ...current,
     amount,
     currency,
-    categoryId: type === 'transfer' ? 'transfer' : categoryId,
+    categoryId: type === 'transfer' ? nextTransferCategoryId : categoryId,
     type,
     date: parsedTxDate.toISOString(),
     note: note || undefined,
@@ -7683,6 +8061,7 @@ app.patch('/api/transactions/:id', async (req, res) => {
              accountKey = ?,
              accountAmount = ?,
              accountCurrency = ?,
+             legacyDebtSign = ?,
              amountUah = NULL,
              amountPln = NULL,
              amountUsd = NULL
@@ -7701,6 +8080,7 @@ app.patch('/api/transactions/:id', async (req, res) => {
           nextTransaction.accountKey ?? null,
           nextTransaction.accountAmount ?? null,
           nextTransaction.accountCurrency ?? null,
+          nextTransaction.legacyDebtSign ?? null,
           userId,
           id,
         ]

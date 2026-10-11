@@ -573,6 +573,14 @@ export async function initDb() {
   } catch {
     /* already exists */
   }
+  // Дохід чи витрата на боргу «я винен», записані до того, як правило знаку
+  // зобовʼязання поширилося на них (див. `resolveEffectDelta`). Ставить
+  // міграція 006; нові операції цієї позначки не мають.
+  try {
+    await db.exec(`ALTER TABLE transactions ADD COLUMN legacyDebtSign INTEGER`);
+  } catch {
+    /* already exists */
+  }
   // На скільки операція зрушила свій рахунок, у валюті рахунку на день запису:
   // відкат і правка знімають рівно це, а не перерахунок за курсом дня (див.
   // `transaction-effects.js`). Порожньо в старих записах і там, де рахунку немає.

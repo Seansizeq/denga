@@ -28,6 +28,18 @@ export type EditableAccount = {
   /** Empty string = automatic icon from section / account key. */
   iconKey: string;
   debtDirection: 'owed_to_me' | 'owed_by_me' | null;
+  /**
+   * Лише для нового боргу: рахунок, з якого пішли (чи на який прийшли) гроші.
+   * Тоді борг заводиться разом із переказом, і картка рухається теж.
+   */
+  fundingAccountKey?: string;
+};
+
+/** Рахунок, через який можуть рухатися гроші нового боргу. */
+export type FundingAccount = {
+  accountKey: string;
+  name: string;
+  primaryCurrency: Denomination;
 };
 
 /**
@@ -58,12 +70,41 @@ export class BalanceChangedError extends Error {
   }
 }
 
+/** Сервер відмовив із кодом — форма показує причину, а не «не вдалося». */
+export class AccountSaveError extends Error {
+  readonly code: string;
+
+  constructor(code: string) {
+    super(code || 'save failed');
+    this.name = 'AccountSaveError';
+    this.code = code;
+  }
+}
+
 interface AccountEditSheetProps {
   initial: EditableAccount;
+  /** Банк і готівка — куди міг піти чи звідки міг прийти новий борг. */
+  fundingAccounts?: readonly FundingAccount[];
+  /**
+   * По рахунку вже є операції. Тоді його знак «актив / зобовʼязання» не
+   * перемикається: відкат кожної операції пішов би в інший бік.
+   */
+  hasOperations?: boolean;
   onClose: () => void;
   onSave: (next: EditableAccount, balance: BalanceEdit) => Promise<void>;
   onDelete?: (accountKey: string) => Promise<void>;
 }
+
+const isLiability = (section: EditableAccount['section'], direction: EditableAccount['debtDirection']) =>
+  section === 'debt' && direction === 'owed_by_me';
+
+const SAVE_ERROR_KEYS: Record<string, 'debtDirectionLocked' | 'debtAmountNegative' | 'debtPaymentRateUnavailable' | 'debtPaymentAccountRequired'> = {
+  DEBT_DIRECTION_LOCKED: 'debtDirectionLocked',
+  DEBT_AMOUNT_NEGATIVE: 'debtAmountNegative',
+  PAYMENT_RATE_UNAVAILABLE: 'debtPaymentRateUnavailable',
+  ACCOUNT_DENOMINATION_MISMATCH: 'debtPaymentRateUnavailable',
+  PAYMENT_ACCOUNT_REQUIRED: 'debtPaymentAccountRequired',
+};
 
 const parseMoney = (raw: string): number | null => {
   const clean = raw.replace(/\s+/g, '').replace(',', '.');
@@ -135,7 +176,14 @@ const SECTION_PLACEHOLDER_KEYS: Record<
   debt:   'placeholderDebt',
 };
 
-const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, onSave, onDelete }) => {
+const AccountEditSheet: React.FC<AccountEditSheetProps> = ({
+  initial,
+  fundingAccounts = [],
+  hasOperations = false,
+  onClose,
+  onSave,
+  onDelete,
+}) => {
   const { t, locale } = useTranslation();
   const [name, setName] = useState(() => initial.name);
   const [amount, setAmount] = useState(() => String(initial.primaryAmount));
@@ -149,11 +197,19 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
     () => (initial.debtDirection === 'owed_by_me' ? 'owed_by_me' : 'owed_to_me'),
   );
   const [iconTone, setIconTone] = useState<EditableAccount['iconTone']>(() => initial.iconTone);
+  const [fundingAccountKey, setFundingAccountKey] = useState('');
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   const isCreateMode = useMemo(() => !initial.accountKey.trim(), [initial.accountKey]);
+  // Знак рахунку зафіксовано, щойно по ньому є операції (див. сервер,
+  // `DEBT_DIRECTION_LOCKED`). Перейменувати чи перефарбувати — можна.
+  const signLocked = !isCreateMode && hasOperations;
+  const initialLiability = isLiability(initial.section, initial.debtDirection);
+  const flipsSign = (nextSection: EditableAccount['section'], nextDirection: EditableAccount['debtDirection']) =>
+    signLocked && isLiability(nextSection, nextDirection) !== initialLiability;
+  const fundingLabel = t('balance', debtDirection === 'owed_by_me' ? 'debtFundingLabelOwedByMe' : 'debtFundingLabelOwedToMe');
 
   const previewAccountKey = useMemo(() => {
     const k = initial.accountKey.trim();
@@ -172,6 +228,14 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
   const handleSave = async () => {
     const n = parseMoney(amount);
     if (!name.trim() || n === null) return;
+    if (section === 'debt' && n < 0) {
+      setError(t('balance', 'debtAmountNegative'));
+      return;
+    }
+    if (flipsSign(section, section === 'debt' ? debtDirection : null)) {
+      setError(t('balance', 'debtDirectionLocked'));
+      return;
+    }
     setError('');
     setSaving(true);
     try {
@@ -189,6 +253,7 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
           iconKey: iconKey.trim(),
           debtDirection: section === 'debt' ? debtDirection : null,
           iconTone,
+          fundingAccountKey: isCreateMode && section === 'debt' && n > 0 ? fundingAccountKey : '',
         },
         { changed: isCreateMode || n !== baseAmount, expected: baseAmount },
       );
@@ -204,7 +269,8 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
         );
         return;
       }
-      setError(t('addTx', 'saveFailed'));
+      const knownKey = e instanceof AccountSaveError ? SAVE_ERROR_KEYS[e.code] : undefined;
+      setError(knownKey ? t('balance', knownKey) : t('addTx', 'saveFailed'));
     } finally {
       setSaving(false);
     }
@@ -310,23 +376,50 @@ const AccountEditSheet: React.FC<AccountEditSheetProps> = ({ initial, onClose, o
       </div>
 
       {section === 'debt' ? (
-        <div className={styles.segment} role="group" aria-label={t('balance', 'debtDirectionLabel')}>
-          <button
-            type="button"
-            className={styles.segmentBtn}
-            aria-pressed={debtDirection === 'owed_to_me'}
-            onClick={() => setDebtDirection('owed_to_me')}
-          >
-            {t('balance', 'debtDirectionOwedToMe')}
-          </button>
-          <button
-            type="button"
-            className={styles.segmentBtn}
-            aria-pressed={debtDirection === 'owed_by_me'}
-            onClick={() => setDebtDirection('owed_by_me')}
-          >
-            {t('balance', 'debtDirectionOwedByMe')}
-          </button>
+        <>
+          <div className={styles.segment} role="group" aria-label={t('balance', 'debtDirectionLabel')}>
+            <button
+              type="button"
+              className={styles.segmentBtn}
+              aria-pressed={debtDirection === 'owed_to_me'}
+              disabled={flipsSign('debt', 'owed_to_me')}
+              onClick={() => setDebtDirection('owed_to_me')}
+            >
+              {t('balance', 'debtDirectionOwedToMe')}
+            </button>
+            <button
+              type="button"
+              className={styles.segmentBtn}
+              aria-pressed={debtDirection === 'owed_by_me'}
+              disabled={flipsSign('debt', 'owed_by_me')}
+              onClick={() => setDebtDirection('owed_by_me')}
+            >
+              {t('balance', 'debtDirectionOwedByMe')}
+            </button>
+          </div>
+          {signLocked && initial.section === 'debt' ? (
+            <p className={styles.groupCaption}>{t('balance', 'debtDirectionLocked')}</p>
+          ) : null}
+        </>
+      ) : null}
+
+      {isCreateMode && section === 'debt' && fundingAccounts.length > 0 ? (
+        <div className={styles.group}>
+          <label className={styles.row}>
+            <span className={styles.rowLabel}>{fundingLabel}</span>
+            <select
+              className={`${styles.rowField} ${styles.rowSelect}`}
+              value={fundingAccountKey}
+              onChange={(e) => setFundingAccountKey(e.target.value)}
+            >
+              <option value="">{t('balance', 'debtFundingNone')}</option>
+              {fundingAccounts.map((option) => (
+                <option key={option.accountKey} value={option.accountKey}>
+                  {option.name} · {option.primaryCurrency}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
       ) : null}
 

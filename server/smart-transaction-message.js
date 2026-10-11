@@ -73,7 +73,24 @@ export const buildSmartConfirmationMessage = (transaction, { today } = {}) => {
   if (note) lines.push(note);
   const date = formatSmartDate(transaction.date, today);
   if (date) lines.push(date);
+  const debtLine = buildSmartDebtLine(transaction);
+  if (debtLine) lines.push(debtLine);
   return lines.join('\n');
+};
+
+/**
+ * Рядок про борг під поверненням боргу: який борг зменшиться і скільки
+ * лишиться, або підказка, як його вибрати. Без боргу в рядку нічого.
+ */
+export const buildSmartDebtLine = (transaction) => {
+  const options = Array.isArray(transaction.debtOptions) ? transaction.debtOptions : [];
+  const selected = options.find((option) => option.key === transaction.debtAccountKey);
+  if (selected) {
+    return `🤝 Борг: ${selected.name} · зараз ${formatSmartAmount(selected.balance, selected.currency)}`;
+  }
+  if (options.length > 0) return '🤝 Чий борг повернули? Обери нижче — і він зменшиться.';
+  if (transaction.debtHint) return '💡 Вкажи рахунок, куди прийшли гроші, — і повернення спише борг.';
+  return '';
 };
 
 const withPremiumEmoji = (text, customEmojiId, fallbackEmoji) => {
@@ -127,8 +144,25 @@ const premiumButton = (label, fallbackEmoji, customEmojiId, callbackData) => {
     : { text: `${fallbackEmoji}${fallbackEmoji ? ' ' : ''}${label}`, callback_data: callbackData };
 };
 
-export const buildSmartTransactionKeyboard = (emojiIds = {}) => ({
+/**
+ * Кнопки боргів над звичайними: по дві в ряд, вибраний — з галочкою, і
+ * «Без боргу», щоб зберегти повернення простим доходом.
+ */
+const debtRows = (options, selectedKey) => {
+  if (!Array.isArray(options) || options.length === 0) return [];
+  const buttons = options.map((option, index) => ({
+    text: `${option.key === selectedKey ? '✓ ' : ''}${option.name}`,
+    callback_data: `smart_debt:${index}`,
+  }));
+  const rows = [];
+  for (let i = 0; i < buttons.length; i += 2) rows.push(buttons.slice(i, i + 2));
+  rows.push([{ text: `${selectedKey ? '' : '✓ '}Без боргу`, callback_data: 'smart_debt:none' }]);
+  return rows;
+};
+
+export const buildSmartTransactionKeyboard = (emojiIds = {}, { debtOptions = [], debtAccountKey = null } = {}) => ({
   inline_keyboard: [
+    ...debtRows(debtOptions, debtAccountKey),
     [
       premiumButton('Зберегти', '✅', emojiIds.save, 'smart_save'),
       premiumButton('Змінити', '✏️', emojiIds.edit, 'smart_edit'),
@@ -136,3 +170,10 @@ export const buildSmartTransactionKeyboard = (emojiIds = {}) => ({
     [premiumButton('Скасувати', '', emojiIds.cancel, 'smart_cancel')],
   ],
 });
+
+/** `smart_debt:<номер>` або `smart_debt:none`; що інше — `null`. */
+export const parseSmartDebtCallback = (data) => {
+  const match = /^smart_debt:(none|\d{1,2})$/.exec(String(data ?? ''));
+  if (!match) return null;
+  return match[1] === 'none' ? { index: null } : { index: Number(match[1]) };
+};

@@ -353,3 +353,65 @@
   white-space: nowrap;
   min-width: 0;
 }
+
+/* Дві дії поруч: повернення й добір. */
+.actionRow {
+  display: flex;
+  gap: 10px;
+}
+
+.actionRow .payBtn {
+  flex: 1;
+}
+
+.moreBtn {
+  flex: 1;
+  height: 50px;
+  border-radius: 16px;
+  background: var(--bg-card-light);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.moreBtn:active {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.summaryWide {
+  grid-column: 1 / -1;
+}
+
+.historyHint {
+  margin: 0;
+  font-size: 0.82rem;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.historyMain {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.historyLabel {
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.historyItem .historyAmount {
+  margin-left: auto;
+}
+
+.historyUp {
+  color: #ffb0b0;
+}
+
+.historyDown {
+  color: #4ade80;
+}

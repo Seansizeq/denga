@@ -40,8 +40,18 @@ const bookedAccountAmount = (tx) => {
   return Number.isFinite(amount) && amount > 0 && currency ? { amount, currency } : null;
 };
 
-/** Та сама операція без запамʼятованої суми — щоб її перерахувати наново. */
-export const withoutBooking = (tx) => ({ ...tx, accountAmount: null, accountCurrency: null });
+/**
+ * Та сама операція без запамʼятованої суми — щоб її перерахувати наново.
+ *
+ * Разом із сумою забувається й старе правило знаку боргу (`legacyDebtSign`):
+ * перерахована операція рахується так, як рахується все нове.
+ */
+export const withoutBooking = (tx) => ({
+  ...tx,
+  accountAmount: null,
+  accountCurrency: null,
+  legacyDebtSign: null,
+});
 
 /**
  * Чи правка лишає записану суму чинною: той самий рахунок, тип, сума й валюта.
@@ -94,13 +104,24 @@ export const getTransactionAccountEffects = (tx) => {
   return [];
 };
 
+/** Борг «я винен» — зобовʼязання: його баланс показує, скільки я винен. */
+export const isLiabilityAccount = (account) =>
+  account?.section === 'debt' && account?.debtDirection === 'owed_by_me';
+
 /**
- * Liability balances use the opposite sign to asset balances: paying money into
- * a debt I owe reduces it, while borrowing more increases it.
+ * Зобовʼязання рухається навпаки до гаманця. Гроші, що прийшли на нього
+ * (переказ сюди, дохід), борг зменшують; гроші, що пішли з нього (переказ
+ * звідси, витрата — «друг заплатив за мене»), — збільшують.
+ *
+ * Довго це правило діяло лише для переказів, і витрата «з боргу» його
+ * зменшувала. Операції, записані тоді, позначені `legacyDebtSign` (міграція
+ * 006) і відкочуються рівно так, як були застосовані: інакше правка чи
+ * видалення зсунули б борг на подвійну суму.
  */
 export const resolveEffectDelta = (tx, effect, multiplier, account) => {
   let delta = effect.delta * multiplier;
-  if (tx?.type === 'transfer' && account?.section === 'debt' && account?.debtDirection === 'owed_by_me') {
+  const bookedUnderOldRule = !isTransferType(tx?.type) && Boolean(Number(tx?.legacyDebtSign));
+  if (isLiabilityAccount(account) && !bookedUnderOldRule) {
     delta *= -1;
   }
   return delta;

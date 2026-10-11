@@ -40,6 +40,9 @@ import {
   saveAddTransactionDefaults,
 } from '../utils/addTransactionDefaults';
 import { resolveCategoryForTypeChange } from '../utils/categoryForType';
+import { resolveDebtMovementAmounts } from '../utils/debtMovement';
+import { formatCurrency } from '../utils/formatters';
+import { DebtRequestError, recordDebtMovement } from '../api/debts';
 import ExpenseTemplateBar from '../components/ExpenseTemplateBar';
 import {
   getAccountPickerGroup,
@@ -64,7 +67,7 @@ const localDayOf = (iso: string | undefined): string | null => {
 const AddTransaction: React.FC = () => {
   const navigate = useNavigate();
   const goBack = useGoBack('/');
-  const { transactions, addTransaction, updateTransaction, isBootstrapping } = useTransactions();
+  const { transactions, addTransaction, updateTransaction, isBootstrapping, refreshTransactions } = useTransactions();
   const { t, language, locale, displayCurrency } = useTranslation();
   const [searchParams] = useSearchParams();
   const checkMissing = useMissingFields();
@@ -138,13 +141,17 @@ const AddTransaction: React.FC = () => {
   const [categorySheetOpen, setCategorySheetOpen] = useState(false);
   const [transferAccountSheet, setTransferAccountSheet] = useState<'from' | 'to' | null>(null);
   const [saveError, setSaveError] = useState('');
+  // Борг для «Повернення боргу»: `null` — людина ще не вибирала (тоді єдиний
+  // борг підставляється сам), '' — свідомо «без боргу».
+  const [debtChoice, setDebtChoice] = useState<string | null>(null);
+  const [debtSheetOpen, setDebtSheetOpen] = useState(false);
   const hydratedEditRef = useRef<string>('');
   // Names, icons, colors and order all come from Settings → Categories; this
   // screen only picks one.
   const { categories: categoryOptions, customs: customCategories } = useCategoryCatalog(
     type === 'income' ? 'income' : 'expense',
   );
-  const { accounts: rawAccounts } = usePortfolio();
+  const { accounts: rawAccounts, refreshAccounts } = usePortfolio();
   const { convert, rateBetween } = useDenominationRates();
   const portfolioAccounts = useMemo<Array<{ key: string; name: string; currency: Denomination }>>(
     () => {
@@ -199,7 +206,16 @@ const AddTransaction: React.FC = () => {
   // Icon tone / section / iconKey per account, so the picker can show avatars
   // matching the rest of the app instead of a bare text list.
   const accountMetaByKey = useMemo(() => {
-    const map = new Map<string, { iconTone: RowIconTone; section: AccountSection; iconKey: string | null }>();
+    const map = new Map<
+      string,
+      {
+        iconTone: RowIconTone;
+        section: AccountSection;
+        iconKey: string | null;
+        name: string;
+        debtDirection: 'owed_to_me' | 'owed_by_me' | null;
+      }
+    >();
     for (const row of rawAccounts) {
       if (!row || typeof row !== 'object') continue;
       const r = row as Record<string, unknown>;
@@ -214,10 +230,53 @@ const AddTransaction: React.FC = () => {
         ? (toneRaw as RowIconTone)
         : section;
       const iconKey = typeof r.iconKey === 'string' && r.iconKey.trim() ? r.iconKey.trim() : null;
-      map.set(key, { iconTone, section, iconKey });
+      const name = String(r.name ?? key).trim();
+      const debtDirection =
+        section === 'debt' ? (r.debtDirection === 'owed_by_me' ? 'owed_by_me' : 'owed_to_me') : null;
+      map.set(key, { iconTone, section, iconKey, name, debtDirection });
     }
     return map;
   }, [rawAccounts]);
+
+  // Борги, які можна закрити поверненням: мені винні й ще не все повернули.
+  const repayableDebts = useMemo(() => {
+    const list: Array<{ key: string; name: string; currency: Denomination; balance: number }> = [];
+    for (const row of rawAccounts) {
+      if (!row || typeof row !== 'object') continue;
+      const r = row as Record<string, unknown>;
+      const balance = Number(r.primaryAmount);
+      if (r.section !== 'debt' || r.debtDirection === 'owed_by_me' || !(balance > 0)) continue;
+      const key = String(r.accountKey ?? '').trim().toLowerCase();
+      if (!key) continue;
+      list.push({
+        key,
+        name: String(r.name ?? key).trim() || key,
+        currency: normalizeDenomination(typeof r.primaryCurrency === 'string' ? r.primaryCurrency : undefined),
+        balance,
+      });
+    }
+    return list;
+  }, [rawAccounts]);
+
+  // «Повернення боргу» без прив'язки — це дохід, що роздуває статистику, а борг
+  // лишається як був. З боргом воно стає переказом із боргу на рахунок — так
+  // само, як кнопка в картці боргу.
+  const offersDebtLink = !isEditing && type === 'income' && categoryId === 'debt_return' && repayableDebts.length > 0;
+  const linkedDebtKey = debtChoice ?? (repayableDebts.length === 1 ? repayableDebts[0].key : '');
+  const linkedDebt = offersDebtLink ? repayableDebts.find((debt) => debt.key === linkedDebtKey) ?? null : null;
+  // Записи руху боргу веде картка боргу; звичайна правка їх не змінює (сервер: DEBT_EVENT_MANAGED).
+  const managedByDebt = isEditing && Boolean(editingTransaction?.debtEventId);
+
+  // Дохід чи витрата на самому борговому рахунку рухає борг — і людина має
+  // бачити, в який бік, ще до збереження.
+  const paymentAccountMeta = type !== 'transfer' && paymentAccount ? accountMetaByKey.get(paymentAccount) : undefined;
+  const debtEffectHint =
+    paymentAccountMeta?.section === 'debt'
+      ? t(
+          'balance',
+          (type === 'income') !== (paymentAccountMeta.debtDirection === 'owed_by_me') ? 'debtWillGrow' : 'debtWillShrink',
+        ).replace('{name}', paymentAccountMeta.name)
+      : '';
 
   const renderAccountAvatar = useCallback(
     (key: string) => {
@@ -461,6 +520,61 @@ const AddTransaction: React.FC = () => {
     toAccountKey: transferToAccountKey,
   });
 
+  /** Повернення боргу, привʼязане до боргу: переказ із боргу на рахунок. */
+  const saveDebtRepayment = async (typedAmount: number, accountKey: string | null, cleanNote: string) => {
+    if (!linkedDebt) return;
+    const paymentMeta = accountKey ? accountMetaByKey.get(accountKey) : undefined;
+    const paymentCurrency = portfolioAccounts.find((account) => account.key === accountKey)?.currency;
+    if (!accountKey || !paymentCurrency || (paymentMeta?.section !== 'bank' && paymentMeta?.section !== 'cash')) {
+      hapticResult('error');
+      setSaveError(t('balance', 'debtPickerNeedsAccount'));
+      return;
+    }
+    const amounts = resolveDebtMovementAmounts({
+      amount: typedAmount,
+      currency,
+      debtCurrency: linkedDebt.currency,
+      paymentCurrency,
+      convert,
+    });
+    if (!amounts) {
+      hapticResult('error');
+      setSaveError(t('balance', 'debtPaymentRateUnavailable'));
+      return;
+    }
+    try {
+      await recordDebtMovement(linkedDebt.key, {
+        kind: 'repayment',
+        ...amounts,
+        paymentAccountKey: accountKey,
+        // Сьогодні — без дати: сервер поставить точний час запису.
+        ...(date !== localIsoDate() ? { date } : {}),
+        ...(cleanNote ? { note: cleanNote.slice(0, 80) } : {}),
+      });
+    } catch (e) {
+      hapticResult('error');
+      const code = e instanceof DebtRequestError ? e.code : '';
+      if (code === 'DEBT_PAYMENT_EXCEEDS_BALANCE') {
+        const available = e instanceof DebtRequestError && e.available !== null ? e.available : linkedDebt.balance;
+        setSaveError(
+          t('balance', 'debtPaymentExceedsBalance').replace(
+            '{amount}',
+            formatDenominationAmount(available, linkedDebt.currency, locale),
+          ),
+        );
+      } else if (code === 'PAYMENT_RATE_UNAVAILABLE' || code === 'ACCOUNT_DENOMINATION_MISMATCH') {
+        setSaveError(t('balance', 'debtPaymentRateUnavailable'));
+      } else {
+        setSaveError(t('addTx', 'saveFailed'));
+      }
+      return;
+    }
+    await Promise.all([refreshAccounts(), refreshTransactions()]);
+    hapticResult('success');
+    saveAddTransactionDefaults({ type, categoryId, paymentAccount: paymentAccount || undefined });
+    navigate('/');
+  };
+
   const handleSave = async () => {
     if (editNotFound) return;
     setSaveError('');
@@ -473,6 +587,10 @@ const AddTransaction: React.FC = () => {
     // Незмінений день при правці не надсилається: сервер замінив би точний час
     // операції північчю, а так лишає його як є.
     const txDate = isEditing && date === localDayOf(editingTransaction?.date) ? undefined : date;
+    if (linkedDebt) {
+      await saveDebtRepayment(numAmount, accountKey, cleanNote);
+      return;
+    }
     const payload = type === 'transfer'
       ? {
           amount: numAmount,
@@ -559,7 +677,7 @@ const AddTransaction: React.FC = () => {
   }, [templateError, t]);
 
   const isValid = useMemo(() => {
-    if (editNotFound) return false;
+    if (editNotFound || managedByDebt) return false;
     const parsedAmount = parseFloat(amount.replace(',', '.'));
     if (!(parsedAmount > 0)) return false;
     if (type !== 'transfer') return true;
@@ -568,10 +686,11 @@ const AddTransaction: React.FC = () => {
     }
     const parsedDestination = parseFloat(transferToAmount.replace(',', '.'));
     return parsedDestination > 0;
-  }, [amount, type, transferFromAccountKey, transferToAccountKey, transferToAmount, editNotFound]);
+  }, [amount, type, transferFromAccountKey, transferToAccountKey, transferToAmount, editNotFound, managedByDebt]);
 
   const validationHint = useMemo(() => {
     if (editNotFound) return t('addTx', 'editNotFound');
+    if (managedByDebt) return t('balance', 'debtManagedEdit');
     const parsedAmount = parseFloat(amount.replace(',', '.'));
     if (!(parsedAmount > 0)) return '';
     if (type !== 'transfer') return '';
@@ -582,6 +701,7 @@ const AddTransaction: React.FC = () => {
     return '';
   }, [
     editNotFound,
+    managedByDebt,
     amount,
     type,
     transferFromAccountKey,
@@ -832,15 +952,30 @@ const AddTransaction: React.FC = () => {
                 <ChevronRight size={18} strokeWidth={2} className={styles.metaChevron} />
               </span>
             </button>
+            {offersDebtLink ? (
+              <button type="button" className={styles.metaRow} onClick={() => setDebtSheetOpen(true)}>
+                <span className={styles.metaLabel}>{t('balance', 'debtPickerLabel')}</span>
+                <span className={styles.metaValue}>
+                  {linkedDebt ? linkedDebt.name : t('balance', 'debtPickerNone')}
+                  <ChevronRight size={18} strokeWidth={2} className={styles.metaChevron} />
+                </span>
+              </button>
+            ) : null}
           </div>
-          {missing.account || missing.category ? (
-            <p className={styles.missingHint}>
-              {missing.account && missing.category
-                ? t('addTx', 'missingBothHint')
-                : missing.account
-                  ? t('addTx', 'missingAccountHint')
-                  : t('addTx', 'missingCategoryHint')}
-            </p>
+          {missing.account || missing.category || linkedDebt || debtEffectHint ? (
+            <div className={styles.metaHints}>
+              {missing.account || missing.category ? (
+                <p className={styles.missingHint}>
+                  {missing.account && missing.category
+                    ? t('addTx', 'missingBothHint')
+                    : missing.account
+                      ? t('addTx', 'missingAccountHint')
+                      : t('addTx', 'missingCategoryHint')}
+                </p>
+              ) : null}
+              {linkedDebt ? <p className={styles.debtHint}>{t('balance', 'debtPickerHint')}</p> : null}
+              {debtEffectHint ? <p className={styles.debtHint}>{debtEffectHint}</p> : null}
+            </div>
           ) : null}
         </>
       )}
@@ -925,6 +1060,27 @@ const AddTransaction: React.FC = () => {
           // means, so hand control back to the suggested rate.
           setTransferToAmountTouched(false);
           setTransferAccountSheet(null);
+        }}
+      />
+
+      <OptionPickerSheet
+        open={debtSheetOpen}
+        title={t('balance', 'debtPickerLabel')}
+        onClose={() => setDebtSheetOpen(false)}
+        closeLabel={t('addTx', 'cancel')}
+        selectedId={linkedDebt?.key ?? ''}
+        options={[
+          { id: '', label: t('balance', 'debtPickerNone') },
+          ...repayableDebts.map((debt) => ({
+            id: debt.key,
+            label: debt.name,
+            hint: formatCurrency(debt.balance, locale, debt.currency),
+            leading: renderAccountAvatar(debt.key),
+          })),
+        ]}
+        onSelect={(id) => {
+          setDebtChoice(id);
+          setDebtSheetOpen(false);
         }}
       />
 

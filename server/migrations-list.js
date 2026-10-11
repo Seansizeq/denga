@@ -368,10 +368,52 @@ export const transactionAccountColumn = {
   },
 };
 
+/**
+ * Позначає доходи й витрати, які вже зрушили борг «я винен» за старим
+ * правилом знаку.
+ *
+ * Зобовʼязання рухається навпаки до гаманця, але досі це враховувалося лише
+ * для переказів: витрата «з боргу» (друг заплатив за мене) борг зменшувала,
+ * хоча мала б збільшити. Правило виправлено, і нові операції рахуються
+ * правильно. Старі ж уже зрушили баланс у протилежний бік, і відкочувати їх за
+ * новим правилом не можна: видалення такої витрати на 300 зсунуло б борг на
+ * 600. Тому вони дістають позначку й відкочуються так, як були застосовані.
+ *
+ * Баланси тут не чіпаються навмисно. Людина могла давно помітити дивний
+ * залишок і виправити його руками — «полагодити» його ще раз означало б
+ * зіпсувати.
+ *
+ * Позначка ставиться ширше, ніж треба: на будь-яку операцію, що згадує такий
+ * борг рахунком (`accountKey` або, у старих поверненнях боргу,
+ * `fromAccountKey`). Зайва позначка нешкідлива — правило знаку дивиться на неї
+ * лише тоді, коли рахунок операції справді борг «я винен».
+ */
+export const legacyDebtSign = {
+  id: '006-legacy-debt-sign',
+  run: async (tx) => {
+    await tx.run(
+      `UPDATE transactions
+       SET legacyDebtSign = 1
+       WHERE type IN ('income', 'expense')
+         AND EXISTS (
+           SELECT 1 FROM account_portfolio a
+           WHERE a.user_id = transactions.user_id
+             AND a.section = 'debt'
+             AND a.debt_direction = 'owed_by_me'
+             AND (
+               lower(a.account_key) = lower(transactions.accountKey)
+               OR lower(a.account_key) = lower(transactions.fromAccountKey)
+             )
+         )`,
+    );
+  },
+};
+
 export const MIGRATIONS = [
   customCategoriesUserScopedKey,
   legacyTransactionCurrencyFromNote,
   userDataVersionCounters,
   plannerDaysToShiftEntries,
   transactionAccountColumn,
+  legacyDebtSign,
 ];

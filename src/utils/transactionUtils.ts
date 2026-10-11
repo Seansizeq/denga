@@ -78,6 +78,24 @@ export const getTransactionAccountEffects = (tx: Transaction): TransactionAccoun
   return [];
 };
 
+/**
+ * На скільки операція зрушила баланс рахунку — з урахуванням того, що борг
+ * «я винен» рухається навпаки до гаманця. Те саме правило, що й
+ * `resolveEffectDelta` на сервері: гроші, що прийшли на зобовʼязання, його
+ * зменшують; гроші, що пішли з нього (переказ звідти, витрата «з боргу»), —
+ * збільшують. Операції, записані за старим правилом (`legacyDebtSign`),
+ * рахуються так, як їх тоді застосували.
+ */
+export const accountBalanceDelta = (
+  tx: Pick<Transaction, 'type' | 'legacyDebtSign'>,
+  effect: TransactionAccountEffect,
+  account: { section?: string | null; debtDirection?: string | null } | null | undefined,
+): number => {
+  const isLiability = account?.section === 'debt' && account?.debtDirection === 'owed_by_me';
+  const bookedUnderOldRule = !isTransferTransaction(tx) && Boolean(Number(tx.legacyDebtSign));
+  return isLiability && !bookedUnderOldRule ? -effect.delta : effect.delta;
+};
+
 export const getTransactionNotePreview = (tx: Pick<Transaction, 'note'>): string => stripAccountFromNote(tx.note?.trim() ?? '');
 
 /**

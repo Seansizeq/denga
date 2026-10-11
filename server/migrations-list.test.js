@@ -8,6 +8,7 @@ import { initDb } from './db.js';
 import { runMigrations } from './migrations.js';
 import {
   customCategoriesUserScopedKey,
+  legacyDebtSign,
   legacyTransactionCurrencyFromNote,
   plannerDaysToShiftEntries,
   transactionAccountColumn,
@@ -367,5 +368,66 @@ describe('005 — рахунок з примітки в колонку', () => {
     await addTx('d', 'expense', 'Account у назві магазину немає');
     await runStep();
     expect(await row('d')).toEqual({ accountKey: null, note: 'Account у назві магазину немає' });
+  });
+});
+
+describe('006 — старе правило знаку боргу', () => {
+  const addAccount = (key, section, direction) =>
+    db.run(
+      `INSERT INTO account_portfolio
+        (account_key, user_id, section, sort_index, name, primary_amount, primary_currency, icon_tone, debt_direction, updatedAt)
+       VALUES (?, '111', ?, 0, ?, 1000, 'UAH', ?, ?, ?)`,
+      [key, section, key, section, direction, now()],
+    );
+  const addTx = (id, type, extra = {}) =>
+    db.run(
+      `INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, accountKey, fromAccountKey, toAccountKey)
+       VALUES (?, '111', 100, 'UAH', ?, ?, ?, ?, ?, ?)`,
+      [id, extra.category ?? 'food', type, now(), extra.account ?? null, extra.from ?? null, extra.to ?? null],
+    );
+  const flag = async (id) => (await db.get('SELECT legacyDebtSign FROM transactions WHERE id = ?', [id])).legacyDebtSign;
+  const runStep = async () => {
+    await db.run('DELETE FROM app_cache');
+    await runMigrations(db, [legacyDebtSign], silent);
+  };
+
+  beforeEach(async () => {
+    await addAccount('owe', 'debt', 'owed_by_me');
+    await addAccount('lent', 'debt', 'owed_to_me');
+    await addAccount('card', 'bank', null);
+  });
+
+  it('позначає дохід і витрату на боргу «я винен»', async () => {
+    await addTx('e', 'expense', { account: 'owe' });
+    await addTx('i', 'income', { account: 'OWE' });
+    await runStep();
+    expect(await flag('e')).toBe(1);
+    expect(await flag('i')).toBe(1);
+  });
+
+  it('позначає старе повернення боргу, що списувало його через fromAccountKey', async () => {
+    await addTx('r', 'income', { category: 'debt_return', from: 'owe' });
+    await runStep();
+    expect(await flag('r')).toBe(1);
+  });
+
+  it('не чіпає перекази, борг «мені винні» і звичайні рахунки', async () => {
+    await addTx('t', 'transfer', { category: 'transfer', from: 'card', to: 'owe' });
+    await addTx('l', 'expense', { account: 'lent' });
+    await addTx('c', 'expense', { account: 'card' });
+    await runStep();
+    expect(await flag('t')).toBeNull();
+    expect(await flag('l')).toBeNull();
+    expect(await flag('c')).toBeNull();
+  });
+
+  it('не чіпає чужий рахунок із тим самим ключем', async () => {
+    await db.run(
+      `INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, accountKey)
+       VALUES ('x', '222', 100, 'UAH', 'food', 'expense', ?, 'owe')`,
+      [now()],
+    );
+    await runStep();
+    expect(await flag('x')).toBeNull();
   });
 });

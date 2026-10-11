@@ -7,6 +7,7 @@ import {
   buildSmartTransactionKeyboard,
   formatSmartAmount,
   formatSmartDate,
+  parseSmartDebtCallback,
 } from './smart-transaction-message.js';
 
 const transaction = {
@@ -102,5 +103,60 @@ describe('smart Telegram transaction card', () => {
         [{ text: 'Скасувати', icon_custom_emoji_id: '103', callback_data: 'smart_cancel' }],
       ],
     });
+  });
+});
+
+describe('повернення боргу в чаті', () => {
+  const debtOptions = [
+    { key: 'debt_misha', name: 'Михайло', balance: 1000, currency: 'UAH' },
+    { key: 'debt_olia', name: 'Оля', balance: 250, currency: 'USD' },
+  ];
+  const repayment = {
+    amount: 300,
+    currency: 'UAH',
+    type: 'income',
+    categoryId: 'debt_return',
+    categoryName: 'Повернення боргу',
+    accountName: 'ПУМБ',
+    date: '2026-10-11',
+    debtOptions,
+  };
+
+  it('asks whose debt it was when none is picked yet', () => {
+    expect(buildSmartConfirmationMessage(repayment, { today: '2026-10-11' })).toContain('Чий борг повернули?');
+  });
+
+  it('names the picked debt and what it stands at now', () => {
+    const text = buildSmartConfirmationMessage({ ...repayment, debtAccountKey: 'debt_misha' }, { today: '2026-10-11' });
+    // Intl ділить тисячі вузьким нерозривним пробілом.
+    expect(text.split('\n').at(-1).replace(/\s/g, ' ')).toBe('🤝 Борг: Михайло · зараз 1 000 ₴');
+  });
+
+  it('hints at the account when the money had nowhere to land', () => {
+    const text = buildSmartConfirmationMessage({ ...repayment, debtOptions: undefined, debtHint: true });
+    expect(text).toContain('Вкажи рахунок');
+  });
+
+  it('puts debt buttons above save, ticks the picked one and offers «Без боргу»', () => {
+    const keyboard = buildSmartTransactionKeyboard({}, { debtOptions, debtAccountKey: 'debt_olia' });
+    expect(keyboard.inline_keyboard.slice(0, 2)).toEqual([
+      [
+        { text: 'Михайло', callback_data: 'smart_debt:0' },
+        { text: '✓ Оля', callback_data: 'smart_debt:1' },
+      ],
+      [{ text: 'Без боргу', callback_data: 'smart_debt:none' }],
+    ]);
+    expect(keyboard.inline_keyboard[2][0].callback_data).toBe('smart_save');
+  });
+
+  it('keeps the plain keyboard for everything else', () => {
+    expect(buildSmartTransactionKeyboard({}, {})).toEqual(buildSmartTransactionKeyboard());
+  });
+
+  it('reads only its own callbacks', () => {
+    expect(parseSmartDebtCallback('smart_debt:1')).toEqual({ index: 1 });
+    expect(parseSmartDebtCallback('smart_debt:none')).toEqual({ index: null });
+    expect(parseSmartDebtCallback('smart_debt:-1')).toBeNull();
+    expect(parseSmartDebtCallback('smart_save')).toBeNull();
   });
 });

@@ -93,6 +93,52 @@ describe('portfolioMonthChange', () => {
     expect(computeWealthMonthChangePercent(10000, priorNet)).toBeCloseTo((500 / 9500) * 100, 5);
   });
 
+  it('rolls a debt I owe back the way the server moved it', () => {
+    // На 1-ше: картка 10 000, борг 1 000. За місяць: повернув 300 переказом
+    // (борг 700), друг заплатив за мене 50 (борг 750). Сьогодні картка 9 700.
+    const accounts = [
+      { accountKey: 'card', section: 'bank', primaryAmount: 9700, primaryCurrency: 'UAH' as const },
+      {
+        accountKey: 'loan',
+        section: 'debt',
+        primaryAmount: 750,
+        primaryCurrency: 'UAH' as const,
+        debtDirection: 'owed_by_me' as const,
+      },
+    ];
+    const transactions: Transaction[] = [
+      {
+        id: 'repay',
+        amount: 300,
+        currency: 'UAH',
+        categoryId: 'debt_return',
+        type: 'transfer',
+        date: '2026-05-01T10:00:00.000Z',
+        fromAccountKey: 'card',
+        toAccountKey: 'loan',
+        transferToAmount: 300,
+        transferToCurrency: 'UAH',
+      },
+      {
+        id: 'friend-paid',
+        amount: 50,
+        currency: 'UAH',
+        categoryId: 'food',
+        type: 'expense',
+        date: '2026-05-02T09:00:00.000Z',
+        accountKey: 'loan',
+      },
+    ];
+    const prior = computePortfolioMonthStartUahPln({
+      accounts,
+      transactions,
+      convertAmount: convertSimple,
+      cryptoHistory: null,
+      now: fixedNow,
+    });
+    expect(prior).toEqual({ uah: 10000 - 1000, pln: 0 });
+  });
+
   it('returns null when crypto needs month-start history but history is missing', () => {
     const accounts = [
       {

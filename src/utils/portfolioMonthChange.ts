@@ -6,7 +6,7 @@ import {
   type CryptoSymbol,
   type Denomination,
 } from './denomination';
-import { getTransactionAccountEffects } from './transactionUtils';
+import { accountBalanceDelta, getTransactionAccountEffects } from './transactionUtils';
 
 export type { CryptoSymbol } from './denomination';
 
@@ -31,9 +31,13 @@ export type CryptoUsdHistory = {
  * Only effects recorded in the account's own denomination count. Transfers made
  * before an account was re-denominated carry the old unit, and adding a figure
  * in hryvnia to a balance counted in tokens would produce nonsense.
+ *
+ * A debt I owe moves against the effect's sign, exactly as the server applied
+ * it — otherwise a repayment this month would roll the debt back the wrong way.
  */
 const sumAccountDeltasSinceMonthStart = (
   transactions: readonly Transaction[],
+  account: Pick<PortfolioRowInput, 'section' | 'debtDirection'>,
   accountKey: string,
   denomination: Denomination,
   now: Date,
@@ -47,7 +51,7 @@ const sumAccountDeltasSinceMonthStart = (
     const effect = getTransactionAccountEffects(tx).find((row) => row.accountKey === key);
     if (!effect) continue;
     if (normalizeDenomination(effect.currency) !== denomination) continue;
-    sum += effect.delta;
+    sum += accountBalanceDelta(tx, effect, account);
   }
   return sum;
 };
@@ -102,7 +106,7 @@ export const computePortfolioMonthStartUahPln = (params: {
 
     // Roll the balance back to what it was on the 1st, in its own unit.
     const quantityAtMonthStart =
-      baseAmount - sumAccountDeltasSinceMonthStart(transactions, key, denomination, now);
+      baseAmount - sumAccountDeltasSinceMonthStart(transactions, { section, debtDirection: r.debtDirection }, key, denomination, now);
 
     // Same bucketing rule as the dashboard: UAH and PLN keep their own totals,
     // everything else is carried as its hryvnia equivalent.

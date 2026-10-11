@@ -29,7 +29,13 @@ export interface Transaction {
   amountUsd?: number | null;
   fromAccountKey?: string;
   toAccountKey?: string;
-  debtEventId?: string;
+  /** Запис руху боргу: його веде картка боргу, а не звичайна правка. */
+  debtEventId?: string | null;
+  /**
+   * Дохід чи витрата на боргу «я винен», записані за старим правилом знаку
+   * (сервер, міграція 006). Відкочуються так, як були застосовані.
+   */
+  legacyDebtSign?: number | null;
   transferToAmount?: number;
   transferToCurrency?: Denomination;
 }

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Plus } from 'lucide-react';
 import AccountsSnapshot from '../components/ui/AccountsSnapshot';
 import AccountEditSheet, {
+  AccountSaveError,
   BalanceChangedError,
   type BalanceEdit,
   type EditableAccount,
@@ -15,6 +16,8 @@ import { usePortfolio } from '../context/PortfolioContext';
 import { useTransactions } from '../context/TransactionContext';
 import { useTranslation } from '../i18n/LanguageContext';
 import { apiFetch } from '../api/client';
+import { recordDebtMovement, type DebtMovementInput } from '../api/debts';
+import { getTransactionAccountEffects } from '../utils/transactionUtils';
 import { sanitizeAccountBadge } from '../utils/accountIcons';
 import {
   isCryptoDenomination,
@@ -166,11 +169,19 @@ const Accounts: React.FC = () => {
   const { transactions, refreshTransactions } = useTransactions();
   const [picking, setPicking] = useState(false);
   const [editing, setEditing] = useState<EditableAccount | null>(null);
-  const [debtDetail, setDebtDetail] = useState<PortfolioAccountRow | null>(null);
+  // Ключ, а не знімок рядка: після запису картка боргу бачить свіжий баланс.
+  const [debtDetailKey, setDebtDetailKey] = useState<string | null>(null);
 
   const portfolio = useMemo<readonly PortfolioAccountRow[]>(
     () => accounts.map(parsePortfolioRow).filter((r): r is PortfolioAccountRow => Boolean(r)),
     [accounts],
+  );
+  const debtDetail = useMemo(
+    () =>
+      debtDetailKey
+        ? portfolio.find((r) => r.accountKey === debtDetailKey && r.section === 'debt') ?? null
+        : null,
+    [portfolio, debtDetailKey],
   );
 
   const handlePickSection = useCallback(
@@ -335,23 +346,32 @@ const Accounts: React.FC = () => {
       .reduce((a, r) => a + (convert(r.primaryAmount, r.primaryCurrency, displayCurrency) ?? 0), 0);
   }, [portfolio, convert, displayCurrency]);
 
-  const debtRepayments = useMemo(() => {
-    if (!debtDetail) return [];
-    return transactions
-      .filter(
-        (tx) =>
-          tx.categoryId === 'debt_return' &&
-          (tx.fromAccountKey === debtDetail.accountKey || tx.toAccountKey === debtDetail.accountKey),
-      )
-      .slice()
-      .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
-      .slice(0, 10);
-  }, [transactions, debtDetail]);
+  // Гроші боргу рухаються через банк і готівку в будь-якій валюті: іншу сервер
+  // перерахує за курсом, а людина може вписати точну суму сама.
+  // Порядок той самий, що й у гаманці: спершу картки, потім готівка.
+  const cashAccounts = useMemo(
+    () =>
+      portfolio
+        .filter((row) => row.section === 'bank' || row.section === 'cash')
+        .slice()
+        .sort(
+          (a, b) =>
+            Number(a.section === 'cash') - Number(b.section === 'cash')
+            || a.sortIndex - b.sortIndex
+            || a.name.localeCompare(b.name),
+        ),
+    [portfolio],
+  );
 
-  const debtPaymentAccounts = useMemo(() => {
-    if (!debtDetail) return [];
-    return portfolio.filter((row) => ['bank', 'cash'].includes(row.section) && row.primaryCurrency === debtDetail.primaryCurrency);
-  }, [portfolio, debtDetail]);
+  // Рахунки, по яких уже є операції: перемкнути їм знак «актив / зобовʼязання»
+  // сервер не дасть, а форма має сказати це одразу, а не після «Зберегти».
+  const accountsWithOperations = useMemo(() => {
+    const keys = new Set<string>();
+    for (const tx of transactions) {
+      for (const effect of getTransactionAccountEffects(tx)) keys.add(effect.accountKey);
+    }
+    return keys;
+  }, [transactions]);
 
   const handleRowPress = useCallback(
     (id: string) => {
@@ -364,7 +384,7 @@ const Accounts: React.FC = () => {
         return;
       }
       if (row.section === 'debt') {
-        setDebtDetail(row);
+        setDebtDetailKey(row.accountKey);
       } else {
         setEditing(mapPortfolioToEditable(row));
       }
@@ -372,14 +392,9 @@ const Accounts: React.FC = () => {
     [portfolio, navigate],
   );
 
-  const handleDebtPayment = useCallback(
-    async (accountKey: string, amount: number, note: string, paymentAccountKey: string) => {
-      const res = await apiFetch(`/api/accounts/${encodeURIComponent(accountKey)}/payment`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount, note, paymentAccountKey }),
-      });
-      if (!res.ok) throw new Error('payment failed');
+  const handleDebtMovement = useCallback(
+    async (accountKey: string, input: DebtMovementInput) => {
+      await recordDebtMovement(accountKey, input);
       await refreshAccounts();
       await refreshTransactions();
     },
@@ -411,23 +426,27 @@ const Accounts: React.FC = () => {
           badge: next.badge,
           iconKey: (next.iconKey ?? '').trim() || null,
           debtDirection: next.section === 'debt' ? next.debtDirection : null,
+          // Новий борг може одразу забрати гроші з картки (чи покласти на неї).
+          ...(isCreate && next.section === 'debt' && next.fundingAccountKey
+            ? { fundingAccountKey: next.fundingAccountKey }
+            : {}),
         }),
       });
-      if (res.status === 409) {
+      if (!res.ok) {
         const body = (await res.json().catch(() => null)) as { code?: string; currentAmount?: unknown } | null;
         const currentAmount = Number(body?.currentAmount);
-        if (body?.code === 'ACCOUNT_BALANCE_CHANGED' && Number.isFinite(currentAmount)) {
+        if (res.status === 409 && body?.code === 'ACCOUNT_BALANCE_CHANGED' && Number.isFinite(currentAmount)) {
           // Список за формою теж має показати свіжий баланс.
           await refreshAccounts();
           throw new BalanceChangedError(currentAmount);
         }
-      }
-      if (!res.ok) {
-        throw new Error('save failed');
+        throw new AccountSaveError(typeof body?.code === 'string' ? body.code : '');
       }
       await refreshAccounts();
+      // Борг із рахунком грошей записав і переказ — історія має його показати.
+      if (isCreate && next.section === 'debt' && next.fundingAccountKey) await refreshTransactions();
     },
-    [refreshAccounts],
+    [refreshAccounts, refreshTransactions],
   );
 
   const handleDeleteAccount = useCallback(
@@ -488,14 +507,14 @@ const Accounts: React.FC = () => {
       />
       {debtDetail ? (
         <DebtDetailSheet
+          key={debtDetail.accountKey}
           account={debtDetail}
-          repayments={debtRepayments}
-          paymentAccounts={debtPaymentAccounts}
-          onClose={() => setDebtDetail(null)}
-          onPayment={handleDebtPayment}
+          paymentAccounts={cashAccounts}
+          onClose={() => setDebtDetailKey(null)}
+          onMovement={handleDebtMovement}
           onEdit={() => {
             setEditing(mapPortfolioToEditable(debtDetail));
-            setDebtDetail(null);
+            setDebtDetailKey(null);
           }}
         />
       ) : null}
@@ -503,6 +522,8 @@ const Accounts: React.FC = () => {
         <AccountEditSheet
           key={editing.accountKey}
           initial={editing}
+          fundingAccounts={cashAccounts}
+          hasOperations={Boolean(editing.accountKey) && accountsWithOperations.has(editing.accountKey.toLowerCase())}
           onClose={() => setEditing(null)}
           onSave={handleSaveAccount}
           onDelete={handleDeleteAccount}

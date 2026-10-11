@@ -116,12 +116,15 @@ describe('міграція не рухає балансів', () => {
   });
 
   it('саме через це пасив і не мігрує: знак для нього розходиться', () => {
-    const [effectBefore] = getTransactionAccountEffects(before);
+    // Внески-витрати з пасиву — усі старі, тож міграція 006 позначила їх
+    // старим правилом знаку: така витрата знак не перевертає, а переказ —
+    // перевертає. Якби рядок мігрував, застосований і відкочений ефект не
+    // зійшлися б.
+    const legacyBefore = { ...before, legacyDebtSign: 1 };
+    const [effectBefore] = getTransactionAccountEffects(legacyBefore);
     const [effectAfter] = getTransactionAccountEffects(after);
     const liability = { section: 'debt', debtDirection: 'owed_by_me', primaryCurrency: 'UAH' };
-    // Витрата з пасиву знак не перевертає, переказ — перевертає. Якби такий
-    // рядок мігрував, застосований і відкочений ефект не зійшлися б.
-    expect(resolveEffectDelta(before, effectBefore, 1, liability)).toBe(-AMOUNT);
+    expect(resolveEffectDelta(legacyBefore, effectBefore, 1, liability)).toBe(-AMOUNT);
     expect(resolveEffectDelta(after, effectAfter, 1, liability)).toBe(AMOUNT);
   });
 });

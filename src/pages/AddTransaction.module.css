@@ -166,13 +166,29 @@
   color: var(--accent-orange);
 }
 
-.missingHint {
-  /* Стоїть упритул до полів (тим самим кроком, що між рядками), а відступ
-     до примітки лишається тим самим, що й без підказки. */
+/* Підказки під полями. Стоять упритул до полів (тим самим кроком, що між
+   рядками), а відступ до примітки лишається тим самим, що й без підказок. */
+.metaHints {
   margin: -18px 4px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.missingHint,
+.debtHint {
+  margin: 0;
   font-size: 12px;
   line-height: 1.4;
+}
+
+.missingHint {
   color: var(--accent-orange);
+}
+
+/* Що станеться з боргом: не попередження, а пояснення. */
+.debtHint {
+  color: var(--text-tertiary);
 }
 
 .metaLabel {
