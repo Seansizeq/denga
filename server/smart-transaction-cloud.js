@@ -19,12 +19,21 @@ import { createOpenAiCompatibleProvider } from './smart-transaction-openai.js';
  *
  * Temperature is left at the server's default: Claude Haiku 5.5 rejects any
  * other sampling value, and the strict schema is what keeps the answer in shape.
+ *
+ * Reasoning is off unless CLOUD_LLM_REASONING_EFFORT asks for it. Left to
+ * itself, Haiku 5.5 thinks on its own judgement — with the real category list
+ * it spent 90–135 tokens on «5,8 долара на апі ключ» and «апі ключ 5.8», ran
+ * out of the 200, and the JSON came back cut off mid-string: no card, and the
+ * person saw silence. The higher ceiling is the second guard for a model that
+ * thinks anyway; it costs nothing unless used.
  */
 const cloud = createOpenAiCompatibleProvider({
   envPrefix: 'CLOUD_LLM',
   label: 'cloud model',
   defaultTimeoutMs: 20_000,
   requireApiKey: true,
+  maxTokens: 1024,
+  defaultReasoningEffort: 'none',
 });
 
 export const isCloudModelEnabled = cloud.isEnabled;

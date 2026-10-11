@@ -78,7 +78,19 @@ describe('attemptWithCloudModel', () => {
     expect(init.headers.authorization).toBe('Bearer sk-test');
     const body = sentBody(fetchMock);
     expect(body.model).toBe('anthropic/claude-haiku-5.5');
-    expect(body.reasoning_effort).toBeUndefined();
+  });
+
+  /**
+   * Сама по собі Haiku 5.5 вирішує «подумати» й на справжньому списку категорій
+   * витрачала 200 токенів до кінця JSON: відповідь обривалась, людина бачила тишу.
+   */
+  it('turns reasoning off and leaves room for the answer by default', async () => {
+    const fetchMock = vi.fn(async () => answer(goodPayload));
+    vi.stubGlobal('fetch', fetchMock);
+    await call();
+    const body = sentBody(fetchMock);
+    expect(body.reasoning_effort).toBe('none');
+    expect(body.max_tokens).toBeGreaterThanOrEqual(1024);
   });
 
   /** Claude Haiku 5.5 відхиляє будь-яку температуру, крім типової. */

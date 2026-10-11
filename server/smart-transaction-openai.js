@@ -20,6 +20,8 @@ import { buildResponseSchema, buildSystemPrompt, normalizeResult } from './smart
  * @param {number} options.defaultTimeoutMs
  * @param {boolean} [options.requireApiKey] — stay out of the chain until a key is set
  * @param {number} [options.temperature] — omitted from the request when undefined
+ * @param {number} [options.maxTokens] — the answer is ~70 tokens; this is the ceiling
+ * @param {string} [options.defaultReasoningEffort] — used when <PREFIX>_REASONING_EFFORT is unset
  */
 export const createOpenAiCompatibleProvider = ({
   envPrefix,
@@ -27,6 +29,8 @@ export const createOpenAiCompatibleProvider = ({
   defaultTimeoutMs,
   requireApiKey = false,
   temperature,
+  maxTokens = 200,
+  defaultReasoningEffort = '',
 }) => {
   // Read lazily, for the same reason as the Gemini key: ESM imports evaluate
   // before dotenv.config() runs in the importing module.
@@ -51,7 +55,7 @@ export const createOpenAiCompatibleProvider = ({
 
     const system = buildSystemPrompt({ categories, accounts, defaultCurrency, today });
     const apiKey = env('API_KEY');
-    const reasoningEffort = env('REASONING_EFFORT');
+    const reasoningEffort = env('REASONING_EFFORT') || defaultReasoningEffort;
 
     let res;
     try {
@@ -65,7 +69,7 @@ export const createOpenAiCompatibleProvider = ({
         body: JSON.stringify({
           model: env('MODEL') || 'local',
           ...(temperature === undefined ? {} : { temperature }),
-          max_tokens: 200,
+          max_tokens: maxTokens,
           // LM Studio exposes this OpenAI-compatible switch for reasoning models.
           // Keeping it opt-in preserves compatibility with strict servers that do
           // not recognize the field. For short extraction tasks, "none" prevents
