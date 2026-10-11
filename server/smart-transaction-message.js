@@ -117,6 +117,30 @@ export const buildSmartConfirmationPayload = (transaction, { today, emojiIds = {
   );
 };
 
+/**
+ * Що сказати, коли картки не буде.
+ *
+ * Раніше бот у такому разі мовчав, і тиша читалась як «зламався»: так і
+ * сталося, коли Haiku обривала відповідь роздумами, а запасна модель спала
+ * разом із ПК. Тепер два різні пояснення, бо й людині робити різне:
+ *
+ * - `null` — розпізнавання не відпрацювало (ніхто не відповів або відповів
+ *   непридатним). Спробувати ще раз має сенс.
+ * - `{ isTransaction: false }` — модель відповіла, що тут немає операції.
+ *   Повторювати те саме марно, корисніше показати, як написати.
+ *
+ * @returns {string|null} текст відповіді або null, коли буде картка
+ */
+export const buildSmartMissText = (result) => {
+  if (!result) {
+    return '⚠️ Не вдалося розпізнати: сервіс розпізнавання зараз не відповідає. Спробуйте ще раз за хвилину або додайте операцію в застосунку.';
+  }
+  if (!result.isTransaction) {
+    return '🤔 Не бачу тут витрати чи доходу. Напишіть, що й скільки, наприклад: «кава 55» або «зарплата 30000».';
+  }
+  return null;
+};
+
 export const buildSmartSavedMessage = (transaction) => {
   const category = String(transaction.categoryName ?? transaction.categoryId ?? '').trim();
   return `✅ ${formatSmartAmount(transaction.amount, transaction.currency)} · ${category} — збережено`;

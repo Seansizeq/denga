@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildSmartConfirmationMessage,
   buildSmartConfirmationPayload,
+  buildSmartMissText,
   buildSmartSavedMessage,
   buildSmartSavedPayload,
   buildSmartTransactionKeyboard,
@@ -158,5 +159,20 @@ describe('повернення боргу в чаті', () => {
     expect(parseSmartDebtCallback('smart_debt:none')).toEqual({ index: null });
     expect(parseSmartDebtCallback('smart_debt:-1')).toBeNull();
     expect(parseSmartDebtCallback('smart_save')).toBeNull();
+  });
+});
+
+describe('buildSmartMissText', () => {
+  it('says the recognizer failed when there is no answer at all', () => {
+    expect(buildSmartMissText(null)).toContain('Не вдалося розпізнати');
+    expect(buildSmartMissText(undefined)).toContain('Не вдалося розпізнати');
+  });
+
+  it('shows how to write it when the model saw no transaction', () => {
+    expect(buildSmartMissText({ isTransaction: false })).toContain('«кава 55»');
+  });
+
+  it('stays out of the way when there will be a card', () => {
+    expect(buildSmartMissText({ isTransaction: true, amount: 55 })).toBeNull();
   });
 });

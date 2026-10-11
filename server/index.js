@@ -129,6 +129,7 @@ import {
 } from './telegram-transaction-image.js';
 import {
   buildSmartConfirmationPayload,
+  buildSmartMissText,
   buildSmartSavedPayload,
   buildSmartTransactionKeyboard,
   formatSmartAmount,
@@ -3223,6 +3224,13 @@ async function trySmartTransaction(msg, text) {
   if (!reached) {
     await refundQuota(db, { userId: String(msg.from.id), feature: 'smart_transaction' });
   }
+  const missText = buildSmartMissText(result);
+  if (missText) {
+    // У групі кожне повідомлення з цифрою — не обовʼязково до бота, і відповідь
+    // на кожне була б спамом. Пояснення — лише в особистому чаті.
+    if (msg.chat?.type === 'private') await bot.sendMessage(msg.chat.id, missText);
+    return false;
+  }
   return sendSmartTransactionConfirmation(msg, result, context.today);
 }
 
@@ -3903,8 +3911,8 @@ if (bot) {
     }
     const amount = Number(msg.text.replace(',', '.').trim());
     if (!Number.isFinite(amount) || amount <= 0) {
-      // Free-text with a digit → try smart (AI) parsing. If it isn't a
-      // transaction, stay silent (no "не зрозумів суму" nag).
+      // Free-text with a digit → try smart (AI) parsing. The answer is a
+      // confirmation card or, in a private chat, a short note on why not.
       if (isSmartTransactionEnabled() && /\d/.test(text)) {
         await trySmartTransaction(msg, text);
       }
