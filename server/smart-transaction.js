@@ -10,10 +10,13 @@
 // Pick one with SMART_TRANSACTION_PROVIDER:
 //   gemini (default) — Google Gemini, needs GEMINI_API_KEY
 //   local            — any OpenAI-compatible server, needs LOCAL_LLM_URL
+//   cloud            — a hosted OpenAI-compatible API (OpenRouter), needs
+//                      CLOUD_LLM_URL and CLOUD_LLM_API_KEY
 //
 // SMART_TRANSACTION_FALLBACK lists who to ask when the chosen one gives no
 // answer — see `resolveFallbackNames`.
 
+import { attemptWithCloudModel, isCloudModelEnabled } from './smart-transaction-cloud.js';
 import { attemptWithGemini, isGeminiEnabled } from './smart-transaction-gemini.js';
 import { attemptWithLocalModel, isLocalModelEnabled } from './smart-transaction-local.js';
 import { preferExplicitCategory } from './smart-transaction-shared.js';
@@ -21,6 +24,7 @@ import { preferExplicitCategory } from './smart-transaction-shared.js';
 const PROVIDERS = {
   gemini: { isEnabled: isGeminiEnabled, attempt: attemptWithGemini },
   local: { isEnabled: isLocalModelEnabled, attempt: attemptWithLocalModel },
+  cloud: { isEnabled: isCloudModelEnabled, attempt: attemptWithCloudModel },
 };
 
 export const DEFAULT_PROVIDER = 'gemini';

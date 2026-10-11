@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { geminiParse, geminiEnabled, localParse, localEnabled } = vi.hoisted(() => ({
+const { geminiParse, geminiEnabled, localParse, localEnabled, cloudParse, cloudEnabled } = vi.hoisted(() => ({
   geminiParse: vi.fn(),
   geminiEnabled: vi.fn(),
   localParse: vi.fn(),
   localEnabled: vi.fn(),
+  cloudParse: vi.fn(),
+  cloudEnabled: vi.fn(),
 }));
 
 vi.mock('./smart-transaction-gemini.js', () => ({
@@ -14,6 +16,10 @@ vi.mock('./smart-transaction-gemini.js', () => ({
 vi.mock('./smart-transaction-local.js', () => ({
   attemptWithLocalModel: localParse,
   isLocalModelEnabled: localEnabled,
+}));
+vi.mock('./smart-transaction-cloud.js', () => ({
+  attemptWithCloudModel: cloudParse,
+  isCloudModelEnabled: cloudEnabled,
 }));
 
 const {
@@ -45,8 +51,10 @@ beforeEach(() => {
   delete process.env.SMART_TRANSACTION_FALLBACK;
   geminiParse.mockReset().mockResolvedValue(answered('from gemini'));
   localParse.mockReset().mockResolvedValue(answered('from local'));
+  cloudParse.mockReset().mockResolvedValue(answered('from cloud'));
   geminiEnabled.mockReset().mockReturnValue(true);
   localEnabled.mockReset().mockReturnValue(true);
+  cloudEnabled.mockReset().mockReturnValue(true);
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
@@ -212,6 +220,33 @@ describe('parseSmartTransaction with a fallback configured', () => {
     await expect(call()).resolves.toBeNull();
     expect(localParse).not.toHaveBeenCalled();
     expect(geminiParse).not.toHaveBeenCalled();
+  });
+});
+
+/** Так стоїть на проді: Haiku через OpenRouter, Qwen на ПК — коли хмара не відповіла. */
+describe('parseSmartTransaction with the cloud model first and the local one behind it', () => {
+  beforeEach(() => {
+    process.env.SMART_TRANSACTION_PROVIDER = 'cloud';
+    process.env.SMART_TRANSACTION_FALLBACK = 'local';
+  });
+
+  it('answers from the cloud and leaves the local model alone', async () => {
+    await expect(call()).resolves.toMatchObject({ note: 'from cloud' });
+    expect(localParse).not.toHaveBeenCalled();
+    expect(geminiParse).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the local model when the cloud fails', async () => {
+    cloudParse.mockResolvedValue(answeredNothing());
+    await expect(call()).resolves.toMatchObject({ note: 'from local' });
+    expect(cloudParse).toHaveBeenCalledTimes(1);
+    expect(localParse).toHaveBeenCalledTimes(1);
+  });
+
+  it('goes straight to the local model while the cloud has no key', async () => {
+    cloudEnabled.mockReturnValue(false);
+    await expect(call()).resolves.toMatchObject({ note: 'from local' });
+    expect(cloudParse).not.toHaveBeenCalled();
   });
 });
 
