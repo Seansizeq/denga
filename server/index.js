@@ -88,6 +88,12 @@ import {
   rollForwardChargeDate,
   toIsoDate,
 } from './subscription-schedule.js';
+import {
+  findBankOperationForCharge,
+  findChargeForBankOperation,
+  matchWindow,
+  shiftDay,
+} from './subscription-match.js';
 import { legacyDebtPhraseForDirection } from './debt-direction.js';
 import {
   DEFAULT_INIT_DATA_MAX_AGE_SEC,
@@ -1139,10 +1145,119 @@ const buildSubscriptionChargeNote = (subscription) => {
   if (base.toLowerCase().includes('subscription:')) return base;
   return `${base} • ${suffix}`;
 };
+
+// --- Підписка, яку списав і сервер, і банк (див. subscription-match.js) ---
+
+/** Що списано за підпискою і який запис представляє це в обліку. */
+const insertSubscriptionCharge = (
+  dbConn,
+  { userId, subscriptionId, chargeDate, name, amount, currency, categoryId, source, transactionId, bankInboxId = null },
+) =>
+  dbConn.run(
+    `INSERT INTO subscription_charges
+       (id, user_id, subscription_id, charge_date, name, amount, currency, category_id, source, transaction_id, bank_inbox_id, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      uuidv4(),
+      userId,
+      subscriptionId,
+      chargeDate,
+      name,
+      amount,
+      currency,
+      categoryId,
+      source,
+      transactionId,
+      bankInboxId,
+      new Date().toISOString(),
+    ],
+  );
+
+/**
+ * Автосписання, яке підтверджує щойно отримана операція з банку. Лише пошук —
+ * саме зведення робить `settleSubscriptionCharge` під локом.
+ */
+const findAutopayForBankOperation = async (userId, bankOp, convert) => {
+  const [from, to] = matchWindow(bankOp.day);
+  const rows = await db.all(
+    `SELECT id, name, amount, currency, category_id AS categoryId, charge_date AS chargeDate
+     FROM subscription_charges
+     WHERE user_id = ? AND source = 'autopay' AND charge_date >= ? AND charge_date <= ?`,
+    [userId, from, to],
+  );
+  return findChargeForBankOperation(bankOp, rows ?? [], convert);
+};
+
+/**
+ * Операції з банку за ці дні, які ще не оплатили жодної підписки. Перекази
+ * між своїми картками сюди не потрапляють: це вже не витрати.
+ */
+const loadUnmatchedBankExpenses = async (dbConn, userId, from, to) => {
+  const rows = await dbConn.all(
+    `SELECT b.id, b.merchant, b.amount, b.currency, b.transaction_id AS transactionId, t.date
+     FROM bank_inbox b
+     JOIN transactions t ON t.user_id = b.user_id AND t.id = b.transaction_id
+     WHERE b.user_id = ? AND b.type = 'expense' AND b.paired_with IS NULL AND t.type = 'expense'
+       AND t.date >= ? AND t.date < ?
+       AND NOT EXISTS (
+         SELECT 1 FROM subscription_charges c WHERE c.user_id = b.user_id AND c.bank_inbox_id = b.id
+       )`,
+    [userId, from, shiftDay(to, 1)],
+  );
+  return (rows ?? []).map((row) => ({ ...row, day: String(row.date).slice(0, 10) }));
+};
+
+/**
+ * Прибирає автосписання, яке підтвердила операція з банку, і відтепер вважає
+ * списанням підписки саму операцію.
+ *
+ * Відмова (борг пішов би в мінус, немає курсу) лишає обидва записи: краще
+ * зайва витрата, яку видно й можна прибрати, ніж зламаний баланс. З тієї ж
+ * причини будь-яка інша помилка тут не валить уже записану операцію з банку.
+ */
+const settleSubscriptionCharge = async (userId, chargeId, { cardId, transactionId }, convert) => {
+  try {
+    return await withTransaction(db, async (tx) => {
+      // Інша операція з банку могла звести це списання, поки ми шукали.
+      const charge = await tx.get(
+        `SELECT * FROM subscription_charges WHERE user_id = ? AND id = ? AND source = 'autopay' LIMIT 1`,
+        [userId, chargeId],
+      );
+      if (!charge) return null;
+      // Автосписання людина могла вже прибрати сама — тоді лише фіксуємо, що
+      // списання тепер представляє операція з банку.
+      const autopay = charge.transaction_id
+        ? await tx.get('SELECT * FROM transactions WHERE user_id = ? AND id = ? LIMIT 1', [userId, charge.transaction_id])
+        : null;
+      if (autopay) {
+        await assertTransactionPreconditions(tx, userId, [{ tx: autopay, multiplier: -1 }], convert);
+        await applyTransactionEffects(tx, userId, autopay, -1, convert);
+        await tx.run('DELETE FROM transactions WHERE user_id = ? AND id = ?', [userId, autopay.id]);
+      }
+      await tx.run(
+        `UPDATE subscription_charges SET source = 'bank', transaction_id = ?, bank_inbox_id = ? WHERE id = ?`,
+        [transactionId, cardId, charge.id],
+      );
+      return { name: String(charge.name), chargeDate: String(charge.charge_date), removed: Boolean(autopay) };
+    });
+  } catch (error) {
+    if (error instanceof TransactionRefused) return null;
+    console.error('[subscriptions] не вдалося звести автосписання з банком', error?.message || error);
+    return null;
+  }
+};
+
+const describeSettledSubscription = ({ name, chargeDate, removed }) => {
+  const [, month, day] = chargeDate.split('-');
+  return removed
+    ? `🔁 Це підписка «${name}»: автосписання від ${day}.${month} прибрано, щоб не рахувати двічі`
+    : `🔁 Це підписка «${name}»`;
+};
+
 /**
  * Автосписання підписок, що дозріли.
  *
- * Дві речі тут навмисні й важливі.
+ * Три речі тут навмисні й важливі.
  *
  * Вибірка `dueSubs` живе **всередині** транзакції. Доки вона стояла до
  * `BEGIN`, два одночасні виклики (годинний такт і запит із застосунку) читали
@@ -1154,6 +1269,11 @@ const buildSubscriptionChargeNote = (subscription) => {
  * `bot.sendMessage()` викликався просто в тілі транзакції — а він чекає слота
  * в черзі з лімітом 25/с, і весь цей час ексклюзивний лок на запис тримав усю
  * базу.
+ *
+ * Списання, яке банк уже приніс операцією (картка підключена до Denga, і банк
+ * зняв гроші на день-два раніше за дату в підписці), не записується вдруге:
+ * підписку вже представляє операція з банку. Зворотний випадок — банк
+ * прийшов пізніше — зводить `settleSubscriptionCharge`.
  */
 const runSubscriptionAutopayForUser = async (userId) => {
   const today = new Date();
@@ -1168,6 +1288,9 @@ const runSubscriptionAutopayForUser = async (userId) => {
   );
   if (!pending) return;
 
+  // Курс — до локу: усередині живе мережевий виклик.
+  const convert = await buildAccountUnitConverter();
+
   await withTransaction(db, async (tx, afterCommit) => {
     const dueSubs = await tx.all(
       `SELECT id, name, amount, currency, categoryId, cycle, nextChargeDate, note, account_key AS accountKey
@@ -1177,6 +1300,9 @@ const runSubscriptionAutopayForUser = async (userId) => {
       [userId, todayIso]
     );
     if (!Array.isArray(dueSubs) || dueSubs.length === 0) return;
+
+    const earliestDue = dueSubs.map((sub) => String(sub.nextChargeDate ?? '')).find((d) => parseIsoDate(d)) ?? todayIso;
+    const bankOps = await loadUnmatchedBankExpenses(tx, userId, matchWindow(earliestDue)[0], matchWindow(todayIso)[1]);
 
     const notifications = [];
     const budgetChecks = new Set();
@@ -1212,6 +1338,34 @@ const runSubscriptionAutopayForUser = async (userId) => {
         const subCategoryId = typeof sub.categoryId === 'string' && sub.categoryId.trim()
           ? sub.categoryId
           : 'other_expense';
+        const snapshot = {
+          userId,
+          subscriptionId: sub.id,
+          chargeDate: chargeDay,
+          name: sub.name,
+          amount,
+          currency: subCurrency,
+          categoryId: subCategoryId,
+        };
+
+        // Банк уже приніс це списання операцією — друга витрата була б дублем.
+        const paidByBank = findBankOperationForCharge(
+          { name: sub.name, amount, currency: subCurrency, chargeDate: chargeDay },
+          bankOps,
+          convert,
+        );
+        if (paidByBank) {
+          bankOps.splice(bankOps.indexOf(paidByBank), 1);
+          await insertSubscriptionCharge(tx, {
+            ...snapshot,
+            source: 'bank',
+            transactionId: paidByBank.transactionId,
+            bankInboxId: paidByBank.id,
+          });
+          notifications.push(`🔁 ${sub.name} · підписка вже є в обліку з банку — автосписання не дублюю`);
+          continue;
+        }
+
         // Без рахунку списання лише записується, баланс не рухає.
         const note = buildSubscriptionChargeNote(sub);
         const charge = {
@@ -1229,8 +1383,9 @@ const runSubscriptionAutopayForUser = async (userId) => {
           'INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, note, accountKey) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
           [charge.id, charge.user_id, charge.amount, charge.currency, charge.categoryId, charge.type, charge.date, charge.note ?? null, charge.accountKey]
         );
+        await insertSubscriptionCharge(tx, { ...snapshot, source: 'autopay', transactionId: charge.id });
         try {
-          await applyTransactionEffects(tx, userId, charge);
+          await applyTransactionEffects(tx, userId, charge, 1, convert);
         } catch (e) {
           // A subscription pinned to an account held in another unit must not
           // corrupt that balance — nor stop the remaining subscriptions. The
@@ -5350,21 +5505,41 @@ const recordAutomaticTransaction = async ({
       getUserTimeZone(db, userId),
     ]);
 
-    const explicit = explicitCategoryId
-      ? categories.find((c) => String(c?.id) === String(explicitCategoryId))
-      : null;
-    const resolved = explicit
-      ? {
-          categoryId: String(explicit.id),
-          categoryName: String(explicit.name ?? explicit.id),
-          source: categorySource,
-        }
-      : resolveBankCategory({ merchant, mcc, bankCategory, type, rules, categories });
-
     // День рахується в поясі людини, а не в UTC: покупка о 01:30 у Варшаві —
     // це сьогодні, і в місячному звіті вона має бути там, де її зробили.
     const iso = new Date(timeMs).toISOString();
     const day = dayFromIsoInZone(iso, userTimeZone) ?? iso.slice(0, 10);
+
+    // Курс береться до входу в транзакцію: усередині `buildAccountUnitConverter`
+    // живе мережевий виклик, і тримати на ньому лок запису не можна.
+    const convert = await buildAccountUnitConverter();
+
+    // Списання підписки, яке ця операція підтверджує. Категорія тоді — та, що
+    // обрана в підписці: це рішення людини, а не здогад за назвою магазину.
+    const subscriptionCharge =
+      type === 'expense' && !looksLikeTransfer
+        ? await findAutopayForBankOperation(userId, { merchant, amount, currency, day }, convert)
+        : null;
+    const subscriptionCategory = subscriptionCharge
+      ? categories.find((c) => String(c?.id) === String(subscriptionCharge.categoryId) && c?.type === type)
+      : null;
+
+    const explicit = explicitCategoryId
+      ? categories.find((c) => String(c?.id) === String(explicitCategoryId))
+      : null;
+    const resolved = subscriptionCategory
+      ? {
+          categoryId: String(subscriptionCategory.id),
+          categoryName: String(subscriptionCategory.name ?? subscriptionCategory.id),
+          source: 'subscription',
+        }
+      : explicit
+        ? {
+            categoryId: String(explicit.id),
+            categoryName: String(explicit.name ?? explicit.id),
+            source: categorySource,
+          }
+        : resolveBankCategory({ merchant, mcc, bankCategory, type, rules, categories });
 
     const label = String(merchant ?? '').trim().slice(0, AUTOMATION_NOTE_MAX) || resolved.categoryName;
     const resolvedAccountKey = account ? String(account.accountKey) : null;
@@ -5380,9 +5555,6 @@ const recordAutomaticTransaction = async ({
       accountKey: resolvedAccountKey,
     };
 
-    // Курс береться до входу в транзакцію: усередині `buildAccountUnitConverter`
-    // живе мережевий виклик, і тримати на ньому лок запису не можна.
-    const convert = await buildAccountUnitConverter();
     const pickerIds = categories.filter((c) => c?.type === type).slice(0, BANK_CARD_CATEGORY_LIMIT).map((c) => String(c.id));
 
     await withTransaction(db, async (tx) => {
@@ -5441,6 +5613,13 @@ const recordAutomaticTransaction = async ({
       return { ok: true, cardId, transaction, paired, message: paired.message };
     }
 
+    // Підписку вже списало автосписання — тепер, коли є справжня операція з
+    // банку, воно прибирається, і підписка рахується один раз.
+    const settled = subscriptionCharge
+      ? await settleSubscriptionCharge(userId, subscriptionCharge.id, { cardId, transactionId: transaction.id }, convert)
+      : null;
+    const subscriptionLine = settled ? describeSettledSubscription(settled) : '';
+
     if (type === 'expense') {
       await checkBudgetThresholdsAfterExpense(userId, resolved.categoryId);
     }
@@ -5453,13 +5632,19 @@ const recordAutomaticTransaction = async ({
       categoryId: resolved.categoryId,
       categoryName: resolved.categoryName,
       source: resolved.source,
-      message: buildResultMessage({
-        type,
-        amount,
-        currency,
-        categoryName: resolved.categoryName,
-        accountName: finalAccountName,
-      }),
+      ...(settled ? { subscription: settled } : {}),
+      message: [
+        buildResultMessage({
+          type,
+          amount,
+          currency,
+          categoryName: resolved.categoryName,
+          accountName: finalAccountName,
+        }),
+        subscriptionLine,
+      ]
+        .filter(Boolean)
+        .join('\n'),
     };
 
     // Картка потрібна лише тоді, коли категорія — здогад. Ярлик, у якому
@@ -5478,6 +5663,7 @@ const recordAutomaticTransaction = async ({
             accountName: finalAccountName,
             type,
             source: resolved.source,
+            extra: subscriptionLine,
           }),
           options: { reply_markup: buildBankCardKeyboard(cardId) },
         });

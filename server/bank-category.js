@@ -83,7 +83,7 @@ export const FALLBACK_CATEGORY = { expense: 'other_expense', income: 'other_inco
  * `ł` — окремо, бо в Unicode це самостійна літера, а не `l` з рискою, і NFD її
  * не розкладає.
  */
-const foldName = (raw) =>
+export const foldName = (raw) =>
   String(raw ?? '')
     .toLocaleLowerCase('pl-PL')
     .replace(/ł/g, 'l')

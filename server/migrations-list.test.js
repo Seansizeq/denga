@@ -11,6 +11,7 @@ import {
   legacyDebtSign,
   legacyTransactionCurrencyFromNote,
   plannerDaysToShiftEntries,
+  recentSubscriptionCharges,
   transactionAccountColumn,
   userDataVersionCounters,
 } from './migrations-list.js';
@@ -429,5 +430,52 @@ describe('006 — старе правило знаку боргу', () => {
     );
     await runStep();
     expect(await flag('x')).toBeNull();
+  });
+});
+
+describe('007 — недавні автосписання підписок', () => {
+  const daysAgo = (n) => new Date(Date.now() - n * 24 * 60 * 60 * 1000).toISOString();
+  const addSub = (id, userId, name) =>
+    db.run(
+      `INSERT INTO subscriptions (id, user_id, name, amount, currency, categoryId, cycle, nextChargeDate, active, createdAt, updatedAt)
+       VALUES (?, ?, ?, 15.49, 'USD', 'entertainment', 'monthly', '2099-01-01', 1, ?, ?)`,
+      [id, userId, name, now(), now()],
+    );
+  const addTx = (id, userId, note, date, type = 'expense') =>
+    db.run(
+      `INSERT INTO transactions (id, user_id, amount, currency, categoryId, type, date, note)
+       VALUES (?, ?, 15.49, 'USD', 'entertainment', ?, ?, ?)`,
+      [id, userId, type, date, note],
+    );
+  const charges = () =>
+    db.all(
+      `SELECT subscription_id AS sub, transaction_id AS tx, source, name, amount, currency, category_id AS category
+       FROM subscription_charges ORDER BY transaction_id`,
+    );
+  const runStep = async () => {
+    await db.run('DELETE FROM app_cache');
+    await runMigrations(db, [recentSubscriptionCharges], silent);
+  };
+
+  it('записує автосписання останніх днів — і з приміткою підписки перед маркером', async () => {
+    await addSub('netflix', '111', 'Netflix');
+    await addSub('spotify', '111', 'Spotify Premium');
+    await addTx('a', '111', 'Subscription: Netflix', daysAgo(2));
+    await addTx('b', '111', 'сімейний • Subscription: Spotify Premium', daysAgo(1));
+    await runStep();
+    expect(await charges()).toEqual([
+      { sub: 'netflix', tx: 'a', source: 'autopay', name: 'Netflix', amount: 15.49, currency: 'USD', category: 'entertainment' },
+      { sub: 'spotify', tx: 'b', source: 'autopay', name: 'Spotify Premium', amount: 15.49, currency: 'USD', category: 'entertainment' },
+    ]);
+  });
+
+  it('не чіпає старі списання, доходи, чужі підписки й видалені підписки', async () => {
+    await addSub('netflix', '111', 'Netflix');
+    await addTx('old', '111', 'Subscription: Netflix', daysAgo(30));
+    await addTx('inc', '111', 'Subscription: Netflix', daysAgo(1), 'income');
+    await addTx('other', '222', 'Subscription: Netflix', daysAgo(1));
+    await addTx('gone', '111', 'Subscription: Disney+', daysAgo(1));
+    await runStep();
+    expect(await charges()).toEqual([]);
   });
 });

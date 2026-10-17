@@ -99,6 +99,19 @@ describe('buildBankCardText', () => {
     expect(text).toContain('Картка');
   });
 
+  it('категорія з підписки — не здогад; рядок про зведення йде останнім', () => {
+    const text = buildBankCardText({
+      merchant: 'NETFLIX.COM',
+      amount: 638.2,
+      currency: 'UAH',
+      categoryName: 'Підписки',
+      source: 'subscription',
+      extra: '🔁 Це підписка «Netflix»',
+    });
+    expect(text).not.toContain('↪️');
+    expect(text.split('\n').at(-1)).toBe('🔁 Це підписка «Netflix»');
+  });
+
   it('мовчить про здогад, коли категорію дало правило самої людини', () => {
     const text = buildBankCardText({ merchant: 'Silpo', amount: 1, currency: 'UAH', categoryName: 'Продукти', source: 'rule' });
     expect(text).not.toContain('↪️');

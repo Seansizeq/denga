@@ -873,6 +873,35 @@ export async function initDb() {
     ON bank_inbox(created_at)
   `);
 
+  // Кожне списання підписки і запис, що його представляє в обліку: власне
+  // автосписання (`autopay`) або операція з банку, з якою його зведено
+  // (`bank`, див. `subscription-match.js`). Без цього рядка операція з банку,
+  // що прийшла через день після автосписання, не мала б як дізнатися, яку
+  // витрату вона дублює.
+  //
+  // Назва, сума й валюта — знімок на момент списання: звіряти треба з тим, що
+  // списали, а не з підпискою, яку відтоді могли змінити чи видалити.
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS subscription_charges (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      subscription_id TEXT NOT NULL,
+      charge_date TEXT NOT NULL,
+      name TEXT NOT NULL,
+      amount REAL NOT NULL,
+      currency TEXT NOT NULL,
+      category_id TEXT NOT NULL,
+      source TEXT NOT NULL,
+      transaction_id TEXT,
+      bank_inbox_id TEXT,
+      created_at TEXT NOT NULL
+    )
+  `);
+  await db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_subscription_charges_user_date
+    ON subscription_charges(user_id, charge_date)
+  `);
+
   // Чого людина навчила, виправивши категорію на картці. Ключ — назва
   // торговця, зведена до порівнюваного вигляду (див. `bank-category.js`).
   await db.exec(`

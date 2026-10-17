@@ -70,6 +70,8 @@ const SOURCE_HINT = {
   // Категорію взято з правила, якому навчила сама людина, — мовчимо, бо це
   // вже її рішення, а не здогад.
   rule: '',
+  // Категорію взято з підписки, яку ця операція оплатила, — теж рішення людини.
+  subscription: '',
   brand: 'категорію вгадано за назвою магазину',
   bank: 'категорію підказав банк',
   mcc: 'категорію вгадано за типом закладу',
@@ -81,6 +83,9 @@ const SOURCE_HINT = {
  *
  * Сума без знака: напрямок уже сказаний словом, а мінус перед числом на
  * картці витрати читається як «мінус ще раз».
+ *
+ * @param extra ще один рядок наприкінці — наприклад, що операцію зведено з
+ *   автосписанням підписки.
  */
 export const buildBankCardText = ({
   merchant,
@@ -90,6 +95,7 @@ export const buildBankCardText = ({
   accountName = '',
   type = 'expense',
   source = 'fallback',
+  extra = '',
 } = {}) => {
   const head = type === 'income' ? '💰 Надходження' : '💳 Витрата';
   const title = String(merchant ?? '').trim();
@@ -98,6 +104,7 @@ export const buildBankCardText = ({
     `${head} · ${formatSmartAmount(amount, currency)}`,
     [title, categoryName, accountName].filter(Boolean).join(' · '),
     hint ? `↪️ ${hint}` : '',
+    extra,
   ]
     .filter(Boolean)
     .join('\n');

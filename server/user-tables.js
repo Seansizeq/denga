@@ -23,6 +23,9 @@ export const USER_TABLES = [
   // сервера. Операції з нього вже нікуди не потраплять — маршрут не знайде
   // привʼязки й відповість 404.
   'bank_links',
+  // Теж перед `transactions`: рядок посилається на запис, що представляє
+  // списання підписки.
+  'subscription_charges',
   'transactions',
   'custom_categories',
   'category_prefs',

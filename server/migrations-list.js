@@ -409,6 +409,61 @@ export const legacyDebtSign = {
   },
 };
 
+/**
+ * Недавні автосписання підписок дістають рядок у `subscription_charges`.
+ *
+ * Звірка з банком (`subscription-match.js`) шукає автосписання саме там, а
+ * записані до неї там відсутні. Без цього кроку підписка, автосписана за день
+ * до оновлення, однаково задвоїлася б, щойно наступного дня прийде операція з
+ * банку, — і людина побачила б той самий дубль одразу після виправлення.
+ *
+ * Далі назад, ніж на десять днів, сенсу йти немає: банк приходить не пізніше
+ * ніж за три дні від дня підписки.
+ *
+ * Автосписання впізнається за приміткою `Subscription: <назва>` у кінці, а
+ * підписка — за назвою в межах людини. Сума, валюта й категорія беруться з
+ * самої транзакції: звіряти треба з тим, що списали.
+ */
+export const recentSubscriptionCharges = {
+  id: '007-recent-subscription-charges',
+  run: async (tx) => {
+    const since = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const rows = await tx.all(
+      `SELECT id, user_id AS userId, amount, currency, categoryId, date, note
+       FROM transactions
+       WHERE type = 'expense' AND date >= ? AND note LIKE '%Subscription: %'`,
+      [since],
+    );
+    for (const row of rows ?? []) {
+      const note = String(row.note ?? '');
+      const name = note.slice(note.lastIndexOf('Subscription: ') + 'Subscription: '.length).trim();
+      if (!name) continue;
+      const sub = await tx.get('SELECT id FROM subscriptions WHERE user_id = ? AND name = ? LIMIT 1', [
+        row.userId,
+        name,
+      ]);
+      if (!sub) continue;
+      await tx.run(
+        `INSERT INTO subscription_charges
+           (id, user_id, subscription_id, charge_date, name, amount, currency, category_id, source, transaction_id, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'autopay', ?, ?)`,
+        [
+          randomUUID(),
+          row.userId,
+          sub.id,
+          String(row.date).slice(0, 10),
+          name,
+          row.amount,
+          row.currency,
+          row.categoryId,
+          row.id,
+          nowIso(),
+        ],
+      );
+    }
+  },
+};
+
 export const MIGRATIONS = [
   customCategoriesUserScopedKey,
   legacyTransactionCurrencyFromNote,
@@ -416,4 +471,5 @@ export const MIGRATIONS = [
   plannerDaysToShiftEntries,
   transactionAccountColumn,
   legacyDebtSign,
+  recentSubscriptionCharges,
 ];
